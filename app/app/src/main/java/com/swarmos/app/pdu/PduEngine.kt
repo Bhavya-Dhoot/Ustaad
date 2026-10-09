@@ -252,6 +252,7 @@ object PduEngine {
         req.query?.let { PduEmbedConfig.queryPrefix = it }
         req.document?.let { PduEmbedConfig.documentPrefix = it }
         PduEmbedConfig.save(store)
+        refresh() // so the answer below is about the new prefix, not the last 4 s poll
         return PrefixReport(PduEmbedConfig.queryPrefix, PduEmbedConfig.documentPrefix, reindexNeeded())
     }
 

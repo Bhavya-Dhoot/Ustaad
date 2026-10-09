@@ -145,7 +145,7 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle("Sources")
                 Spacer(Modifier.width(10.dp))
-                if (cur.sources.isNotEmpty()) Tag("${cur.sources.size} matches")
+                if (cur.sources.isNotEmpty()) Tag(if (cur.sources.size == 1) "1 match" else "${cur.sources.size} matches")
             }
             if (cur.sources.isEmpty()) {
                 if (cur.phase == "searching") { Skeleton(96.dp); Skeleton(96.dp) }
