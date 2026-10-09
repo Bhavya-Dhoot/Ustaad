@@ -24,6 +24,8 @@ data class CatalogEntry(
     val bytes: Long,
     val sha256: String,
     val default: Boolean = false,
+    /** false = chat only: this model returns empty content for JSON-schema requests, so no structured call may be routed to it. */
+    val structuredOutput: Boolean = true,
 )
 
 /** The pinned list from docs/models.md (file names, sizes, SHA-256). embeddinggemma-2 is not listed: llama.cpp v0.6.0 cannot load it. */
@@ -38,6 +40,7 @@ object ModelCatalog {
             Role.CHAT, "gemma-4-E4B_q4_0-it.gguf", "Gemma 4 E4B QAT Q4_0",
             "https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf",
             5_154_941_280L, "676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee",
+            structuredOutput = false, // returns empty content for JSON-schema requests (measured on the phones)
         ),
         CatalogEntry(
             Role.EMBED, "embeddinggemma-300M-Q8_0.gguf", "EmbeddingGemma 300M Q8_0",
@@ -54,6 +57,15 @@ object ModelCatalog {
 
     fun byFile(file: String): CatalogEntry? = entries.firstOrNull { it.file == file }
     fun defaultFor(role: Role): CatalogEntry? = entries.firstOrNull { it.role == role && it.default }
+
+    /** Shown on the model card and in /v1/models/state for models that must not get JSON-schema calls. */
+    const val CHAT_ONLY_NOTE = "chat only, not for structured output"
+
+    /** [modelName] is a file name with or without ".gguf" (as in ServerStatus.modelName). Unknown models are assumed fine. */
+    fun allowsSchema(modelName: String): Boolean {
+        val file = if (modelName.endsWith(".gguf")) modelName else "$modelName.gguf"
+        return byFile(file)?.structuredOutput ?: true
+    }
 }
 
 sealed interface DownloadState {
@@ -118,6 +130,18 @@ object ModelStore {
     }
 
     private fun lastLoaded(role: Role): String? = prefs().getString("last_${role.tag}", null)
+
+    private val _autoload by lazy { MutableStateFlow(prefs().getBoolean(KEY_AUTOLOAD, true)) }
+
+    /** "Load models at start" (default on): whether the service loads the default chat and embedding models when it starts. */
+    val autoload: StateFlow<Boolean> get() = _autoload
+
+    fun setAutoload(on: Boolean) {
+        prefs().edit().putBoolean(KEY_AUTOLOAD, on).apply()
+        _autoload.value = on
+    }
+
+    private const val KEY_AUTOLOAD = "autoload"
 
     private fun prefs() = AppGraph.appContext.getSharedPreferences("swarm_llm", Context.MODE_PRIVATE)
 
