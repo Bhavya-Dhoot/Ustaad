@@ -6,7 +6,7 @@ import com.swarmos.app.llm.ChatStats
 import kotlinx.serialization.Serializable
 
 /*
- * Wire types for /v1/sched/*. ChatRequest and ChatStats live in llm/ and are not @Serializable, so these
+ * Wire types for the routes under /v1/sched. ChatRequest and ChatStats live in llm/ and are not @Serializable, so these
  * mirrors carry exactly the same field names and defaults.
  */
 
