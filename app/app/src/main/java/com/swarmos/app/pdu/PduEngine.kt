@@ -200,9 +200,11 @@ object PduEngine {
                 val stats = IndexStats(label)
                 val t0 = now()
                 _progress.value = IndexProgress(true, label, current = "listing files")
+                PduActivity.set(PduActivity.listing())
                 val refs = list()
                 refs.forEachIndexed { i, ref ->
                     _progress.value = IndexProgress(true, label, i, refs.size, ref.title)
+                    PduActivity.set(PduActivity.indexing(refs.size, i))
                     PduIndexer.ingest(AppGraph.appContext, store, ref, stats)
                     refresh()
                 }
@@ -226,6 +228,7 @@ object PduEngine {
             _progress.value = IndexProgress(false, label, last = r)
             r
         } finally {
+            PduActivity.clear()
             indexLock.unlock()
         }
     }
@@ -304,6 +307,7 @@ object PduEngine {
                 if (g is IndexGuard.Outcome.Refused) return@withContext refuse("scan", g.reason)
                 val stats = IndexStats("scan")
                 val t0 = now()
+                PduActivity.set(PduActivity.indexingScan())
                 val nowMs = System.currentTimeMillis()
                 // folder and lastModified match what a later "Index photos" run sees, so it skips this scan instead of rewriting it
                 val folder = PduIndexer.scanFolder(share)
@@ -319,6 +323,7 @@ object PduEngine {
             if (t is CancellationException) throw t
             IndexReport("scan", error = "${t.javaClass.simpleName}: ${t.message}")
         } finally {
+            PduActivity.clear()
             indexLock.unlock()
         }
     }
@@ -346,27 +351,37 @@ object PduEngine {
 
     /** Serve a peer: search, apply the share policy, return only what policy allows. Logs one audit line, keeps nothing else. */
     suspend fun servePeer(q: PduQuery, fromNode: String): PduResponse {
-        val t0 = now()
-        val ls = searchLocal(q.text)
-        val resp = PeerResponder.respond(q.qid, ls.candidates, ls.terms, q.k.coerceIn(1, 10), store.chunkCount, now() - t0)
-        val bytes = SwarmJson.encodeToString(resp).toByteArray().size
-        AppGraph.audit.append(
-            "pdu.served",
-            JsonObject(mapOf(
-                "qid" to JsonPrimitive(q.qid), "peer" to JsonPrimitive(fromNode),
-                "n" to JsonPrimitive(resp.hits.size), "bytes" to JsonPrimitive(bytes),
-                "withheld" to JsonPrimitive(resp.withheldPrivate),
-            )),
-        )
-        val peerName = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == fromNode }?.info?.name ?: fromNode
-        _served.update { (listOf(ServedRecord(q.qid, peerName, resp.hits.size, bytes, resp.withheldPrivate, resp.hits.map { it.title }, System.currentTimeMillis())) + it).take(20) }
-        return resp
+        val knownName = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == fromNode }?.info?.name
+        return PduActivity.during(PduActivity.servingPeer(knownName)) {
+            val t0 = now()
+            val ls = searchLocal(q.text)
+            val resp = PeerResponder.respond(q.qid, ls.candidates, ls.terms, q.k.coerceIn(1, 10), store.chunkCount, now() - t0)
+            val bytes = SwarmJson.encodeToString(resp).toByteArray().size
+            AppGraph.audit.append(
+                "pdu.served",
+                JsonObject(mapOf(
+                    "qid" to JsonPrimitive(q.qid), "peer" to JsonPrimitive(fromNode),
+                    "n" to JsonPrimitive(resp.hits.size), "bytes" to JsonPrimitive(bytes),
+                    "withheld" to JsonPrimitive(resp.withheldPrivate),
+                )),
+            )
+            val peerName = knownName ?: fromNode
+            _served.update { (listOf(ServedRecord(q.qid, peerName, resp.hits.size, bytes, resp.withheldPrivate, resp.hits.map { it.title }, System.currentTimeMillis())) + it).take(20) }
+            resp
+        }
     }
 
     // ---- the federated ask --------------------------------------------------------------------------------
 
     /** Full flow: query every online peer and this phone, merge, show cards, stream the answer. Returns the final state. */
-    suspend fun ask(text: String, k: Int = 5, deadlineMs: Int = 1500): QueryUi {
+    suspend fun ask(text: String, k: Int = 5, deadlineMs: Int = 1500): QueryUi =
+        try {
+            runAsk(text, k, deadlineMs)
+        } finally {
+            PduActivity.clear()
+        }
+
+    private suspend fun runAsk(text: String, k: Int, deadlineMs: Int): QueryUi {
         val t0 = now()
         val qid = UUID.randomUUID().toString().take(8)
         val self = AppGraph.registry.self.value
@@ -384,6 +399,7 @@ object PduEngine {
             else DeviceResult(p.info.nodeId, p.info.name, false, "waiting", sentBytes = qBytes)
         }
         val online = peers.filter { !it.away }
+        PduActivity.set(PduActivity.searching(online.size))
         _query.value = QueryUi(qid, text, "searching", devices = results.values.toList(), model = model)
         AppGraph.audit.append(
             "pdu.sent",
@@ -469,13 +485,14 @@ object PduEngine {
         // cards are final; now the answer
         val sources = _query.value?.takeIf { it.qid == qid }?.sources.orEmpty()
         val incomplete = _query.value?.incomplete ?: false
-        update { it.copy(phase = "answering", auditHash = AppGraph.audit.entries().lastOrNull()?.hash) }
+        update { it.copy(phase = "answering", auditHash = AppGraph.audit.lastEntryHash) }
         val sb = StringBuilder()
         var ttft = -1L
         if (sources.isEmpty()) {
             sb.append("Nothing relevant found on any phone.")
             if (incomplete) sb.append(" Some phones did not answer.")
         } else {
+            PduActivity.set(PduActivity.answering(sources.size))
             try {
                 val merged = sources.map { MergedHit(it.deviceId, it.deviceName, it.local, it.hit, 0.0) }
                 AppGraph.gatedLlm.chatStream(PromptBuilder.build(text, merged)).collect { c ->

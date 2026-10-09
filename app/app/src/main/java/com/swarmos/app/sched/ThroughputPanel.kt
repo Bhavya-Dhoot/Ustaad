@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
-import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.core.ThermalLevel
 import com.swarmos.app.ui.Hairline
 import com.swarmos.app.ui.HeroMetric
 import com.swarmos.app.ui.MetricRow
@@ -132,7 +132,7 @@ fun ThroughputPanel(modifier: Modifier = Modifier, showTitle: Boolean = true) {
                         caps.capacity == 0 -> Cell("no model", 2.6f, dim = true)
                         else -> {
                             Cell("${caps.running}/${caps.capacity} q${caps.queued}", 1.3f)
-                            Cell(HealthMonitor.thermalWord(caps.thermalStatus), 1.3f, bold = HealthMonitor.isHot(caps.thermalStatus))
+                            Cell(ThermalLevel.of(caps.thermalStatus).word, 1.3f, bold = ThermalLevel.isTooHot(caps.thermalStatus))
                         }
                     }
                 }

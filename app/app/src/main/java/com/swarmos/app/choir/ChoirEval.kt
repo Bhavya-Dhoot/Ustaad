@@ -2,6 +2,7 @@ package com.swarmos.app.choir
 
 import com.swarmos.app.core.HealthMonitor
 import com.swarmos.app.core.SwarmJson
+import com.swarmos.app.core.ThermalLevel
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.io.File
@@ -100,9 +101,9 @@ data class EvalProgress(
  * the coordinator's own R1 answer (one phone alone), the choir pick without the tool, and the choir pick with the tool.
  */
 object ChoirEval {
-    /** Why a 20-problem eval must not start now, or null. Uses the shared thermal threshold ([HealthMonitor.isHot]). */
+    /** Why a 20-problem eval must not start now, or null. Uses the shared thermal threshold ([ThermalLevel.isTooHot]). */
     fun refuseWhenHot(thermalStatus: Int): String? =
-        if (HealthMonitor.isHot(thermalStatus)) {
+        if (ThermalLevel.isTooHot(thermalStatus)) {
             "This phone is too hot for a 20-problem run (thermal status ${HealthMonitor.thermalName(thermalStatus).lowercase()}). Let it cool down, then run again."
         } else null
 
