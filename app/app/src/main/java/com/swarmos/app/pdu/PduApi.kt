@@ -52,7 +52,7 @@ data class FolderReport(val folder: String, val isPrivate: Boolean, val docs: In
 @Serializable
 data class StatusReport(
     val photos: Int, val documents: Int, val scans: Int, val noText: Int, val chunks: Int, val lastRunMs: Long,
-    val embedModel: String?, val running: Boolean, val folders: List<FolderReport>, val lastIndex: IndexReport?,
+    val embedModel: String?, val running: Boolean, val folders: List<FolderReport>, val lastIndex: IndexReport?, val speech: String,
 )
 
 /** Everything a caller of the signed debug routes may see about this phone's own private items is a count, never text. */
@@ -146,6 +146,7 @@ fun Route.pduRoutes() {
                     c.photos, c.documents, c.scans, c.skipped, c.chunks, c.lastRunMs,
                     PduEngine.store.meta("embedModel"), PduEngine.progress.value.running,
                     PduEngine.store.folders().map { FolderReport(it.folder, it.isPrivate, it.docs) }, PduEngine.progress.value.last,
+                    VoiceInput.mode(AppGraph.appContext).name,
                 ),
             )
         }
