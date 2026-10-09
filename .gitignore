@@ -1,0 +1,16 @@
+# build outputs
+**/build/
+.gradle/
+local.properties
+*.apk
+*.aab
+.cxx/
+.kotlin/
+# models and large binaries
+*.gguf
+models/
+# IDE
+.idea/
+*.iml
+# third-party source fetched at build time
+third_party/
