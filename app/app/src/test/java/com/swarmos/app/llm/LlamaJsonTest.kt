@@ -109,6 +109,20 @@ data: [DONE]
         assertEquals(Json.parseToJsonElement(schema), sent)
     }
 
+    @Test fun thinkingStaysOffEvenWhenAnExtraFieldTriesToTurnItOn() {
+        val extra = kotlinx.serialization.json.buildJsonObject {
+            put("chat_template_kwargs", kotlinx.serialization.json.buildJsonObject { put("enable_thinking", kotlinx.serialization.json.JsonPrimitive(true)) })
+            put("ignore_eos", kotlinx.serialization.json.JsonPrimitive(true))
+        }
+        for (stream in listOf(true, false)) {
+            val body = Json.parseToJsonElement(
+                LlamaJson.chatBody(ChatRequest(listOf(ChatMessage("user", "hi"))), stream = stream, model = "m", extra = extra),
+            ).jsonObject
+            assertFalse(body["chat_template_kwargs"]!!.jsonObject["enable_thinking"]!!.jsonPrimitive.boolean)
+            assertTrue(body["ignore_eos"]!!.jsonPrimitive.boolean)
+        }
+    }
+
     @Test fun chatBodyWithoutSchemaHasNoResponseFormat() {
         val body = Json.parseToJsonElement(
             LlamaJson.chatBody(ChatRequest(listOf(ChatMessage("user", "hi"))), stream = false, model = "m", extra = null),

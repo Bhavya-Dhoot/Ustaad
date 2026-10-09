@@ -56,6 +56,12 @@ object LlamaArgs {
         }
         return base + extra
     }
+
+    /** Parallel slots a started server was given: the last `-np` / `--parallel` in [args], else [CHAT_SLOTS]. */
+    fun slots(args: List<String>): Int {
+        val i = args.indexOfLast { it == "-np" || it == "--parallel" }
+        return args.getOrNull(i + 1)?.toIntOrNull()?.takeIf { i >= 0 && it > 0 } ?: CHAT_SLOTS
+    }
 }
 
 /** Pure helpers for /proc parsing and the log ring buffer. */
