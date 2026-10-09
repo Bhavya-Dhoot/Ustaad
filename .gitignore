@@ -17,3 +17,6 @@ third_party/
 
 # agent worktrees
 .claude/worktrees/
+
+# founder upload
+ustaad.zip
