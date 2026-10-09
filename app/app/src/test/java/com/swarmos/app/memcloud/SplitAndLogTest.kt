@@ -224,6 +224,16 @@ class SplitPlannerTest {
         assertEquals(0, p.boundariesPerToken())
     }
 
+    @Test fun steppersMoveOneLayerAndKeepTheTotal() {
+        assertEquals(listOf(17, 15, 16), SplitPlanner.shift(listOf(16, 16, 16), 0, +1))
+        assertEquals(listOf(15, 17, 16), SplitPlanner.shift(listOf(16, 16, 16), 0, -1))
+        assertEquals(listOf(16, 17, 15), SplitPlanner.shift(listOf(16, 16, 16), 2, -1)) // last phone gives to the previous one
+        assertEquals(listOf(16, 17, 15), SplitPlanner.shift(listOf(16, 16, 16), 1, +1)) // takes from the next phone first
+        assertEquals(listOf(0, 10), SplitPlanner.shift(listOf(0, 10), 0, -1)) // nothing to give
+        assertEquals(listOf(4, 6), SplitPlanner.shift(listOf(5, 5), 1, +1)) // last phone takes from the previous one
+        assertEquals(10, SplitPlanner.shift(listOf(3, 3, 4), 1, +1).sum())
+    }
+
     @Test fun threePhonesCrossThreeBoundariesPerToken() {
         assertEquals(3, SplitPlanner.plan(info(), devs(9000, 9000, 9000)).boundariesPerToken())
     }

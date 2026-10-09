@@ -148,7 +148,8 @@ object LlamaRuntime {
         extraArgs: List<String> = emptyList(),
         port: Int = role.defaultPort,
         env: Map<String, String> = emptyMap(),
-    ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env).await()
+        readyTimeoutMs: Long = READY_TIMEOUT_MS,
+    ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env, readyTimeoutMs).await()
 
     /** Same as [start] but returns at once; cancelling the caller never leaves a half-started server behind. */
     fun startAsync(
@@ -157,7 +158,8 @@ object LlamaRuntime {
         extraArgs: List<String> = emptyList(),
         port: Int = role.defaultPort,
         env: Map<String, String> = emptyMap(),
-    ): Deferred<ServerStatus> = scope.async { startInternal(role, modelPath, extraArgs, port, env) }
+        readyTimeoutMs: Long = READY_TIMEOUT_MS,
+    ): Deferred<ServerStatus> = scope.async { startInternal(role, modelPath, extraArgs, port, env, readyTimeoutMs) }
 
     private suspend fun startInternal(
         role: Role,
@@ -165,6 +167,7 @@ object LlamaRuntime {
         extraArgs: List<String>,
         port: Int,
         env: Map<String, String>,
+        readyTimeoutMs: Long,
     ): ServerStatus = locks.getValue(role).withLock {
         stopLocked(role)
         val ctx = AppGraph.appContext
@@ -206,7 +209,7 @@ object LlamaRuntime {
         watchExit(run, modelPath, port)
 
         // wait for readiness
-        val deadline = System.nanoTime() + READY_TIMEOUT_MS * 1_000_000
+        val deadline = System.nanoTime() + readyTimeoutMs * 1_000_000
         while (System.nanoTime() < deadline) {
             if (!proc.isAlive) break
             if (probe(role, port)) {
@@ -224,7 +227,7 @@ object LlamaRuntime {
         if (proc.isAlive) {
             run.stopRequested = true
             killProcess(proc)
-            return@withLock fail(role, "not ready after ${READY_TIMEOUT_MS / 1000} s; ${ring.tail(1).lastOrNull().orEmpty()}", modelPath, port)
+            return@withLock fail(role, "not ready after ${readyTimeoutMs / 1000} s; ${ring.tail(1).lastOrNull().orEmpty()}", modelPath, port)
         }
         if (run.stopRequested) return@withLock statusOf(role)
         val code = runCatching { proc.exitValue() }.getOrDefault(-1)
@@ -356,8 +359,11 @@ object LlamaRuntime {
 
     private fun probe(role: Role, port: Int): Boolean =
         if (role == Role.RPC) {
+            // rpc-server may listen on the link address only (-H <ip>), where 127.0.0.1 is refused: probe where it was told to bind
+            val a = statusOf(role).args
+            val host = a.lastIndexOf("-H").takeIf { it >= 0 }?.let { a.getOrNull(it + 1) }?.takeIf { it != "0.0.0.0" } ?: "127.0.0.1"
             try {
-                Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 500); true }
+                Socket().use { it.connect(InetSocketAddress(host, port), 500); true }
             } catch (_: Exception) {
                 false
             }

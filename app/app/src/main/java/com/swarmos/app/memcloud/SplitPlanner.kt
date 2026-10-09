@@ -86,6 +86,24 @@ object SplitPlanner {
     }
 
     /**
+     * The +/- steppers of the plan screen: [delta] +1 moves one layer to device [index] from the nearest neighbour that has
+     * one (next phones first), -1 moves one away to the next phone (the previous one for the last phone). The sum never changes.
+     */
+    fun shift(counts: List<Int>, index: Int, delta: Int): List<Int> {
+        if (counts.size < 2 || index !in counts.indices) return counts
+        val out = counts.toMutableList()
+        val others = (index + 1 until counts.size) + (index - 1 downTo 0)
+        if (delta > 0) {
+            val donor = others.firstOrNull { out[it] > 0 } ?: return counts
+            out[donor]--; out[index]++
+        } else if (delta < 0) {
+            if (out[index] == 0) return counts
+            out[others.first()]++; out[index]--
+        }
+        return out
+    }
+
+    /**
      * [devices] must start with the driver. [manual] (one count per device, summing to the layer count) overrides [mode];
      * [mode] EQUAL gives every phone the same number of layers, RAM weights them by free memory.
      */
