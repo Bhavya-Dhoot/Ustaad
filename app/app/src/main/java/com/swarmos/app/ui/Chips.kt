@@ -45,14 +45,18 @@ private val NumberRun = Regex("""\d+(?:[.,:/]\d+)*%?""")
 private val CiteMarker = Regex("""\[(\d{1,2})]""")
 private val CiteShape = RoundedCornerShape(4.dp)
 
-/** [text] with every number (62,400  8.4  79%  10:30) set in Geist Mono, the rest unchanged. Weight and colour are inherited. */
+/**
+ * [text] with every number (62,400  8.4  79%  10:30) set in Geist Mono, the rest unchanged. Weight and
+ * colour are inherited. The mono separators (comma, point, colon) are pulled in so "80,000" stays one number.
+ */
 fun monoNumbers(text: String): AnnotatedString {
     val digits = SpanStyle(fontFamily = GeistMonoFamily, fontFeatureSettings = "tnum", fontSize = 0.95.em)
+    val separator = digits.copy(letterSpacing = (-0.3).em)
     return buildAnnotatedString {
         var last = 0
         for (m in NumberRun.findAll(text)) {
             append(text.substring(last, m.range.first))
-            withStyle(digits) { append(m.value) }
+            for (c in m.value) withStyle(if (c.isDigit() || c == '%') digits else separator) { append(c) }
             last = m.range.last + 1
         }
         append(text.substring(last))
