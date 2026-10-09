@@ -64,7 +64,12 @@ object FinalPick {
         if (useTool) {
             val verified = gs.filter { it.check == CheckResult.VERIFIED }
             if (verified.size == 1) {
-                return result(verified[0], PickMethod.TOOL, if (unanimous) "tool-verified, unanimous" else "tool-verified")
+                val what = when (verified[0].checkSource) {
+                    PROBLEM_CHECK -> "verified by the problem's test"
+                    "quote-exists" -> "quotes found in the source text"
+                    else -> "the model's own steps are consistent"
+                }
+                return result(verified[0], PickMethod.TOOL, if (unanimous) "$what, unanimous" else what)
             }
             if (verified.size > 1) {
                 elig = verified

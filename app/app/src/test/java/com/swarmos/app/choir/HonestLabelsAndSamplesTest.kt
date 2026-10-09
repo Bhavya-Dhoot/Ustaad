@@ -92,6 +92,46 @@ class HonestLabelsAndSamplesTest {
         assertEquals(1, s.consistent)
     }
 
+    // ---- the stamps the screen shows ---------------------------------------------------------------------
+
+    private fun pick(check: CheckResult, source: String, answer: String? = "42") =
+        FinalTrace(answer, PickMethod.MAJORITY, check == CheckResult.VERIFIED, "x", check = check, checkSource = source)
+
+    @Test fun onlyATestSuppliedWithTheProblemEarnsTheVerifiedStamp() {
+        assertEquals("Verified" to false, finalStamp(pick(CheckResult.VERIFIED, PROBLEM_CHECK)))
+        assertEquals("Consistent" to false, finalStamp(pick(CheckResult.VERIFIED, "model-expression")))
+        assertEquals("Quotes found" to false, finalStamp(pick(CheckResult.VERIFIED, "quote-exists")))
+        assertEquals("Refuted" to true, finalStamp(pick(CheckResult.REFUTED, "model-expression")))
+        assertEquals("Unverified" to true, finalStamp(pick(CheckResult.NOT_CHECKABLE, "none")))
+        assertEquals("No answer" to true, finalStamp(pick(CheckResult.NOT_CHECKABLE, "none", answer = null)))
+    }
+
+    @Test fun theStampFollowsTheRunEndToEnd() {
+        val coord = ChoirCoordinator({ _, _ -> }, config = ChoirConfig(deadlineMs = 3_000))
+        fun run(useTest: Boolean, steps: List<String>) = runBlocking {
+            coord.run(problem, "t-s", Scripted("a", "Phone A", "42", steps = steps), listOf(Scripted("b", "Phone B", "42", steps = steps)), RunOptions(useTest))
+        }
+        assertEquals("Consistent", finalStamp(run(false, listOf("6*7=42")).finalPick!!).first)
+        assertEquals("Verified", finalStamp(run(true, listOf("6*7=42")).finalPick!!).first)
+        assertEquals("Verified", finalStamp(run(true, emptyList()).finalPick!!).first)   // the problem's own test needs no steps
+        assertEquals("Unverified", finalStamp(run(false, emptyList()).finalPick!!).first)
+    }
+
+    @Test fun statusLineAndDisagreementNoteAreBuiltFromTheRun() {
+        val coord = ChoirCoordinator({ _, _ -> }, config = ChoirConfig(deadlineMs = 3_000))
+        val t = runBlocking {
+            coord.run(problem, "t-n", Scripted("a", "Phone A", "42"), listOf(Scripted("b", "Phone B", "42"), Scripted("c", "Phone C", "7")))
+        }
+        assertEquals("DISAGREE", t.agreement)
+        assertEquals("Phone C says 7", disagreeNote(t))
+        assertEquals("Done after round 2", statusLine(t))
+        val all = runBlocking { coord.run(problem, "t-m", Scripted("a", "Phone A", "1"), listOf(Scripted("b", "Phone B", "2"), Scripted("c", "Phone C", "3"))) }
+        assertEquals("3 different answers", disagreeNote(all))
+        val agree = runBlocking { coord.run(problem, "t-o", Scripted("a", "Phone A", "42"), listOf(Scripted("b", "Phone B", "42"))) }
+        assertNull(disagreeNote(agree))
+        assertEquals("All phones agree after round 1", statusLine(agree))
+    }
+
     // ---- item 3: one phone, three samples -------------------------------------------------------------
 
     @Test fun threeSamplesTakeTheMajority() = runBlocking {
