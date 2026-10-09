@@ -8,6 +8,7 @@ import com.swarmos.app.link.ErrorBody
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -16,6 +17,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import java.io.File
 
@@ -43,6 +45,8 @@ data class ModelsStateDto(
     val lastDecodeTokPerSec: Double?,
     val lastPrefillTokPerSec: Double?,
     val bench: BenchResult?,
+    val benchRunning: Boolean,
+    val sustained: List<SustainedPoint>,
 )
 
 @Serializable
@@ -85,6 +89,18 @@ object ModelsModule : SwarmModule {
             call.respond(stateDto())
         }
 
+        // DEBUG (temporary): thread stacks of the busy dispatcher threads
+        get("/threads") {
+            val sb = StringBuilder()
+            for ((t, st) in Thread.getAllStackTraces()) {
+                if (t.name.startsWith("DefaultDispatch") && st.isNotEmpty()) {
+                    sb.append(t.name).append(' ').append(t.state).append('\n')
+                    st.take(8).forEach { sb.append("    ").append(it).append('\n') }
+                }
+            }
+            call.respondText(sb.toString())
+        }
+
         // POST /v1/models/selftest  streamed chat, 10 JSON-schema generations and embeddings through the real clients
         post("/selftest") {
             try {
@@ -96,27 +112,28 @@ object ModelsModule : SwarmModule {
             }
         }
 
-        // POST /v1/models/bench            one run (512-token prompt, 128 generated tokens)
-        // POST /v1/models/bench?minutes=N  repeated for N minutes, per-minute decode tok/s in "sustained"
+        // POST /v1/models/bench                 one run (512-token prompt, 128 generated tokens), answers with the result
+        // POST /v1/models/bench?minutes=N       repeated for N minutes; answers 202 at once (the node server drops a
+        //                                        connection that is idle for 45 s), poll GET /state: benchRunning, sustained
+        // POST /v1/models/bench?wait=false      same for a single run
         post("/bench") {
             val minutes = call.request.queryParameters["minutes"]?.toIntOrNull() ?: 0
+            val wait = call.request.queryParameters["wait"] != "false" && minutes == 0
+            if (Bench.running.value) return@post call.respond(HttpStatusCode.Conflict, ErrorBody("a benchmark is already running"))
+            if (LlamaRuntime.statusOf(Role.CHAT).state != ServerState.READY) {
+                return@post call.respond(HttpStatusCode.Conflict, ErrorBody("chat server is not READY"))
+            }
+            if (!wait) {
+                scope.launch { runCatching { if (minutes > 0) Bench.runSustained(minutes) else Bench.run() } }
+                return@post call.respond(HttpStatusCode.Accepted, stateDto())
+            }
             try {
-                if (minutes > 0) {
-                    val points = Bench.runSustained(minutes)
-                    call.respond(SustainedResponse(Bench.last.value, points))
-                } else {
-                    call.respond(SustainedResponse(Bench.run(), emptyList()))
-                }
-            } catch (e: IllegalStateException) {
-                call.respond(HttpStatusCode.Conflict, ErrorBody(e.message ?: "bench failed"))
+                call.respond(Bench.run())
             } catch (e: Exception) {
                 call.respond(HttpStatusCode.InternalServerError, ErrorBody(e.message ?: e.toString()))
             }
         }
     }
-
-    @Serializable
-    data class SustainedResponse(val bench: BenchResult?, val sustained: List<SustainedPoint>)
 
     @Composable
     override fun Screen() = ModelsScreen()
@@ -145,6 +162,8 @@ object ModelsModule : SwarmModule {
             lastDecodeTokPerSec = stats?.decodeTokPerSec?.takeIf { it > 0 },
             lastPrefillTokPerSec = bench?.prefillTokPerSec?.takeIf { it > 0 },
             bench = bench,
+            benchRunning = Bench.running.value,
+            sustained = Bench.sustained.value,
         )
     }
 

@@ -38,8 +38,8 @@ data class SustainedPoint(val minute: Int, val decodeTokPerSec: Double, val ther
 object Bench {
     const val GEN_TOKENS = 128
 
-    /** Repeat count of [PARAGRAPH] that gives about 512 prompt tokens with the Qwen3.5 tokenizer and chat template. */
-    private const val REPEATS = 8
+    /** 9 paragraphs (50 tokens each) plus two sentences (25 + 14) plus the instruction and chat template give about 512 prompt tokens with the Qwen3.5 tokenizer. */
+    private const val REPEATS = 9
     private const val PARAGRAPH =
         "A mesh of phones can share work when each phone keeps its own memory and passes only small messages " +
             "over the local network. Every phone checks its battery and temperature before it accepts a job, " +
@@ -47,6 +47,8 @@ object Bench {
 
     val prompt: String = buildString {
         repeat(REPEATS) { append(PARAGRAPH) }
+        append("A mesh of phones can share work when each phone keeps its own memory and passes only small messages over the local network. ")
+        append("Every phone checks its battery and temperature before it accepts a job. ")
         append("\n\nWrite a long, detailed story that continues the text above.")
     }
 
