@@ -4,6 +4,9 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.PowerManager
@@ -60,8 +63,7 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
         val pct = if (level >= 0 && scale > 0) level * 100 / scale else -1
         val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
 
-        val wi = ctx.getSystemService(WifiManager::class.java)?.connectionInfo
-        val connected = wi != null && wi.linkSpeed > 0
+        val link = readLink()
 
         return NodeHealth(
             nodeId = selfId(),
@@ -70,10 +72,38 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
             charging = charging,
             ramAvailMb = mem.availMem / (1024 * 1024),
             lastDecodeTokPerSec = lastDecodeTokPerSec,
-            linkStandard = if (connected) standardName(wi!!.wifiStandard) else null,
-            linkSpeedMbps = if (connected) wi!!.linkSpeed else null,
+            linkStandard = link?.let { standardName(it.standard) ?: bandName(it.freqMhz) ?: "wifi" },
+            linkSpeedMbps = link?.speedMbps?.takeIf { it > 0 },
         )
     }
+
+    /**
+     * Wi-Fi link seen by this app, or null when there is none. Primary source: the transportInfo of every Wi-Fi
+     * network's NetworkCapabilities (standard, PHY speed and frequency are not location-gated there). A phone with a
+     * second Wi-Fi interface can answer WifiManager.connectionInfo with the idle one (speed -1), which is why that
+     * call is only the last fallback and the first reading with a real speed wins.
+     */
+    @Suppress("DEPRECATION")
+    private fun readLink(): LinkReading? {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java)
+        val wifi = ArrayList<WifiInfo>()
+        var wifiNetworkSeen = false
+        if (cm != null) {
+            val nets = listOfNotNull(cm.activeNetwork) + cm.allNetworks.toList()
+            for (n in nets) {
+                val caps = cm.getNetworkCapabilities(n) ?: continue
+                if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue
+                wifiNetworkSeen = true
+                (caps.transportInfo as? WifiInfo)?.let { wifi += it }
+            }
+        }
+        ctx.getSystemService(WifiManager::class.java)?.connectionInfo?.let { wifi += it }
+        val readings = wifi.map { LinkReading(it.wifiStandard, it.linkSpeed, it.frequency) }
+        return pickLink(readings) ?: if (wifiNetworkSeen) LinkReading(0, -1, -1) else null
+    }
+
+    /** One Wi-Fi reading; -1 and 0 mean "unknown" as in [WifiInfo]. */
+    data class LinkReading(val standard: Int, val speedMbps: Int, val freqMhz: Int)
 
     companion object {
         const val REFRESH_MS = 2000L
@@ -87,6 +117,35 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
             8 -> "11be"
             else -> null
         }
+
+        /** First reading with a real speed, null when none has one. */
+        fun pickLink(readings: List<LinkReading>): LinkReading? = readings.firstOrNull { it.speedMbps > 0 }
+
+        /** Band as a fallback name when the phone does not report a Wi-Fi standard. */
+        fun bandName(freqMhz: Int): String? = when (freqMhz) {
+            in 2400..2500 -> "2.4 GHz"
+            in 4900..5900 -> "5 GHz"
+            in 5925..7125 -> "6 GHz"
+            else -> null
+        }
+
+        /** Link text of the status strip: "11ac 433 Mbps", "wifi" when connected without a known speed, "no link" otherwise. */
+        fun linkLabel(standard: String?, speedMbps: Int?): String = when {
+            speedMbps != null -> "${standard ?: "wifi"} $speedMbps Mbps"
+            standard != null -> standard
+            else -> "no link"
+        }
+
+        /** Thermal state as one word for the status strip: Cool, Warm, Hot, Severe (status 3 and above). */
+        fun thermalWord(status: Int): String = when {
+            status <= 0 -> "Cool"
+            status == 1 -> "Warm"
+            status == 2 -> "Hot"
+            else -> "Severe"
+        }
+
+        /** The hatched HOT stamp replaces the internet stamp from this thermal status on. */
+        fun isHot(status: Int): Boolean = status >= 3
 
         fun thermalName(status: Int): String = when (status) {
             0 -> "NONE"
