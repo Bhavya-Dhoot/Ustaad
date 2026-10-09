@@ -219,6 +219,10 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
         Modifier.fillMaxWidth(),
         enabled = chosen != null && selected.isNotEmpty() && plan != null,
     )
+    if (st.pendingRestore.isNotEmpty()) {
+        Text("Stopped to make room: ${st.pendingRestore.joinToString("; ")}", style = SwarmType.label.copy(color = SwarmColors.graphite))
+        SecondaryButton("Restore phones", { MemCloud.stop() }, Modifier.fillMaxWidth())
+    }
     BaselinePanel(st, enabled = chosen != null && st.phase != Phase.BASELINE)
     if (st.steps.isNotEmpty()) StepsList(st)
 }

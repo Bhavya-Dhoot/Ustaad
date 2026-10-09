@@ -113,6 +113,8 @@ data class MemCloudState(
     val generation: GenerationView? = null,
     val baseline: BaselineView? = null,
     val smallModel: SmallModelView? = null,
+    /** Model servers MemoryCloud stopped to make room and has not restored yet, e.g. "Phone A: chat Qwen3.5-4B-Q4_K_M.gguf". */
+    val pendingRestore: List<String> = emptyList(),
     /** Mean heartbeat round trip over the peers in the split. */
     val rttMs: Double? = null,
     val updatedAtMs: Long = 0,

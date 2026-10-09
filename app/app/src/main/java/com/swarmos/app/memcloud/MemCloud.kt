@@ -193,7 +193,7 @@ object MemCloud {
         stopWatch()
         cancelGeneration()
         val prev = _state.value
-        _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, steps = listOf("Reading the model header"), updatedAtMs = t0)
+        _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
             val peers = selectPeers(sel)
@@ -327,6 +327,12 @@ object MemCloud {
         for (i in items) if (merged.none { it.role == i.role }) merged += i
         restore[key] = merged
         persistRestore()
+        _state.update { it.copy(pendingRestore = pendingText()) }
+    }
+
+    private fun pendingText(): List<String> = restore.entries.flatMap { (k, items) ->
+        val who = if (k == "self") AppGraph.registry.self.value.name else AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == k }?.info?.name ?: k
+        items.map { "$who: ${it.role} ${it.file}" }
     }
 
     private fun restoreText(key: String): List<String> = (restore[key] ?: emptyList()).map { "${it.role} ${it.file}" }
