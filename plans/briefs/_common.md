@@ -20,3 +20,4 @@
 - Before your final report run `git merge master` once more, rebuild, and commit, so your branch merges cleanly.
 - Screen design reference: `ui-kit/README.md` and `ui-kit/screens/<name>/screen.png` + `code.html` (the founder's Google Stitch export; the README maps screens to modules and lists what not to copy). `docs/design/DESIGN.md` is the binding design system. Match the structure and content order of your module's screens; show only real values.
 - Naming: the product is called **Ustaad**. Any text a user can see says Ustaad, never SwarmOS. Do not rename packages, classes, routes or application ids; the orchestrator does that once at the end.
+- Phone B (192.168.242.23:5555) is reserved for the founder since 2026-10-10 03:40: send it no adb command of any kind. Use phones A and C only; where a brief says three phones, do it with two and record the three-phone step as pending with the exact commands.

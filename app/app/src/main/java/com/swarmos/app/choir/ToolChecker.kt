@@ -206,9 +206,18 @@ object ToolChecker {
         ops.firstOrNull { Normalizer.sameNumber(it.second.value, ans) }?.let {
             return ToolResult(CheckResult.VERIFIED, "${it.second.text} = ${fmt(it.second.value)}", "model-expression")
         }
+        // Refute only the clean case: ONE computation that is meant to produce the answer and does not. With several
+        // steps (or an answer that is an operand, as in a back-check "80000*0.78=62400") a mismatch proves nothing,
+        // and a false REFUTED would throw a right answer out of the vote.
         val lastIdx = steps.indexOfLast { it.isNotBlank() }
-        ops.lastOrNull { it.first == lastIdx }?.let {
-            return ToolResult(CheckResult.REFUTED, "last step ${it.second.text} = ${fmt(it.second.value)}, answer is ${fmt(ans)}", "model-expression")
+        if (ops.size == 1 && ops[0].first == lastIdx) {
+            val o = ops[0].second
+            val operandIsAnswer = NUMBER_IN_TEXT.findAll(o.text).any { m ->
+                m.value.replace(",", "").toDoubleOrNull()?.let { Normalizer.sameNumber(it, ans) } == true
+            }
+            if (!operandIsAnswer) {
+                return ToolResult(CheckResult.REFUTED, "${o.text} = ${fmt(o.value)}, answer is ${fmt(ans)}", "model-expression")
+            }
         }
         return ToolResult(CheckResult.NOT_CHECKABLE, "key_steps never reach the answer", "model-expression")
     }
@@ -217,6 +226,7 @@ object ToolChecker {
 
     private val RUN = Regex("""\(*[-+]?\s*[$₹€£]?\s*(?:\d|\.\d)[\d\s.,+\-*/^()%×÷−]*""")
     private val BINARY_OP = Regex("""[\d)%]\s*[-+*/^×÷−]""")
+    private val NUMBER_IN_TEXT = Regex("""\d+(?:,\d{3})*(?:\.\d+)?""")
 
     /** One entry per '='-separated part of [step]: its best arithmetic run, or null. */
     private fun segments(step: String): List<Seg?> =

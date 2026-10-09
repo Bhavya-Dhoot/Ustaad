@@ -60,7 +60,7 @@ class ChoirNodeTest {
         assertEquals(ChoirPrompts.TEMP_SOLVER, req.temperature, 1e-9)
         assertEquals(5, req.seed)
         assertTrue(req.messages.last().content.contains("six times seven"))
-        assertTrue(req.messages.first().content.contains("/no_think"))
+        assertFalse(req.messages.first().content.contains("no_think"))   // the LLM client switches thinking off itself
     }
 
     @Test fun altSolverGetsADifferentMethodAndTemperature() = runBlocking {
