@@ -469,7 +469,7 @@ object PduEngine {
         // cards are final; now the answer
         val sources = _query.value?.takeIf { it.qid == qid }?.sources.orEmpty()
         val incomplete = _query.value?.incomplete ?: false
-        update { it.copy(phase = "answering", auditHash = AppGraph.audit.entries().lastOrNull()?.hash) }
+        update { it.copy(phase = "answering", auditHash = AppGraph.audit.lastEntryHash) }
         val sb = StringBuilder()
         var ttft = -1L
         if (sources.isEmpty()) {
