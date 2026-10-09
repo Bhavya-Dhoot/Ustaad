@@ -61,12 +61,12 @@ class SwarmService : Service() {
 
     private fun acquireLocks() {
         if (wakeLock == null) {
-            wakeLock = getSystemService(PowerManager::class.java)
+            wakeLock = applicationContext.getSystemService(PowerManager::class.java)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "swarmos:service")
                 .apply { setReferenceCounted(false); acquire() }
         }
         if (wifiLock == null) {
-            wifiLock = getSystemService(WifiManager::class.java)
+            wifiLock = applicationContext.getSystemService(WifiManager::class.java)
                 .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "swarmos:wifi")
                 .apply { setReferenceCounted(false); acquire() }
             AppGraph.audit.append("service.start")

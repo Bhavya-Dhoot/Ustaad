@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS - Query Audit</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&amp;family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Geist+Mono:wght@400;500;600&amp;family=Geist:wght@400;500;600&amp;family=Shantell+Sans:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "surface-container-low": "#f3f4f2",
+          "surface": "#f9faf8",
+          "surface-variant": "#e2e3e1",
+          "marker-teal-tint": "#1E9BB01F",
+          "on-primary-container": "#838487",
+          "outline": "#76777b",
+          "on-surface": "#191c1b",
+          "inverse-surface": "#2e3130",
+          "tertiary-fixed-dim": "#c4c7c4",
+          "surface-container-lowest": "#ffffff",
+          "surface-container-high": "#e7e8e6",
+          "secondary-fixed": "#dee3ec",
+          "marker-tangerine-tint": "#E08A3C1F",
+          "tertiary-container": "#191c1a",
+          "secondary-container": "#dee3ec",
+          "surface-tint": "#5d5e62",
+          "on-tertiary-fixed": "#191c1a",
+          "sheet": "#FCFDFB",
+          "whiteboard": "#F6F7F5",
+          "ink": "#15171A",
+          "graphite": "#5E636B",
+          "eraser-smudge": "#E4E7E3",
+          "on-tertiary-container": "#818581",
+          "marker-teal": "#1E9BB0",
+          "inverse-primary": "#c6c6ca",
+          "on-error-container": "#93000a",
+          "error-container": "#ffdad6",
+          "surface-dim": "#d9dad8",
+          "on-primary-fixed": "#1a1c1f",
+          "primary-fixed-dim": "#c6c6ca",
+          "marker-tangerine": "#E08A3C",
+          "on-secondary-fixed": "#171c23",
+          "on-surface-variant": "#45474a",
+          "secondary-fixed-dim": "#c2c7d0",
+          "on-tertiary-fixed-variant": "#444845",
+          "on-tertiary": "#ffffff",
+          "background": "#F6F7F5",
+          "on-primary-fixed-variant": "#45474a",
+          "on-secondary": "#ffffff",
+          "on-secondary-container": "#60656d",
+          "inverse-on-surface": "#f0f1ef",
+          "surface-container": "#edeeec",
+          "secondary": "#5a5f67",
+          "on-error": "#ffffff",
+          "primary": "#15171A",
+          "marker-magenta-tint": "#C8457E1F",
+          "tertiary": "#15171A",
+          "on-primary": "#ffffff",
+          "tertiary-fixed": "#e0e3df",
+          "marker-magenta": "#C8457E",
+          "on-secondary-fixed-variant": "#42474f",
+          "primary-fixed": "#e2e2e6",
+          "on-background": "#191c1b",
+          "error": "#ba1a1a",
+          "surface-container-highest": "#e2e3e1",
+          "primary-container": "#1a1c1f",
+          "surface-bright": "#f9faf8",
+          "outline-variant": "#c6c6ca"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.25rem",
+          "lg": "0.5rem",
+          "xl": "0.75rem",
+          "full": "9999px"
+        },
+        "spacing": {
+          "space-md": "1rem",
+          "gutter": "0.5rem",
+          "space-lg": "1.5rem",
+          "space-sm": "0.5rem",
+          "space-xl": "2rem",
+          "margin": "1rem",
+          "space-xs": "0.25rem"
+        },
+        "fontFamily": {
+          "label-mono": ["Geist Mono", "monospace"],
+          "headline-md": ["Bricolage Grotesque", "sans-serif"],
+          "display-hero": ["Geist", "sans-serif"],
+          "annotation": ["Be Vietnam Pro", "sans-serif"],
+          "handwritten": ["Shantell Sans", "cursive"],
+          "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+          "body-md": ["Geist", "sans-serif"],
+          "body-sm": ["Geist", "sans-serif"],
+          "label-md": ["Geist", "sans-serif"],
+          "stamp-label": ["Geist Mono", "monospace"]
+        },
+        "fontSize": {
+          "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "500" }],
+          "headline-md": ["20px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+          "display-hero": ["44px", { "lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "500" }],
+          "annotation": ["15px", { "lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+          "headline-lg": ["28px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+          "body-md": ["15px", { "lineHeight": "22px", "fontWeight": "400" }],
+          "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+          "label-md": ["13px", { "lineHeight": "16px", "fontWeight": "500" }],
+          "stamp-label": ["11px", { "lineHeight": "13px", "letterSpacing": "0.06em", "fontWeight": "700" }]
+        }
+      }
+    }
+  }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 20px;
+      line-height: 1;
+      display: inline-block;
+      text-transform: none;
+      letter-spacing: normal;
+      word-wrap: normal;
+      white-space: nowrap;
+      direction: ltr;
+    }
+    .hatch-pattern {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(21, 23, 26, 0.15),
+        rgba(21, 23, 26, 0.15) 2px,
+        transparent 2px,
+        transparent 6px
+      );
+    }
+    .hard-shadow {
+      box-shadow: 3px 3px 0px 0px #15171A;
+    }
+    .hard-shadow:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0px 0px 0px 0px #15171A;
+    }
+  </style>
+</head>
+<body class="bg-background text-primary font-body-md antialiased min-h-screen flex justify-center selection:bg-eraser-smudge">
+<!-- Mobile Simulator Frame (Nominal 390px native layout) -->
+<div class="w-full max-w-[420px] bg-background min-h-screen relative flex flex-col border-x border-eraser-smudge pb-24">
+<!-- Top Hardware Status Strip -->
+<header class="w-full bg-sheet border-b border-eraser-smudge px-4 py-2 sticky top-0 z-40">
+<div class="flex items-center justify-between text-graphite font-label-mono text-label-mono">
+<div class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded-full bg-marker-teal border border-ink"></span>
+<span class="font-bold text-ink">Phone A</span>
+<span class="text-eraser-smudge">|</span>
+<span>Cool</span>
+<span class="text-eraser-smudge">|</span>
+<span>79%</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span>8.6 GB</span>
+<span class="text-eraser-smudge">|</span>
+<span>11ac 433M</span>
+</div>
+</div>
+<!-- Internet Stamp Banner -->
+<div class="mt-1.5 flex items-center justify-between pt-1 border-t border-eraser-smudge/60">
+<div class="flex items-center gap-1 text-[11px] font-label-mono text-graphite">
+<span class="material-symbols-outlined text-[14px]">cell_wifi</span>
+<span>P2P direct radio link</span>
+</div>
+<div class="border-[1.5px] border-ink px-1.5 py-0.5 rounded-[4px] text-ink font-stamp-label text-[10px] tracking-wider leading-none">
+          0 B TO INTERNET
+        </div>
+</div>
+</header>
+<!-- Main Content Container -->
+<main class="px-4 pt-4 flex-1 flex flex-col gap-5">
+<!-- Title & Header Block -->
+<div class="relative">
+<div class="flex flex-col">
+<span class="font-label-mono text-[11px] uppercase text-graphite tracking-wide">TELEMETRY DISPATCH LOG</span>
+<h1 class="font-headline-lg text-headline-lg text-ink font-bold leading-tight">Query audit</h1>
+<p class="font-body-sm text-body-sm text-graphite mt-0.5">Audit log for local search dispatch</p>
+</div>
+<!-- Handwritten Annotation (Shantell Sans, max 2 per screen) -->
+<div class="mt-2.5 inline-block transform -rotate-2 select-none self-start">
+<div class="bg-marker-teal-tint text-ink border border-ink/40 rounded px-2 py-0.5 font-handwritten text-[13px] flex items-center gap-1.5 shadow-sm">
+<svg class="inline" fill="none" height="12" viewbox="0 0 12 12" width="12">
+<path d="M1 6C3 6 4 9 6 9C8 9 9 3 11 3" stroke="#15171A" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
+<span>no files, no embeddings, no locations</span>
+</div>
+</div>
+</div>
+<!-- Section: Sent from this phone -->
+<section class="flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[11px] text-graphite uppercase font-semibold">Sent from this phone</span>
+<span class="font-label-mono text-[11px] text-graphite">seq #1084</span>
+</div>
+<div class="bg-sheet border-[1.5px] border-ink rounded-lg p-3.5 relative flex flex-col gap-2.5">
+<div class="flex items-start justify-between gap-3">
+<div class="flex-1">
+<p class="font-body-md text-[15px] font-medium text-ink leading-snug">
+                "Where is the warranty bill for my laptop?"
+              </p>
+</div>
+<!-- Query Type Badge -->
+<div class="border border-ink/40 bg-surface px-1.5 py-0.5 rounded text-[10px] font-label-mono text-graphite shrink-0">
+              STRING SEARCH
+            </div>
+</div>
+<div class="pt-2 border-t border-eraser-smudge flex items-center justify-between">
+<span class="font-label-mono text-label-mono text-ink bg-surface-container-high px-2 py-0.5 rounded border border-ink/20">
+              148 bytes to 2 phones
+            </span>
+<div class="flex items-center gap-1 text-[11px] font-label-mono text-graphite">
+<span class="material-symbols-outlined text-[13px]">lock</span>
+<span>AES-GCM-256</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Returned by each phone (Stacked Node Lanes) -->
+<section class="flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[11px] text-graphite uppercase font-semibold">Returned by each phone</span>
+<span class="font-label-mono text-[11px] text-graphite">3 nodes registered</span>
+</div>
+<div class="flex flex-col gap-2.5">
+<!-- Lane A: Local index (Teal) -->
+<div class="bg-sheet border-[1.5px] border-ink rounded-lg overflow-hidden border-l-[6px] border-l-marker-teal">
+<div class="p-3 bg-marker-teal-tint/40 border-b border-eraser-smudge flex items-center justify-between">
+<div class="flex items-center gap-2">
+<!-- Phone Token A -->
+<div class="w-7 h-7 rounded-full bg-marker-teal border-[1.5px] border-ink flex items-center justify-center font-headline-md text-sheet font-bold text-sm">
+                  A
+                </div>
+<div>
+<div class="font-headline-md text-sm font-bold text-ink leading-tight">Local index</div>
+<div class="text-[11px] font-label-mono text-graphite">This device (internal flash)</div>
+</div>
+</div>
+<span class="font-label-mono text-[11px] text-ink font-semibold">ORIGIN</span>
+</div>
+<div class="p-3 flex flex-col gap-1.5 bg-sheet">
+<div class="flex justify-between items-center">
+<span class="font-label-mono text-[12px] text-graphite">Telemetrics:</span>
+<!-- Hand-drawn style highlight underline on key value -->
+<div class="relative inline-block">
+<span class="font-label-mono text-[13px] font-semibold text-ink">2 matches, 820 bytes, 18 ms</span>
+<svg class="absolute left-0 -bottom-1 w-full h-[3px] text-ink" preserveaspectratio="none" viewbox="0 0 100 3">
+<path d="M0,1.5 Q25,3 50,1.5 T100,2" fill="none" stroke="currentColor" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+<div class="text-[11px] font-label-mono text-graphite pt-1 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[13px]">description</span>
+<span class="truncate">laptop_receipt_apple_2023.pdf (p.1)</span>
+</div>
+</div>
+</div>
+<!-- Lane B: Phone B (Tangerine) -->
+<div class="bg-sheet border-[1.5px] border-ink rounded-lg overflow-hidden border-l-[6px] border-l-marker-tangerine">
+<div class="p-3 bg-marker-tangerine-tint/40 border-b border-eraser-smudge flex items-center justify-between">
+<div class="flex items-center gap-2">
+<!-- Phone Token B -->
+<div class="w-7 h-7 rounded-full bg-marker-tangerine border-[1.5px] border-ink flex items-center justify-center font-headline-md text-sheet font-bold text-sm">
+                  B
+                </div>
+<div>
+<div class="font-headline-md text-sm font-bold text-ink leading-tight">Phone B</div>
+<div class="text-[11px] font-label-mono text-graphite">Pixel 7 Pro (peer)</div>
+</div>
+</div>
+<span class="font-label-mono text-[11px] text-graphite">433 Mbps</span>
+</div>
+<div class="p-3 flex flex-col gap-2.5 bg-sheet">
+<div class="flex justify-between items-center">
+<span class="font-label-mono text-[12px] text-graphite">Telemetrics:</span>
+<span class="font-label-mono text-[13px] font-semibold text-ink">5 snippets, 1,912 bytes, 61 ms</span>
+</div>
+<!-- Withheld Item Row with Rubber Stamp -->
+<div class="pt-2 border-t border-eraser-smudge flex items-center justify-between bg-surface-container-low/60 -mx-3 -mb-3 p-2.5 px-3">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-graphite text-[16px]">folder_off</span>
+<span class="font-body-sm text-[12px] text-ink">1 match withheld (private folder)</span>
+</div>
+<!-- Hatched Stamp "WITHHELD" -->
+<div class="relative transform -rotate-4 shrink-0">
+<div class="hatch-pattern border-[1.5px] border-ink rounded-lg px-2 py-0.5 text-center">
+<div class="border-[1.5px] border-ink px-1.5 py-0.5 rounded-[4px] bg-sheet/90">
+<span class="font-stamp-label text-[10px] text-ink font-bold tracking-wider">WITHHELD</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Lane C: Phone C (Magenta) -->
+<div class="bg-sheet border-[1.5px] border-ink rounded-lg overflow-hidden border-l-[6px] border-l-marker-magenta">
+<div class="p-3 bg-marker-magenta-tint/40 border-b border-eraser-smudge flex items-center justify-between">
+<div class="flex items-center gap-2">
+<!-- Phone Token C -->
+<div class="w-7 h-7 rounded-full bg-marker-magenta border-[1.5px] border-ink flex items-center justify-center font-headline-md text-sheet font-bold text-sm">
+                  C
+                </div>
+<div>
+<div class="font-headline-md text-sm font-bold text-ink leading-tight">Phone C</div>
+<div class="text-[11px] font-label-mono text-graphite">Nord N30 (peer)</div>
+</div>
+</div>
+<span class="font-label-mono text-[11px] text-graphite">120 ms ping</span>
+</div>
+<div class="p-3 flex items-center justify-between bg-sheet">
+<span class="font-label-mono text-[12px] text-graphite">State:</span>
+<div class="flex items-center gap-2">
+<span class="font-body-sm text-graphite font-medium">no reply</span>
+<span class="text-eraser-smudge">|</span>
+<span class="font-label-mono text-[12px] text-graphite">latency timeout</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Verification Footer & Cryptographic Proof Section -->
+<section class="mt-1 pt-3 border-t border-eraser-smudge flex flex-col gap-3">
+<div class="flex items-center justify-between gap-2 bg-surface p-2.5 rounded-lg border border-eraser-smudge">
+<!-- Double border outline stamp "CHAIN OK" rotated -4 deg -->
+<div class="transform -rotate-4 shrink-0">
+<div class="border-[1.5px] border-ink rounded-lg p-0.5 bg-sheet">
+<div class="border-[1.5px] border-ink rounded-[4px] px-2 py-0.5">
+<span class="font-stamp-label text-stamp-label text-ink tracking-wider">CHAIN OK</span>
+</div>
+</div>
+</div>
+<!-- Audit Log Entry Hash -->
+<div class="text-right">
+<div class="font-label-mono text-[10px] text-graphite uppercase">Cryptographic Receipt</div>
+<div class="font-label-mono text-label-mono text-ink font-semibold tracking-tight">
+              audit log entry 0x7c1e...a93f
+            </div>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex flex-col gap-2">
+<!-- Single Ink Primary Button with Hard 3px Shadow -->
+<button class="w-full bg-ink text-sheet py-2.5 px-4 rounded-lg font-headline-md text-sm font-semibold hard-shadow transition-transform flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">verified_user</span>
+<span>Verify local audit ledger</span>
+</button>
+<!-- Secondary Button -->
+<button class="w-full bg-sheet text-ink border-[1.5px] border-ink py-2 px-4 rounded-lg font-headline-md text-sm font-medium hover:bg-surface-container active:translate-x-[1px] active:translate-y-[1px] transition-transform flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">file_download</span>
+<span>Export cryptographic proof</span>
+</button>
+</div>
+</section>
+</main>
+<!-- BottomNavBar: 5 destinations from JSON (Swarm, Models, Choir, Data, Memory) -->
+<!-- Active Tab: "Data" mapped directly to current screen context -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-sm py-space-xs bg-sheet dark:bg-surface-container-low border-t border-outline dark:border-outline-variant max-w-[420px] left-1/2 -translate-x-1/2">
+<!-- 1. Swarm (Inactive) -->
+<button class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[22px]">lan</span>
+<span class="font-label-md text-[11px] leading-tight mt-0.5">Swarm</span>
+</button>
+<!-- 2. Models (Inactive) -->
+<button class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[22px]">deployed_code</span>
+<span class="font-label-md text-[11px] leading-tight mt-0.5">Models</span>
+</button>
+<!-- 3. Choir (Inactive) -->
+<button class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[22px]">graphic_eq</span>
+<span class="font-label-md text-[11px] leading-tight mt-0.5">Choir</span>
+</button>
+<!-- 4. Data (ACTIVE TAB) -->
+<button class="flex flex-col items-center justify-center text-primary dark:text-inverse-primary font-bold border-b-2 border-primary dark:border-inverse-primary pb-0.5 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[22px]">dataset</span>
+<span class="font-label-md text-[11px] leading-tight mt-0.5">Data</span>
+</button>
+<!-- 5. Memory (Inactive) -->
+<button class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[22px]">memory</span>
+<span class="font-label-md text-[11px] leading-tight mt-0.5">Memory</span>
+</button>
+</nav>
+</div>
+</body></html>

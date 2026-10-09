@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS - Agent Choir</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;700&amp;family=Geist+Mono:wght@400;500;600;700&amp;family=Geist:wght@400;500;600;700&amp;family=Shantell+Sans:ital,wght@0,400;0,600;1,400&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "surface-variant": "#e2e3e1",
+            "tertiary-fixed": "#e0e3df",
+            "on-surface": "#191c1b",
+            "on-error-container": "#93000a",
+            "marker-magenta-tint": "rgba(200, 69, 126, 0.12)",
+            "on-secondary-container": "#60656d",
+            "tertiary": "#000000",
+            "marker-teal": "#1E9BB0",
+            "secondary": "#5a5f67",
+            "on-tertiary": "#ffffff",
+            "primary": "#000000",
+            "secondary-fixed": "#dee3ec",
+            "on-primary-container": "#838487",
+            "on-primary": "#ffffff",
+            "outline": "#76777b",
+            "tertiary-container": "#191c1a",
+            "error": "#ba1a1a",
+            "surface-container-low": "#f3f4f2",
+            "error-container": "#ffdad6",
+            "on-secondary-fixed": "#171c23",
+            "background": "#F6F7F5", /* Whiteboard */
+            "tertiary-fixed-dim": "#c4c7c4",
+            "surface-bright": "#f9faf8",
+            "primary-fixed": "#e2e2e6",
+            "surface-dim": "#d9dad8",
+            "sheet": "#FCFDFB",
+            "surface-container-lowest": "#ffffff",
+            "marker-tangerine-tint": "rgba(224, 138, 60, 0.12)",
+            "primary-container": "#1a1c1f",
+            "on-background": "#191c1b",
+            "inverse-on-surface": "#f0f1ef",
+            "surface": "#f9faf8",
+            "primary-fixed-dim": "#c6c6ca",
+            "surface-container-highest": "#e2e3e1",
+            "outline-variant": "#c6c6ca",
+            "on-primary-fixed-variant": "#45474a",
+            "secondary-fixed-dim": "#c2c7d0",
+            "on-tertiary-fixed": "#191c1a",
+            "surface-tint": "#5d5e62",
+            "on-primary-fixed": "#1a1c1f",
+            "on-tertiary-fixed-variant": "#444845",
+            "secondary-container": "#dee3ec",
+            "marker-magenta": "#C8457E",
+            "on-secondary-fixed-variant": "#42474f",
+            "marker-teal-tint": "rgba(30, 155, 176, 0.12)",
+            "inverse-surface": "#2e3130",
+            "on-tertiary-container": "#818581",
+            "surface-container": "#edeeec",
+            "on-error": "#ffffff",
+            "surface-container-high": "#e7e8e6",
+            "on-secondary": "#ffffff",
+            "marker-tangerine": "#E08A3C",
+            "on-surface-variant": "#45474a",
+            "inverse-primary": "#c6c6ca",
+            /* Lab Instrument Specific */
+            "ink": "#15171A",
+            "graphite": "#5E636B",
+            "eraser": "#E4E7E3"
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          spacing: {
+            "space-xl": "2rem",
+            "space-xs": "0.25rem",
+            "space-lg": "1.5rem",
+            "margin": "1rem",
+            "gutter": "0.5rem",
+            "space-sm": "0.5rem",
+            "space-md": "1rem"
+          },
+          fontFamily: {
+            "stamp-label": ["Geist Mono", "monospace"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "label-mono": ["Geist Mono", "monospace"],
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "display-hero": ["Geist Mono", "monospace"],
+            "label-md": ["Geist", "sans-serif"],
+            "body-sm": ["Geist", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"]
+          },
+          fontSize: {
+            "stamp-label": ["11px", { lineHeight: "12px", letterSpacing: "0.08em", fontWeight: "700" }],
+            "annotation": ["13px", { lineHeight: "16px", letterSpacing: "-0.01em", fontWeight: "400" }],
+            "headline-md": ["20px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "label-mono": ["12px", { lineHeight: "15px", letterSpacing: "0em", fontWeight: "500" }],
+            "headline-lg": ["28px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "display-hero": ["30px", { lineHeight: "34px", letterSpacing: "-0.02em", fontWeight: "600" }],
+            "label-md": ["13px", { lineHeight: "16px", fontWeight: "500" }],
+            "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+            "body-md": ["15px", { lineHeight: "22px", fontWeight: "400" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Hatch patterns */
+    .hatch-ink {
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(21, 23, 26, 0.12),
+        rgba(21, 23, 26, 0.12) 3px,
+        transparent 3px,
+        transparent 7px
+      );
+    }
+    
+    /* Blinking ink cursor */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .caret-blink {
+      animation: blink 0.9s infinite;
+    }
+
+    /* Precision double border helper */
+    .double-ink-border {
+      border: 1.5px solid #15171A;
+      box-shadow: 0 0 0 1.5px #FCFDFB, 0 0 0 3px #15171A;
+    }
+  </style>
+</head>
+<body class="bg-background text-ink font-body-md antialiased min-h-screen flex justify-center selection:bg-surface-variant">
+<!-- Mobile Frame (Strict 390px width) -->
+<div class="w-[390px] min-h-screen bg-background relative flex flex-col pb-24 border-x border-eraser shadow-sm overflow-x-hidden">
+<!-- TopAppBar (Shared Component Execution) -->
+<header class="bg-sheet dark:bg-surface-container-low fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-xs max-w-[390px] mx-auto right-0 border-b border-outline dark:border-outline-variant flat no shadows">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary dark:text-inverse-primary" data-icon="hub">hub</span>
+<span class="text-headline-md font-headline-md font-bold text-primary dark:text-inverse-primary">SwarmOS / Node A</span>
+</div>
+<div class="flex items-center">
+<span class="material-symbols-outlined text-primary dark:text-inverse-primary" data-icon="verified">verified</span>
+</div>
+</header>
+<!-- Fixed Secondary Lab Telemetry Status Strip (Design System specification) -->
+<div class="mt-[49px] bg-sheet border-b border-eraser px-3 py-1.5 flex items-center justify-between text-graphite font-label-mono text-[11px] leading-tight">
+<div class="flex items-center gap-1.5">
+<div class="w-4 h-4 rounded-full bg-marker-teal border border-ink flex items-center justify-center text-[9px] font-bold text-ink">A</div>
+<span class="text-ink font-semibold">Phone A</span>
+</div>
+<span>Cool</span>
+<span>79%</span>
+<span>8.6GB</span>
+<span>11ac 433M</span>
+<!-- Physical rubber stamp: 0 B TO INTERNET -->
+<div class="border border-ink px-1 py-0.5 rounded text-[9px] font-stamp-label text-ink leading-none tracking-tight">
+        0 B INTERNET
+      </div>
+</div>
+<!-- Main Content Canvas -->
+<main class="flex-1 px-4 pt-3 flex flex-col gap-3">
+<!-- Screen Header with Title & Round Indicators -->
+<div class="flex items-end justify-between pt-1">
+<div>
+<h1 class="text-headline-lg font-headline-lg text-ink tracking-tight">Agent Choir</h1>
+<p class="font-label-mono text-graphite text-[11px] uppercase tracking-wider mt-0.5">3-node debate consensus</p>
+</div>
+<!-- Round Indicators: R1, R2, R3 (R2 active) -->
+<div class="flex items-center gap-1.5 pb-1">
+<div class="w-6 h-6 rounded-full border-[1.5px] border-ink bg-sheet flex items-center justify-center font-label-mono text-[10px] text-graphite font-semibold">
+            R1
+          </div>
+<div class="w-6 h-6 rounded-full border-[1.5px] border-ink bg-ink flex items-center justify-center font-label-mono text-[10px] text-sheet font-bold shadow-[1px_1px_0px_#15171A]">
+            R2
+          </div>
+<div class="w-6 h-6 rounded-full border border-eraser bg-sheet flex items-center justify-center font-label-mono text-[10px] text-graphite opacity-60">
+            R3
+          </div>
+</div>
+</div>
+<!-- Problem Prompt Box (Sheet box, 8px corners, 1.5px Ink outline) -->
+<div class="bg-sheet border-[1.5px] border-ink rounded-lg p-3 relative">
+<div class="font-label-mono text-[10px] uppercase font-bold text-graphite tracking-wider mb-1">Active Prompt</div>
+<p class="font-body-md text-[13px] leading-[18px] text-ink font-medium">
+          A shop sells a laptop for Rs 62,400 after a 22% discount. What was the list price?
+        </p>
+</div>
+<!-- Device Lane 1: Phone A (Solver) -->
+<div class="border-[1.5px] border-ink rounded-lg bg-background overflow-hidden relative border-l-[6px] border-l-marker-teal">
+<!-- Header row (12% Teal tint) -->
+<div class="bg-marker-teal-tint px-2.5 py-1.5 border-b border-ink flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-5 h-5 rounded-full border-[1.5px] border-ink bg-marker-teal flex items-center justify-center text-[11px] font-bold text-ink">
+              A
+            </div>
+<span class="font-headline-md text-[13px] font-bold text-ink">Phone A</span>
+<span class="font-body-sm text-[11px] text-graphite font-medium">Solver</span>
+</div>
+<div class="flex items-center gap-2 font-label-mono text-[11px] text-graphite">
+<span>212 tok</span>
+<span class="text-eraser">|</span>
+<span>9.4 s</span>
+</div>
+</div>
+<!-- Body on Whiteboard -->
+<div class="p-2.5 bg-background">
+<p class="font-body-sm text-[12px] leading-[17px] text-ink mb-2">
+            Let list price = x. After 22% discount, selling price is 0.78x = 62,400.<br/>
+            Solving for x: x = 62,400 / 0.78 = 80,000.
+          </p>
+<div class="flex items-center justify-between pt-0.5">
+<span class="font-label-mono text-[10px] text-graphite">Proposal:</span>
+<div class="border-[1.5px] border-ink bg-sheet px-2 py-0.5 rounded font-label-mono text-[12px] font-bold text-ink shadow-[1.5px_1.5px_0px_#15171A]">
+              80,000
+            </div>
+</div>
+</div>
+</div>
+<!-- Device Lane 2: Phone B (Alt solver) - STREAMING ACTIVE -->
+<div class="border-[1.5px] border-ink rounded-lg bg-background overflow-hidden relative border-l-[6px] border-l-marker-tangerine">
+<!-- Header row (12% Tangerine tint) -->
+<div class="bg-marker-tangerine-tint px-2.5 py-1.5 border-b border-ink flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-5 h-5 rounded-full border-[1.5px] border-ink bg-marker-tangerine flex items-center justify-center text-[11px] font-bold text-ink">
+              B
+            </div>
+<span class="font-headline-md text-[13px] font-bold text-ink">Phone B</span>
+<span class="font-body-sm text-[11px] text-graphite font-medium">Alt solver</span>
+</div>
+<div class="flex items-center gap-2 font-label-mono text-[11px] text-graphite">
+<span>184 tok</span>
+<span class="text-eraser">|</span>
+<span class="text-marker-tangerine font-bold">8.7 s</span>
+</div>
+</div>
+<!-- Body with Streaming Caret -->
+<div class="p-2.5 bg-background">
+<p class="font-body-sm text-[12px] leading-[17px] text-ink mb-2">
+            Discount is calculated as 62,400 × 0.22 = 13,728.<br/>
+            List price = 62,400 + 13,728 = 76,128<span class="inline-block w-[2px] h-[13px] bg-ink ml-0.5 align-middle caret-blink"></span>
+</p>
+<div class="flex items-center justify-between pt-0.5">
+<span class="font-label-mono text-[10px] text-graphite">Candidate:</span>
+<div class="border-[1.5px] border-ink bg-sheet px-2 py-0.5 rounded font-label-mono text-[12px] font-bold text-ink shadow-[1.5px_1.5px_0px_#15171A]">
+              76,128
+            </div>
+</div>
+</div>
+</div>
+<!-- Device Lane 3: Phone C (Critic) -->
+<div class="border-[1.5px] border-ink rounded-lg bg-background overflow-hidden relative border-l-[6px] border-l-marker-magenta">
+<!-- Header row (12% Magenta tint) -->
+<div class="bg-marker-magenta-tint px-2.5 py-1.5 border-b border-ink flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-5 h-5 rounded-full border-[1.5px] border-ink bg-marker-magenta flex items-center justify-center text-[11px] font-bold text-ink">
+              C
+            </div>
+<span class="font-headline-md text-[13px] font-bold text-ink">Phone C</span>
+<span class="font-body-sm text-[11px] text-graphite font-medium">Critic</span>
+</div>
+<div class="flex items-center gap-2 font-label-mono text-[11px] text-graphite">
+<span>140 tok</span>
+<span class="text-eraser">|</span>
+<span>6.2 s</span>
+</div>
+</div>
+<!-- Body on Whiteboard -->
+<div class="p-2.5 bg-background">
+<p class="font-body-sm text-[12px] leading-[17px] text-ink mb-2">
+            Phone B applied the 22% rate to discounted total rather than original list price. Correct formulation requires dividing by (1 - 0.22).
+          </p>
+<div class="flex items-center justify-between pt-0.5">
+<span class="font-label-mono text-[10px] text-graphite">Endorsement:</span>
+<div class="border-[1.5px] border-ink bg-sheet px-2 py-0.5 rounded font-label-mono text-[12px] font-bold text-ink shadow-[1.5px_1.5px_0px_#15171A]">
+              80,000
+            </div>
+</div>
+</div>
+</div>
+<!-- Debate Conflict Area: Rubber Stamp + Shantell Sans annotation -->
+<div class="py-2 px-1 relative flex items-center justify-between">
+<!-- Physical Rubber Stamp Caution / Hatch Pattern -->
+<div class="transform -rotate-4 inline-block z-10">
+<div class="double-ink-border hatch-ink rounded bg-sheet px-2.5 py-1">
+<span class="font-stamp-label text-stamp-label text-ink tracking-widest font-black block">
+              DISAGREE
+            </span>
+</div>
+</div>
+<!-- Handwritten Annotation Accent (Shantell Sans, -2deg) -->
+<div class="transform -rotate-2 text-right">
+<span class="font-annotation text-annotation text-ink font-semibold">
+            B took 22% of the sale price
+          </span>
+<div class="font-label-mono text-[10px] text-graphite">delta: -3,872 off base</div>
+</div>
+</div>
+<!-- Fourth Baseline Lane: Phone A alone -->
+<div class="border border-eraser rounded-md bg-sheet p-2 flex items-center justify-between border-l-4 border-l-eraser">
+<div class="flex items-center gap-2">
+<span class="font-label-mono text-[11px] text-graphite font-semibold">Baseline: Phone A alone</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="border border-eraser bg-background px-1.5 py-0.5 rounded font-label-mono text-[11px] text-graphite">
+            76,128
+          </span>
+<span class="font-label-mono text-[11px] text-graphite">8.1 s</span>
+</div>
+</div>
+<!-- Verification and Hero Final Answer Cluster -->
+<div class="bg-sheet border-[1.5px] border-ink rounded-lg p-3 my-1 relative">
+<div class="flex items-center justify-between pb-2 border-b border-eraser">
+<div class="font-label-mono text-[12px] text-ink font-medium">
+            Tool check: 62400 / 0.78 = 80000
+          </div>
+<!-- Rubber Stamp: VERIFIED -->
+<div class="transform -rotate-3">
+<div class="double-ink-border rounded bg-sheet px-2 py-0.5">
+<span class="font-stamp-label text-[10px] text-ink tracking-wider font-extrabold">
+                VERIFIED
+              </span>
+</div>
+</div>
+</div>
+<!-- Hero Final Answer with Hand-drawn Doodle Ink Circle -->
+<div class="pt-3 pb-1 flex flex-col items-center justify-center relative">
+<span class="font-label-mono text-[10px] text-graphite uppercase tracking-wider mb-0.5">Choir Consented Value</span>
+<div class="relative py-2 px-6">
+<!-- Simulated hand-drawn doodle ink loop via SVG -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none -top-0.5" fill="none" viewbox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
+<path d="M 20,30 C 18,10 80,4 175,8 C 195,9 198,35 180,48 C 150,60 40,58 15,45 C -2,37 10,12 85,10 C 140,8 190,14 192,28" stroke="#15171A" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<div class="font-display-hero text-display-hero text-ink tracking-tight font-bold z-10 relative">
+              Rs 80,000
+            </div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Shared Component Execution, Choir Active) -->
+<nav class="bg-sheet dark:bg-surface-container-low fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-sm py-space-xs max-w-[390px] mx-auto right-0 border-t border-outline dark:border-outline-variant flat no shadows">
+<!-- Destination 1: Swarm -->
+<button class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[20px]" data-icon="lan">lan</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Swarm</span>
+</button>
+<!-- Destination 2: Models -->
+<button class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[20px]" data-icon="deployed_code">deployed_code</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Models</span>
+</button>
+<!-- Destination 3: Choir (ACTIVE) -->
+<button class="flex flex-col items-center justify-center text-primary dark:text-inverse-primary font-bold border-b-2 border-primary dark:border-inverse-primary pb-0.5 relative active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[20px]" data-icon="graphic_eq">graphic_eq</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5 font-bold">Choir</span>
+<!-- Hand-drawn style underline accent -->
+<svg class="absolute -bottom-1 w-8 h-1 overflow-visible" fill="none" viewbox="0 0 32 4">
+<path d="M 1,2 Q 16,4 31,1.5" stroke="#15171A" stroke-linecap="round" stroke-width="1.8"></path>
+</svg>
+</button>
+<!-- Destination 4: Data -->
+<button class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[20px]" data-icon="dataset">dataset</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Data</span>
+</button>
+<!-- Destination 5: Memory -->
+<button class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-[20px]" data-icon="memory">memory</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Memory</span>
+</button>
+</nav>
+</div>
+</body></html>
