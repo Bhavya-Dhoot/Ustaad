@@ -30,25 +30,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.HealthMonitor
 
 /**
  * The one compact status strip at the top of every screen: phone token and name (tap to rename),
  * thermal state, battery, free memory, link standard and speed, and the "0 B TO INTERNET" stamp.
  * [wanBytes] is the count of bytes that left over a WAN link; the stamp is an outline while it is
  * zero and turns into a hatched caution with the real count otherwise. (No byte counter exists
- * yet, so callers pass 0.)
+ * yet, so callers pass 0.) From thermal status 3 up ([hot]) a hatched HOT stamp replaces it.
  */
 @Composable
 fun StatsBar(onEditName: () -> Unit, modifier: Modifier = Modifier, wanBytes: Long = 0L) {
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val h by AppGraph.health.state.collectAsStateWithLifecycle()
-    val thermal = when (h.thermalStatus) {
-        0 -> "Cool"
-        else -> com.swarmos.app.core.HealthMonitor.thermalName(h.thermalStatus).lowercase().replaceFirstChar { it.uppercase() }
-    }
+    val thermal = HealthMonitor.thermalWord(h.thermalStatus)
     val battery = if (h.batteryPct < 0) "?" else "${h.batteryPct}%" + if (h.charging) " chg" else ""
     val ram = "%.1f GB".format(h.ramAvailMb / 1024.0)
-    val link = if (h.linkSpeedMbps == null) "no wifi" else "${h.linkStandard ?: "wifi"} ${h.linkSpeedMbps} Mbps"
+    val link = HealthMonitor.linkLabel(h.linkStandard, h.linkSpeedMbps)
     StatusStrip(
         name = self.name,
         thermal = thermal,
@@ -58,7 +56,7 @@ fun StatsBar(onEditName: () -> Unit, modifier: Modifier = Modifier, wanBytes: Lo
         wanBytes = wanBytes,
         onEditName = onEditName,
         modifier = modifier,
-        hot = h.thermalStatus >= 2,
+        hot = HealthMonitor.isHot(h.thermalStatus),
     )
 }
 
@@ -92,7 +90,7 @@ fun StatusStrip(
                 Modifier
                     .weight(1f)
                     .heightIn(min = 48.dp)
-                    .clickable(role = Role.Button, onClickLabel = "Rename this phone", onClick = onEditName),
+                    .clickable(role = Role.Button, onClickLabel = "Open settings", onClick = onEditName),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PhoneToken(name, 28.dp)
@@ -108,7 +106,8 @@ fun StatusStrip(
                     }
                 }
             }
-            if (wanBytes == 0L) Stamp("0 B to internet", small = true)
+            if (hot) Stamp("Hot", caution = true, small = true)
+            else if (wanBytes == 0L) Stamp("0 B to internet", small = true)
             else Stamp("$wanBytes B to internet", caution = true, small = true)
         }
     }
