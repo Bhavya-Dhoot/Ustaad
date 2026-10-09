@@ -42,6 +42,16 @@ data class ChatJobRequest(val jobId: String, val request: ChatRequestDto, val mo
 @Serializable
 data class ChatJobResult(val jobId: String, val text: String, val stats: StatsDto, val nodeId: String, val modelName: String)
 
+/** Events of POST /v1/sched/chat-stream (text/event-stream): `chunk` data = [ChunkDto], `done` = [StreamDone], `error` = ErrorBody. */
+@Serializable
+data class ChunkDto(val delta: String)
+
+@Serializable
+data class StreamDone(val stats: StatsDto?, val nodeId: String, val modelName: String)
+
+@Serializable
+data class CapacityRequest(val slots: Int)
+
 @Serializable
 data class EmbedJobRequest(val jobId: String, val texts: List<String>)
 

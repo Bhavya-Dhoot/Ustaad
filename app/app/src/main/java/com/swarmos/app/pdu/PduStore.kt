@@ -38,7 +38,7 @@ data class DocInfo(val docId: String, val uri: String, val title: String, val ki
  * Embeddings (256 x float32, unit length) sit in the `emb` BLOB and in an in-memory matrix loaded at open;
  * cosine is brute force over that matrix. All access is serialised on [lock].
  */
-class PduStore(path: String) {
+class PduStore(path: String) : IndexBacking {
     private val lock = Any()
     private val db: SQLiteConnection = BundledSQLiteDriver().open(path)
 
@@ -74,11 +74,11 @@ class PduStore(path: String) {
 
     // ---- meta ---------------------------------------------------------------------------------------------
 
-    fun meta(key: String): String? = synchronized(lock) {
+    override fun meta(key: String): String? = synchronized(lock) {
         query("SELECT v FROM meta WHERE k=?", { it.bindText(1, key) }) { it.getText(0) }.firstOrNull()
     }
 
-    fun setMeta(key: String, value: String) = synchronized(lock) {
+    override fun setMeta(key: String, value: String) = synchronized(lock) {
         write("INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)") { it.bindText(1, key); it.bindText(2, value) }
     }
 
@@ -96,10 +96,11 @@ class PduStore(path: String) {
         try {
             val replaced = deleteChunks(doc.docId)
             write("INSERT OR IGNORE INTO folders(folder,isPrivate) VALUES(?,?)") {
-                it.bindText(1, doc.folder); it.bindLong(2, if (SharePolicy.isPrivateByDefault(doc.folder)) 1 else 0)
+                it.bindText(1, doc.folder); it.bindLong(2, if (SharePolicy.startsPrivate(doc.folder)) 1 else 0)
             }
-            val priv = query("SELECT isPrivate FROM folders WHERE folder=?", { it.bindText(1, doc.folder) }) { it.getLong(0) }
-                .firstOrNull() ?: 0L
+            val stored = query("SELECT isPrivate FROM folders WHERE folder=?", { it.bindText(1, doc.folder) }) { it.getLong(0) }
+                .firstOrNull() ?: 1L
+            val priv = if (SharePolicy.effectivePrivate(doc.folder, stored == 1L)) 1L else 0L
             val newIds = ArrayList<Long>(chunks.size)
             for (c in chunks) {
                 write("INSERT INTO chunks(docId,uri,title,kind,dateMs,folder,isPrivate,text,emb) VALUES(?,?,?,?,?,?,?,?,?)") {
@@ -128,13 +129,13 @@ class PduStore(path: String) {
 
     /** Owner's per-folder switch. Applies to chunks already indexed and to files indexed later. */
     fun setFolderPrivate(folder: String, isPrivate: Boolean) = synchronized(lock) {
-        val v = if (isPrivate) 1L else 0L
+        val v = if (SharePolicy.effectivePrivate(folder, isPrivate)) 1L else 0L
         write("INSERT OR REPLACE INTO folders(folder,isPrivate) VALUES(?,?)") { it.bindText(1, folder); it.bindLong(2, v) }
         write("UPDATE chunks SET isPrivate=? WHERE folder=?") { it.bindLong(1, v); it.bindText(2, folder) }
     }
 
     /** Forget every document so the next run re-reads everything (used when the embedder changes). */
-    fun wipe() = synchronized(lock) {
+    override fun wipe() = synchronized(lock) {
         exec("DELETE FROM chunks"); exec("DELETE FROM chunks_fts"); exec("DELETE FROM docs")
         loadMatrix()
     }
@@ -162,20 +163,28 @@ class PduStore(path: String) {
 
     fun doc(docId: String): DocInfo? = synchronized(lock) {
         query(
-            "SELECT d.docId, d.uri, d.title, d.kind, COALESCE(f.isPrivate,0) FROM docs d LEFT JOIN folders f ON f.folder=d.folder WHERE d.docId=?",
+            "SELECT d.docId, d.uri, d.title, d.kind, COALESCE(f.isPrivate,1), d.folder FROM docs d LEFT JOIN folders f ON f.folder=d.folder WHERE d.docId=?",
             { it.bindText(1, docId) },
-        ) { DocInfo(it.getText(0), it.getText(1), it.getText(2), it.getText(3), it.getLong(4) == 1L) }.firstOrNull()
+        ) { DocInfo(it.getText(0), it.getText(1), it.getText(2), it.getText(3), SharePolicy.effectivePrivate(it.getText(5), it.getLong(4) == 1L)) }.firstOrNull()
     }
 
-    val chunkCount: Int get() = synchronized(lock) { rows }
+    /** Every file the index knows about, so an explicit re-index can read them all again after the wipe. */
+    fun allDocRefs(): List<DocRef> = synchronized(lock) {
+        query("SELECT uri, title, kind, folder, lastModified, dateMs FROM docs ORDER BY title", {}) {
+            DocRef(it.getText(0), it.getText(1), it.getText(2), it.getText(3), it.getLong(4), it.getLong(5))
+        }
+    }
+
+    override val chunkCount: Int get() = synchronized(lock) { rows }
 
     /**
      * Hybrid search over every chunk of this phone, private ones included (the caller applies [SharePolicy]).
      * Dense cosine top-[topN] and FTS5 BM25 top-[topN] fused with RRF, one chunk kept per document.
      */
-    fun search(queryEmb: FloatArray, terms: List<String>, topN: Int = 30): List<Candidate> = synchronized(lock) {
+    fun search(queryEmb: FloatArray?, terms: List<String>, topN: Int = 30): List<Candidate> = synchronized(lock) {
         if (rows == 0) return emptyList()
-        val dense = Cosine.topK(matrix, DIM, rows, queryEmb, topN).map { ids[it.row] to it.score }
+        // queryEmb == null: keyword search only (no usable embedder, or the vectors were made by another one)
+        val dense = if (queryEmb == null) emptyList() else Cosine.topK(matrix, DIM, rows, queryEmb, topN).map { ids[it.row] to it.score }
         val match = QueryTerms.ftsMatch(terms)
         val bm25 = if (match == null) emptyList() else query(
             "SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts, 1.0, 2.0) LIMIT ?",

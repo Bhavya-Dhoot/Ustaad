@@ -2,14 +2,26 @@ package com.swarmos.app.sched
 
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
+import com.swarmos.app.llm.ChatRequest
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytesWriter
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingCall
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.request.receiveText
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.writeStringUtf8
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerializationException
 
 /** Parses the request body as [T]; answers 400 and returns null when it is malformed. */
@@ -39,8 +51,8 @@ private suspend inline fun <reified T : Any> RoutingCall.answer(block: () -> T) 
     }
 }
 
-/** GET /caps, POST /chat, POST /embed: what a phone offers to the rest of the swarm. */
-fun Route.schedNodeRoutes(node: SchedNode) {
+/** GET /caps, POST /chat, POST /chat-stream, POST /embed: what a phone offers to the rest of the swarm. */
+fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS) {
     get("/caps") { call.answer { node.caps() } }
 
     post("/chat") {
@@ -48,9 +60,66 @@ fun Route.schedNodeRoutes(node: SchedNode) {
         call.answer { node.chat(job.jobId, job.request.toRequest(), job.model) }
     }
 
+    // Server-sent events. The slot is taken before the 200 is committed, so a full phone still answers 429.
+    post("/chat-stream") {
+        val job = call.receiveJson<ChatJobRequest>() ?: return@post
+        val slot = try {
+            node.openStream(job.model)
+        } catch (e: BusyException) {
+            call.respond(HttpStatusCode.TooManyRequests, BusyBody(running = e.running, capacity = e.capacity, queued = e.queued))
+            return@post
+        } catch (e: ModelMismatchException) {
+            call.respond(HttpStatusCode.Conflict, MismatchBody(model = e.model))
+            return@post
+        }
+        try {
+            call.response.header(HttpHeaders.CacheControl, "no-cache")
+            call.respondBytesWriter(ContentType.Text.EventStream) { writeEvents(slot, job.request.toRequest(), streamPingMs) }
+        } finally {
+            slot.close() // also runs when the caller hangs up: the next write or ping throws and ends the stream
+        }
+    }
+
     post("/embed") {
         val job = call.receiveJson<EmbedJobRequest>() ?: return@post
         call.answer { node.embed(job.jobId, job.texts) }
+    }
+}
+
+const val STREAM_PING_MS = 2_000L
+
+/** Writes the chunks of [slot]'s reply as events, with a comment line every [pingMs] so a vanished caller is noticed. */
+private suspend fun ByteWriteChannel.writeEvents(slot: SchedNode.StreamSlot, req: ChatRequest, pingMs: Long) = coroutineScope {
+    val writing = Mutex()
+    suspend fun send(text: String) = writing.withLock {
+        writeStringUtf8(text)
+        flush()
+    }
+    suspend fun event(name: String, data: String) = send("event: $name\ndata: $data\n\n")
+
+    val ping = launch {
+        while (true) {
+            delay(pingMs)
+            send(": ping\n\n")
+        }
+    }
+    var finished = false
+    try {
+        slot.chunks(req).collect { c ->
+            if (c.done) {
+                finished = true
+                event("done", SwarmJson.encodeToString(StreamDone(c.stats?.toDto(), slot.nodeId, slot.modelName)))
+            } else if (c.delta.isNotEmpty()) {
+                event("chunk", SwarmJson.encodeToString(ChunkDto(c.delta)))
+            }
+        }
+        if (!finished) event("done", SwarmJson.encodeToString(StreamDone(null, slot.nodeId, slot.modelName)))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        runCatching { event("error", SwarmJson.encodeToString(ErrorBody(e.message ?: e.javaClass.simpleName))) }
+    } finally {
+        ping.cancel()
     }
 }
 
@@ -86,7 +155,16 @@ fun Route.schedPhonesRoute(swarm: () -> SwarmLlm) {
     }
 }
 
-/** POST /debug/peers {ips}: registers phones by address until the discovery module does it. */
+/** POST /debug/capacity {slots}: debug builds only, so a phone with the placeholder model can be given slots over adb. */
+fun Route.schedCapacityRoute(set: (Int) -> Unit, caps: () -> Caps) {
+    post("/debug/capacity") {
+        val body = call.receiveJson<CapacityRequest>() ?: return@post
+        set(body.slots)
+        call.answer { caps() }
+    }
+}
+
+/** POST /debug/peers {ips}: debug builds only; trusts phones by address through the link module (heartbeats included). */
 fun Route.schedPeersRoute(register: suspend (List<String>) -> PeersResponse) {
     post("/debug/peers") {
         val body = call.receiveJson<PeersRequest>() ?: return@post

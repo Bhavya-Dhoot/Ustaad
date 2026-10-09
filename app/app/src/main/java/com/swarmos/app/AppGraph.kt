@@ -23,6 +23,8 @@ import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.llm.ModelsModule
 import com.swarmos.app.memcloud.MemCloudModule
 import com.swarmos.app.pdu.PduModule
+import com.swarmos.app.sched.GatedLlmClient
+import com.swarmos.app.sched.Sched
 import com.swarmos.app.sched.SchedModule
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -80,6 +82,12 @@ object AppGraph {
 
     var llm: LlmClient by mutableStateOf<LlmClient>(FakeLlmClient())        // chat model on this phone
     var embedder: LlmClient by mutableStateOf<LlmClient>(FakeLlmClient())   // embedding model on this phone
+
+    /**
+     * The chat model for features that run on this phone (Choir, Data Union): every call takes a scheduler slot, so the
+     * slot count stays right while they run. [llm] stays the raw client the model runtime installs and inspects.
+     */
+    val gatedLlm: LlmClient by lazy { GatedLlmClient({ llm }, Sched.node) }
 
     val nodeClient: NodeClient by lazy { NodeClient({ secret }, { registry.self.value.nodeId }) }
 
