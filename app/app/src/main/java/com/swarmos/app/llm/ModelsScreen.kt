@@ -274,7 +274,7 @@ private fun TokPerMinuteLine(points: List<SustainedPoint>) {
             val y = (size.height * (1 - p.decodeTokPerSec / max)).toFloat()
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-        drawPath(path, Color.White, style = Stroke(width = 3f))
+        drawPath(path, SwarmColors.ink, style = Stroke(width = 3f))
         drawLine(SwarmColors.Line, Offset(0f, size.height), Offset(size.width, size.height), 2f)
     }
 }
