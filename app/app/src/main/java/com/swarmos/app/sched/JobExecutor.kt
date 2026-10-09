@@ -31,7 +31,13 @@ class JobExecutor(
     private val clock: () -> Long = System::currentTimeMillis,
     private val ttlMs: Long = RESULT_TTL_MS,
 ) {
-    private class Entry(val waiter: CompletableDeferred<Unit>?) {
+    /** Somebody waiting for a slot. `counted` says whether the slot that woke it was counted as running for it. */
+    private class Waiter {
+        val signal = CompletableDeferred<Unit>()
+        @Volatile var counted = false
+    }
+
+    private class Entry(val waiter: Waiter?) {
         val result = CompletableDeferred<Any>()
         var doneAt = 0L            // 0 until the job finished successfully
         var interest = 0           // callers currently waiting for the result
@@ -40,14 +46,17 @@ class JobExecutor(
 
     private val lock = Any()
     private val entries = HashMap<String, Entry>()
-    private val waiting = ArrayDeque<CompletableDeferred<Unit>>()
+    private val waiting = ArrayDeque<Waiter>()
     private var runningCount = 0
 
-    /** Slots. Follows the model server's parallel slots; change at any time. */
+    /**
+     * Slots. Follows the model server's parallel slots; change at any time. 0 means there is no model server:
+     * jobs are refused, and local callers of [acquire] run without a slot.
+     */
     @Volatile
     var capacity: Int = 1
         set(value) {
-            field = value.coerceAtLeast(1)
+            field = value.coerceAtLeast(0)
             drain()
         }
 
@@ -76,7 +85,7 @@ class JobExecutor(
                 runningCount++
                 null
             } else {
-                CompletableDeferred<Unit>().also { waiting.addLast(it) }
+                Waiter().also { waiting.addLast(it) }
             }
             created = true
             Entry(waiter).also {
@@ -108,6 +117,30 @@ class JobExecutor(
         }
     }
 
+    /**
+     * Waits for a slot for a local caller (Agent Choir, Data Union, a stream). Returns true when a slot was taken (give it
+     * back with [release]); false when capacity is 0, i.e. there is no model server, and the caller should just run.
+     * Cancelling the wait gives up the place in line, or the slot if one was just handed over.
+     */
+    suspend fun acquire(): Boolean {
+        val waiter = synchronized(lock) {
+            if (capacity == 0) return false
+            if (runningCount < capacity && waiting.isEmpty()) {
+                runningCount++
+                return true
+            }
+            Waiter().also { waiting.addLast(it) }
+        }
+        try {
+            waiter.signal.await()
+        } catch (e: CancellationException) {
+            val handedOver = synchronized(lock) { !waiting.remove(waiter) && waiter.counted }
+            if (handedOver) release()
+            throw e
+        }
+        return waiter.counted
+    }
+
     fun release() {
         synchronized(lock) { runningCount-- }
         drain()
@@ -115,9 +148,16 @@ class JobExecutor(
 
     private fun drain() {
         synchronized(lock) {
+            if (capacity == 0) {
+                // no model server any more: nobody will get a slot, wake everybody up so nobody waits forever
+                while (waiting.isNotEmpty()) waiting.removeFirst().signal.complete(Unit)
+                return
+            }
             while (runningCount < capacity && waiting.isNotEmpty()) {
                 runningCount++
-                waiting.removeFirst().complete(Unit)
+                val w = waiting.removeFirst()
+                w.counted = true
+                w.signal.complete(Unit)
             }
         }
     }
@@ -126,8 +166,9 @@ class JobExecutor(
         var owned = entry.waiter == null   // true while this job holds a slot that it must hand back
         try {
             if (entry.waiter != null) {
-                entry.waiter.await()
-                owned = true
+                entry.waiter.signal.await()
+                owned = entry.waiter.counted
+                if (!owned) throw BusyException(running, capacity, queued)
             }
             val value = block()
             owned = false
@@ -138,7 +179,7 @@ class JobExecutor(
             synchronized(lock) {
                 if (entries[jobId] === entry) entries.remove(jobId)
                 // cancelled while queued: either still in the queue (no slot) or the slot was already handed over
-                if (!owned && entry.waiter != null && !waiting.remove(entry.waiter)) owned = true
+                if (!owned && entry.waiter != null && !waiting.remove(entry.waiter)) owned = entry.waiter.counted
             }
             if (t is CancellationException) entry.result.cancel(t) else entry.result.completeExceptionally(t)
             if (owned) release()

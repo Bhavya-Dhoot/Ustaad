@@ -53,7 +53,7 @@ object ChoirController {
 
     val node: ChoirNode by lazy {
         ChoirNode(
-            llm = { AppGraph.llm },
+            llm = { AppGraph.gatedLlm },
             identity = { AppGraph.registry.self.value.let { NodeIdentity(it.nodeId, it.name) } },
             problems = { problems },
         )

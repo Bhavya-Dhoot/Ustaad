@@ -16,9 +16,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -26,6 +28,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ConcurrentHashMap
 
 class NoPhoneAvailableException(pinned: String?) :
@@ -33,6 +36,9 @@ class NoPhoneAvailableException(pinned: String?) :
 
 class PhoneTimeoutException(val nodeId: String, val afterMs: Long) :
     RuntimeException("phone $nodeId gave no answer within $afterMs ms")
+
+/** A stream failed after tokens were already delivered, so it cannot be retried on another phone. */
+private class StreamBrokenException(override val cause: Throwable) : RuntimeException(cause)
 
 /** The phone stopped answering its pings while our job ran on it. */
 class PhoneAbortedException(val nodeId: String) : IOException("phone $nodeId stopped answering")
@@ -121,12 +127,35 @@ class SwarmLlm(
         return ChatResult(r.text, r.stats.toStats())
     }
 
-    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+    // channelFlow, because the attempt runs in a child coroutine (so a silent phone can be abandoned) and must not emit from there
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = channelFlow {
+        val pin = pinnedModel
+        val out = FlowCollector<ChatChunk> { chunk -> send(chunk) }
         val local = endpoints().firstOrNull { it.isLocal }
-        if (local != null && local.streamIfFree(req, pinnedModel, this)) return@flow
-        val r = chatJob(newJobId(), req)
-        if (r.text.isNotEmpty()) emit(ChatChunk(r.text))
-        emit(ChatChunk("", done = true, stats = r.stats.toStats()))
+        if (local != null && local.streamIfFree(req, pin, out)) return@channelFlow
+        // no free slot here: stream from the best free phone, or take its whole reply when it cannot stream
+        val jobId = newJobId()
+        val emitted = AtomicBoolean(false)
+        val tracked = FlowCollector<ChatChunk> { chunk ->
+            emitted.set(true)
+            send(chunk)
+        }
+        dispatch(pin, STREAM_TIMEOUT_MS) { ep ->
+            try {
+                if (!ep.streamIfFree(req, pin, tracked)) {
+                    val r = ep.runChat(jobId, req, pin)
+                    if (r.text.isNotEmpty()) tracked.emit(ChatChunk(r.text))
+                    tracked.emit(ChatChunk("", done = true, stats = r.stats.toStats()))
+                }
+            } catch (e: BusyException) {
+                throw e
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // once tokens reached the caller another phone cannot continue the reply: pass the failure on
+                throw if (emitted.get()) StreamBrokenException(e) else e
+            }
+        }
     }
 
     override suspend fun embed(texts: List<String>): List<FloatArray> {
@@ -273,7 +302,7 @@ class SwarmLlm(
 
     // ---- Dispatch -------------------------------------------------------------------------------------------
 
-    private suspend fun <T : Any> dispatch(pin: String?, call: suspend (PhoneEndpoint) -> T): T {
+    private suspend fun <T : Any> dispatch(pin: String?, timeoutMs: Long = attemptTimeoutMs, call: suspend (PhoneEndpoint) -> T): T {
         val tried = HashSet<String>()
         var lastError: Throwable? = null
         while (true) {
@@ -289,13 +318,15 @@ class SwarmLlm(
             val abort = synchronized(lock) { states[ep.nodeId]!!.abort }
             if (!ep.isLocal) ensureHeartbeat()
             try {
-                return attempt(ep, abort, call)
+                return attempt(ep, abort, timeoutMs, call)
             } catch (e: BusyException) {
                 synchronized(lock) {
                     states[ep.nodeId]?.let { it.busyUntil = clock() + busyBackoffMs; it.capsAt = 0 }
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: StreamBrokenException) {
+                throw e.cause
             } catch (e: Exception) {
                 lastError = e
                 tried += ep.nodeId
@@ -318,8 +349,8 @@ class SwarmLlm(
     }
 
     /** One try on one phone. Gives up when the phone is declared down meanwhile or [attemptTimeoutMs] passes. */
-    private suspend fun <T : Any> attempt(ep: PhoneEndpoint, abort: CompletableDeferred<Unit>, call: suspend (PhoneEndpoint) -> T): T {
-        val r = withTimeoutOrNull(attemptTimeoutMs) {
+    private suspend fun <T : Any> attempt(ep: PhoneEndpoint, abort: CompletableDeferred<Unit>, timeoutMs: Long, call: suspend (PhoneEndpoint) -> T): T {
+        val r = withTimeoutOrNull(timeoutMs) {
             if (ep.isLocal) {
                 call(ep)
             } else {
@@ -335,7 +366,7 @@ class SwarmLlm(
                 }
             }
         }
-        return r ?: throw PhoneTimeoutException(ep.nodeId, attemptTimeoutMs)
+        return r ?: throw PhoneTimeoutException(ep.nodeId, timeoutMs)
     }
 
     private suspend fun waitForChange() {
@@ -384,6 +415,7 @@ class SwarmLlm(
 
     private companion object {
         const val POLL_MS = 100L
+        const val STREAM_TIMEOUT_MS = 10 * 60_000L
         const val MISS_LIMIT = 2
     }
 }
