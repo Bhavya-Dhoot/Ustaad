@@ -1,4 +1,6 @@
-# SwarmOS
+# Ustaad
+
+Product name: Ustaad (working name until 2026-10-10: SwarmOS; code identifiers still use the old name).
 
 Two or three iQOO 15 phones on one local Wi-Fi link acting as one AI system, no cloud. Built for the iQOO Hackathon 2026 finale.
 
