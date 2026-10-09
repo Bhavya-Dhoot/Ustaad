@@ -70,7 +70,7 @@ object PduIndexer {
 
     // ---- listing ------------------------------------------------------------------------------------------
 
-    /** MediaStore images, optionally only those whose RELATIVE_PATH starts with [relPrefix] (e.g. "Pictures/SwarmDemo"). */
+    /** MediaStore images, optionally only those whose RELATIVE_PATH starts with [relPrefix] (e.g. "Pictures/UstaadDemo"). */
     fun listPhotos(ctx: Context, relPrefix: String?, limit: Int?): List<DocRef> {
         val proj = arrayOf(
             MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_TAKEN,
@@ -142,13 +142,13 @@ object PduIndexer {
         ctx.contentResolver.query(docUri, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)
             ?.use { if (it.moveToFirst()) it.getString(0) else null }
 
-    /** Saves a captured page into Pictures/SwarmScans (Private/ for private scans) so any viewer can open it. Returns uri and DATE_MODIFIED in ms. */
-    fun saveScan(ctx: Context, jpeg: File, keepPrivate: Boolean): Pair<String, Long> {
+    /** Saves a captured page into Pictures/UstaadScans (Shared/ when the owner shares it) so any viewer can open it. Returns uri and DATE_MODIFIED in ms. */
+    fun saveScan(ctx: Context, jpeg: File, share: Boolean): Pair<String, Long> {
         val resolver = ctx.contentResolver
         val values = android.content.ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "scan-${System.currentTimeMillis()}.jpg")
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            put(MediaStore.Images.Media.RELATIVE_PATH, scanFolder(keepPrivate))
+            put(MediaStore.Images.Media.RELATIVE_PATH, scanFolder(share))
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: error("MediaStore insert failed")
@@ -159,7 +159,8 @@ object PduIndexer {
         return uri.toString() to modified
     }
 
-    fun scanFolder(keepPrivate: Boolean) = if (keepPrivate) "Pictures/SwarmScans/Private" else "Pictures/SwarmScans"
+    /** New scans stay on this phone ("Pictures/UstaadScans"); only an explicit share puts them in the shared folder. */
+    fun scanFolder(share: Boolean) = if (share) "Pictures/UstaadScans/Shared" else "Pictures/UstaadScans"
 
     // ---- ingest -------------------------------------------------------------------------------------------
 
@@ -198,7 +199,7 @@ object PduIndexer {
         } catch (t: Throwable) {
             if (t is kotlinx.coroutines.CancellationException) throw t
             stats.failed++
-            val shown = if (SharePolicy.isPrivateByDefault(ref.folder)) "(private file)" else ref.title
+            val shown = if (SharePolicy.mustStayPrivate(ref.folder)) "(private file)" else ref.title
             stats.errors += "$shown: ${t.javaClass.simpleName} ${t.message}".take(200)
         }
     }

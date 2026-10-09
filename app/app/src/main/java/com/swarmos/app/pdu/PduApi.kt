@@ -3,6 +3,7 @@ package com.swarmos.app.pdu
 import android.net.Uri
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
+import com.swarmos.app.choir.VoiceInput
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
@@ -28,7 +29,10 @@ import java.io.File
 import kotlinx.serialization.decodeFromString
 
 @Serializable
-data class DebugScanRequest(val path: String, val title: String, val keepPrivate: Boolean = false)
+data class DebugScanRequest(val path: String, val title: String, val share: Boolean = false)
+
+@Serializable
+data class DebugShareRequest(val folder: String, val shared: Boolean)
 
 @Serializable
 data class DebugCannedRequest(val text: String)
@@ -76,6 +80,7 @@ data class FolderReport(val folder: String, val isPrivate: Boolean, val docs: In
 data class StatusReport(
     val photos: Int, val documents: Int, val scans: Int, val noText: Int, val chunks: Int, val lastRunMs: Long,
     val embedModel: String?, val running: Boolean, val folders: List<FolderReport>, val lastIndex: IndexReport?, val speech: String,
+    val embedderReady: Boolean, val reindexNeeded: Boolean,
 )
 
 /** Everything a caller of the signed debug routes may see about this phone's own private items is a count, never text. */
@@ -117,7 +122,7 @@ fun Route.pduRoutes() {
 
     post("/open") {
         val r = SwarmJson.decodeFromString<PduOpenRequest>(call.receiveText())
-        call.respond(PduEngine.openForPeer(r.uriHash))
+        call.respond(PduEngine.openForPeer(r.uriHash, call.request.header(Signer.HEADER_NODE) ?: "unknown"))
     }
 
     // test and dev routes: debug builds only, so a release build exposes just /query and /open
@@ -142,10 +147,10 @@ fun Route.pduRoutes() {
                 val f = File(r.path)
                 val bmp = Ocr.decode(ctx, Uri.fromFile(f).toString())
                 val text = Ocr.recognizeAll(bmp).text.also { bmp.recycle() }
-                val (uri, modified) = PduIndexer.saveScan(ctx, f, r.keepPrivate)
-                PduEngine.indexScan(uri, modified, r.title, r.keepPrivate, text)
+                val (uri, modified) = PduIndexer.saveScan(ctx, f, r.share)
+                PduEngine.indexScan(uri, modified, r.title, r.share, text)
             }
-            call.respond(rep)
+            call.respond(if (rep.error == null) HttpStatusCode.OK else HttpStatusCode.Conflict, rep)
         }
 
         // opens the Scan screen's review sheet on a copy of this image the next time the Scan screen is shown
@@ -170,7 +175,18 @@ fun Route.pduRoutes() {
 
         post("/debug/scores") {
             val req = SwarmJson.decodeFromString<AskRequest>(call.receiveText())
-            call.respond(PduEngine.explain(req.text, req.k))
+            try {
+                call.respond(PduEngine.explain(req.text, req.k))
+            } catch (e: IllegalStateException) {
+                call.respond(HttpStatusCode.Conflict, ErrorBody(e.message ?: "not available"))
+            }
+        }
+
+        // the adb path to share a folder in a debug build (in the demo build the owner flips the switch in the library)
+        post("/debug/share") {
+            val req = SwarmJson.decodeFromString<DebugShareRequest>(call.receiveText())
+            PduEngine.setFolderPrivate(req.folder, !req.shared)
+            call.respond(mapOf("folder" to req.folder, "shared" to (!SharePolicy.effectivePrivate(req.folder, !req.shared)).toString()))
         }
 
         post("/debug/peers") {
@@ -185,7 +201,8 @@ fun Route.pduRoutes() {
                     c.photos, c.documents, c.scans, c.skipped, c.chunks, c.lastRunMs,
                     PduEngine.store.meta("embedModel"), PduEngine.progress.value.running,
                     PduEngine.store.folders().map { FolderReport(it.folder, it.isPrivate, it.docs) }, PduEngine.progress.value.last,
-                    VoiceInput.mode(AppGraph.appContext).name,
+                    if (VoiceInput(AppGraph.appContext, {}, { _, _ -> }).available) "OnDevice" else "None",
+                    PduEngine.embedder.value.ready, PduEngine.reindexNeeded.value,
                 ),
             )
         }

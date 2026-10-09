@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.swarmos.app.BuildConfig
@@ -84,7 +85,9 @@ internal fun ScanPage(onBack: () -> Unit) {
     var shot by remember { mutableStateOf<File?>(null) }
     var recognised by remember { mutableStateOf<String?>(null) }
     var title by remember { mutableStateOf("") }
-    var keepPrivate by remember { mutableStateOf(false) }
+    var share by remember { mutableStateOf(false) }
+    val emb by PduEngine.embedder.collectAsStateWithLifecycle()
+    val reindexNeeded by PduEngine.reindexNeeded.collectAsStateWithLifecycle()
     var status by remember { mutableStateOf<String?>(null) }
 
     /** Both the shutter and the debug hook land here: read the page, propose a title. */
@@ -182,11 +185,13 @@ internal fun ScanPage(onBack: () -> Unit) {
                     SwarmTextField(title, { title = it }, "Title", helper = "Saved on this phone only")
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Keep private", style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp))
-                            Text("Never shared with other phones", style = SwarmType.label.copy(color = SwarmColors.graphite))
+                            Text("Share with the swarm", style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp))
+                            Text(if (share) "Other phones may be answered from this page" else "Off: this page stays on this phone", style = SwarmType.label.copy(color = SwarmColors.graphite))
                         }
-                        Switch(checked = keepPrivate, onCheckedChange = { keepPrivate = it })
+                        Switch(checked = share, onCheckedChange = { share = it })
                     }
+                    if (!emb.ready) Text("Embedder not loaded: load the embedding model in Models before adding pages.", style = SwarmType.label)
+                    else if (reindexNeeded) Text("Re-index needed: rebuild the index in the library before adding pages.", style = SwarmType.label)
                     PrimaryButton(
                         "Add to index",
                         {
@@ -194,14 +199,14 @@ internal fun ScanPage(onBack: () -> Unit) {
                             status = "indexing"
                             scope.launch {
                                 val rep = withContext(Dispatchers.IO) {
-                                    val (uri, modified) = PduIndexer.saveScan(ctx, file, keepPrivate)
-                                    PduEngine.indexScan(uri, modified, title.trim(), keepPrivate, text!!)
+                                    val (uri, modified) = PduIndexer.saveScan(ctx, file, share)
+                                    PduEngine.indexScan(uri, modified, title.trim(), share, text!!)
                                 }
                                 if (rep.error == null && rep.indexed > 0) { file.delete(); onBack() } else status = rep.error ?: "nothing was indexed"
                             }
                         },
                         Modifier.fillMaxWidth(),
-                        enabled = enough && title.isNotBlank(),
+                        enabled = enough && title.isNotBlank() && emb.ready && !reindexNeeded,
                     )
                     SecondaryButton("Retake", { shot?.delete(); shot = null; recognised = null; status = null }, Modifier.fillMaxWidth())
                 }

@@ -88,16 +88,24 @@ object Coverage {
 }
 
 object SharePolicy {
-    /** A folder with a segment named Private (any case) is private unless the owner switched it. */
-    fun isPrivateByDefault(folder: String): Boolean =
+    /** Every folder starts private: nothing is answered to other phones until the owner shares the folder. */
+    fun startsPrivate(@Suppress("UNUSED_PARAMETER") folder: String): Boolean = true
+
+    /** A folder with a segment named Private (any case) can never be shared, whatever the switch says. */
+    fun mustStayPrivate(folder: String): Boolean =
         folder.split('/', '\\').any { it.trim().equals("private", ignoreCase = true) }
+
+    /** The privacy a chunk gets: the folder's stored choice, forced to private for a Private folder. */
+    fun effectivePrivate(folder: String, stored: Boolean): Boolean = stored || mustStayPrivate(folder)
+
+    fun isShareable(c: Candidate): Boolean = !c.isPrivate && !mustStayPrivate(c.folder)
 
     class PeerSelection(val shared: List<Candidate>, val withheldPrivate: Int)
 
     /** What a peer may see: the first [k] public candidates; private ones are only counted, by document. */
     fun forPeer(candidates: List<Candidate>, k: Int): PeerSelection = PeerSelection(
-        shared = candidates.filter { !it.isPrivate }.take(k),
-        withheldPrivate = candidates.filter { it.isPrivate }.map { it.docId }.distinct().size,
+        shared = candidates.filter { isShareable(it) }.take(k),
+        withheldPrivate = candidates.filter { !isShareable(it) }.map { it.docId }.distinct().size,
     )
 }
 

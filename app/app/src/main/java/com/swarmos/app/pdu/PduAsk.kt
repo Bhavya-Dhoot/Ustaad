@@ -29,6 +29,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import com.swarmos.app.choir.VoiceInput
+import com.swarmos.app.choir.VoiceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,15 +97,15 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
     var opened by remember { mutableStateOf<String?>(null) }
     val busy = q != null && q?.phase != "done"
 
-    // voice: tap the mic to speak the question; on-device recognition when the phone has it
-    val voiceMode = remember { VoiceInput.mode(ctx) }
-    var voiceState by remember { mutableStateOf<VoiceState>(VoiceState.Idle) }
-    val voice = remember { VoiceInput(ctx, onText = { t, _ -> text = t }, onState = { voiceState = it }) }
-    DisposableEffect(Unit) { onDispose { voice.release() } }
+    // voice: tap the mic to speak the question. Only the on-device recognizer is used (same class as Agent Choir); no network fallback.
+    var listening by remember { mutableStateOf(false) }
+    var voiceMessage by remember { mutableStateOf<String?>(null) }
+    val voice = remember { VoiceInput(ctx, onText = { text = it }, onState = { s, msg -> listening = s == VoiceState.LISTENING; voiceMessage = msg }) }
+    val voiceOk = voice.available
+    DisposableEffect(Unit) { onDispose { voice.destroy() } }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) voice.start() else voiceState = VoiceState.Failed("microphone permission was not granted")
+        if (ok) voice.start() else voiceMessage = "microphone permission was not granted"
     }
-    val listening = voiceState is VoiceState.Listening
     fun onMic() {
         when {
             listening -> voice.stop()
@@ -112,9 +114,8 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
         }
     }
     val voiceHelper = when {
-        listening -> "listening, " + if (voiceMode == VoiceMode.OnDevice) "on this phone" else "system speech service"
-        voiceMode == VoiceMode.System -> "voice uses the system speech service, which may use the network"
-        voiceMode == VoiceMode.None -> "speech recognition is not available on this phone"
+        listening -> "listening, on this phone"
+        !voiceOk -> "No on-device speech recognition on this phone"
         else -> null
     }
 
@@ -124,8 +125,8 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
     ) {
         PageHeader("Data Union", onBack)
         QuestionField(
-            value = text, onValue = { text = it }, listening = listening, micEnabled = voiceMode != VoiceMode.None, onMic = ::onMic,
-            helper = voiceHelper, error = (voiceState as? VoiceState.Failed)?.message,
+            value = text, onValue = { text = it }, listening = listening, micEnabled = voiceOk, onMic = ::onMic,
+            helper = voiceHelper, error = if (listening || !voiceOk) null else voiceMessage,
         )
         PrimaryButton(
             if (busy) "Searching" else "Ask",
@@ -136,6 +137,7 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
         val cur = q
         if (cur != null) {
             TimingStrip(cur)
+            if (cur.lexicalOnly) Tag("keyword search only on this phone, embedder not usable")
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle("Sources")
