@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -19,7 +20,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** The one line-icon family of the app: drawn on a 24 unit grid with a 1.5 dp round stroke. */
-enum class SwarmIcon { Swarm, Models, Choir, Data, Memory, Plus, Join, Gauge, Nearby, Bell, Battery, Check, Play }
+enum class SwarmIcon {
+    Swarm, Models, Choir, Data, Memory, Plus, Join, Gauge, Nearby, Bell, Battery, Check, Play,
+    Mic, Lock, Folder, Camera, Scan, Photo, Tick, Cross, Back, Settings, Download, Stop, Refresh,
+}
 
 /** Bottom bar icon for a module id ("link", "models", "choir", "pdu", "memcloud"). */
 fun iconForModule(id: String): SwarmIcon = when (id) {
@@ -142,6 +146,67 @@ private fun DrawScope.drawLineIcon(icon: SwarmIcon, tint: Color) {
         SwarmIcon.Play -> {
             drawCircle(tint, 9f * s, p(12f, 12f), style = stroke)
             poly(10f, 8f, 10f, 16f, 16.5f, 12f, close = true)
+        }
+        SwarmIcon.Mic -> {
+            box(9f, 3f, 6f, 11f, 3f)
+            drawArc(tint, startAngle = 0f, sweepAngle = 180f, useCenter = false, topLeft = p(5.5f, 5f), size = Size(13f * s, 13f * s), style = stroke)
+            line(12f, 18.5f, 12f, 21f)
+            line(9f, 21f, 15f, 21f)
+        }
+        SwarmIcon.Lock -> {
+            box(5f, 11f, 14f, 9f, 2f)
+            val shackle = Path().apply {
+                moveTo(8f * s, 11f * s)
+                lineTo(8f * s, 8f * s)
+                arcTo(Rect(p(8f, 4f), Size(8f * s, 8f * s)), 180f, 180f, false)
+                lineTo(16f * s, 11f * s)
+            }
+            drawPath(shackle, tint, style = stroke)
+            line(12f, 14.5f, 12f, 16.5f)
+        }
+        SwarmIcon.Folder -> poly(3f, 7f, 9f, 7f, 11f, 9.5f, 21f, 9.5f, 21f, 19f, 3f, 19f, close = true)
+        SwarmIcon.Camera -> {
+            box(3f, 7f, 18f, 12f, 2f)
+            poly(8f, 7f, 9.5f, 4.5f, 14.5f, 4.5f, 16f, 7f)
+            drawCircle(tint, 3.2f * s, p(12f, 13f), style = stroke)
+        }
+        SwarmIcon.Scan -> {
+            poly(4f, 8f, 4f, 4f, 8f, 4f)
+            poly(16f, 4f, 20f, 4f, 20f, 8f)
+            poly(20f, 16f, 20f, 20f, 16f, 20f)
+            poly(8f, 20f, 4f, 20f, 4f, 16f)
+            line(8f, 10f, 16f, 10f)
+            line(8f, 14f, 14f, 14f)
+        }
+        SwarmIcon.Photo -> {
+            box(3f, 4f, 18f, 16f, 2f)
+            drawCircle(tint, 1.6f * s, p(9f, 10f), style = stroke)
+            poly(3f, 18f, 9f, 13f, 13f, 16.5f, 16f, 13.5f, 21f, 18f)
+        }
+        SwarmIcon.Tick -> poly(5f, 12.5f, 10f, 17.5f, 19f, 7f)
+        SwarmIcon.Cross -> {
+            line(6f, 6f, 18f, 18f)
+            line(18f, 6f, 6f, 18f)
+        }
+        SwarmIcon.Back -> {
+            line(19.5f, 12f, 5f, 12f)
+            poly(11f, 5.5f, 4.5f, 12f, 11f, 18.5f)
+        }
+        SwarmIcon.Settings -> {
+            // three sliders: a line and a round knob each
+            line(4f, 7f, 20f, 7f); drawCircle(tint, 2f * s, p(15f, 7f), style = stroke)
+            line(4f, 12f, 20f, 12f); drawCircle(tint, 2f * s, p(8.5f, 12f), style = stroke)
+            line(4f, 17f, 20f, 17f); drawCircle(tint, 2f * s, p(13f, 17f), style = stroke)
+        }
+        SwarmIcon.Download -> {
+            line(12f, 4f, 12f, 15f)
+            poly(7.5f, 10.5f, 12f, 15f, 16.5f, 10.5f)
+            poly(4f, 16f, 4f, 20f, 20f, 20f, 20f, 16f)
+        }
+        SwarmIcon.Stop -> box(6.5f, 6.5f, 11f, 11f, 1.5f)
+        SwarmIcon.Refresh -> {
+            drawArc(tint, startAngle = 30f, sweepAngle = 290f, useCenter = false, topLeft = p(4f, 4f), size = Size(16f * s, 16f * s), style = stroke)
+            poly(19.5f, 3.5f, 19.5f, 8.5f, 14.5f, 8.5f)
         }
     }
 }

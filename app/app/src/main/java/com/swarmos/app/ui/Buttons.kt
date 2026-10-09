@@ -102,7 +102,7 @@ private fun ButtonLabel(text: String, icon: SwarmIcon?, color: Color) {
             LineIcon(icon, tint = color, size = 20.dp)
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, style = SwarmType.body.copy(fontWeight = FontWeight.W700, color = color), maxLines = 1)
+        Text(monoNumbers(text), style = SwarmType.body.copy(fontWeight = FontWeight.W700, color = color), maxLines = 1) // numbers in Geist Mono
     }
 }
 

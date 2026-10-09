@@ -71,12 +71,13 @@ object Bench {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    /** Benchmarks (heavy, repeated generation) are refused from this PowerManager thermal status up; chat requests are not affected. */
-    const val BLOCK_FROM_THERMAL = 3
-
-    /** Why a benchmark must not start at [thermalStatus], or null when it may. Pure so it can be unit-tested. */
+    /**
+     * Why a benchmark must not start at [thermalStatus], or null when it may. Heavy repeated generation is refused when the
+     * shared definition (HealthMonitor.isHot: SEVERE and up) says the phone is hot; chat requests are not affected.
+     * Pure so it can be unit-tested.
+     */
     fun blockReasonFor(thermalStatus: Int): String? =
-        if (thermalStatus >= BLOCK_FROM_THERMAL) {
+        if (HealthMonitor.isHot(thermalStatus)) {
             "Phone is ${HealthMonitor.thermalName(thermalStatus)} (thermal status $thermalStatus). Benchmark is off until it cools to MODERATE or lower."
         } else {
             null

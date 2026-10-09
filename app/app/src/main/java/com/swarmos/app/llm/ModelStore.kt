@@ -47,11 +47,11 @@ object ModelCatalog {
             "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf",
             333_590_944L, "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63", default = true,
         ),
-        // Too big for one phone (MemoryCloud splits it over three). Hash not pinned in docs/models.md yet: size is checked, hash is not.
+        // Too big for one phone (MemoryCloud splits it over three). Size and SHA-256 pinned in docs/models.md.
         CatalogEntry(
             Role.CHAT, "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf", "Qwen3-30B-A3B Instruct 2507 Q4_K_M",
             "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf",
-            18_556_686_752L, "",
+            18_556_686_752L, "6c997b8af17debdfb01d890214400ccbab00db6acc0ba8da5de1cc906c4774d0",
         ),
     )
 
@@ -118,18 +118,17 @@ object ModelStore {
                 PresentModel(f.name, f.length(), want == 0L || want == f.length())
             }
 
-    /** The file to load for [role] at service start: the last one loaded for the role, else the catalog default; null if absent. */
-    fun autoLoadFile(role: Role): File? {
-        val candidates = listOfNotNull(lastLoaded(role), ModelCatalog.defaultFor(role)?.file)
-        val complete = present().filter { it.complete }.map { it.file }.toSet()
-        return candidates.firstOrNull { it in complete }?.let(::fileOf)
-    }
+    /**
+     * The file to load for [role] at service start: the catalog default for the role (Qwen3.5-4B chat, EmbeddingGemma-300M
+     * embedder), never the model that was loaded last (that could be the 18.5 GB split model, which no single phone can load).
+     * Null when the default file is not on this phone or is incomplete.
+     */
+    fun autoLoadFile(role: Role): File? = autoLoadChoice(role, present())?.let(::fileOf)
 
-    fun rememberLoaded(role: Role, file: String) {
-        prefs().edit().putString("last_${role.tag}", file).apply()
+    internal fun autoLoadChoice(role: Role, present: List<PresentModel>): String? {
+        val want = ModelCatalog.defaultFor(role)?.file ?: return null
+        return want.takeIf { f -> present.any { it.file == f && it.complete } }
     }
-
-    private fun lastLoaded(role: Role): String? = prefs().getString("last_${role.tag}", null)
 
     private val _autoload by lazy { MutableStateFlow(prefs().getBoolean(KEY_AUTOLOAD, true)) }
 
