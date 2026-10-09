@@ -76,8 +76,10 @@ object ChoirModule : SwarmModule {
             if (body == null) { call.respondJson(ErrorBody("body must be a JSON object"), HttpStatusCode.BadRequest); return@post }
             val ids = (body["problemIds"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }
             val useCheck = (body["useProblemCheck"] as? JsonPrimitive)?.booleanOrNull ?: false
+            // "samples": false skips the one-phone-three-samples arm (it roughly doubles the run time)
+            val withSamples = (body["samples"] as? JsonPrimitive)?.booleanOrNull ?: true
             try {
-                call.respondJson(ChoirController.runEval(ids, RunOptions(useCheck)))
+                call.respondJson(ChoirController.runEval(ids, RunOptions(useCheck), withSamples))
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {

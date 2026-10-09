@@ -55,8 +55,19 @@ class ToolCheckerTest {
         assertEquals(CheckResult.REFUTED, ToolChecker.check(math, "100", listOf("(48/6)*12.5*0.9")).result)
     }
 
-    @Test fun mathFinalStepDisagreeingWithTheAnswerIsRefuted() {
-        assertEquals(CheckResult.REFUTED, ToolChecker.check(math, "41", listOf("12*3=36", "36+4=40")).result)
+    @Test fun severalStepsThatNeverReachTheAnswerAreNotCheckableNotRefuted() {
+        // a mismatch across several steps proves nothing about the answer, so it must not throw it out of the vote
+        assertEquals(CheckResult.NOT_CHECKABLE, ToolChecker.check(math, "41", listOf("12*3=36", "36+4=40")).result)
+    }
+
+    @Test fun aBackCheckIsNeverARefutation() {
+        // "62400/0.78=80000" then "80000*0.78=62400": the second step is a check, not the answer's computation
+        val both = ToolChecker.check(math, "80000", listOf("62400/0.78=80000", "80000*0.78=62400"))
+        assertEquals(CheckResult.VERIFIED, both.result)
+        val lone = ToolChecker.check(math, "80000", listOf("80000*0.78=62400"))
+        assertEquals(CheckResult.NOT_CHECKABLE, lone.result)
+        // a single computation whose operands do not contain the answer and whose value differs is still refuted
+        assertEquals(CheckResult.REFUTED, ToolChecker.check(math, "76128", listOf("62400/0.78=80000")).result)
     }
 
     @Test fun mathIntermediateStepsOnlyAreNotCheckableNotRefuted() {

@@ -20,7 +20,7 @@ object ChoirPrompts {
 
     private const val FORMAT =
         "Reply with one JSON object only: key_steps (at most 3 short steps, each under 20 words), " +
-            "answer (the final answer only, no explanation), confidence (a number from 0 to 1). /no_think"
+            "answer (the final answer only, no explanation), confidence (a number from 0 to 1)."
 
     private fun answerRule(kind: Kind) = when (kind) {
         Kind.MATH -> "The answer is a plain number: no units, no commas."
@@ -69,7 +69,7 @@ object ChoirPrompts {
             ChatMessage(
                 "system",
                 "You are the judge. Re-check the reasoning and pick the candidate that is correct. " +
-                    "Reply with one JSON object only: reason (one short sentence), pick (the candidate number). /no_think",
+                    "Reply with one JSON object only: reason (one short sentence), pick (the candidate number).",
             ),
             ChatMessage("user", sb.toString()),
         )

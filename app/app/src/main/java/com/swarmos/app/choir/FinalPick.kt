@@ -7,6 +7,7 @@ data class Vote(
     val confidence: Double,
     val check: CheckResult = CheckResult.NOT_CHECKABLE,
     val keySteps: List<String> = emptyList(),
+    val checkSource: String = "none",
 )
 
 /** Votes that normalise to the same answer. */
@@ -22,6 +23,13 @@ data class Group(val answer: String, val members: List<Vote>) {
             else -> CheckResult.NOT_CHECKABLE
         }
 
+    /** What a VERIFIED group was verified against; a test supplied with the problem wins over a model-written expression. */
+    val checkSource: String
+        get() {
+            val sources = members.filter { it.check == CheckResult.VERIFIED }.map { it.checkSource }
+            return if (PROBLEM_CHECK in sources) PROBLEM_CHECK else sources.firstOrNull() ?: "none"
+        }
+
     /** The most confident member's reasoning, used when this answer is shown to others. */
     val best: Vote get() = members.maxByOrNull { it.confidence } ?: members.first()
 }
@@ -30,6 +38,8 @@ data class Group(val answer: String, val members: List<Vote>) {
  * Final pick, pure logic. Order: tool-verified, majority of normalised answers, highest summed confidence,
  * judge, abstain. `judgePick` is an index into [groups] (distinct answers in order of first appearance).
  */
+const val PROBLEM_CHECK = "problem-check"
+
 object FinalPick {
     /** A confidence lead smaller than this does not decide anything: small models report 0.85 or 0.9 for everything. */
     const val CONF_MARGIN = 0.10
@@ -48,13 +58,18 @@ object FinalPick {
         val unanimous = gs.size == 1 && n >= 2
 
         fun result(g: Group, method: PickMethod, label: String) =
-            FinalTrace(g.best.answer, method, useTool && g.check == CheckResult.VERIFIED, label, rows)
+            FinalTrace(g.best.answer, method, useTool && g.check == CheckResult.VERIFIED, label, rows, g.check, g.checkSource)
 
         var elig = gs
         if (useTool) {
             val verified = gs.filter { it.check == CheckResult.VERIFIED }
             if (verified.size == 1) {
-                return result(verified[0], PickMethod.TOOL, if (unanimous) "tool-verified, unanimous" else "tool-verified")
+                val what = when (verified[0].checkSource) {
+                    PROBLEM_CHECK -> "verified by the problem's test"
+                    "quote-exists" -> "quotes found in the source text"
+                    else -> "the model's own steps are consistent"
+                }
+                return result(verified[0], PickMethod.TOOL, if (unanimous) "$what, unanimous" else what)
             }
             if (verified.size > 1) {
                 elig = verified
