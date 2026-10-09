@@ -17,7 +17,6 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.serialization.encodeToString
 
 class NodeHttpException(val status: Int, val body: String) : RuntimeException("HTTP $status: $body")
 

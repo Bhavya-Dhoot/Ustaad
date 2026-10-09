@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS / Node A - Agent Choir Scoreboard</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;700&amp;family=Geist+Mono:wght@400;500;600;700&amp;family=Geist:wght@400;500;600;700&amp;family=Shantell+Sans:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "tertiary": "#000000",
+            "on-tertiary-fixed-variant": "#444845",
+            "on-primary": "#ffffff",
+            "outline-variant": "#c6c6ca",
+            "error": "#ba1a1a",
+            "on-error": "#ffffff",
+            "marker-teal": "#1E9BB0",
+            "marker-teal-tint": "#1E9BB01F",
+            "marker-magenta": "#C8457E",
+            "marker-magenta-tint": "#C8457E1F",
+            "marker-tangerine": "#E08A3C",
+            "marker-tangerine-tint": "#E08A3C1F",
+            "secondary": "#5a5f67",
+            "on-secondary": "#ffffff",
+            "background": "#F6F7F5",
+            "sheet": "#FCFDFB",
+            "surface": "#F6F7F5",
+            "surface-dim": "#d9dad8",
+            "surface-container": "#edeeec",
+            "surface-container-low": "#f3f4f2",
+            "surface-container-high": "#e7e8e6",
+            "surface-container-highest": "#e2e3e1",
+            "on-surface": "#15171A",
+            "primary": "#15171A",
+            "outline": "#76777b",
+            "eraser": "#E4E7E3",
+            "graphite": "#5E636B",
+            "ink": "#15171A"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "gutter": "0.5rem",
+            "space-lg": "1.5rem",
+            "space-md": "1rem",
+            "margin": "1rem",
+            "space-xs": "0.25rem",
+            "space-sm": "0.5rem",
+            "space-xl": "2rem"
+          },
+          "fontFamily": {
+            "display-hero": ["Geist", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "label-mono": ["Geist Mono", "monospace"],
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "label-md": ["Geist", "sans-serif"],
+            "body-sm": ["Geist", "sans-serif"],
+            "stamp-label": ["Geist Mono", "monospace"]
+          },
+          "fontSize": {
+            "display-hero": ["44px", { lineHeight: "48px", letterSpacing: "-0.02em", fontWeight: "500" }],
+            "body-md": ["15px", { lineHeight: "22px", fontWeight: "400" }],
+            "annotation": ["14px", { lineHeight: "18px", letterSpacing: "-0.01em", fontWeight: "400" }],
+            "label-mono": ["12px", { lineHeight: "16px", letterSpacing: "0em", fontWeight: "500" }],
+            "headline-lg": ["28px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "headline-md": ["20px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "label-md": ["13px", { lineHeight: "16px", fontWeight: "500" }],
+            "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+            "stamp-label": ["11px", { lineHeight: "13px", letterSpacing: "0.06em", fontWeight: "700" }]
+          }
+        }
+      }
+    };
+  </script>
+<style>
+    .hatch-pattern {
+      background: repeating-linear-gradient(
+        -45deg,
+        #15171A,
+        #15171A 1.5px,
+        transparent 1.5px,
+        transparent 5.5px
+      );
+    }
+    .hatch-pattern-subtle {
+      background: repeating-linear-gradient(
+        -45deg,
+        #15171A 0px,
+        #15171A 1px,
+        #FCFDFB 1px,
+        #FCFDFB 4px
+      );
+    }
+  </style>
+</head>
+<body class="bg-[#F6F7F5] text-primary min-h-screen flex justify-center selection:bg-surface-container font-body-md antialiased pb-24">
+<main class="w-full max-w-[412px] min-h-screen bg-[#F6F7F5] flex flex-col relative px-space-md pt-0 pb-6">
+<!-- Top Status Strip -->
+<header class="w-full pt-3 pb-3 border-b border-eraser flex items-center justify-between text-ink font-label-mono text-label-mono">
+<div class="flex items-center gap-2">
+<div class="w-7 h-7 rounded-full bg-marker-teal border-[1.5px] border-primary flex items-center justify-center text-primary font-headline-md text-label-md font-bold leading-none">
+          A
+        </div>
+<span class="font-bold text-ink">Phone A</span>
+<span class="text-graphite">·</span>
+<span class="text-graphite">Cool</span>
+<span class="text-graphite">·</span>
+<span>79%</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-graphite hidden xs:inline">8.6 GB</span>
+<span class="text-graphite">433M</span>
+<div class="border-[1.5px] border-primary px-1.5 py-0.5 rounded text-[10px] tracking-wider uppercase font-bold leading-none bg-sheet">
+          0 B TO INTERNET
+        </div>
+</div>
+</header>
+<!-- TopAppBar from JSON -->
+<section class="flex items-center justify-between py-2 border-b border-eraser mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-primary" data-icon="hub">hub</span>
+<span class="font-headline-md text-sm font-bold tracking-tight text-primary">SwarmOS / Node A</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="text-[11px] font-label-mono text-graphite uppercase tracking-wide">MESH ACTIVE</span>
+<span class="material-symbols-outlined text-[18px] text-primary" data-icon="verified" data-weight="fill" style="font-variation-settings: 'FILL' 1;">verified</span>
+</div>
+</section>
+<!-- Header Section -->
+<section class="mb-5">
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight leading-none mb-1">
+        20 problems
+      </h1>
+<p class="font-body-sm text-graphite leading-snug">
+        Benchmarked across 3 local phones via Wi-Fi ad-hoc mesh
+      </p>
+</section>
+<!-- Performance Bars Section -->
+<section class="bg-sheet border-[1.5px] border-primary rounded-lg p-3.5 mb-5 relative">
+<div class="flex flex-col gap-3.5">
+<!-- Bar 1: One phone alone (55%) -->
+<div>
+<div class="flex justify-between items-baseline mb-1.5">
+<span class="font-body-sm text-primary font-medium">One phone alone</span>
+<span class="font-label-mono text-label-mono text-primary font-bold">11 of 20</span>
+</div>
+<div class="w-full h-3.5 flex items-center">
+<div class="h-full bg-primary" style="width: 55%;"></div>
+</div>
+</div>
+<!-- Bar 2: Choir (70%) -->
+<div>
+<div class="flex justify-between items-baseline mb-1.5">
+<span class="font-body-sm text-primary font-medium">Choir</span>
+<span class="font-label-mono text-label-mono text-primary font-bold">14 of 20</span>
+</div>
+<div class="w-full h-3.5 flex items-center">
+<div class="h-full bg-primary" style="width: 70%;"></div>
+</div>
+</div>
+<!-- Bar 3: Choir + tool check (85%) with hand-drawn underline -->
+<div class="relative pb-1">
+<div class="flex justify-between items-baseline mb-1.5">
+<span class="font-body-sm text-primary font-semibold">Choir + tool check</span>
+<span class="font-label-mono text-label-mono text-primary font-bold">17 of 20</span>
+</div>
+<div class="w-full h-3.5 flex items-center">
+<div class="h-full bg-primary" style="width: 85%;"></div>
+</div>
+<!-- Hand-drawn ink underline sketch -->
+<svg class="w-full h-2 mt-1 text-primary overflow-visible" fill="none" preserveaspectratio="none" viewbox="0 0 320 8">
+<path d="M2 3.5 C 50 1.2, 110 5.8, 170 3.2 C 230 1.5, 275 4.5, 318 2.8" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path>
+</svg>
+</div>
+</div>
+<!-- Hand-written annotation -->
+<div class="mt-2.5 flex items-center justify-end">
+<span class="font-annotation text-annotation text-primary rotate-2 inline-block">
+          * n = 20, same model, same token cap
+        </span>
+</div>
+</section>
+<!-- Scoreboard Table Card -->
+<section class="bg-sheet border-[1.5px] border-primary rounded-lg overflow-hidden mb-6">
+<div class="px-3 py-2 border-b-[1.5px] border-primary bg-surface-container-low flex items-center justify-between">
+<span class="font-headline-md text-sm font-bold text-primary">Scoreboard Log</span>
+<span class="font-label-mono text-[11px] text-graphite uppercase">Problems 01 - 10</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full border-collapse text-left">
+<thead>
+<tr class="border-b-[1.5px] border-primary text-graphite font-label-mono text-[11px] uppercase tracking-wider bg-sheet">
+<th class="py-2 pl-3 pr-1 w-10">#</th>
+<th class="py-2 px-1">Kind</th>
+<th class="py-2 px-1 text-center">Alone</th>
+<th class="py-2 px-1 text-center">Choir</th>
+<th class="py-2 px-1 text-right">Rounds</th>
+<th class="py-2 pr-3 pl-1 text-right">Seconds</th>
+</tr>
+</thead>
+<tbody class="font-label-mono text-label-mono divide-y divide-eraser">
+<!-- Row 01 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#01</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Math</td>
+<td class="py-2 px-1">
+<div class="w-4 h-4 mx-auto border-[1.5px] border-primary hatch-pattern rounded-sm" title="Fail"></div>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">2 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">21.4 s</td>
+</tr>
+<!-- Row 02 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#02</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Math</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">1 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">9.2 s</td>
+</tr>
+<!-- Row 03 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#03</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Code</td>
+<td class="py-2 px-1">
+<div class="w-4 h-4 mx-auto border-[1.5px] border-primary hatch-pattern rounded-sm" title="Fail"></div>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">2 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">28.0 s</td>
+</tr>
+<!-- Row 04 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#04</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Multi</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">1 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">6.5 s</td>
+</tr>
+<!-- Row 05 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#05</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Math</td>
+<td class="py-2 px-1">
+<div class="w-4 h-4 mx-auto border-[1.5px] border-primary hatch-pattern rounded-sm" title="Fail"></div>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">3 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">34.1 s</td>
+</tr>
+<!-- Hairline divider between groups of 5 -->
+<tr class="border-t-2 border-eraser bg-surface-container-low/40">
+<td class="py-1 px-3 text-[10px] font-label-mono text-graphite uppercase tracking-wider" colspan="6">
+                Group 2 (Problems 06 - 10)
+              </td>
+</tr>
+<!-- Row 06 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#06</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Text</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">1 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">11.2 s</td>
+</tr>
+<!-- Row 07 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#07</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Code</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">1 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">14.8 s</td>
+</tr>
+<!-- Row 08 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#08</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Math</td>
+<td class="py-2 px-1">
+<div class="w-4 h-4 mx-auto border-[1.5px] border-primary hatch-pattern rounded-sm" title="Fail"></div>
+</td>
+<td class="py-2 px-1">
+<div class="w-4 h-4 mx-auto border-[1.5px] border-primary hatch-pattern rounded-sm" title="Fail"></div>
+</td>
+<td class="py-2 px-1 text-right text-primary">3 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">31.0 s</td>
+</tr>
+<!-- Row 09 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#09</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Multi</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">1 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">7.1 s</td>
+</tr>
+<!-- Row 10 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-2 pl-3 pr-1 font-semibold text-primary">#10</td>
+<td class="py-2 px-1 font-body-sm text-graphite">Code</td>
+<td class="py-2 px-1">
+<div class="w-4 h-4 mx-auto border-[1.5px] border-primary hatch-pattern rounded-sm" title="Fail"></div>
+</td>
+<td class="py-2 px-1 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary inline-block align-middle" data-icon="check">check</span>
+</td>
+<td class="py-2 px-1 text-right text-primary">2 R</td>
+<td class="py-2 pr-3 pl-1 text-right font-medium text-primary">24.6 s</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- Bottom Action Button: Secondary Button -->
+<div class="w-full mb-6">
+<button class="w-full bg-sheet border-[1.5px] border-primary text-primary font-body-md font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-lg" data-icon="file_download">file_download</span>
+        Export results
+      </button>
+</div>
+</main>
+<!-- Shared Component: BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 bg-sheet border-t border-eraser flex justify-around items-center px-space-sm py-1.5 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+<!-- Item 1: Swarm -->
+<a class="flex flex-col items-center justify-center text-secondary pb-1 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#swarm">
+<span class="material-symbols-outlined text-[22px]" data-icon="lan">lan</span>
+<span class="font-label-md text-[11px] leading-tight">Swarm</span>
+</a>
+<!-- Item 2: Models -->
+<a class="flex flex-col items-center justify-center text-secondary pb-1 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#models">
+<span class="material-symbols-outlined text-[22px]" data-icon="deployed_code">deployed_code</span>
+<span class="font-label-md text-[11px] leading-tight">Models</span>
+</a>
+<!-- Item 3: Choir (Active) -->
+<a class="flex flex-col items-center justify-center text-primary font-bold active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 relative min-w-[56px] pb-1" href="#choir">
+<span class="material-symbols-outlined text-[22px]" data-icon="graphic_eq" data-weight="fill" style="font-variation-settings: 'FILL' 1;">graphic_eq</span>
+<span class="font-label-md text-[11px] leading-tight">Choir</span>
+<!-- Hand-drawn ink underline for active choir tab -->
+<svg class="w-10 h-1.5 text-primary absolute -bottom-0.5" fill="none" viewbox="0 0 40 6">
+<path d="M1 3 C 12 1.5, 24 4.5, 39 2.5" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>
+</svg>
+</a>
+<!-- Item 4: Data -->
+<a class="flex flex-col items-center justify-center text-secondary pb-1 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#data">
+<span class="material-symbols-outlined text-[22px]" data-icon="dataset">dataset</span>
+<span class="font-label-md text-[11px] leading-tight">Data</span>
+</a>
+<!-- Item 5: Memory -->
+<a class="flex flex-col items-center justify-center text-secondary pb-1 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#memory">
+<span class="material-symbols-outlined text-[22px]" data-icon="memory">memory</span>
+<span class="font-label-md text-[11px] leading-tight">Memory</span>
+</a>
+</nav>
+</body></html>

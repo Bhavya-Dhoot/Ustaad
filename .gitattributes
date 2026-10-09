@@ -1,0 +1,8 @@
+# shell scripts must keep LF endings on Windows checkouts
+*.sh text eol=lf
+gradlew text eol=lf
+*.py text eol=lf
+*.gguf binary
+*.so binary
+*.ttf binary
+*.png binary

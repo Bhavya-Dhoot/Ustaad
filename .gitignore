@@ -14,3 +14,9 @@ models/
 *.iml
 # third-party source fetched at build time
 third_party/
+
+# agent worktrees
+.claude/worktrees/
+
+# founder upload
+ustaad.zip
