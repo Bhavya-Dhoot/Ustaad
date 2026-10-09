@@ -1,5 +1,9 @@
 package com.swarmos.app.choir
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,10 +24,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -38,6 +45,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -65,7 +75,6 @@ import com.swarmos.app.ui.StreamingText
 import com.swarmos.app.ui.SwarmCard
 import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.SwarmShape
-import com.swarmos.app.ui.SwarmTextField
 import com.swarmos.app.ui.SwarmType
 import com.swarmos.app.ui.Tag
 import com.swarmos.app.ui.arrowheadPath
@@ -160,6 +169,37 @@ fun ChoirScreen() {
     var useTest by rememberSaveable { mutableStateOf(false) }
     val kind = Kind.valueOf(kindName)
 
+    // dictation (on-device recognizer only; the mic is disabled, with a line saying why, when the phone has none)
+    val context = LocalContext.current
+    var voice by remember { mutableStateOf(VoiceState.IDLE) }
+    var voiceMessage by remember { mutableStateOf<String?>(null) }
+    var dictationBase by remember { mutableStateOf("") }
+    val voiceInput = remember {
+        VoiceInput(
+            context,
+            onText = { heard -> text = (dictationBase + " " + heard).trim(); selectedId = null },
+            onState = { s, msg -> voice = s; voiceMessage = msg },
+        )
+    }
+    val voiceAvailable = remember { voiceInput.available }
+    DisposableEffect(Unit) { onDispose { voiceInput.destroy() } }
+    fun startDictation() {
+        dictationBase = text
+        voiceMessage = null
+        voiceInput.start()
+    }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startDictation() else voiceMessage = "Microphone permission was not given"
+    }
+    val onMic: () -> Unit = {
+        when {
+            voice == VoiceState.LISTENING -> voiceInput.stop()
+            !voiceAvailable -> voiceMessage = "No on-device speech recognition on this phone"
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> startDictation()
+            else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(busy) {
         while (busy) {
@@ -198,12 +238,13 @@ fun ChoirScreen() {
             }
             item(key = "input") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SwarmTextField(
+                    ProblemField(
                         value = text,
                         onValueChange = { text = it; selectedId = null },
-                        label = "Problem",
-                        singleLine = false,
-                        helper = if (kind == Kind.MCQ) "For multiple choice, put the options in the text as A) ... B) ..." else null,
+                        helper = voiceMessage ?: if (voice == VoiceState.LISTENING) "Listening, speak the problem" else if (kind == Kind.MCQ) "For multiple choice, put the options in the text as A) ... B) ..." else null,
+                        micListening = voice == VoiceState.LISTENING,
+                        micEnabled = voiceAvailable,
+                        onMic = onMic,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Kind.entries.forEach { k -> KindChip(kindLabel(k), k == kind) { kindName = k.name } }
@@ -290,6 +331,65 @@ fun ChoirScreen() {
 // ---------------------------------------------------------------------------------------------------
 // compose parts
 // ---------------------------------------------------------------------------------------------------
+
+/**
+ * The problem box. The kit's text field has no minimum height and no room for a button, so this is a local copy of its
+ * look (label above, Sheet fill, 1.5 dp Ink outline, 8 dp corners) with three lines of height and the mic inside.
+ */
+@Composable
+private fun ProblemField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    helper: String?,
+    micListening: Boolean,
+    micEnabled: Boolean,
+    onMic: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Text("Problem", style = SwarmType.label.copy(color = SwarmColors.graphite))
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier.fillMaxWidth().heightIn(min = 124.dp)
+                .background(SwarmColors.sheet, SwarmShape)
+                .border(1.5.dp, SwarmColors.ink, SwarmShape),
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 60.dp),
+                textStyle = SwarmType.body,
+                cursorBrush = SolidColor(SwarmColors.ink),
+            )
+            MicButton(micListening, micEnabled, onMic, Modifier.align(Alignment.BottomEnd).padding(8.dp))
+        }
+        if (helper != null) Text(helper, Modifier.padding(top = 4.dp), style = SwarmType.label.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SwarmColors.graphite))
+    }
+}
+
+/** Ink outline circle with a drawn microphone; filled Ink while listening; greyed when the phone has no on-device recognizer. */
+@Composable
+private fun MicButton(listening: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val ink = if (enabled) SwarmColors.ink else SwarmColors.graphite
+    val fg = if (listening) SwarmColors.sheet else ink
+    Box(
+        modifier.size(44.dp).clickable(onClick = onClick)
+            .background(if (listening) SwarmColors.ink else if (enabled) SwarmColors.sheet else SwarmColors.smudge, CircleShape)
+            .border(1.5.dp, ink, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(22.dp)) {
+            val w = size.width
+            val stroke = inkStroke(1.6.dp.toPx())
+            // capsule
+            drawRoundRect(fg, Offset(w * 0.34f, w * 0.06f), androidx.compose.ui.geometry.Size(w * 0.32f, w * 0.5f), androidx.compose.ui.geometry.CornerRadius(w * 0.16f), style = stroke)
+            // cradle
+            drawArc(fg, 0f, 180f, false, Offset(w * 0.2f, w * 0.2f), androidx.compose.ui.geometry.Size(w * 0.6f, w * 0.56f), style = stroke)
+            // stem and foot
+            drawLine(fg, Offset(w * 0.5f, w * 0.76f), Offset(w * 0.5f, w * 0.92f), 1.6.dp.toPx())
+            drawLine(fg, Offset(w * 0.34f, w * 0.94f), Offset(w * 0.66f, w * 0.94f), 1.6.dp.toPx())
+        }
+    }
+}
 
 @Composable
 private fun KindChip(label: String, selected: Boolean, onClick: () -> Unit) {
