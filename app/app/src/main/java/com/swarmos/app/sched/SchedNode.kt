@@ -6,7 +6,10 @@ import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatStats
 import com.swarmos.app.llm.LlmClient
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.onEach
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** One phone as the scheduler sees it, local or remote. Anything that implements this can join the swarm. */
 interface PhoneEndpoint {
@@ -80,6 +83,30 @@ class SchedNode(
             val r = client.chat(req)
             noteStats(r.stats)
             ChatJobResult(jobId, r.text, r.stats.toDto(), selfId(), client.modelName)
+        }
+    }
+
+    /**
+     * A slot held for a stream that a peer asked for. Throws [BusyException] when no slot is free (streams are not queued)
+     * and [ModelMismatchException] when [pinModel] is another model. The caller must [StreamSlot.close] it.
+     */
+    fun openStream(pinModel: String?): StreamSlot {
+        val client = llm()
+        if (pinModel != null && pinModel != client.modelName) throw ModelMismatchException(client.modelName)
+        if (!chatExec.tryAcquire()) throw BusyException(chatExec.running, chatExec.capacity, chatExec.queued)
+        return StreamSlot(client)
+    }
+
+    inner class StreamSlot internal constructor(private val client: LlmClient) {
+        private val closed = AtomicBoolean(false)
+        val modelName: String get() = client.modelName
+        val nodeId: String get() = selfId()
+
+        fun chunks(req: ChatRequest): Flow<ChatChunk> = client.chatStream(req).onEach { c -> c.stats?.let(::noteStats) }
+
+        /** Frees the slot; safe to call twice. */
+        fun close() {
+            if (closed.compareAndSet(false, true)) chatExec.release()
         }
     }
 

@@ -415,7 +415,7 @@ object PduEngine {
         } else {
             try {
                 val merged = sources.map { MergedHit(it.deviceId, it.deviceName, it.local, it.hit, 0.0) }
-                AppGraph.llm.chatStream(PromptBuilder.build(text, merged)).collect { c ->
+                AppGraph.gatedLlm.chatStream(PromptBuilder.build(text, merged)).collect { c ->
                     if (ttft < 0 && c.delta.isNotEmpty()) ttft = now() - t0
                     sb.append(c.delta)
                     val snapshot = sb.toString()

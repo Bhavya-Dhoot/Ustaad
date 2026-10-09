@@ -39,7 +39,7 @@ class SwarmLlmTest {
     }
 
     @Test fun aHotPhoneIsOnlyUsedWhenTheOthersAreBusy() = runBlocking {
-        val hot = phone("hot", TestLlm(delayMs = 120), tps = 90.0, thermal = 2)
+        val hot = phone("hot", TestLlm(delayMs = 120), tps = 90.0, thermal = 3)
         val cool = phone("cool", TestLlm(delayMs = 120), tps = 3.0)
         val llm = swarm(listOf(hot, cool))
         assertEquals("cool", llm.chatJob("a", req("a")).nodeId)
