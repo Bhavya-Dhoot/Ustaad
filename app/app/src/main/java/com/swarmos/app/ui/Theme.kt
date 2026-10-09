@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.swarmos.app.AppGraph
 
 /**
  * "Whiteboard" palette from docs/design/DESIGN.md section 2. Colour in this product means
@@ -201,15 +202,17 @@ fun SwarmTheme(content: @Composable () -> Unit) {
 }
 
 /**
- * False when the system "remove animations" setting is on (animator duration scale 0) and in
- * previews: stamps and connectors then show their final frame only.
+ * False when the system "remove animations" setting is on (animator duration scale 0), when the
+ * in-app "Remove animations" switch of the settings sheet is on, and in previews: stamps and
+ * connectors then show their final frame only.
  */
 @Composable
 fun rememberAnimationsEnabled(): Boolean {
     if (LocalInspectionMode.current) return false
     val resolver = LocalContext.current.contentResolver
-    return remember {
+    val system = remember {
         runCatching { Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) }
             .getOrDefault(1f) != 0f
     }
+    return system && !AppGraph.removeAnimations
 }
