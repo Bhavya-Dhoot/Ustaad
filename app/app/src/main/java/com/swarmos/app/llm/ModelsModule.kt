@@ -32,6 +32,9 @@ data class RoleStateDto(
     val loadMs: Long?,
     /** false: the loaded model is chat only and refuses JSON-schema calls (see ModelCatalog). */
     val structuredOutput: Boolean = true,
+    /** Banner text while a killed server is restarted automatically (null otherwise), and how many restarts were used. */
+    val notice: String? = null,
+    val restarts: Int = 0,
 )
 
 @Serializable
@@ -187,6 +190,8 @@ object ModelsModule : SwarmModule {
                 rssMb = if (st.state == ServerState.STOPPED) null else LlamaRuntime.rssKb(r)?.div(1024),
                 loadMs = st.readyAfterMs,
                 structuredOutput = st.modelName?.let { ModelCatalog.allowsSchema(it) } ?: true,
+                notice = st.notice,
+                restarts = st.restarts,
             )
         }
         val stats = LlamaRuntime.lastStats.value
@@ -212,10 +217,8 @@ object ModelsModule : SwarmModule {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Loads [file] as [role]; when it comes up READY it is remembered as the file to auto-load at the next service start. */
+    /** Loads [file] as [role]. Only the catalog defaults load at service start, whatever was loaded by hand before. */
     internal fun loadModelAsync(role: Role, file: String): Deferred<ServerStatus> = scope.async {
-        val st = LlamaRuntime.start(role, ModelStore.fileOf(file).absolutePath)
-        if (st.state == ServerState.READY) ModelStore.rememberLoaded(role, file)
-        st
+        LlamaRuntime.start(role, ModelStore.fileOf(file).absolutePath)
     }
 }

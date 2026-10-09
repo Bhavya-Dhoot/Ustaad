@@ -204,7 +204,7 @@ private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: Lis
             when (st.state) {
                 ServerState.READY -> Stamp("READY", small = true)
                 ServerState.FAILED -> Stamp("FAILED", caution = true, small = true)
-                ServerState.STARTING -> Tag("loading")
+                ServerState.STARTING -> Tag(if (st.restarts > 0) "restarting" else "loading")
                 ServerState.STOPPED -> if (fakeNote != null) Stamp("FAKE", caution = true, small = true) else Tag("stopped")
             }
         }
@@ -234,6 +234,11 @@ private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: Lis
         if (st.state == ServerState.FAILED) {
             Spacer(Modifier.height(10.dp))
             ErrorNote(st.reason ?: "The server stopped.")
+        }
+        // Banner for a server that was killed: restarting, restarted, or given up on (see RestartPolicy).
+        st.notice?.let {
+            Spacer(Modifier.height(10.dp))
+            Note(it)
         }
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
