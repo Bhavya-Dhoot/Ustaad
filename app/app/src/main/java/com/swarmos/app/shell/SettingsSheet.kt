@@ -28,9 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -252,9 +252,8 @@ private fun InkSwitch(checked: Boolean) {
 @Composable
 private fun AuditLogCard() {
     val scope = rememberCoroutineScope()
-    val count by produceState<Int?>(initialValue = null) {
-        value = withContext(Dispatchers.IO) { AppGraph.audit.entries().size }
-    }
+    var count by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(Unit) { count = withContext(Dispatchers.IO) { AppGraph.audit.entries().size } }
     var result by remember { mutableStateOf<AuditVerify?>(null) }
     Column(
         Modifier
@@ -280,7 +279,12 @@ private fun AuditLogCard() {
                 )
             }
             SecondaryButton("Verify", onClick = {
-                scope.launch { result = withContext(Dispatchers.IO) { AppGraph.audit.verify() } }
+                scope.launch {
+                    withContext(Dispatchers.IO) { AppGraph.audit.entries().size to AppGraph.audit.verify() }.let { (n, r) ->
+                        count = n
+                        result = r
+                    }
+                }
             })
         }
         result?.let { r ->
