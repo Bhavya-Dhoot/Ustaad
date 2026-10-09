@@ -2,7 +2,6 @@ package com.swarmos.app.link
 
 import com.swarmos.app.core.SwarmJson
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import java.security.SecureRandom
 import java.util.Base64
 
