@@ -152,3 +152,22 @@ Per phone: model, tok/s (prefill, decode), RAM used, thermal status, battery, li
 ## 11. Source map
 
 docs/research/01 models and runtimes, 02 networking, 03 distributed inference, 04 RAG, 05 multi-agent, 06 hackathon and landscape. docs/device-probes raw output. docs/benchmarks measured numbers.
+
+## 12. Changes since version 1.0 (as built and measured, 2026-10-10)
+
+This section overrides anything above that it contradicts. Sources are the gate files, docs/CONTRACTS.md and docs/benchmarks/.
+
+| Topic | Version 1.0 said | As built |
+|---|---|---|
+| Name | SwarmOS | Ustaad. Demo build id `com.ustaad.app`; code identifiers keep the old name. |
+| Link (5.1) | phone hotspot first, custom 4-byte framing, Ed25519 | App-created Wi-Fi Direct group on 5 GHz is the bulk path (305 to 503 Mbps measured), same Wi-Fi is the zero-setup path (96 to 104 Mbps), HTTP + JSON, HMAC with the pairing secret, every request has a unique id. Phase 2 adds Bluetooth for rendezvous and small control messages, response authentication, dedup and failover. |
+| RTT target | at most 8 ms average | Not met in phase 1 (12 to 26 ms average, 2.7 ms minimum). Phase 2 measures the low-latency Wi-Fi lock and connection reuse. |
+| Runtime (5.2) | JNI wrapper around llama.cpp | llama.cpp `llama-server` and `rpc-server` shipped as executables, launched as child processes, HTTP on loopback. Chat model runs on the GPU (OpenCL) build by default with automatic CPU fallback: same decode (13.5 tok/s), 4 times the prefill (128 against 32 tok/s), 1.2 GB instead of 5.4 GB. |
+| Models | Qwen3.5-4B, a second family, EmbeddingGemma 2, Qwen3-14B, Qwen3-30B-A3B | Qwen3.5-4B Q4_K_M for chat and all structured output; EmbeddingGemma-300M (EmbeddingGemma 2 does not load in this llama.cpp); Gemma 4 E4B is chat only; no 14B model; Qwen3-30B-A3B-Instruct-2507 Q4_K_M is the large model. |
+| Agent Choir (5.3) | two model families | One model on every phone; roles differ by prompt and temperature. A tool check stamps VERIFIED only when the answer was checked against the problem's own test, CONSISTENT when only the model's own steps add up. The scoreboard has four arms, including one phone sampling three times. |
+| Data Union (5.4) | sqlite-vec, folders shared unless marked private | Plain SQLite with FTS5 plus brute-force cosine; new folders and scans are private until shared; a peer can only raise a notification to open a file; Hindi OCR through a second recogniser; dictation is on-device only. |
+| MemoryCloud (5.5) | 14B on two phones, 30B on three, 4 to 10 tok/s expected | The layer split works on these phones but it is a capacity tool only: a 4B model that fits one phone drops from 13.6 to 14.9 tok/s to about 3.5 tok/s when split. The 30B model produces no token on one phone in 134 s and did not load across two phones; it needs three and that run is pending. |
+| Scheduler (5.7) | assign roles by capability | Any phone can run a request on any other through one client; a batch runner spreads jobs over the phones; parallel slots on one phone add no throughput, so capacity is one job per phone. |
+| Thermal | phones on chargers and a fan | Decisive constraint. Any sustained generation reaches thermal status 3 to 4 within 2 to 10 minutes and decode halves (12.3 to 6.8 tok/s over 10 minutes on the GPU). Benchmarks and evaluations refuse to start when too hot; every number carries its thermal state. |
+| Background | foreground service | OriginOS freezes or kills the app when the screen is off or it is not in front, even with a foreground service. The app keeps the screen on while in front; the battery exemption in first-run setup is required and needs a tap on each phone. |
+| "0 bytes to internet" | stamp on every screen | Replaced by a "NO INTERNET" stamp shown only when no network has validated internet, plus the model downloader's byte count. |
