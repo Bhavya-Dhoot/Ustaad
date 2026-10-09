@@ -18,15 +18,19 @@ import com.swarmos.app.AppGraph
 import com.swarmos.app.MainActivity
 import com.swarmos.app.link.NodeServer
 import com.swarmos.app.llm.LlamaRuntime
+import com.swarmos.app.llm.Role
+import com.swarmos.app.llm.ServerState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -63,7 +67,7 @@ class SwarmService : Service() {
         }
         // must be called within seconds of startForegroundService; it needs nothing from AppGraph
         ServiceCompat.startForeground(
-            this, NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+            this, NOTIFICATION_ID, buildNotification("Starting Ustaad."), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
         )
         _running.value = true
         tornDown.set(false)
@@ -75,6 +79,7 @@ class SwarmService : Service() {
                 val s = NodeServer().also { server = it }
                 launch { s.start() }
                 AppGraph.audit.append("service.start")
+                launch { keepNotificationCurrent() }
                 holdLocksWhileNeeded()
             }
         }
@@ -100,6 +105,29 @@ class SwarmService : Service() {
                 if (hold) acquireLocks() else releaseLocks()
                 AppGraph.audit.append("service.locks", JsonObject(mapOf("held" to JsonPrimitive(hold))))
             }
+    }
+
+    /** The notification text is a live state line ([ServiceLine]): peers online, chat model state, or the current activity. */
+    private suspend fun keepNotificationCurrent() {
+        val nm = getSystemService(NotificationManager::class.java)
+        combine(
+            AppGraph.registry.peers.map { ServicePolicy.onlinePeers(it) },
+            LlamaRuntime.status.map { chatOf(it.getValue(Role.CHAT).state) },
+            PhoneActivity.current.map { it?.text },
+        ) { peers, chat, activity -> ServiceLine.describe(peers, chat, activity) }
+            .distinctUntilChanged()
+            .conflate()
+            .collect { line ->
+                nm.notify(NOTIFICATION_ID, buildNotification(line))
+                delay(1000) // at most one update a second, newer lines replace the ones skipped meanwhile
+            }
+    }
+
+    private fun chatOf(state: ServerState): ServiceLine.Chat = when (state) {
+        ServerState.READY -> ServiceLine.Chat.READY
+        ServerState.STARTING -> ServiceLine.Chat.LOADING
+        ServerState.FAILED -> ServiceLine.Chat.FAILED
+        ServerState.STOPPED -> ServiceLine.Chat.NONE
     }
 
     @Synchronized
@@ -132,10 +160,11 @@ class SwarmService : Service() {
         server?.stop()
         server = null
         AppGraph.audit.append("service.stop")
+        PhoneActivity.clearAll()
         _running.value = false
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(line: String): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Ustaad node", NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(
@@ -149,7 +178,10 @@ class SwarmService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("Ustaad node running")
-            .setContentText("API port ${Ports.NODE}")
+            .setContentText(line)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(line))
+            .setSubText("API port ${Ports.NODE}")
+            .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(0, "Stop Ustaad", stop)

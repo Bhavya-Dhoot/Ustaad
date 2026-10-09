@@ -1,8 +1,5 @@
 package com.swarmos.app.shell
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,8 +54,10 @@ import com.swarmos.app.core.SwarmService
 import com.swarmos.app.llm.ModelStore
 import com.swarmos.app.ui.ErrorNote
 import com.swarmos.app.ui.Hairline
+import com.swarmos.app.ui.InkSwitch
 import com.swarmos.app.ui.PhoneToken
 import com.swarmos.app.ui.PrimaryButton
+import com.swarmos.app.ui.ScreenHeader
 import com.swarmos.app.ui.SecondaryButton
 import com.swarmos.app.ui.Stamp
 import com.swarmos.app.ui.SwarmColors
@@ -67,7 +65,6 @@ import com.swarmos.app.ui.SwarmShape
 import com.swarmos.app.ui.SwarmTextField
 import com.swarmos.app.ui.SwarmType
 import com.swarmos.app.ui.phoneLetter
-import com.swarmos.app.ui.rememberAnimationsEnabled
 import com.swarmos.app.ui.underlinePath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -114,10 +111,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                     .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                    Text("Settings", style = SwarmType.display)
-                    Wordmark(Modifier.padding(bottom = 4.dp))
-                }
+                ScreenHeader("Settings") { Wordmark(Modifier.padding(bottom = 4.dp)) }
                 Hairline()
                 SwarmTextField(
                     value = name,
@@ -237,7 +231,7 @@ private fun SwitchRow(title: String, helper: String, checked: Boolean, onChange:
             Text(title, style = SwarmType.body.copy(fontWeight = FontWeight.W500))
             Text(helper, style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite))
         }
-        InkSwitch(checked)
+        InkSwitch(checked, onCheckedChange = null) // the whole row is the toggle
     }
 }
 
@@ -257,24 +251,6 @@ private fun StopStartRow() {
             else "Ustaad is stopped. Starts the node server and the models again.",
             style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite),
         )
-    }
-}
-
-/** Flat switch: Smudge track when off, Ink when on, round Sheet knob with an Ink outline. */
-@Composable
-private fun InkSwitch(checked: Boolean) {
-    val animate = rememberAnimationsEnabled()
-    val knobX by animateDpAsState(if (checked) 20.dp else 0.dp, if (animate) tween(120) else snap(), label = "knob")
-    Box(Modifier.size(width = 52.dp, height = 48.dp), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .size(width = 44.dp, height = 26.dp)
-                .background(if (checked) SwarmColors.ink else SwarmColors.smudge, CircleShape)
-                .border(1.5.dp, SwarmColors.ink, CircleShape)
-                .padding(2.5.dp),
-        ) {
-            Box(Modifier.offset(x = knobX).size(18.dp).background(SwarmColors.sheet, CircleShape).border(1.5.dp, SwarmColors.ink, CircleShape))
-        }
     }
 }
 
