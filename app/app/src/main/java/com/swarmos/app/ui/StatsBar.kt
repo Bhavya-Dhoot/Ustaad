@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.llm.ModelStore
+import com.swarmos.app.llm.fmtBytes
 
 /** Persistent top bar: this node's name, thermal, battery, free RAM, link, chat model, WAN bytes. */
 @Composable
@@ -33,6 +35,7 @@ fun StatsBar(onEditName: () -> Unit, modifier: Modifier = Modifier) {
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val h by AppGraph.health.state.collectAsStateWithLifecycle()
     val accent = accentFor(self.name)
+    val wan by ModelStore.wanBytes.collectAsStateWithLifecycle()
 
     val thermalColor = when {
         h.thermalStatus >= 3 -> SwarmColors.Bad
@@ -65,7 +68,7 @@ fun StatsBar(onEditName: () -> Unit, modifier: Modifier = Modifier) {
         Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Cell("LINK", link, weight = 2f)
             // placeholder until the link layer counts bytes; contract: must read 0
-            Cell("WAN BYTES", "0")
+            Cell("WAN BYTES", if (wan == 0L) "0" else fmtBytes(wan))
         }
     }
 }

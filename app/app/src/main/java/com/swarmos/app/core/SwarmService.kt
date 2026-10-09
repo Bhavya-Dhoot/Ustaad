@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import com.swarmos.app.AppGraph
 import com.swarmos.app.MainActivity
 import com.swarmos.app.link.NodeServer
+import com.swarmos.app.llm.LlamaRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,6 +43,7 @@ class SwarmService : Service() {
         )
         acquireLocks()
         AppGraph.health.start()
+        LlamaRuntime.onServiceStarted()
         if (server == null) {
             val s = NodeServer().also { server = it }
             scope.launch { s.start() }
@@ -50,6 +52,7 @@ class SwarmService : Service() {
     }
 
     override fun onDestroy() {
+        LlamaRuntime.onServiceStopped()
         server?.stop()
         server = null
         AppGraph.audit.append("service.stop")
