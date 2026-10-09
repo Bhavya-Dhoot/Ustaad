@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +29,8 @@ import com.swarmos.app.AppGraph
 import com.swarmos.app.core.HealthMonitor
 import com.swarmos.app.ui.LabelStyle
 import com.swarmos.app.ui.MetricStyle
+import com.swarmos.app.ui.PrimaryButton
+import com.swarmos.app.ui.SecondaryButton
 import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.accentFor
 import kotlinx.coroutines.delay
@@ -82,12 +82,8 @@ fun ThroughputPanel(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { Sched.batches.start(Bench.bench32(), BatchStore.MODE_LOCAL) }, enabled = !running) {
-                Text("Run on this phone only", fontSize = 12.sp)
-            }
-            Button(onClick = { Sched.batches.start(Bench.bench32(), BatchStore.MODE_SWARM) }, enabled = !running) {
-                Text("Run on the swarm", fontSize = 12.sp)
-            }
+            SecondaryButton("Run on this phone only", { Sched.batches.start(Bench.bench32(), BatchStore.MODE_LOCAL) }, enabled = !running)
+            PrimaryButton("Run on the swarm", { Sched.batches.start(Bench.bench32(), BatchStore.MODE_SWARM) }, enabled = !running)
         }
 
         Spacer(Modifier.height(12.dp))
