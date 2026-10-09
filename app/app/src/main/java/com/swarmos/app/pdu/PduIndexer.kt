@@ -125,12 +125,13 @@ object PduIndexer {
 
     /** All-files-access path (`appops ... MANAGE_EXTERNAL_STORAGE allow`): walk a plain directory. */
     fun listDir(dir: File): List<DocRef> {
-        val root = Environment.getExternalStorageDirectory().absolutePath
-        return dir.walkTopDown().filter { it.isFile }.mapNotNull { f ->
+        // /sdcard is a symlink; canonical paths keep one identity (and one folder name) per file
+        val root = Environment.getExternalStorageDirectory().canonicalPath
+        return dir.canonicalFile.walkTopDown().filter { it.isFile }.mapNotNull { f ->
             val kind = kindOf(f.name) ?: return@mapNotNull null
             DocRef(
                 Uri.fromFile(f).toString(), f.name, kind,
-                f.parentFile!!.absolutePath.removePrefix(root).trim('/'), f.lastModified(), f.lastModified(),
+                f.parentFile!!.path.removePrefix(root).trim('/'), f.lastModified(), f.lastModified(),
             )
         }.toList()
     }

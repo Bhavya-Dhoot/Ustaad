@@ -66,6 +66,12 @@ class RrfTest {
         assertEquals(1.0, fused[0].score, 1e-12)
     }
 
+    @Test fun lexicalOnlyHitsNeedHalfTheQuestionWords() {
+        assertFalse(HybridRanker.passes(0.02f, 1.0 / 3)) // "bill" alone in a three-word question
+        assertTrue(HybridRanker.passes(0.02f, 2.0 / 3))
+        assertTrue(HybridRanker.passes(0.55f, 0.0)) // semantically close, no shared words
+    }
+
     @Test fun nothingAtAllGivesNothing() {
         assertTrue(HybridRanker.fuse(listOf(1L to 0.1f), emptyList()).isEmpty())
     }

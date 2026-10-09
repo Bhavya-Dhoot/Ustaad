@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,12 +82,15 @@ fun PduScreen() {
     var page by rememberSaveable { mutableStateOf("library") }
     LaunchedEffect(Unit) { PduEngine.start() }
     if (page != "library") BackHandler { page = if (page == "audit") "ask" else "library" }
-    Box(Modifier.fillMaxSize()) {
-        when (page) {
-            "ask" -> AskPage(onBack = { page = "library" }, onAudit = { page = "audit" })
-            "audit" -> AuditPage(onBack = { page = "ask" })
-            "scan" -> ScanPage(onBack = { page = "library" })
-            else -> LibraryPage(go = { page = it })
+    // the tab body has no Surface above it, so text would default to black on the dark background
+    CompositionLocalProvider(LocalContentColor provides SwarmColors.Text) {
+        Box(Modifier.fillMaxSize()) {
+            when (page) {
+                "ask" -> AskPage(onBack = { page = "library" }, onAudit = { page = "audit" })
+                "audit" -> AuditPage(onBack = { page = "ask" })
+                "scan" -> ScanPage(onBack = { page = "library" })
+                else -> LibraryPage(go = { page = it })
+            }
         }
     }
 }
@@ -145,12 +150,12 @@ private fun LibraryPage(go: (String) -> Unit) {
                 PduEngine.scope.launch { PduEngine.indexPhotos() }
             } else photoPermission.launch(Manifest.permission.READ_MEDIA_IMAGES)
         }
+        SourceRow("Documents", "${counts.documents} files", "Pick folder", !progress.running) { pickTree.launch(null) }
         for (t in trees) {
-            SourceRow(Uri.decode(t.lastPathSegment ?: t.toString()), "${counts.documents} files", "Index", !progress.running) {
+            SourceRow(Uri.decode(t.lastPathSegment ?: t.toString()), "folder you picked", "Index", !progress.running) {
                 PduEngine.scope.launch { PduEngine.indexTree(t) }
             }
         }
-        SourceRow("Pick a documents folder", ".txt .md .pdf .docx", "Pick", !progress.running) { pickTree.launch(null) }
         SourceRow("Scanned", "${counts.scans} items", "Scan", true) { go("scan") }
         note?.let { Text(it, color = SwarmColors.Warn) }
 

@@ -58,6 +58,12 @@ object HybridRanker {
         return Rrf.fuse(lists).map { (id, s) -> Fused(id, s / max, cos[id] ?: 0f, id in inBm25) }
     }
 
+    /** A lexical-only hit must contain at least this share of the query words, or a one-word overlap ("bill") would count as an answer. */
+    const val MIN_COVERAGE = 0.5
+
+    /** Relevant when it is semantically close, or lexically covers enough of the question. */
+    fun passes(cosine: Float, coverage: Double): Boolean = cosine >= DENSE_MIN_COSINE || coverage >= MIN_COVERAGE
+
     /** One chunk per document, keeping the best-ranked one and the order. */
     fun collapseByDoc(cands: List<Candidate>): List<Candidate> {
         val seen = HashSet<String>()

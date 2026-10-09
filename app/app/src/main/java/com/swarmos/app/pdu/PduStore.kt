@@ -191,11 +191,12 @@ class PduStore(path: String) {
         ) { Row(it.getLong(0), it.getText(1), it.getText(2), it.getText(3), it.getLong(4), it.getText(5), it.getLong(6) == 1L, it.getText(7)) }
             .associateBy { it.id }
         val cands = fused.mapNotNull { f ->
-            byId[f.chunkId]?.let {
-                // RRF alone says "first on this phone"; mixing in query-word coverage makes scores comparable between phones
-                val score = if (terms.isEmpty()) f.score else 0.5 * f.score + 0.5 * Coverage.of(terms, it.title + " " + it.text)
-                Candidate(it.id, it.docId, it.title, it.kind, it.dateMs, it.folder, it.priv, it.text, score)
-            }
+            val r = byId[f.chunkId] ?: return@mapNotNull null
+            val coverage = Coverage.of(terms, r.title + " " + r.text)
+            if (!HybridRanker.passes(f.cosine, coverage)) return@mapNotNull null
+            // RRF alone says "first on this phone"; mixing in query-word coverage makes scores comparable between phones
+            val score = if (terms.isEmpty()) f.score else 0.5 * f.score + 0.5 * coverage
+            Candidate(r.id, r.docId, r.title, r.kind, r.dateMs, r.folder, r.priv, r.text, score)
         }
         HybridRanker.collapseByDoc(cands)
     }
