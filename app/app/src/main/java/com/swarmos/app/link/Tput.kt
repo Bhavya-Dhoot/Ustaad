@@ -50,6 +50,7 @@ data class ThroughputResult(
 class TputServer(private val port: Int) {
     @Volatile private var server: ServerSocket? = null
     private val pool = Executors.newCachedThreadPool { r -> Thread(r, "tput-conn").apply { isDaemon = true } }
+    private val striped = StripedReceiver()
 
     /** Binds and starts accepting. Returns the bound port (useful when constructed with port 0). */
     @Synchronized
@@ -57,6 +58,7 @@ class TputServer(private val port: Int) {
         server?.let { return it.localPort }
         val ss = ServerSocket()
         ss.reuseAddress = true
+        if (LinkTuning.rcvBufKb > 0) ss.receiveBufferSize = LinkTuning.rcvBufKb * 1024 // inherited by accepted sockets
         ss.bind(InetSocketAddress(port))
         server = ss
         Thread({
@@ -94,6 +96,7 @@ class TputServer(private val port: Int) {
                         val nanos = if (total > 0) System.nanoTime() - t0 else 0L
                         DataOutputStream(out).apply { writeLong(total); writeLong(nanos); flush() }
                     }
+                    Striped.MODE -> striped.handle(java.io.DataInputStream(inp), out)
                     TputProtocol.MODE_ECHO -> {
                         c.tcpNoDelay = true
                         while (true) {

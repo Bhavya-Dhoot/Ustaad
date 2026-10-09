@@ -8,7 +8,7 @@ import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
 
-enum class LinkType { LAN, DIRECT }
+enum class LinkType { LAN, DIRECT, BT }
 
 /** One IPv4 address on one local interface. */
 data class LocalLink(val ifName: String, val address: String, val prefix: Int) {
@@ -71,6 +71,7 @@ object LinkRoute {
         val local = findLocalFor(peerIp)
         val s = Socket()
         try {
+            LinkTuning.apply(s)
             if (local != null) {
                 val net = ctx?.let { c ->
                     val cm = c.getSystemService(ConnectivityManager::class.java)

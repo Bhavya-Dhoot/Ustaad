@@ -23,26 +23,21 @@ data class PeerStatus(
     val missesTotal: Int = 0,
     val awayCount: Int = 0,
     val maxGapMs: Long = 0,
+    /** Last known state of the peer app: true in front, false in the background (from X-Swarm-Fg and POST /link/fg). */
+    val peerForeground: Boolean? = null,
+    /** Why the path is away, when known: the peer left the foreground (OriginOS freezes the app shortly after). */
+    val awayReason: String? = null,
+    /** Smoothed heartbeat round trip (EWMA, alpha 0.3); the path policy ranks small requests on this. */
+    val ewmaRttMs: Double? = null,
+    /** Transport failures seen on this path (requests that had to move to another path, probes that broke). */
+    val lossCount: Int = 0,
+    /** Receiver-timed Mbps of the last bulk probe on this path. */
+    val lastMbps: Double? = null,
 ) {
     val key: String get() = "$nodeId/${link.name}"
     val hostPort: String get() = "$ip:$port"
 }
 
-/**
- * The one place that decides which path carries traffic to a peer that has several (LAN, DIRECT, later BT).
- * [PeerLinks.pathPolicy] holds the active policy; callers never pick a transport themselves.
- */
-fun interface PathPolicy {
-    fun choose(paths: List<PeerStatus>): PeerStatus?
-}
-
-/** Default: the Wi-Fi Direct path when it is up, else any online path, else whatever exists. */
-object PreferDirectOnline : PathPolicy {
-    override fun choose(paths: List<PeerStatus>): PeerStatus? =
-        paths.firstOrNull { it.link == LinkType.DIRECT && it.state == LinkState.ONLINE }
-            ?: paths.firstOrNull { it.state == LinkState.ONLINE }
-            ?: paths.firstOrNull()
-}
 
 /**
  * Pure state machine behind the 1 Hz heartbeat: [missesToAway] consecutive misses mark the peer away,

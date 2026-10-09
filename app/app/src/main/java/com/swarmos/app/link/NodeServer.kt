@@ -12,9 +12,12 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.PipelineCall
 import io.ktor.server.application.call
+import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.applicationEnvironment
+import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.doublereceive.DoubleReceive
@@ -23,6 +26,7 @@ import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
@@ -34,6 +38,18 @@ import kotlinx.serialization.json.JsonPrimitive
 
 @Serializable
 data class ErrorBody(val error: String)
+
+/** Response headers on every call: who answered and whether its app is in front. Read by [NodeClient]. */
+const val HEADER_FG = "X-Swarm-Fg"
+const val HEADER_REPLAY = "X-Swarm-Replay"
+const val IDLE_TIMEOUT_S = 3600
+
+val SwarmHeadersPlugin = createApplicationPlugin("SwarmHeaders") {
+    onCall { call ->
+        call.response.headers.append(Signer.HEADER_NODE, AppGraph.registry.self.value.nodeId)
+        call.response.headers.append(HEADER_FG, if (AppForeground.foreground.value) "1" else "0")
+    }
+}
 
 /**
  * Node API on [Ports.NODE]. `GET /v1/hello` is the only unsigned route. Every other /v1 route must carry
@@ -47,7 +63,14 @@ class NodeServer {
     fun start() {
         if (engine != null) return
         try {
-            engine = embeddedServer(CIO, port = Ports.NODE, host = "0.0.0.0") { nodeModule() }.also { it.start(wait = false) }
+            engine = embeddedServer(
+                CIO, applicationEnvironment { },
+                {
+                    connector { port = Ports.NODE; host = "0.0.0.0" }
+                    // long model calls run for minutes on one connection; the CIO default drops a connection idle for 45 s
+                    connectionIdleTimeoutSeconds = IDLE_TIMEOUT_S
+                },
+            ) { nodeModule() }.also { it.start(wait = false) }
             AppGraph.audit.append("server.start", JsonObject(mapOf("port" to JsonPrimitive(Ports.NODE))))
         } catch (t: Throwable) {
             engine = null
@@ -71,6 +94,8 @@ class NodeServer {
         install(ContentNegotiation) { json(SwarmJson) }
         install(DoubleReceive) // lets the signature check read the body and the handler read it again
         install(SSE)
+        install(RequestDedupPlugin)
+        install(SwarmHeadersPlugin)
 
         routing {
             route("/v1") {
@@ -101,6 +126,20 @@ class NodeServer {
         val body = if (hasBody) call.receiveText() else ""
         if (!Signer.verify(AppGraph.pairingSecret, req.httpMethod.value, req.path(), ts, body, sig)) {
             return reject("bad signature or stale timestamp")
+        }
+
+        // a request that carries an id runs at most once: a retry (same id, another path) gets the stored response
+        val reqId = req.header(HEADER_REQ)
+        if (reqId != null && (hasBody || req.httpMethod == HttpMethod.Delete)) {
+            val key = "$node/$reqId"
+            when (val b = NodeDedup.cache.begin(key)) {
+                RequestDedup.Begin.Run -> call.attributes.put(NodeDedup.ID, key)
+                is RequestDedup.Begin.Replay -> {
+                    call.response.headers.append(HEADER_REPLAY, "1")
+                    call.respondBytes(b.stored.body, b.stored.contentTypeOrJson(), HttpStatusCode.fromValue(b.stored.status))
+                    finish()
+                }
+            }
         }
     }
 

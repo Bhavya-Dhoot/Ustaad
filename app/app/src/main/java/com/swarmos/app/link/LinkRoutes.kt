@@ -60,12 +60,56 @@ data class SelfView(
 @Serializable
 data class PeersResponse(val self: SelfView, val peers: List<PeerView>, val rejected: List<RejectedView>)
 
-@Serializable data class TputRequest(val peerNodeId: String, val megabytes: Int = 100, val link: String? = null, val pings: Int = 200)
-@Serializable data class HostRequest(val direct: Boolean = false)
+@Serializable data class TputRequest(
+    val peerNodeId: String, val megabytes: Int = 100, val link: String? = null, val pings: Int = 200,
+    /** 0 = the raw single-stream probe; 1..16 = striped chunks with CRC over that many TCP streams. */
+    val streams: Int = 0,
+    /** Striped only: stripe over these paths at once, for example ["LAN","DIRECT"]. */
+    val paths: List<String>? = null,
+)
+@Serializable data class HostRequest(val direct: Boolean = false, val rotate: Boolean = true, val freqMhz: Int? = null)
+@Serializable data class BleBenchRequest(val peerNodeId: String, val n: Int = 50, val bodyBytes: Int = 900)
 @Serializable data class AddPeerRequest(val ip: String, val port: Int? = null)
 @Serializable data class AnnounceRequest(val port: Int)
 @Serializable data class DirectJoinRequest(val ssid: String, val pass: String)
 @Serializable data class QrSelfTest(val ok: Boolean, val chars: Int, val decodedMatches: Boolean, val error: String? = null)
+
+@Serializable data class FgRequest(val fg: Boolean)
+@Serializable data class TuningRequest(val lock: String? = null, val sndBufKb: Int? = null, val rcvBufKb: Int? = null)
+@Serializable data class RttRequest(val peerNodeId: String, val link: String? = null, val n: Int = 100, val gapMs: Long = 0, val tcpPings: Int = 200)
+@Serializable data class SleepRequest(val ms: Long)
+
+@Serializable
+data class PathView(
+    val key: String, val link: String, val ip: String, val port: Int, val state: String,
+    val rttMs: Double?, val ewmaRttMs: Double?, val loss: Int, val lastMbps: Double?,
+    val misses: Int, val missesTotal: Int, val awayCount: Int, val maxGapMs: Long, val awayReason: String?,
+)
+
+@Serializable
+data class PeerPaths(
+    val nodeId: String, val name: String, val peerForeground: Boolean?,
+    /** Path key the policy picks for small requests and for bulk transfers. */
+    val small: String?, val bulk: String?, val paths: List<PathView>,
+)
+
+fun peerPaths(): List<PeerPaths> = PeerLinks.peers.value.groupBy { it.nodeId }.map { (id, all) ->
+    PeerPaths(
+        id, all.first().name, all.firstNotNullOfOrNull { it.peerForeground },
+        PeerLinks.pathPolicy.order(all, Use.SMALL).firstOrNull()?.key, PeerLinks.pathPolicy.order(all, Use.BULK).firstOrNull()?.key,
+        all.sortedBy { it.link }.map {
+            PathView(it.key, it.link.name, it.ip, it.port, it.state.name.lowercase(), it.rttMs, it.ewmaRttMs, it.lossCount, it.lastMbps,
+                it.misses, it.missesTotal, it.awayCount, it.maxGapMs, it.awayReason)
+        },
+    )
+}
+
+/** Counts how often the debug /sleep handler really ran (for the "executed once" check). */
+object SleepCounter {
+    private val n = java.util.concurrent.atomic.AtomicInteger()
+    fun next() = n.incrementAndGet()
+    fun value() = n.get()
+}
 
 private val routeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -125,16 +169,69 @@ fun Route.linkRoutes() {
     post("/tput") {
         val r = body<TputRequest>() ?: return@post bad("body must be {\"peerNodeId\":\"...\",\"megabytes\":100}")
         val link = r.link?.let { l -> LinkType.entries.firstOrNull { it.name.equals(l, ignoreCase = true) } ?: return@post bad("link must be LAN or DIRECT") }
-        val res = LinkRuntime.measure(r.peerNodeId, link, r.megabytes.coerceIn(1, 2048), r.pings.coerceIn(1, 5000))
+        val paths = r.paths?.map { l -> LinkType.entries.firstOrNull { it.name.equals(l, ignoreCase = true) && it != LinkType.BT } ?: return@post bad("paths must be LAN and/or DIRECT") }
+        val res = LinkRuntime.measure(r.peerNodeId, link, r.megabytes.coerceIn(1, 2048), r.pings.coerceIn(0, 5000), r.streams.coerceIn(0, 16), paths)
         call.respond(if (res.error == null) HttpStatusCode.OK else HttpStatusCode.BadGateway, res)
     }
 
     get("/tput-history") { call.respond(LinkRuntime.results.value) }
 
+    get("/paths") { call.respond(peerPaths()) }
+
+    get("/ble") { call.respond(BleLink.state.value) }
+
+    // sealed with the pairing secret, so only a paired phone can read the group credentials (also over Bluetooth)
+    get("/p2p-creds") {
+        val c = DirectLink.hostCreds
+        val d = DirectLink.state.value
+        if (c == null || d.role != "host" || d.phase != "up") return@get call.respond(HttpStatusCode.NotFound, ErrorBody("not hosting a Wi-Fi Direct group"))
+        val plain = SwarmJson.encodeToString(P2pCreds.serializer(), c).toByteArray()
+        call.respond(CredsBlob(SecretBox.seal(AppGraph.pairingSecret, plain, AppGraph.registry.self.value.nodeId)))
+    }
+
+    // returns what it was sent: used to measure request throughput over any path, Bluetooth included
+    post("/echo") { call.respond(mapOf("echo" to call.receiveText())) }
+
+    post("/ble-bench") {
+        val r = body<BleBenchRequest>() ?: return@post bad("body must be {\"peerNodeId\":\"...\",\"n\":50,\"bodyBytes\":900}")
+        val res = LinkRuntime.bleBench(r.peerNodeId, r.n.coerceIn(1, 500), r.bodyBytes.coerceIn(0, BT_MAX_BODY - 120))
+        call.respond(if (res.error == null) HttpStatusCode.OK else HttpStatusCode.BadGateway, res)
+    }
+
+    post("/fg") {
+        val r = body<FgRequest>() ?: return@post bad("body must be {\"fg\":true|false}")
+        call.request.header(Signer.HEADER_NODE)?.let { PeerLinks.noteForeground(it, r.fg) }
+        call.respond(mapOf("ok" to true))
+    }
+
+    get("/tuning") { call.respond(LinkTuning.view()) }
+    post("/tuning") {
+        val r = body<TuningRequest>() ?: return@post bad("body must be {\"lock\":\"none|high_perf|low_latency|auto\",\"sndBufKb\":0,\"rcvBufKb\":0}")
+        r.lock?.let { l ->
+            when (l.lowercase()) {
+                "auto" -> WifiLocks.setOverride(null)
+                "none" -> WifiLocks.setOverride(LockMode.NONE)
+                "high_perf" -> WifiLocks.setOverride(LockMode.HIGH_PERF)
+                "low_latency" -> WifiLocks.setOverride(LockMode.LOW_LATENCY)
+                else -> return@post bad("lock must be none, high_perf, low_latency or auto")
+            }
+        }
+        r.sndBufKb?.let { LinkTuning.sndBufKb = it.coerceIn(0, 16384) }
+        r.rcvBufKb?.let { LinkTuning.rcvBufKb = it.coerceIn(0, 16384); LinkRuntime.restartTputServer() }
+        call.respond(LinkTuning.view())
+    }
+
+    post("/rtt") {
+        val r = body<RttRequest>() ?: return@post bad("body must be {\"peerNodeId\":\"...\",\"n\":100,\"gapMs\":0}")
+        val link = r.link?.let { l -> LinkType.entries.firstOrNull { it.name.equals(l, ignoreCase = true) } ?: return@post bad("link must be LAN, DIRECT or BT") }
+        val res = LinkRuntime.rttProbe(r.peerNodeId, link, r.n.coerceIn(0, 5000), r.gapMs.coerceIn(0, 10_000), r.tcpPings.coerceIn(0, 5000))
+        call.respond(if (res.error == null) HttpStatusCode.OK else HttpStatusCode.BadGateway, res)
+    }
+
     post("/host") {
         val r = body<HostRequest>() ?: HostRequest()
         try {
-            call.respond(LinkRuntime.startHosting(r.direct))
+            call.respond(LinkRuntime.startHosting(r.direct, r.rotate, r.freqMhz))
         } catch (t: Throwable) {
             call.respond(HttpStatusCode.BadGateway, ErrorBody(t.message ?: t.toString()))
         }
@@ -146,8 +243,9 @@ fun Route.linkRoutes() {
 
     get("/direct") { call.respond(DirectLink.state.value) }
     post("/direct/host") {
+        val r = body<HostRequest>() ?: HostRequest(direct = true)
         try {
-            LinkRuntime.startHosting(direct = true)
+            LinkRuntime.startHosting(direct = true, rotate = r.rotate, freqMhz = r.freqMhz)
             call.respond(LinkRuntime.currentPayload())
         } catch (t: Throwable) {
             call.respond(HttpStatusCode.BadGateway, ErrorBody(t.message ?: t.toString()))
@@ -168,6 +266,15 @@ fun Route.linkRoutes() {
     }
 
     if (BuildConfig.DEBUG) {
+        // holds the request open (to prove a long call survives the connection idle timeout)
+        post("/sleep") {
+            val r = body<SleepRequest>() ?: return@post bad("body must be {\"ms\":120000}")
+            kotlinx.coroutines.delay(r.ms.coerceIn(0, 600_000))
+            call.respond(mapOf("slept" to r.ms, "executions" to SleepCounter.next()))
+        }
+
+        get("/sleep-count") { call.respond(mapOf("executions" to SleepCounter.value())) }
+
         // Unsigned on purpose (see NodeServer): lets adb tooling read the payload and inject it as a deep link.
         get("/pairing-payload") { call.respond(LinkRuntime.currentPayload()) }
 

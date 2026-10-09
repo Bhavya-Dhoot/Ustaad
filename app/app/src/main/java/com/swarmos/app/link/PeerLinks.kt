@@ -80,7 +80,41 @@ object PeerLinks {
     private val selfId get() = AppGraph.registry.self.value.nodeId
 
     /** Which path carries traffic to a peer that has several. Replace to change transport choice everywhere. */
-    @Volatile var pathPolicy: PathPolicy = PreferDirectOnline
+    @Volatile var pathPolicy: PathPolicy = MeasuredPolicy()
+
+    private val inflight = ConcurrentHashMap<String, MutableSet<Job>>()
+
+    /** Carries small signed requests when no Wi-Fi path is up (set by [BleLink]). */
+    @Volatile var btTransport: SmallTransport? = null
+
+    /** Online and offline paths of one node, as the UI and /v1/link/paths show them. */
+    fun pathsOf(nodeId: String): List<PeerStatus> = sessions.values.map { it.status.value }.filter { it.nodeId == nodeId }
+
+    /** Failover order for a request to [nodeId]: the policy's choice first, then the other usable paths. */
+    fun candidates(nodeId: String, use: Use = Use.SMALL): List<PeerStatus> {
+        val all = pathsOf(nodeId)
+        val first = pathPolicy.choose(all, use)?.takeIf { it.state == LinkState.ONLINE } ?: return emptyList()
+        return listOf(first) + pathPolicy.order(all, use).filter { it.key != first.key }
+    }
+
+    /** Register a running request on a path; if the path is declared away and another is up, the job is cancelled. */
+    fun trackInflight(key: String, job: Job): () -> Unit {
+        val set = inflight.computeIfAbsent(key) { java.util.Collections.newSetFromMap(ConcurrentHashMap()) }
+        set.add(job)
+        return { set.remove(job) }
+    }
+
+    /** A request had to leave [key] (transport error or path lost). */
+    fun noteFailure(key: String) {
+        sessions[key]?.update { it.copy(lossCount = it.lossCount + 1) }
+        publish()
+    }
+
+    /** Remember the measured bulk speed of a path so BULK requests prefer the faster one. */
+    fun noteMbps(key: String, mbps: Double) {
+        sessions[key]?.update { it.copy(lastMbps = mbps) }
+        publish()
+    }
 
     @Synchronized
     fun start() {
@@ -142,14 +176,14 @@ object PeerLinks {
         val hostPort = "$host:$port"
         val client = AppGraph.nodeClient
         val info = try {
-            client.get<NodeInfo>(hostPort, "/hello", HELLO_TIMEOUT_MS)
+            client.getPinned<NodeInfo>(hostPort, "/hello", HELLO_TIMEOUT_MS)
         } catch (t: Throwable) {
             currentCoroutineContext().ensureActive()
             return ConnectResult.Failed("hello: ${t.message ?: t::class.simpleName}")
         }
         if (info.nodeId == selfId) return ConnectResult.Failed("that is this phone")
         val health = try {
-            client.get<NodeHealth>(hostPort, "/health", HELLO_TIMEOUT_MS)
+            client.getPinned<NodeHealth>(hostPort, "/health", HELLO_TIMEOUT_MS)
         } catch (e: NodeHttpException) {
             if (e.status == 401) {
                 _rejected.update { (it.filterNot { r -> r.ip == host && r.port == port } + Rejected(host, port, info.nodeId, info.name, System.currentTimeMillis())).takeLast(8) }
@@ -163,10 +197,44 @@ object PeerLinks {
         }
         _rejected.update { it.filterNot { r -> r.ip == host && r.port == port } }
 
-        val link = LinkRoute.typeFor(host)
+        remember(host, port)
+        val (session, created) = upsert(info, health, host, port, LinkRoute.typeFor(host))
+        if (created && announce) scope.launch { announceTo(session) }
+        return ConnectResult.Ok(session.status.value)
+    }
+
+    /**
+     * Trust handshake over an open Bluetooth channel (same two steps as [connect]): the peer is reachable by
+     * radio only, so the path is BT with the address "bt:<node id>". [BleLink] calls this once both sides know who they are.
+     */
+    suspend fun connectBt(nodeId: String, nameHint: String?): ConnectResult {
+        val info = try {
+            json.decodeFromString<NodeInfo>(BleLink.get(nodeId, "/v1/hello", signed = false, timeoutMs = 4_000))
+        } catch (t: Throwable) {
+            currentCoroutineContext().ensureActive()
+            return ConnectResult.Failed("hello over bluetooth: ${t.message ?: t::class.simpleName}")
+        }
+        if (info.nodeId == selfId) return ConnectResult.Failed("that is this phone")
+        val health = try {
+            BleLink.health(nodeId, 4_000)
+        } catch (e: NodeHttpException) {
+            if (e.status == 401) return ConnectResult.Untrusted(info.nodeId, info.name)
+            return ConnectResult.Failed("health over bluetooth: $e")
+        } catch (t: Throwable) {
+            currentCoroutineContext().ensureActive()
+            return ConnectResult.Failed("health over bluetooth: ${t.message ?: t::class.simpleName}")
+        }
+        val (session, _) = upsert(info, health, "bt:$nodeId", 0, LinkType.BT)
+        return ConnectResult.Ok(session.status.value)
+    }
+
+    private val json get() = com.swarmos.app.core.SwarmJson
+
+    /** Create the heartbeat session for (node, link) or refresh it; returns it and whether it is new. */
+    private fun upsert(info: NodeInfo, health: NodeHealth, host: String, port: Int, link: LinkType): Pair<PeerSession, Boolean> {
         val key = "${info.nodeId}/${link.name}"
         val now = System.currentTimeMillis()
-        val fresh = PeerStatus(info.nodeId, info.name, host, port, link, LinkState.ONLINE, null, now, 0, health, info)
+        val fresh = PeerStatus(info.nodeId, info.name, host, port, link, LinkState.ONLINE, null, now, 0, health, info, peerForeground = peerFg[info.nodeId])
         var created = false
         val session: PeerSession
         synchronized(this) {
@@ -183,20 +251,18 @@ object PeerLinks {
                 old.update { it.copy(name = info.name, ip = host, port = port, info = info, health = health) }
             }
         }
-        remember(host, port)
         publish()
         syncRegistry(info.nodeId)
         if (created) {
             AppGraph.audit.append("peer.trusted", JsonObject(mapOf("node" to JsonPrimitive(info.nodeId), "ip" to JsonPrimitive(host), "link" to JsonPrimitive(link.name))))
-            Log.i(TAG, "trusted ${info.name} ${info.nodeId} at $hostPort via $link")
-            if (announce) scope.launch { announceTo(session) }
+            Log.i(TAG, "trusted ${info.name} ${info.nodeId} at $host:$port via $link")
         }
-        return ConnectResult.Ok(session.status.value)
+        return session to created
     }
 
     private suspend fun announceTo(s: PeerSession) {
         runCatching {
-            AppGraph.nodeClient.raw(HttpMethod.Post, s.status.value.hostPort, "/link/announce", """{"port":${Ports.NODE}}""", 3_000)
+            AppGraph.nodeClient.raw(HttpMethod.Post, s.status.value.hostPort, "/link/announce", """{"port":${Ports.NODE}}""", 3_000, pinned = true)
         }
     }
 
@@ -215,7 +281,8 @@ object PeerLinks {
         val st = s.status.value
         val t0 = System.nanoTime()
         val h: NodeHealth? = try {
-            AppGraph.nodeClient.get<NodeHealth>(st.hostPort, "/health", HEARTBEAT_TIMEOUT_MS)
+            if (st.link == LinkType.BT) BleLink.health(st.nodeId, HEARTBEAT_TIMEOUT_MS * 3)
+            else AppGraph.nodeClient.getPinned<NodeHealth>(st.hostPort, "/health", HEARTBEAT_TIMEOUT_MS)
         } catch (t: Throwable) {
             currentCoroutineContext().ensureActive()
             null
@@ -228,22 +295,52 @@ object PeerLinks {
                 state = s.tracker.state, rttMs = s.tracker.rttMs, misses = s.tracker.misses,
                 lastSeenMs = if (h != null) now else it.lastSeenMs, health = h ?: it.health,
                 beats = s.tracker.beats, missesTotal = s.tracker.missesTotal, awayCount = s.tracker.awayCount, maxGapMs = s.tracker.maxGapMs,
+                ewmaRttMs = if (h != null) ewma(it.ewmaRttMs, rtt) else it.ewmaRttMs,
             )
+        }
+        if (changed && s.tracker.state == LinkState.AWAY && pathsOf(st.nodeId).any { it.key != st.key && it.state == LinkState.ONLINE }) {
+            // a path went down and another is up: requests in flight on it move to the other path (same request id)
+            inflight[st.key]?.toList()?.forEach { it.cancel(PathLostCancellation(st.key)) }
+        }
+        if (changed) {
+            val reason = if (s.tracker.state == LinkState.AWAY && peerFg[st.nodeId] == false) "left the foreground" else null
+            s.update { it.copy(awayReason = reason) }
         }
         publish()
         if (h != null) AppGraph.registry.updateHealth(h, now)
+        if (!changed && n % 5 == 0) syncRegistry(st.nodeId) // follow policy switches caused by RTT drift
         if (changed) {
             syncRegistry(st.nodeId)
             Log.i(TAG, "${st.name} ${st.link} is now ${s.tracker.state}")
             AppGraph.audit.append("peer.${s.tracker.state.name.lowercase()}", JsonObject(mapOf("node" to JsonPrimitive(st.nodeId), "link" to JsonPrimitive(st.link.name))))
         }
         // refresh the peer's NodeInfo (model names change) every ~10 s
-        if (h != null && n % 10 == 5) {
-            runCatching { AppGraph.nodeClient.get<NodeInfo>(st.hostPort, "/hello", HEARTBEAT_TIMEOUT_MS) }.getOrNull()?.let { info ->
+        if (h != null && n % 10 == 5 && st.link != LinkType.BT) {
+            runCatching { AppGraph.nodeClient.getPinned<NodeInfo>(st.hostPort, "/hello", HEARTBEAT_TIMEOUT_MS) }.getOrNull()?.let { info ->
                 s.update { it.copy(name = info.name, info = info) }
                 syncRegistry(st.nodeId)
             }
         }
+    }
+
+    private val peerFg = ConcurrentHashMap<String, Boolean>()
+
+    /** Record whether a peer's app is in front (response header X-Swarm-Fg on every call, or POST /link/fg). */
+    fun noteForeground(nodeId: String, fg: Boolean) {
+        peerFg[nodeId] = fg
+        var changed = false
+        sessions.values.filter { it.status.value.nodeId == nodeId && it.status.value.peerForeground != fg }.forEach { s ->
+            s.update { it.copy(peerForeground = fg, awayReason = if (fg) null else it.awayReason) }
+            changed = true
+        }
+        if (changed) publish()
+    }
+
+    /** The node that owns the path at [hostPort] ("ip:port" or bare ip), if any. */
+    fun nodeAt(host: String): String? {
+        if (host.startsWith("bt:")) return host.removePrefix("bt:").substringBefore(':')
+        val ip = host.substringBefore(':')
+        return sessions.values.map { it.status.value }.firstOrNull { it.ip == ip }?.nodeId
     }
 
     /** Peer said POST /link/bye: mark its sessions away at once instead of waiting for three misses. */
@@ -271,6 +368,10 @@ object PeerLinks {
         publish()
     }
 
+    /** Exponentially weighted moving average, alpha 0.3; the first sample seeds it. */
+    internal fun ewma(prev: Double?, sample: Double, alpha: Double = 0.3): Double =
+        if (prev == null) sample else prev + alpha * (sample - prev)
+
     private fun publish() {
         _peers.value = sessions.values.map { it.status.value }.sortedWith(compareBy({ it.name }, { it.link }))
     }
@@ -286,7 +387,7 @@ object PeerLinks {
             return
         }
         val p = pathPolicy.choose(online) ?: online.first()
-        val ipField = if (p.port == Ports.NODE) p.ip else "${p.ip}:${p.port}"
+        val ipField = if (p.link == LinkType.BT || p.port == Ports.NODE) p.ip else "${p.ip}:${p.port}"
         val info = p.info.copy(ip = ipField)
         val cur = reg.peers.value.firstOrNull { it.info.nodeId == nodeId }
         if (cur == null || cur.info != info || cur.away) reg.add(info)

@@ -55,6 +55,45 @@ data class TputResult(
     val thermalStatus: Int? = null,
     val batteryPct: Int? = null,
     val error: String? = null,
+    /** Striped mode only: streams used, per-path share, CRC failures and undelivered chunks (both must be 0). */
+    val streams: Int? = null,
+    val paths: List<PathShare>? = null,
+    val badChunks: Int? = null,
+    val missing: Int? = null,
+    val sndBufKb: Int? = null,
+    val rcvBufKb: Int? = null,
+    val lock: String? = null,
+    val foreground: Boolean? = null,
+)
+
+@Serializable
+data class BleBenchResult(
+    val time: String,
+    val from: String,
+    val to: String,
+    val n: Int,
+    val bodyBytes: Int,
+    val getRtt: RttStats? = null,
+    val echoRtt: RttStats? = null,
+    val kbitPerSec: Double? = null,
+    val error: String? = null,
+)
+
+@Serializable
+data class RttReport(
+    val time: String,
+    val fromName: String,
+    val toName: String,
+    val peerIp: String,
+    val link: String,
+    val n: Int,
+    val gapMs: Long,
+    val lock: String? = null,
+    val foreground: Boolean? = null,
+    val thermalStatus: Int? = null,
+    val http: RttStats? = null,
+    val tcp: RttStats? = null,
+    val error: String? = null,
 )
 
 /**
@@ -67,7 +106,9 @@ object LinkRuntime {
     private var discovery: Discovery? = null
     private var tputServer: TputServer? = null
     @Volatile private var started = false
-    @Volatile private var hostCreds: P2pCreds? = null
+    private var hostCreds: P2pCreds?
+        get() = DirectLink.hostCreds
+        set(v) { DirectLink.hostCreds = v }
 
     private val _hosting = MutableStateFlow<HostSession?>(null)
     val hosting: StateFlow<HostSession?> = _hosting.asStateFlow()
@@ -98,12 +139,23 @@ object LinkRuntime {
         runCatching { tputServer = TputServer(Ports.TPUT).also { it.start() } }
             .onFailure { Log.w(TAG, "tput server: $it") }
         PeerLinks.start()
-        scope.launch { runCatching { DirectLink.refresh() }.getOrNull()?.let { hostCreds = it } }
+        AppForeground.start(ctx, scope)
+        scope.launch { PeerLinks.peers.collect { WifiLocks.reevaluate() } }
+        scope.launch { runCatching { DirectLink.refresh() } }
+        DirectLink.watch(scope)
+        BleLink.start(ctx, scope)
         val self = AppGraph.registry.self.value
         discovery = Discovery(ctx, scope) { AppGraph.registry.self.value.nodeId }.also { it.start(self.nodeId, self.name, Ports.NODE) }
         scope.launch {
             AppGraph.registry.self.map { it.name }.distinctUntilChanged().drop(1).collect { discovery?.rename(it) }
         }
+    }
+
+    /** Receive-buffer size is fixed when the listening socket is made, so a change needs a new one. */
+    @Synchronized
+    fun restartTputServer() {
+        tputServer?.stop()
+        runCatching { tputServer = TputServer(Ports.TPUT).also { it.start() } }.onFailure { Log.w(TAG, "tput server: $it") }
     }
 
     @Synchronized
@@ -115,14 +167,24 @@ object LinkRuntime {
             runBlocking(Dispatchers.IO) {
                 withTimeoutOrNull(600) {
                     PeerLinks.peers.value.map { p ->
-                        async { runCatching { AppGraph.nodeClient.raw(HttpMethod.Post, p.hostPort, "/link/bye", "{}", 500) } }
+                        async { runCatching { AppGraph.nodeClient.raw(HttpMethod.Post, p.hostPort, "/link/bye", "{}", 500, pinned = true) } }
                     }.awaitAll()
                 }
             }
         }
+        BleLink.stop()
         discovery?.stop(); discovery = null
         tputServer?.stop(); tputServer = null
         PeerLinks.stop()
+    }
+
+    /** Foreground changed: tell peers (best effort, a backgrounded app is frozen soon after) and, on return, re-join. */
+    fun onForegroundChanged(fg: Boolean) {
+        scope.launch {
+            PeerLinks.peers.value.map { it.hostPort }.distinct().map { hp ->
+                launch { runCatching { AppGraph.nodeClient.raw(HttpMethod.Post, hp, "/link/fg", """{"fg":$fg}""", 800, pinned = true) } }
+            }
+        }
     }
 
     // ---------------------------------------------------------------- pairing
@@ -140,14 +202,14 @@ object LinkRuntime {
      * Host a swarm: rotate to a fresh random secret and publish the payload. [direct] first creates the
      * 5 GHz Wi-Fi Direct group; "current Wi-Fi" mode tears any group down and advertises LAN addresses only.
      */
-    suspend fun startHosting(direct: Boolean): PairingPayload {
+    suspend fun startHosting(direct: Boolean, rotate: Boolean = true, freqMhz: Int? = null): PairingPayload {
         if (direct) {
-            hostCreds = DirectLink.host()
+            DirectLink.host(freqMhz = freqMhz)
         } else {
             hostCreds = null
             if (DirectLink.state.value.role == "host") runCatching { DirectLink.stop() }
         }
-        AppGraph.setPairingSecret(Pairing.randomSecret())
+        if (rotate) AppGraph.setPairingSecret(Pairing.randomSecret())
         val payload = currentPayload()
         _hosting.value = HostSession(payload, direct, System.currentTimeMillis())
         _message.value = if (direct) "Hosting over Wi-Fi Direct ${payload.p2p?.ssid}" else "Hosting on the current Wi-Fi"
@@ -231,7 +293,10 @@ object LinkRuntime {
      * 200 one-byte ping-pongs then [megabytes] MiB to the peer's probe port over [link] (default: the preferred
      * link). The result is appended to filesDir/tput.jsonl and published in [results].
      */
-    suspend fun measure(peerNodeId: String, link: LinkType? = null, megabytes: Int = 100, pings: Int = 200): TputResult =
+    suspend fun measure(
+        peerNodeId: String, link: LinkType? = null, megabytes: Int = 100, pings: Int = 200,
+        streams: Int = 0, paths: List<LinkType>? = null,
+    ): TputResult =
         probeLock.withLock {
             val ctx = AppGraph.appContext
             val self = AppGraph.registry.self.value
@@ -248,13 +313,18 @@ object LinkRuntime {
             )
             val result = try {
                 withContext(Dispatchers.IO) {
-                    PeerLinks.pausing(session) {
+                    // striped mode may use several paths at once; hold the heartbeat on every one of them
+                    val used: List<PeerSession> = if (paths != null) {
+                        paths.map { l -> PeerLinks.find(peerNodeId, l)?.takeIf { it.status.value.state == LinkState.ONLINE } ?: throw java.io.IOException("no online $l path") }
+                    } else listOf(session)
+                    used.forEach { it.probing.incrementAndGet() }
+                    try {
                         _progress.value = MeasureProgress(st.key, "rtt", 0, 0)
                         // OriginOS freezes a backgrounded app and resets its sockets; a peer that was just thawed
                         // refuses the first connection, so retry the (cheap) RTT stage before the bulk run
                         var rtt: RttStats? = null
                         var attempt = 0
-                        while (rtt == null) {
+                        while (rtt == null && pings > 0) {
                             try {
                                 rtt = client.rtt(pings)
                             } catch (e: java.io.IOException) {
@@ -265,19 +335,40 @@ object LinkRuntime {
                         val total = megabytes.toLong() * TputProtocol.MB
                         _progress.value = MeasureProgress(st.key, "throughput", 0, total)
                         var lastPublished = 0L
-                        val t = client.throughput(megabytes) { done ->
+                        val onProgress = { done: Long ->
                             if (done - lastPublished >= TputProtocol.MB) {
                                 lastPublished = done
                                 _progress.value = MeasureProgress(st.key, "throughput", done, total)
                             }
                         }
                         val h = AppGraph.health.state.value
+                        if (streams <= 0 && paths == null) {
+                            val t = client.throughput(megabytes, onProgress)
+                            base = base.copy(
+                                bytes = t.bytes, receiverSeconds = t.receiverSeconds, mbpsReceiver = t.mbpsReceiver,
+                                senderSeconds = t.senderSeconds, mbpsSender = t.mbpsSender,
+                            )
+                        } else {
+                            val sts = used.map { it.status.value }
+                            val sender = StripedSender(
+                                sts.map { ps -> { LinkRoute.openSocket(ctx, ps.ip, ps.port + 1) } }, sts.map { it.link.name },
+                            )
+                            val t = sender.send(megabytes, maxOf(streams, 1, sts.size), onProgress = onProgress)
+                            base = base.copy(
+                                bytes = t.bytes, receiverSeconds = t.receiverSeconds, mbpsReceiver = t.mbpsReceiver,
+                                senderSeconds = t.senderSeconds, mbpsSender = t.mbpsSender, streams = maxOf(streams, 1, sts.size),
+                                paths = t.perPath, badChunks = t.badChunks, missing = t.missing,
+                                link = if (sts.size > 1) sts.joinToString("+") { it.link.name } else base.link,
+                            )
+                        }
                         base = base.copy(
-                            bytes = t.bytes, receiverSeconds = t.receiverSeconds, mbpsReceiver = t.mbpsReceiver,
-                            senderSeconds = t.senderSeconds, mbpsSender = t.mbpsSender, rtt = rtt,
-                            local = LinkInfo.describe(ctx, local), thermalStatus = h.thermalStatus, batteryPct = h.batteryPct,
+                            rtt = rtt, local = LinkInfo.describe(ctx, local), thermalStatus = h.thermalStatus, batteryPct = h.batteryPct,
+                            sndBufKb = LinkTuning.sndBufKb, rcvBufKb = LinkTuning.rcvBufKb, lock = WifiLocks.held.value.name,
+                            foreground = AppForeground.foreground.value,
                         )
                         base
+                    } finally {
+                        used.forEach { it.probing.decrementAndGet() }
                     }
                 }
             } catch (t: Throwable) {
@@ -285,9 +376,80 @@ object LinkRuntime {
             } finally {
                 _progress.value = null
             }
-            if (result.error == null) record(result)
+            if (result.error == null) {
+                record(result)
+                result.mbpsReceiver?.let { PeerLinks.noteMbps(st.key, it) }
+            }
             result
         }
+
+    /**
+     * Round trip of small requests on one path, measured two ways in the same minute: [n] signed HTTP GET /health
+     * calls (what a Node API request costs) every [gapMs] ms (0 = back to back, 1000 = the heartbeat rhythm), and
+     * [tcpPings] one-byte TCP ping-pongs (the raw link). The heartbeat on that path is held while it runs.
+     */
+    suspend fun rttProbe(peerNodeId: String, link: LinkType?, n: Int, gapMs: Long, tcpPings: Int): RttReport = probeLock.withLock {
+        val ctx = AppGraph.appContext
+        val self = AppGraph.registry.self.value
+        val session = PeerLinks.find(peerNodeId, link)
+            ?: return@withLock RttReport(OffsetDateTime.now().withNano(0).toString(), self.name, "?", "", link?.name ?: "?", n, gapMs, error = "unknown peer or link")
+        val st = session.status.value
+        val h = AppGraph.health.state.value
+        var report = RttReport(
+            OffsetDateTime.now().withNano(0).toString(), self.name, st.name, st.ip, st.link.name, n, gapMs,
+            lock = WifiLocks.held.value.name, foreground = AppForeground.foreground.value, thermalStatus = h.thermalStatus,
+        )
+        try {
+            withContext(Dispatchers.IO) {
+                PeerLinks.pausing(session) {
+                    if (n > 0) {
+                        val samples = LongArray(n)
+                        for (i in 0 until n) {
+                            val t0 = System.nanoTime()
+                            AppGraph.nodeClient.getPinned<com.swarmos.app.core.NodeHealth>(st.hostPort, "/health", 3_000)
+                            samples[i] = System.nanoTime() - t0
+                            if (gapMs > 0) kotlinx.coroutines.delay(gapMs)
+                        }
+                        report = report.copy(http = rttStats(samples))
+                    }
+                    if (tcpPings > 0) {
+                        val client = TputClient { LinkRoute.openSocket(ctx, st.ip, st.port + 1) }
+                        report = report.copy(tcp = client.rtt(tcpPings))
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            report = report.copy(error = t.message ?: t::class.simpleName)
+        }
+        report
+    }
+
+    /**
+     * Bluetooth control path numbers: [n] signed GET /health round trips, then [n] signed POST /echo with a
+     * [bodyBytes]-byte body (request plus response cross the radio), timed one after the other.
+     */
+    suspend fun bleBench(peerNodeId: String, n: Int, bodyBytes: Int): BleBenchResult = probeLock.withLock {
+        val self = AppGraph.registry.self.value
+        val peer = PeerLinks.pathsOf(peerNodeId).firstOrNull()?.name ?: peerNodeId
+        var res = BleBenchResult(OffsetDateTime.now().withNano(0).toString(), self.name, peer, n, bodyBytes)
+        try {
+            withContext(Dispatchers.IO) {
+                val get = LongArray(n)
+                for (i in 0 until n) { val t0 = System.nanoTime(); BleLink.get(peerNodeId, "/v1/health", true, 5_000); get[i] = System.nanoTime() - t0 }
+                res = res.copy(getRtt = rttStats(get))
+                val body = "x".repeat(bodyBytes)
+                val echo = LongArray(n)
+                val t00 = System.nanoTime()
+                for (i in 0 until n) { val t0 = System.nanoTime(); BleLink.post(peerNodeId, "/v1/link/echo", body, 8_000); echo[i] = System.nanoTime() - t0 }
+                val secs = (System.nanoTime() - t00) / 1e9
+                // each echo moves the body out and back (JSON-wrapped, a few bytes more)
+                res = res.copy(echoRtt = rttStats(echo), kbitPerSec = n * bodyBytes * 2 * 8 / secs / 1000)
+            }
+        } catch (t: Throwable) {
+            res = res.copy(error = t.message ?: t::class.simpleName)
+        }
+        res
+    }
 
     private fun failed(fromId: String, fromName: String, toId: String, toName: String, ip: String, link: String, mb: Int, err: String) =
         TputResult(
