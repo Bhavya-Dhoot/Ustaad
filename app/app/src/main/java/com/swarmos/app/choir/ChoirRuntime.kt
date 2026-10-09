@@ -117,7 +117,7 @@ object ChoirController {
         var fake = false
         val nodes = mutableSetOf<String>()
         try {
-            _eval.value = EvalProgress(running = true, total = list.size)
+            _eval.value = EvalProgress(running = true, total = list.size, useProblemCheck = options.useProblemCheck)
             val rows = ChoirEval.run(
                 list,
                 runOne = { p ->
@@ -132,7 +132,7 @@ object ChoirController {
                 onProgress = { done, cur ->
                     _eval.value = EvalProgress(
                         running = cur != null, done = done.size, total = list.size, current = cur?.id,
-                        rows = done, summary = ChoirEval.summarize(done), fake = fake,
+                        rows = done, summary = ChoirEval.summarize(done), fake = fake, useProblemCheck = options.useProblemCheck,
                     )
                 },
             )
@@ -151,7 +151,7 @@ object ChoirController {
             )
             _eval.value = EvalProgress(
                 running = false, done = rows.size, total = list.size, lastFile = report.file,
-                summary = report.summary, rows = rows, fake = report.fake,
+                summary = report.summary, rows = rows, fake = report.fake, useProblemCheck = options.useProblemCheck,
             )
             report
         } catch (e: CancellationException) {

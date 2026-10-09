@@ -90,6 +90,8 @@ data class EvalProgress(
     val rows: List<EvalRow> = emptyList(),
     val fake: Boolean = false,
     val error: String? = null,
+    /** The run used the problems' own tests (an answer key), so choir + tool check is scored against it. */
+    val useProblemCheck: Boolean = false,
 )
 
 /**

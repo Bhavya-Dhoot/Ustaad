@@ -677,6 +677,11 @@ private fun ScoreboardSection(e: EvalProgress) {
                 MetricRow("Abstained", s.abstained.toString())
                 MetricRow("Mean rounds", "%.1f".format(s.meanRounds))
             }
+            Text(
+                if (e.useProblemCheck) "Tool check used the problems' own tests, so choir + tool check is scored with an answer key."
+                else "Tool check used only the models' own written steps.",
+                style = Mono11Dim,
+            )
             ScoreTable(e.rows, withSamples = s.samplesN > 0)
         }
         e.lastFile?.let { Text("Saved: $it", style = Mono11Dim) }
