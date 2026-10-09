@@ -226,6 +226,11 @@ private fun KitSheetThree() {
     PrimaryButton("Run all 20", {}, Modifier.fillMaxWidth(), icon = SwarmIcon.Play)
     SecondaryButton("Download 2.4 GB", {}, Modifier.fillMaxWidth(), icon = SwarmIcon.Download)
     MonoText("The list price was Rs 80,000 after 22% off, checked in 8.4 s.")
+    var sw by remember { mutableStateOf(true) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Use each problem's own test", style = SwarmType.body, modifier = Modifier.weight(1f))
+        InkSwitch(sw, { sw = it })
+    }
 
     SwarmCard {
         CitedText(
