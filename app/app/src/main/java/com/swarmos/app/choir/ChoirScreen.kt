@@ -57,10 +57,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.ui.AnswerChip
+import com.swarmos.app.ui.EmptyHint
+import com.swarmos.app.ui.ErrorNote
 import com.swarmos.app.ui.Hairline
 import com.swarmos.app.ui.InkCircle
 import com.swarmos.app.ui.InkProgress
-import com.swarmos.app.ui.Jitter
 import com.swarmos.app.ui.Lane
 import com.swarmos.app.ui.MetricRow
 import com.swarmos.app.ui.Note
@@ -73,19 +74,16 @@ import com.swarmos.app.ui.Skeleton
 import com.swarmos.app.ui.Stamp
 import com.swarmos.app.ui.StreamingText
 import com.swarmos.app.ui.SwarmCard
+import com.swarmos.app.ui.SwarmIcon
 import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.SwarmShape
 import com.swarmos.app.ui.SwarmType
 import com.swarmos.app.ui.Tag
-import com.swarmos.app.ui.arrowheadPath
 import com.swarmos.app.ui.drawHatch
 import com.swarmos.app.ui.hatched
 import com.swarmos.app.ui.inkStroke
-import com.swarmos.app.ui.smoothPath
 import com.swarmos.app.ui.underlinePath
-import com.swarmos.app.ui.wobblePoints
 import kotlinx.coroutines.delay
-import kotlin.math.atan2
 
 private val Mono11 get() = SwarmType.mono.copy(fontSize = 11.sp, lineHeight = 14.sp)
 private val Mono11Dim get() = Mono11.copy(color = SwarmColors.graphite)
@@ -261,7 +259,7 @@ fun ChoirScreen() {
                         }
                         Switch(checked = useTest, onCheckedChange = { useTest = it })
                     }
-                    if (!showRun && !showBoard && text.isBlank()) EmptyHint()
+                    if (!showRun && !showBoard && text.isBlank()) EmptyHint("pick one below or type your own, then Run", Modifier.fillMaxWidth())
                 }
             }
 
@@ -316,6 +314,7 @@ fun ChoirScreen() {
                 },
                 modifier = Modifier.weight(1f),
                 enabled = !busy && text.isNotBlank(),
+                icon = SwarmIcon.Play,
             )
             SecondaryButton(
                 "Run all ${problems.size}",
@@ -415,28 +414,6 @@ private fun KindTag(label: String) {
     )
 }
 
-/** Empty state: one handwritten hint and an arrow down at the Run button. */
-@Composable
-private fun EmptyHint() {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Note("pick one below or type your own, then Run", Modifier.weight(1f))
-        HandArrowDown(Modifier.size(width = 36.dp, height = 44.dp))
-    }
-}
-
-@Composable
-private fun HandArrowDown(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val from = Offset(size.width * 0.35f, 2.dp.toPx())
-        val to = Offset(size.width * 0.7f, size.height - 3.dp.toPx())
-        val line = smoothPath(wobblePoints(from, to, 1.4.dp.toPx(), 9.dp.toPx(), Jitter(7)))
-        val stroke = inkStroke(2.dp.toPx())
-        drawPath(line, SwarmColors.ink, style = stroke)
-        val dir = atan2((to.y - from.y).toDouble(), (to.x - from.x).toDouble())
-        drawPath(arrowheadPath(to, dir, 8.dp.toPx(), Jitter(9)), SwarmColors.ink, style = stroke)
-    }
-}
-
 @Composable
 private fun PhonesCard(rows: List<Triple<String, String, String>>) {
     Column(Modifier.fillMaxWidth().clip(SwarmShape).background(SwarmColors.sheet).border(1.5.dp, SwarmColors.ink, SwarmShape)) {
@@ -480,7 +457,7 @@ private fun RunSection(r: RunTrace, now: Long) {
             Text(statusLine(r), style = SwarmType.label.copy(color = SwarmColors.graphite), modifier = Modifier.weight(1f))
             Text("${secs(elapsed)} s of ${secs(r.deadlineMs)} s", style = Mono11Dim)
         }
-        r.error?.let { e -> Text(e, style = SwarmType.label) }
+        r.error?.let { e -> ErrorNote(e) }
 
         r.lanes.forEach { LaneCard(it) }
 
@@ -566,7 +543,7 @@ private fun LaneCard(lane: LaneTrace) {
             steps.isNotEmpty() || streaming -> StreamingText(steps, streaming, style = Body13)
             lane.status == LaneStatus.WAITING -> { Skeleton(14.dp); Spacer(Modifier.height(6.dp)); Skeleton(14.dp) }
         }
-        lane.error?.let { Text(it, style = Mono11, modifier = Modifier.padding(top = 4.dp)) }
+        lane.error?.let { ErrorNote(it, Modifier.padding(top = 4.dp)) }
         lane.r1?.let { AnswerRow(if (lane.r2 != null) "R1 answer" else "Proposal", it) }
         lane.r2?.let { AnswerRow("R2 revised", it) }
         if (lane.r1 == null && !failed) Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) { Skeleton(26.dp, Modifier.width(90.dp)) }
@@ -659,7 +636,7 @@ private fun ScoreboardSection(e: EvalProgress) {
             InkProgress(if (e.total == 0) 0f else e.done.toFloat() / e.total)
             e.current?.let { Text("now on problem $it", style = Mono11Dim) }
         }
-        e.error?.let { Text(it, style = SwarmType.label) }
+        e.error?.let { ErrorNote(it) }
         val s = e.summary
         if (s != null && s.n > 0) {
             SwarmCard {
