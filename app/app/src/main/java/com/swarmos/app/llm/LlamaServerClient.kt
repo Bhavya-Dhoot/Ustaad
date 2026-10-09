@@ -32,6 +32,7 @@ class LlamaServerClient(
     /** [extra] adds raw top-level request fields (e.g. `ignore_eos`), used by the benchmark. */
     fun chatStreamRaw(req: ChatRequest, cachePrompt: Boolean = true, extra: JsonObject? = null): Flow<ChatChunk> = channelFlow {
         check(role == Role.CHAT) { "chat is served by the CHAT server only" }
+        refuseSchemaIfChatOnly(req)
         val body = LlamaJson.chatBody(req, stream = true, model = modelName, cachePrompt = cachePrompt, extra = extra)
         val startNs = System.nanoTime()
         var conn: HttpURLConnection? = null
@@ -68,8 +69,16 @@ class LlamaServerClient(
         awaitClose { conn?.disconnect(); reader.cancel() }
     }
 
+    /** A model flagged chat-only in the catalog answers JSON-schema requests with empty content: fail loudly instead. */
+    private fun refuseSchemaIfChatOnly(req: ChatRequest) {
+        if (req.jsonSchema != null && !ModelCatalog.allowsSchema(modelName)) {
+            throw LlamaServerException("$modelName is ${ModelCatalog.CHAT_ONLY_NOTE}; it returns empty content for JSON-schema requests")
+        }
+    }
+
     override suspend fun chat(req: ChatRequest): ChatResult = withContext(Dispatchers.IO) {
         check(role == Role.CHAT) { "chat is served by the CHAT server only" }
+        refuseSchemaIfChatOnly(req)
         val c = LlamaHttp.post("$base/v1/chat/completions", LlamaJson.chatBody(req, stream = false, model = modelName), STREAM_READ_TIMEOUT_MS)
         try {
             val text = LlamaHttp.readBody(c)
