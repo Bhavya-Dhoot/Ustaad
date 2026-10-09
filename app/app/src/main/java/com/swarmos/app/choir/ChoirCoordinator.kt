@@ -2,6 +2,9 @@ package com.swarmos.app.choir
 
 import com.swarmos.app.core.SwarmJson
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -16,6 +19,10 @@ import kotlin.random.Random
 interface ChoirParticipant {
     val nodeId: String
     val name: String
+
+    /** The link heartbeat says this phone is away: it is shown as an away lane and never asked. */
+    val away: Boolean get() = false
+
     suspend fun solve(req: SolveRequest): NodeAnswer
     suspend fun revise(req: ReviseRequest): NodeAnswer
     suspend fun judge(req: JudgeRequest): JudgeAnswer
@@ -56,12 +63,13 @@ class ChoirCoordinator(
     private val config: ChoirConfig = ChoirConfig(),
 ) {
     private class Lane(val p: ChoirParticipant, val role: Role) {
-        var model = ""
-        var fake = false
-        var status = LaneStatus.WAITING
-        var r1: Reply? = null
-        var r2: Reply? = null
-        var error: String? = null
+        // written by the per-lane coroutines and the run, read by snapshot() on any thread
+        @Volatile var model = ""
+        @Volatile var fake = false
+        @Volatile var status = LaneStatus.WAITING
+        @Volatile var r1: Reply? = null
+        @Volatile var r2: Reply? = null
+        @Volatile var error: String? = null
         val latest: Reply? get() = r2 ?: r1
     }
 
@@ -80,18 +88,24 @@ class ChoirCoordinator(
         val kind = problem.kind
         val prompt = problem.prompt()
         val sortedPeers = peers.sortedBy { it.name }
+        // roles alternate over the phones that are actually asked: with two phones that is solver and alt solver
+        var asked = 0
         val lanes = buildList {
             add(Lane(self, Role.SOLVER))
-            sortedPeers.forEachIndexed { i, p -> add(Lane(p, roleForPeer(i))) }
+            sortedPeers.forEach { p -> add(Lane(p, roleForPeer(if (p.away) asked else asked++))) }
         }
+        val active = lanes.filter { !it.p.away }
 
         val lock = Any()
+        // every write to the run state happens inside the lock; snapshot() reads it inside the same lock
+        fun <T> locked(block: () -> T): T = synchronized(lock) { block() }
         var phase = "INIT"
         var round = 1
         var judge: JudgeTrace? = null
         var finalPick: FinalTrace? = null
         var finalNoTool: FinalTrace? = null
         var error: String? = null
+        lanes.filter { it.p.away }.forEach { it.status = LaneStatus.AWAY; it.error = "away: no heartbeat, not asked" }
 
         fun correctOf(f: FinalTrace?): Boolean? = when {
             f == null || problem.answer.isEmpty() -> null
@@ -153,8 +167,10 @@ class ChoirCoordinator(
         })
 
         if (prompt.length > ChoirLimits.PROBLEM_MAX_CHARS) {
-            error = "problem is ${prompt.length} characters; the limit is ${ChoirLimits.PROBLEM_MAX_CHARS} (each message stays within 1 KB)"
-            phase = "DONE"
+            locked {
+                error = "problem is ${prompt.length} characters; the limit is ${ChoirLimits.PROBLEM_MAX_CHARS} (each message stays within 1 KB)"
+                phase = "DONE"
+            }
             emit()
             return snapshot()
         }
@@ -163,8 +179,10 @@ class ChoirCoordinator(
             put("problemId", problem.id)
             put("kind", kind.name)
             put("nodes", lanes.joinToString(",") { it.p.name })
+            put("away", lanes.filter { it.p.away }.joinToString(",") { it.p.name })
             put("deadlineMs", config.deadlineMs)
         })
+        lanes.filter { it.p.away }.forEach { log("choir.away", it.p.name, buildJsonObject { put("status", "AWAY") }) }
 
         fun replyOf(a: NodeAnswer, wall: Long): Reply {
             val t = ToolChecker.check(problem, a.answer, a.keySteps, options.useProblemCheck)
@@ -180,11 +198,10 @@ class ChoirCoordinator(
         }
 
         // ---- R1: blind parallel solve ------------------------------------------------------------
-        phase = "R1"
-        lanes.forEach { it.status = LaneStatus.SOLVING }
+        locked { phase = "R1"; active.forEach { it.status = LaneStatus.SOLVING } }
         emit()
         coroutineScope {
-            lanes.map { lane ->
+            active.map { lane ->
                 async {
                     val remaining = budget(config.r1Frac)
                     val req = SolveRequest(taskId, prompt, kind, lane.role, config.solveTokens, remaining.coerceAtLeast(1), seedFor(taskId, lane.p.nodeId))
@@ -228,9 +245,7 @@ class ChoirCoordinator(
 
         val r1Voters = lanes.filter { it.r1 != null }
         if (r1Voters.size >= 2 && FinalPick.groups(kind, votesNow()).size > 1) {
-            phase = "R2"
-            round = 2
-            r1Voters.forEach { it.status = LaneStatus.REVISING }
+            locked { phase = "R2"; round = 2; r1Voters.forEach { it.status = LaneStatus.REVISING } }
             emit()
             val r1Candidates = r1Voters.map { it to Candidate(it.r1!!.answer, it.r1!!.keySteps) }
             coroutineScope {
@@ -268,14 +283,13 @@ class ChoirCoordinator(
         var judgePick: Int? = null
         val afterR2 = votesNow()
         if (afterR2.size >= 2 && !FinalPick.hasMajority(kind, afterR2)) {
-            phase = "R3"
-            round = 3
+            locked { phase = "R3"; round = 3 }
             val groups = FinalPick.groups(kind, afterR2)
             val leadingNodes = groups.sortedByDescending { it.confSum }.take(2).flatMap { g -> g.members.map { it.node } }.toSet()
             val voters = lanes.filter { it.latest != null }
             val judgeLane = if (voters.size >= 3) voters.firstOrNull { it.p.nodeId !in leadingNodes } ?: lanes.first() else lanes.first()
             val prevStatus = judgeLane.status
-            judgeLane.status = LaneStatus.JUDGING
+            locked { judgeLane.status = LaneStatus.JUDGING }
             emit()
             val remaining = (config.deadlineMs - elapsed())
             val req = fitJudge(JudgeRequest(taskId, groups.map { Candidate(it.best.answer, it.best.keySteps) }, config.judgeTokens, remaining.coerceAtLeast(1)))
@@ -306,7 +320,7 @@ class ChoirCoordinator(
         }
 
         // ---- tool check and final pick ----------------------------------------------------------------
-        phase = "CHECK"
+        locked { phase = "CHECK" }
         emit()
         val votes = votesNow()
         for (l in lanes) {
@@ -317,8 +331,7 @@ class ChoirCoordinator(
             finalNoTool = FinalPick.decide(kind, votes, judgePick, useTool = false, totalNodes = lanes.size)
             finalPick = FinalPick.decide(kind, votes, judgePick, useTool = true, totalNodes = lanes.size)
         }
-        phase = "DONE"
-        val trace = synchronized(lock) { snapshot() }
+        val trace = synchronized(lock) { phase = "DONE"; snapshot() }
         log("choir.final", null, buildJsonObject {
             put("answer", finalPick?.answer ?: "")
             put("method", finalPick?.method?.name ?: "")
@@ -334,14 +347,27 @@ class ChoirCoordinator(
 
     // ---- helpers ----------------------------------------------------------------------------------
 
-    private suspend fun <T> guarded(budgetMs: Long, block: suspend () -> T): Result<T?> =
-        try {
-            Result.success(withTimeoutOrNull(budgetMs.coerceAtLeast(1)) { block() })
+    /**
+     * Runs [block] on its own job and waits for it for at most [budgetMs]. The wait is what is bounded, not the call:
+     * a call that cannot be cancelled (a blocking socket) is cancelled best-effort and abandoned, so it can never hold
+     * the run, or anyone's vote, past the deadline. Null means timed out.
+     */
+    private suspend fun <T> guarded(budgetMs: Long, block: suspend () -> T): Result<T?> {
+        val job = detached.async { runCatching { block() } }
+        val got = try {
+            withTimeoutOrNull(budgetMs.coerceAtLeast(1)) { job.await() }
         } catch (e: CancellationException) {
+            job.cancel()
             throw e
-        } catch (t: Throwable) {
-            Result.failure(t)
         }
+        if (got == null) {
+            job.cancel()
+            return Result.success(null)
+        }
+        return got.fold({ Result.success(it) }, { Result.failure(it) })
+    }
+
+    private val detached = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
         /** Peers (sorted by name) alternate ALT_SOLVER, SOLVER, ...; the coordinator itself is always SOLVER. */
