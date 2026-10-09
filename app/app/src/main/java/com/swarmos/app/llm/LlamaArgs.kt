@@ -13,12 +13,44 @@ enum class Role(val tag: String, val binary: String, val defaultPort: Int) {
     }
 }
 
+/** Which build of llama-server a CHAT server runs on: the OpenCL (Adreno GPU) build or the CPU i8mm build. */
+enum class Backend { CPU, GPU }
+
+/**
+ * Which backends a start of [role] tries, in order. CHAT goes to the GPU build first and falls back to the CPU build when
+ * the GPU server does not get READY. Everything else (embedder, rpc-server, a split chat server) runs on the CPU build.
+ */
+object BackendPlan {
+    fun choose(role: Role, extraArgs: List<String>, gpuEnabled: Boolean, gpuBinaryPresent: Boolean, cpuOnly: Boolean): List<Backend> {
+        if (role != Role.CHAT || cpuOnly || !gpuEnabled || !gpuBinaryPresent) return listOf(Backend.CPU)
+        // the MemoryCloud split keeps the CPU build: RPC together with OpenCL is unproven
+        if ("--rpc" in extraArgs || "-rpc" in extraArgs) return listOf(Backend.CPU)
+        return listOf(Backend.GPU, Backend.CPU)
+    }
+}
+
 /**
  * Command lines for the shipped binaries. Everything that is a tuning choice lives here so it can be changed
  * in one place (and unit-tested). Flags that callers append through `extraArgs` come last, and llama.cpp's
  * argument parser lets the last occurrence of a flag win, so extraArgs override these defaults.
  */
 object LlamaArgs {
+    /** The OpenCL llama-server, shipped next to the CPU one under its own file name (both are called libllama-server.so upstream). */
+    const val GPU_BINARY = "libllama-server-gpu.so"
+
+    /** GPU path (docs/llama-server-api-notes.md): every layer on the GPU, threads are irrelevant so 4 leave the CPU free for the app. */
+    const val GPU_THREADS = 4
+    const val GPU_LAYERS = 99
+
+    /**
+     * Scheduler capacity of a phone with a READY chat server. The server keeps [CHAT_SLOTS] slots so a local stream and a
+     * short call can overlap without errors, but slots add no throughput (docs/benchmarks/2026-10-10-throughput-tuning.md),
+     * so the scheduler hands out one job at a time.
+     */
+    const val SCHED_CAPACITY = 1
+
+    fun binaryFor(role: Role, backend: Backend): String = if (role == Role.CHAT && backend == Backend.GPU) GPU_BINARY else role.binary
+
     /**
      * Flags follow docs/llama-server-api-notes.md ("Recommended production flags"). One deviation: the chat context is
      * 8192 total (4096 per slot with 2 slots) instead of 4096 total, because Choir and Data Union prompts can exceed 2048 tokens.
@@ -31,12 +63,14 @@ object LlamaArgs {
     const val EMBED_CTX = 4096
     const val EMBED_SLOTS = 2
 
-    fun build(role: Role, modelPath: String?, port: Int, extra: List<String> = emptyList()): List<String> {
+    fun build(role: Role, modelPath: String?, port: Int, extra: List<String> = emptyList(), backend: Backend = Backend.CPU): List<String> {
+        val gpu = role == Role.CHAT && backend == Backend.GPU
         val base = when (role) {
             Role.CHAT -> listOf(
                 "-m", requireNotNull(modelPath) { "chat needs a model" },
                 "--host", "127.0.0.1", "--port", port.toString(),
-                "-t", CHAT_THREADS.toString(),
+            ) + (if (gpu) listOf("-ngl", GPU_LAYERS.toString()) else emptyList()) + listOf(
+                "-t", (if (gpu) GPU_THREADS else CHAT_THREADS).toString(),
                 "-c", CHAT_CTX.toString(),
                 "-np", CHAT_SLOTS.toString(),
                 "--reasoning", "off", // Qwen3.5 thinking off for every request (the client also sends enable_thinking=false)

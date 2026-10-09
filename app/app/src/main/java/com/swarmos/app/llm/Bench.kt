@@ -27,6 +27,8 @@ data class BenchResult(
     val thermalStart: String,
     val threads: Int?,
     val atEpochMs: Long,
+    /** "GPU" or "CPU": the llama-server build the chat model ran on. */
+    val backend: String? = null,
 )
 
 @Serializable
@@ -173,6 +175,7 @@ object Bench {
             thermalStart = thermalStart,
             threads = threads,
             atEpochMs = System.currentTimeMillis(),
+            backend = st.backend?.name,
         )
     }
 }
