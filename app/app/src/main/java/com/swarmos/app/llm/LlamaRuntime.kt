@@ -216,7 +216,19 @@ object LlamaRuntime {
     /** Result of launching one server process: [retry] is true when the process failed for a reason worth trying the next backend for. */
     private class Attempt(val status: ServerStatus, val retry: Boolean)
 
-    private suspend fun startInternal(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus = locks.getValue(role).withLock {
+    /** Announces the load on the phone's activity banner (with a Stop action) while it queues and runs, then starts under the role lock. */
+    private suspend fun startInternal(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus {
+        val text = ModelsActivity.loadText(role) ?: return startLocked(role, cfg, epoch, auto)
+        val key = ModelsActivity.loadKey(role) + "-$epoch" // one entry per start: a superseded start must not clear the newer one
+        ModelsActivity.set(key, text, onStop = { stop(role) })
+        try {
+            return startLocked(role, cfg, epoch, auto)
+        } finally {
+            ModelsActivity.end(key)
+        }
+    }
+
+    private suspend fun startLocked(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus = locks.getValue(role).withLock {
         val modelPath = cfg.modelPath
         val port = cfg.port
         if (epochs.getValue(role).get() != epoch) return@withLock statusOf(role) // stopped before this start began
