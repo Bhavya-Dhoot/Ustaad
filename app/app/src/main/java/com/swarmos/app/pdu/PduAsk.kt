@@ -29,6 +29,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import com.swarmos.app.choir.VoiceInput
+import com.swarmos.app.choir.VoiceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,7 +53,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.swarmos.app.ui.AnswerChip
+import com.swarmos.app.ui.CitedText
+import com.swarmos.app.ui.LineIcon
+import com.swarmos.app.ui.SwarmIcon
+import com.swarmos.app.ui.SwarmTextField
 import com.swarmos.app.ui.Hairline
 import com.swarmos.app.ui.PhoneToken
 import com.swarmos.app.ui.PrimaryButton
@@ -59,7 +64,6 @@ import com.swarmos.app.ui.SecondaryButton
 import com.swarmos.app.ui.SectionTitle
 import com.swarmos.app.ui.Skeleton
 import com.swarmos.app.ui.Stamp
-import com.swarmos.app.ui.StreamingText
 import com.swarmos.app.ui.SwarmCard
 import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.SwarmShape
@@ -95,15 +99,15 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
     var opened by remember { mutableStateOf<String?>(null) }
     val busy = q != null && q?.phase != "done"
 
-    // voice: tap the mic to speak the question; on-device recognition when the phone has it
-    val voiceMode = remember { VoiceInput.mode(ctx) }
-    var voiceState by remember { mutableStateOf<VoiceState>(VoiceState.Idle) }
-    val voice = remember { VoiceInput(ctx, onText = { t, _ -> text = t }, onState = { voiceState = it }) }
-    DisposableEffect(Unit) { onDispose { voice.release() } }
+    // voice: tap the mic to speak the question. Only the on-device recognizer is used (same class as Agent Choir); no network fallback.
+    var listening by remember { mutableStateOf(false) }
+    var voiceMessage by remember { mutableStateOf<String?>(null) }
+    val voice = remember { VoiceInput(ctx, onText = { text = it }, onState = { s, msg -> listening = s == VoiceState.LISTENING; voiceMessage = msg }) }
+    val voiceOk = voice.available
+    DisposableEffect(Unit) { onDispose { voice.destroy() } }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) voice.start() else voiceState = VoiceState.Failed("microphone permission was not granted")
+        if (ok) voice.start() else voiceMessage = "microphone permission was not granted"
     }
-    val listening = voiceState is VoiceState.Listening
     fun onMic() {
         when {
             listening -> voice.stop()
@@ -112,9 +116,8 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
         }
     }
     val voiceHelper = when {
-        listening -> "listening, " + if (voiceMode == VoiceMode.OnDevice) "on this phone" else "system speech service"
-        voiceMode == VoiceMode.System -> "voice uses the system speech service, which may use the network"
-        voiceMode == VoiceMode.None -> "speech recognition is not available on this phone"
+        listening -> "listening, on this phone"
+        !voiceOk -> "No on-device speech recognition on this phone"
         else -> null
     }
 
@@ -123,9 +126,10 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         PageHeader("Data Union", onBack)
-        QuestionField(
-            value = text, onValue = { text = it }, listening = listening, micEnabled = voiceMode != VoiceMode.None, onMic = ::onMic,
-            helper = voiceHelper, error = (voiceState as? VoiceState.Failed)?.message,
+        SwarmTextField(
+            text, { text = it }, "Question",
+            helper = voiceHelper, error = if (listening || !voiceOk) null else voiceMessage,
+            trailing = { MicButton(listening, voiceOk, ::onMic) },
         )
         PrimaryButton(
             if (busy) "Searching" else "Ask",
@@ -136,11 +140,12 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
         val cur = q
         if (cur != null) {
             TimingStrip(cur)
+            if (cur.lexicalOnly) Tag("keyword search only on this phone, embedder not usable")
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle("Sources")
                 Spacer(Modifier.width(10.dp))
-                if (cur.sources.isNotEmpty()) Tag("${cur.sources.size} matches")
+                if (cur.sources.isNotEmpty()) Tag(if (cur.sources.size == 1) "1 match" else "${cur.sources.size} matches")
             }
             if (cur.sources.isEmpty()) {
                 if (cur.phase == "searching") { Skeleton(96.dp); Skeleton(96.dp) }
@@ -162,47 +167,18 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
     }
 }
 
-/** SwarmTextField with a microphone at its right end (the kit field has no trailing slot). */
+/** The mic at the right end of the question box: 48 dp, filled Ink while listening, grey and inert when the phone has no on-device recognizer. */
 @Composable
-private fun QuestionField(
-    value: String,
-    onValue: (String) -> Unit,
-    listening: Boolean,
-    micEnabled: Boolean,
-    onMic: () -> Unit,
-    helper: String?,
-    error: String?,
-) {
-    Column(Modifier.fillMaxWidth()) {
-        Text("Question", style = SwarmType.label.copy(color = SwarmColors.graphite))
-        Spacer(Modifier.height(4.dp))
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).background(SwarmColors.sheet, SwarmShape).border(1.5.dp, SwarmColors.ink, SwarmShape).padding(start = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f).padding(vertical = 12.dp)) {
-                BasicTextField(value = value, onValueChange = onValue, modifier = Modifier.fillMaxWidth(), textStyle = SwarmType.body, cursorBrush = SolidColor(SwarmColors.ink))
-            }
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .background(if (listening) SwarmColors.ink else Color.Transparent, SwarmShape)
-                    .clickable(enabled = micEnabled, onClick = onMic)
-                    .semantics { contentDescription = if (listening) "Stop listening" else "Speak the question" },
-                contentAlignment = Alignment.Center,
-            ) {
-                PduGlyph(PduIcon.Mic, tint = if (listening) SwarmColors.sheet else if (micEnabled) SwarmColors.ink else SwarmColors.graphite)
-            }
-        }
-        if (error != null) {
-            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(6.dp).height(16.dp).border(1.dp, SwarmColors.ink))
-                Spacer(Modifier.width(6.dp))
-                Text(error, style = SwarmType.label.copy(fontSize = 12.sp, lineHeight = 16.sp))
-            }
-        } else if (helper != null) {
-            Text(helper, Modifier.padding(top = 4.dp), style = SwarmType.label.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SwarmColors.graphite))
-        }
+private fun MicButton(listening: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .background(if (listening) SwarmColors.ink else Color.Transparent, SwarmShape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics { contentDescription = if (listening) "Stop listening" else "Speak the question" },
+        contentAlignment = Alignment.Center,
+    ) {
+        LineIcon(SwarmIcon.Mic, tint = if (listening) SwarmColors.sheet else if (enabled) SwarmColors.ink else SwarmColors.graphite)
     }
 }
 
@@ -283,14 +259,7 @@ private fun AnswerBlock(q: QueryUi, onCite: (Int) -> Unit) {
             if (q.phase == "done") Text("no answer", style = SwarmType.body.copy(color = SwarmColors.graphite))
             else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Skeleton(18.dp); Skeleton(18.dp); Skeleton(18.dp) }
         } else {
-            StreamingText(q.answer, streaming = q.phase == "answering")
-            val cited = Regex("\\[(\\d+)]").findAll(q.answer).map { it.groupValues[1].toInt() }.distinct().filter { it in 1..q.sources.size }.toList()
-            if (cited.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (n in cited) AnswerChip("[$n]", Modifier.clickable { onCite(n) })
-                }
-            }
+            CitedText(q.answer, streaming = q.phase == "answering", onCite = onCite, cites = 1..q.sources.size)
         }
     }
 }

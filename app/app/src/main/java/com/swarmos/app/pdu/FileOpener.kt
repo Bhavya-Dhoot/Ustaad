@@ -76,7 +76,21 @@ object FileOpener {
         ctx.startActivity(intent)
     }
 
-    private fun notify(ctx: Context, doc: DocInfo, intent: Intent) {
+    /**
+     * A peer asked for this file to be shown. Nothing opens by itself: a notification names the asking phone and the
+     * owner taps it. Fails (nothing posted) when notifications are off.
+     */
+    suspend fun askOwner(ctx: Context, doc: DocInfo, fromName: String): PduOpenResult {
+        val uri = viewUri(ctx, doc.uri) ?: return PduOpenResult(false, "none", doc.title, "no viewable uri")
+        return try {
+            notify(ctx, doc, viewIntent(uri, doc.kind), "$fromName wants to show you this file. Tap to open it here.")
+            PduOpenResult(true, "notification", doc.title)
+        } catch (e: SecurityException) {
+            PduOpenResult(false, "none", doc.title, "notifications not allowed")
+        }
+    }
+
+    private fun notify(ctx: Context, doc: DocInfo, intent: Intent, text: String = "Requested from another phone. Tap to open here.") {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) throw SecurityException("notifications disabled")
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Open file from another phone", NotificationManager.IMPORTANCE_HIGH))
@@ -84,7 +98,7 @@ object FileOpener {
         val n = NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentTitle("Open ${doc.title}")
-            .setContentText("Requested from another phone. Tap to open here.")
+            .setContentText(text)
             .setContentIntent(pi)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

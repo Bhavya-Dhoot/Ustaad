@@ -5,9 +5,9 @@ Everything is synthetic: invented shops, invented people, invented serial and po
 file carries a small "SYNTHETIC DEMO DATA" footer. Nothing is copied from a real document.
 
 Output (mirrors the phone paths so a push is a plain directory copy):
-    docs/demo-corpus/<A|B|C>/Pictures/SwarmDemo/*.jpg
-    docs/demo-corpus/<A|B|C>/Documents/SwarmDemo/*.{pdf,docx,txt,md}
-    docs/demo-corpus/B/Documents/SwarmDemo/Private/Salary_Slip_Sep2026.pdf   (the file that must be withheld)
+    docs/demo-corpus/<A|B|C>/Pictures/UstaadDemo/*.jpg
+    docs/demo-corpus/<A|B|C>/Documents/UstaadDemo/*.{pdf,docx,txt,md}
+    docs/demo-corpus/B/Documents/UstaadDemo/Private/Salary_Slip_Sep2026.pdf   (the file that must be withheld)
 
 Usage:
     python scripts/make-demo-corpus.py            # generate only
@@ -207,8 +207,8 @@ def stamp_file(path: Path, when: dt.datetime):
 # ---- the corpus -------------------------------------------------------------------------------------------
 
 def phone_b():
-    pics = ROOT / "B" / "Pictures" / "SwarmDemo"
-    docs = ROOT / "B" / "Documents" / "SwarmDemo"
+    pics = ROOT / "B" / "Pictures" / "UstaadDemo"
+    docs = ROOT / "B" / "Documents" / "UstaadDemo"
     big, bold, small = font(MONO, 34), font(MONO_B, 40), font(MONO, 27)
     # the receipt the demo is about
     text_page(pics / "IMG_2231.jpg", [
@@ -303,8 +303,8 @@ Monthly fee INR 2,400, first class free. Mats provided.
 
 
 def phone_a():
-    pics = ROOT / "A" / "Pictures" / "SwarmDemo"
-    docs = ROOT / "A" / "Documents" / "SwarmDemo"
+    pics = ROOT / "A" / "Pictures" / "UstaadDemo"
+    docs = ROOT / "A" / "Documents" / "UstaadDemo"
     big, bold, small = font(MONO, 34), font(MONO_B, 40), font(MONO, 27)
     cert = docs / "Laptop_Extended_Warranty_Certificate.pdf"
     text_pdf(cert, "Laptop extended warranty certificate", [
@@ -371,8 +371,8 @@ Bring previous X-ray. Fee about INR 1,200.
 
 
 def phone_c():
-    pics = ROOT / "C" / "Pictures" / "SwarmDemo"
-    docs = ROOT / "C" / "Documents" / "SwarmDemo"
+    pics = ROOT / "C" / "Pictures" / "UstaadDemo"
+    docs = ROOT / "C" / "Documents" / "UstaadDemo"
     big, bold, small = font(MONO, 34), font(MONO_B, 40), font(MONO, 27)
     text_page(pics / "IMG_3301_Electricity_Bill.jpg", [
         ("SUNRISE POWER DISTRIBUTION (DEMO)", bold, "center"), ("ELECTRICITY BILL 09/2026", bold, "center"), ("", small),
@@ -452,11 +452,11 @@ def push(selected):
         print(f"--- Phone {label} ({serial})")
         subprocess.run([ADB, "connect", serial], capture_output=True)
         for sub in ("Pictures", "Documents"):
-            src = base / sub / "SwarmDemo"
+            src = base / sub / "UstaadDemo"
             if not src.exists():
                 continue
-            adb(serial, "shell", "mkdir", "-p", f"/sdcard/{sub}/SwarmDemo")
-            adb(serial, "push", str(src) + os.sep + ".", f"/sdcard/{sub}/SwarmDemo/")
+            adb(serial, "shell", "mkdir", "-p", f"/sdcard/{sub}/UstaadDemo")
+            adb(serial, "push", str(src) + os.sep + ".", f"/sdcard/{sub}/UstaadDemo/")
         # make the pushed pictures visible to MediaStore (photos are indexed through it)
         adb(serial, "shell", "content", "call", "--uri", "content://media/", "--method", "scan_volume", "--arg", "external_primary")
 
