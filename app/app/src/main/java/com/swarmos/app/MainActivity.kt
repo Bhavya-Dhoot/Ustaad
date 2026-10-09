@@ -45,6 +45,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
         applyIntent(intent)
+        // a dozing phone stops answering its peers, so the screen stays on while Ustaad is in front
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         SwarmService.start(this)
         setContent { SwarmTheme { SwarmRoot(galleryPage, onLeaveGallery = { galleryPage = 0 }) } }
     }
@@ -75,7 +77,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun SwarmRoot(galleryPage: Int, onLeaveGallery: () -> Unit) {
-    val modules = AppGraph.modules
+    val modules = remember { AppGraph.modules.filter { it.showInNav } }
     var selected by rememberSaveable { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
     val items = modules.map { NavItem(it.id, destinationLabel(it.id) ?: it.title) }
