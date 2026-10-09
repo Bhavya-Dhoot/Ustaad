@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS - Data Union</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;700&amp;family=Geist+Mono:wght@400;500;600;700&amp;family=Geist:wght@400;500;600&amp;family=Shantell+Sans:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "surface-container-low": "#f3f4f2",
+            "surface": "#f9faf8",
+            "surface-variant": "#e2e3e1",
+            "marker-teal-tint": "#1E9BB01F",
+            "on-primary-container": "#838487",
+            "outline": "#76777b",
+            "on-surface": "#191c1b",
+            "inverse-surface": "#2e3130",
+            "tertiary-fixed-dim": "#c4c7c4",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-high": "#e7e8e6",
+            "secondary-fixed": "#dee3ec",
+            "marker-tangerine-tint": "#E08A3C1F",
+            "tertiary-container": "#191c1a",
+            "secondary-container": "#dee3ec",
+            "surface-tint": "#5d5e62",
+            "on-tertiary-fixed": "#191c1a",
+            "sheet": "#FCFDFB",
+            "whiteboard": "#F6F7F5",
+            "ink": "#15171A",
+            "graphite": "#5E636B",
+            "eraser": "#E4E7E3",
+            "on-tertiary-container": "#818581",
+            "marker-teal": "#1E9BB0",
+            "inverse-primary": "#c6c6ca",
+            "on-error-container": "#93000a",
+            "error-container": "#ffdad6",
+            "surface-dim": "#d9dad8",
+            "on-primary-fixed": "#1a1c1f",
+            "primary-fixed-dim": "#c6c6ca",
+            "marker-tangerine": "#E08A3C",
+            "on-secondary-fixed": "#171c23",
+            "on-surface-variant": "#45474a",
+            "secondary-fixed-dim": "#c2c7d0",
+            "on-tertiary-fixed-variant": "#444845",
+            "on-tertiary": "#ffffff",
+            "background": "#F6F7F5",
+            "on-primary-fixed-variant": "#45474a",
+            "on-secondary": "#ffffff",
+            "on-secondary-container": "#60656d",
+            "inverse-on-surface": "#f0f1ef",
+            "surface-container": "#edeeec",
+            "secondary": "#5a5f67",
+            "on-error": "#ffffff",
+            "primary": "#15171A",
+            "marker-magenta-tint": "#C8457E1F",
+            "tertiary": "#000000",
+            "on-primary": "#ffffff",
+            "tertiary-fixed": "#e0e3df",
+            "marker-magenta": "#C8457E",
+            "on-secondary-fixed-variant": "#42474f",
+            "primary-fixed": "#e2e2e6",
+            "on-background": "#191c1b",
+            "error": "#ba1a1a",
+            "surface-container-highest": "#e2e3e1",
+            "primary-container": "#1a1c1f",
+            "surface-bright": "#f9faf8",
+            "outline-variant": "#c6c6ca"
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          spacing: {
+            "space-md": "1rem",
+            "gutter": "0.5rem",
+            "space-lg": "1.5rem",
+            "space-sm": "0.5rem",
+            "space-xl": "2rem",
+            "margin": "1rem",
+            "space-xs": "0.25rem"
+          },
+          fontFamily: {
+            "label-mono": ["Geist Mono", "monospace"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "display-hero": ["Geist Mono", "monospace"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"],
+            "body-sm": ["Geist", "sans-serif"],
+            "label-md": ["Geist", "sans-serif"],
+            "stamp-label": ["Geist Mono", "monospace"]
+          },
+          fontSize: {
+            "label-mono": ["12px", { lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "500" }],
+            "headline-md": ["20px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "display-hero": ["44px", { lineHeight: "44px", letterSpacing: "-0.03em", fontWeight: "600" }],
+            "annotation": ["13px", { lineHeight: "17px", letterSpacing: "-0.01em", fontWeight: "400" }],
+            "headline-lg": ["26px", { lineHeight: "30px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+            "body-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+            "label-md": ["12px", { lineHeight: "16px", fontWeight: "500" }],
+            "stamp-label": ["11px", { lineHeight: "12px", letterSpacing: "0.08em", fontWeight: "700" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Neo-brutalist custom utilities strictly abiding by style guidelines */
+    .ink-border-15 {
+      border: 1.5px solid #15171A;
+    }
+    .ink-border-b-15 {
+      border-bottom: 1.5px solid #15171A;
+    }
+    .ink-border-t-15 {
+      border-top: 1.5px solid #15171A;
+    }
+    .ink-border-r-15 {
+      border-right: 1.5px solid #15171A;
+    }
+    .ink-border-l-15 {
+      border-left: 1.5px solid #15171A;
+    }
+    .hard-shadow-primary {
+      box-shadow: 3px 3px 0px 0px #15171A;
+    }
+    .hard-shadow-primary:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0px 0px 0px 0px #15171A;
+    }
+    
+    /* Diagonal hatch patterns for caution rubber stamp */
+    .stamp-hatch {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(21, 23, 26, 0.12),
+        rgba(21, 23, 26, 0.12) 2px,
+        transparent 2px,
+        transparent 6px
+      );
+    }
+    
+    /* Double outline frame for rubber stamp */
+    .stamp-box {
+      border: 1.5px solid #15171A;
+      box-shadow: inset 0 0 0 1.5px #FCFDFB, inset 0 0 0 3px #15171A;
+    }
+
+    .material-symbols-outlined {
+      font-size: 19px;
+      line-height: 1;
+      font-variation-settings: 'FILL' 0, 'wght' 450, 'GRAD' 0, 'opsz' 20;
+    }
+  </style>
+</head>
+<body class="bg-whiteboard text-ink antialiased min-h-screen flex justify-center selection:bg-marker-teal selection:text-white">
+<!-- Primary Mobile Device Frame (390px nominal width container) -->
+<div class="w-full max-w-[412px] bg-whiteboard min-h-screen flex flex-col relative pb-28">
+<!-- TOP COMPACT HARDWARE STATUS STRIP (Per specification) -->
+<header class="bg-sheet w-full ink-border-b-15 px-3 py-1.5 flex items-center justify-between sticky top-0 z-40 select-none">
+<div class="flex items-center space-x-2">
+<!-- Phone A Marker Token -->
+<div class="flex items-center space-x-1.5">
+<div class="w-6 h-6 rounded-full bg-marker-teal ink-border-15 flex items-center justify-center text-sheet font-headline-md font-bold text-xs leading-none">
+            A
+          </div>
+<span class="font-label-mono text-label-mono font-semibold tracking-tight text-ink">Phone A</span>
+</div>
+<span class="text-eraser font-body-sm">|</span>
+<div class="flex items-center space-x-2 font-label-mono text-[11px] text-graphite tracking-tight">
+<span>Cool</span>
+<span>79%</span>
+<span>8.6GB</span>
+<span class="hidden xs:inline">11ac 433M</span>
+</div>
+</div>
+<!-- Outline Stamp: 0 B TO INTERNET -->
+<div class="px-1.5 py-0.5 ink-border-15 rounded-[4px] bg-sheet flex items-center">
+<span class="font-stamp-label text-[10px] leading-tight text-ink font-bold tracking-wider">0 B TO INTERNET</span>
+</div>
+</header>
+<!-- MAIN LAB CANVAS CONTENT AREA -->
+<main class="px-4 pt-4 flex-1 flex flex-col space-y-5">
+<!-- SCREEN HEADER -->
+<section class="space-y-0.5">
+<div class="flex items-baseline justify-between">
+<h1 class="font-headline-lg text-headline-lg font-bold text-ink tracking-tight">Data Union</h1>
+<span class="font-label-mono text-label-mono text-graphite">LOCAL // NODE A</span>
+</div>
+<p class="font-body-md text-body-md text-graphite leading-snug">
+          Every phone searches its own files. Only short snippets travel.
+        </p>
+</section>
+<!-- HERO TELEMETRY: INDEXED METRIC -->
+<section class="bg-sheet ink-border-15 rounded-lg p-3.5 relative overflow-hidden">
+<!-- Marker Identity Stripe for Node A -->
+<div class="absolute left-0 top-0 bottom-0 w-1.5 bg-marker-teal"></div>
+<div class="pl-2">
+<div class="flex items-start justify-between">
+<span class="font-label-mono text-label-mono uppercase tracking-wider text-graphite font-semibold">Local Vector Store</span>
+<span class="font-label-mono text-[11px] text-marker-teal font-semibold px-1.5 py-0.2 ink-border-15 rounded bg-sheet">v0.92-embed</span>
+</div>
+<!-- Hero Number with Hand-drawn Underline Graphic -->
+<div class="mt-1 relative inline-block">
+<div class="font-display-hero text-display-hero font-semibold text-ink tracking-tight">
+              1,284
+            </div>
+<!-- Hand-drawn SVG doodle underline -->
+<svg class="absolute -bottom-1 left-0 w-full h-2 text-ink overflow-visible" fill="none" preserveaspectratio="none" viewbox="0 0 130 8">
+<path d="M1 5.2C24 2.8 62 1.4 128 3.8C101 4.7 48 5.6 18 6.4" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path>
+</svg>
+</div>
+<div class="font-body-md text-body-md text-ink font-medium mt-1">
+            chunks indexed on this phone
+          </div>
+<!-- Telemetry Footer Note -->
+<div class="mt-2.5 pt-2 border-t border-eraser flex items-center justify-between">
+<div class="flex items-center space-x-1 font-label-mono text-label-mono text-graphite">
+<span class="material-symbols-outlined text-[15px] text-graphite" data-icon="schedule">schedule</span>
+<span>last indexed 12 min ago</span>
+</div>
+<!-- Shantell Sans hand-drawn accent note (1 of max 2) -->
+<span class="font-annotation text-annotation text-graphite italic -rotate-1 select-none">
+              ~42ms query speed
+            </span>
+</div>
+</div>
+</section>
+<!-- SECTION: SOURCES -->
+<section class="space-y-2">
+<div class="flex items-center justify-between">
+<h2 class="font-headline-md text-headline-md font-bold text-ink">Sources</h2>
+<span class="font-label-mono text-label-mono text-graphite">3 MOUNTED</span>
+</div>
+<div class="space-y-2">
+<!-- Row 1: Photos -->
+<div class="bg-sheet ink-border-15 rounded-lg p-3 flex items-center justify-between">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded ink-border-15 bg-whiteboard flex items-center justify-center text-ink">
+<span class="material-symbols-outlined" data-icon="photo_library">photo_library</span>
+</div>
+<div>
+<div class="font-body-md font-semibold text-ink leading-tight">Photos</div>
+<div class="font-label-mono text-label-mono text-graphite">214 with text</div>
+</div>
+</div>
+<button class="bg-sheet ink-border-15 rounded-lg px-3 py-1.5 font-label-mono text-label-mono font-semibold text-ink active:translate-x-[1px] active:translate-y-[1px] transition-transform">
+              Index
+            </button>
+</div>
+<!-- Row 2: Documents folder "SwarmDemo" -->
+<div class="bg-sheet ink-border-15 rounded-lg p-3 flex items-center justify-between">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded ink-border-15 bg-whiteboard flex items-center justify-center text-ink">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+</div>
+<div>
+<div class="font-body-md font-semibold text-ink leading-tight flex items-center space-x-1">
+<span>Documents/</span>
+<span class="font-label-mono font-bold text-ink">SwarmDemo</span>
+</div>
+<div class="font-label-mono text-label-mono text-graphite">37 files</div>
+</div>
+</div>
+<button class="bg-sheet ink-border-15 rounded-lg px-3 py-1.5 font-label-mono text-label-mono font-semibold text-ink active:translate-x-[1px] active:translate-y-[1px] transition-transform">
+              Index
+            </button>
+</div>
+<!-- Row 3: Scanned -->
+<div class="bg-sheet ink-border-15 rounded-lg p-3 flex items-center justify-between">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded ink-border-15 bg-whiteboard flex items-center justify-center text-ink">
+<span class="material-symbols-outlined" data-icon="document_scanner">document_scanner</span>
+</div>
+<div>
+<div class="font-body-md font-semibold text-ink leading-tight">Scanned</div>
+<div class="font-label-mono text-label-mono text-graphite">5 items</div>
+</div>
+</div>
+<button class="bg-sheet ink-border-15 rounded-lg px-3 py-1.5 font-label-mono text-label-mono font-semibold text-ink active:translate-x-[1px] active:translate-y-[1px] transition-transform">
+              Index
+            </button>
+</div>
+</div>
+</section>
+<!-- SECTION: PRIVATE FOLDERS -->
+<section class="space-y-2">
+<div class="flex items-baseline justify-between">
+<h2 class="font-headline-md text-headline-md font-bold text-ink">Private folders</h2>
+<span class="font-label-mono text-label-mono text-graphite">LOCAL BOUNDARY</span>
+</div>
+<div class="space-y-2">
+<!-- Row 1: "Private" - TOGGLED ON with Hatched Caution Stamp -->
+<div class="bg-sheet ink-border-15 rounded-lg p-3 space-y-2.5">
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded ink-border-15 bg-whiteboard flex items-center justify-center text-ink">
+<span class="material-symbols-outlined" data-icon="lock">lock</span>
+</div>
+<div>
+<div class="font-body-md font-semibold text-ink leading-tight">Private</div>
+<div class="font-label-mono text-label-mono text-graphite">Strict isolate partition</div>
+</div>
+</div>
+<!-- Functional Toggle Switch (ON) -->
+<div class="w-12 h-6 rounded-full ink-border-15 bg-ink p-[1.5px] flex items-center justify-end cursor-pointer select-none">
+<div class="w-4 h-4 rounded-full bg-sheet ink-border-15"></div>
+</div>
+</div>
+<!-- Caution Stamp Container with Rotated Rubber Stamp (stamp 1 of 1 in content) -->
+<div class="pt-2 border-t border-eraser flex items-center justify-between">
+<div class="font-label-mono text-[11px] text-graphite">Air-gapped embeddings only</div>
+<!-- Rubber Stamp: -4 deg rotation, double border, 20% diagonal hatching -->
+<div class="transform -rotate-[4deg] stamp-box stamp-hatch px-2 py-0.5 rounded-[6px] select-none">
+<span class="font-stamp-label text-stamp-label text-ink font-bold tracking-widest block">
+                  NEVER SHARED
+                </span>
+</div>
+</div>
+</div>
+<!-- Row 2: "Documents/SwarmDemo" - TOGGLED OFF -->
+<div class="bg-sheet ink-border-15 rounded-lg p-3 flex items-center justify-between">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded ink-border-15 bg-whiteboard flex items-center justify-center text-ink">
+<span class="material-symbols-outlined" data-icon="folder_shared">folder_shared</span>
+</div>
+<div>
+<div class="font-body-md font-semibold text-ink leading-tight">Documents/SwarmDemo</div>
+<div class="font-label-mono text-label-mono text-graphite">Exposed to peer swarm queries</div>
+</div>
+</div>
+<!-- Functional Toggle Switch (OFF) -->
+<div class="w-12 h-6 rounded-full ink-border-15 bg-whiteboard p-[1.5px] flex items-center justify-start cursor-pointer select-none">
+<div class="w-4 h-4 rounded-full bg-sheet ink-border-15"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- HAND-DRAWN ANNOTATION CONNECTING TO ACTIONS (2 of max 2) -->
+<div class="flex items-center justify-end space-x-2 pt-1 pr-1">
+<svg class="w-5 h-5 text-graphite -rotate-45" fill="none" viewbox="0 0 24 24">
+<path d="M4 12C10 12 18 10 19 4M19 4L15 4M19 4L20 8" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</svg>
+<span class="font-annotation text-annotation text-graphite italic">
+          indexes sync over local Wi-Fi only
+        </span>
+</div>
+<!-- ACTION BUTTONS SECTION -->
+<section class="pt-1 space-y-2.5 pb-2">
+<!-- Exactly ONE Primary Button: Ink fill, Sheet text, 8px corners, hard 3px offset drop shadow -->
+<button class="w-full h-12 bg-ink text-sheet rounded-lg ink-border-15 hard-shadow-primary flex items-center justify-center space-x-2 font-headline-md font-semibold text-[15px] select-none transition-all">
+<span class="material-symbols-outlined text-sheet" data-icon="bubble_chart">bubble_chart</span>
+<span>Ask the swarm</span>
+</button>
+<!-- Secondary Button: Sheet fill, 1.5px Ink outline, Ink text, 8px corners, no shadow -->
+<button class="w-full h-11 bg-sheet text-ink rounded-lg ink-border-15 flex items-center justify-center space-x-2 font-headline-md font-semibold text-[15px] select-none active:translate-x-[1px] active:translate-y-[1px] transition-transform">
+<span class="material-symbols-outlined text-ink" data-icon="add_a_photo">add_a_photo</span>
+<span>Scan a document</span>
+</button>
+</section>
+</main>
+<!-- PERSISTENT BOTTOM NAVIGATION BAR (5 items: Swarm, Models, Choir, Data, Memory) -->
+<!-- Active Tab: Data (Exact match with Screen intent) -->
+<nav class="fixed bottom-0 left-0 right-0 max-w-[412px] mx-auto bg-sheet ink-border-t-15 z-50 flex items-center justify-around px-2 py-1 select-none">
+<!-- Slot 1: Swarm -->
+<a class="flex flex-col items-center justify-center text-graphite pb-1 hover:text-ink w-16 active:translate-x-[1px] active:translate-y-[1px]" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="lan">lan</span>
+<span class="font-label-md text-[11px] leading-tight font-medium mt-0.5">Swarm</span>
+</a>
+<!-- Slot 2: Models -->
+<a class="flex flex-col items-center justify-center text-graphite pb-1 hover:text-ink w-16 active:translate-x-[1px] active:translate-y-[1px]" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="deployed_code">deployed_code</span>
+<span class="font-label-md text-[11px] leading-tight font-medium mt-0.5">Models</span>
+</a>
+<!-- Slot 3: Choir -->
+<a class="flex flex-col items-center justify-center text-graphite pb-1 hover:text-ink w-16 active:translate-x-[1px] active:translate-y-[1px]" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="graphic_eq">graphic_eq</span>
+<span class="font-label-md text-[11px] leading-tight font-medium mt-0.5">Choir</span>
+</a>
+<!-- Slot 4: Data (ACTIVE TAB) -->
+<a class="flex flex-col items-center justify-center text-ink font-bold w-16 relative active:translate-x-[1px] active:translate-y-[1px]" href="#">
+<span class="material-symbols-outlined text-xl text-ink" data-icon="dataset">dataset</span>
+<span class="font-label-md text-[11px] leading-tight font-bold mt-0.5 text-ink">Data</span>
+<!-- Hand-drawn style doodle underline for active indicator -->
+<svg class="w-8 h-1.5 text-ink mt-0.5 overflow-visible" fill="none" viewbox="0 0 32 4">
+<path d="M1 2.2C8 1.2 18 1.1 31 2.5C22 3.1 11 3.2 2 3.8" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path>
+</svg>
+</a>
+<!-- Slot 5: Memory -->
+<a class="flex flex-col items-center justify-center text-graphite pb-1 hover:text-ink w-16 active:translate-x-[1px] active:translate-y-[1px]" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="memory">memory</span>
+<span class="font-label-md text-[11px] leading-tight font-medium mt-0.5">Memory</span>
+</a>
+</nav>
+</div>
+</body></html>
