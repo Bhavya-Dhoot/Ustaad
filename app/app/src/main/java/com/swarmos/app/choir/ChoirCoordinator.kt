@@ -196,7 +196,8 @@ class ChoirCoordinator(
                             }
                             a.error != null -> {
                                 lane.model = a.model; lane.fake = a.fake
-                                lane.status = LaneStatus.ERROR
+                                // a node that ran out of its own budget counts as timed out, not as broken
+                                lane.status = if (a.error.startsWith("timeout")) LaneStatus.TIMED_OUT else LaneStatus.ERROR
                                 lane.error = a.error
                             }
                             else -> {

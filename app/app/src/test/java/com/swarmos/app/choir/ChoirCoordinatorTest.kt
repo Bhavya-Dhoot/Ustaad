@@ -25,6 +25,7 @@ internal class Scripted(
     private val steps: List<String> = emptyList(),
     private val delay1: Long = 0,
     private val delay2: Long = 0,
+    private val r1Error: String = "scripted failure",
 ) : ChoirParticipant {
     val solveRoles = Collections.synchronizedList(mutableListOf<Role>())
     val reviseCalls = Collections.synchronizedList(mutableListOf<ReviseRequest>())
@@ -33,7 +34,7 @@ internal class Scripted(
     override suspend fun solve(req: SolveRequest): NodeAnswer {
         solveRoles.add(req.role)
         delay(delay1)
-        return if (r1 == null) NodeAnswer(req.taskId, 1, nodeId, name, "test", error = "scripted failure")
+        return if (r1 == null) NodeAnswer(req.taskId, 1, nodeId, name, "test", error = r1Error)
         else NodeAnswer(req.taskId, 1, nodeId, name, "test", answer = r1, confidence = conf, keySteps = steps, tokens = 10, ms = delay1)
     }
 
@@ -227,6 +228,12 @@ class ChoirCoordinatorTest {
     @Test fun aNodeThatErrorsIsDroppedLikeATimeout() {
         val t = run(Scripted("a", "Phone A", "42"), Scripted("b", "Phone B", null), Scripted("c", "Phone C", "42"))
         assertEquals(LaneStatus.ERROR, t.lanes[1].status)
+        assertEquals("42", t.finalPick?.answer)
+    }
+
+    @Test fun aNodeThatReportsItsOwnTimeoutIsShownAsTimedOut() {
+        val t = run(Scripted("a", "Phone A", "42"), Scripted("b", "Phone B", null, r1Error = "timeout after 36000 ms"), Scripted("c", "Phone C", "42"))
+        assertEquals(LaneStatus.TIMED_OUT, t.lanes[1].status)
         assertEquals("42", t.finalPick?.answer)
     }
 

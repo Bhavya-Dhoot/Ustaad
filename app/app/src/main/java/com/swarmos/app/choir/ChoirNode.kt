@@ -157,8 +157,9 @@ class ChoirNode(
         return out
     }
 
+    /** Built-in problem whose full text is in the prompt (the longest match wins, since several share an opening line). */
     private fun findProblem(promptText: String): Problem? =
-        problems().firstOrNull { promptText.contains(it.text.take(60)) }
+        problems().filter { promptText.contains(it.text) }.maxByOrNull { it.text.length }
 
     companion object {
         private val ANSWER_STR = Regex(""""answer"\s*:\s*"((?:[^"\\]|\\.)*)"""")

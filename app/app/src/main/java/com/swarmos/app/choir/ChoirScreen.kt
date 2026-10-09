@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,10 +18,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -96,6 +100,7 @@ fun ChoirScreen() {
 
     val fakeModel = AppGraph.llm.modelName == "FAKE"
 
+    CompositionLocalProvider(LocalContentColor provides C.Text) {
     LazyColumn(Modifier.fillMaxWidth().background(C.Bg), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // ---- compose --------------------------------------------------------------------------
         item {
@@ -121,6 +126,29 @@ fun ChoirScreen() {
             }
             if (kind == Kind.MCQ) Text("For multiple choice, put the options in the text as A) ... B) ...", style = LabelStyle)
         }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = !busy && text.isNotBlank(),
+                    onClick = {
+                        val builtIn = problems.firstOrNull { it.id == selectedId && it.prompt() == text }
+                        ChoirController.startRun(builtIn ?: ChoirController.customProblem(text, kind))
+                    },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Run") }
+                OutlinedButton(enabled = !busy && problems.isNotEmpty(), onClick = { ChoirController.startEval() }, modifier = Modifier.weight(1f)) {
+                    Text("Run all ${problems.size}")
+                }
+            }
+        }
+
+        // ---- live run / converged -------------------------------------------------------------
+        run?.let { r -> runItems(r, now, busy) }
+
+        // ---- scoreboard -------------------------------------------------------------------------
+        if (eval.running || eval.rows.isNotEmpty() || eval.error != null) scoreboardItems(eval)
+
+        // ---- who takes part, and the built-in problems ----------------------------------------------
         item {
             Text("Phones in this run", fontWeight = FontWeight.SemiBold, color = C.Text)
             Spacer(Modifier.height(4.dp))
@@ -149,27 +177,7 @@ fun ChoirScreen() {
                 Text(kindLabel(p.kind), style = LabelStyle)
             }
         }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    enabled = !busy && text.isNotBlank(),
-                    onClick = {
-                        val builtIn = problems.firstOrNull { it.id == selectedId && it.prompt() == text }
-                        ChoirController.startRun(builtIn ?: ChoirController.customProblem(text, kind))
-                    },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Run") }
-                OutlinedButton(enabled = !busy && problems.isNotEmpty(), onClick = { ChoirController.startEval() }, modifier = Modifier.weight(1f)) {
-                    Text("Run all ${problems.size}")
-                }
-            }
-        }
-
-        // ---- live run / converged -------------------------------------------------------------
-        run?.let { r -> runItems(r, now, busy) }
-
-        // ---- scoreboard -------------------------------------------------------------------------
-        if (eval.running || eval.rows.isNotEmpty() || eval.error != null) scoreboardItems(eval)
+    }
     }
 }
 
@@ -334,8 +342,8 @@ private fun LaneCard(lane: LaneTrace) {
     val accent = C.accent(lane.name)
     val tokens = (lane.r1?.tokens ?: 0) + (lane.r2?.tokens ?: 0)
     val wall = lane.latest?.wallMs
-    Row(Modifier.fillMaxWidth().border(1.dp, C.Line)) {
-        Box(Modifier.width(6.dp).height(IntrinsicHeightDp).background(accent))
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).border(1.dp, C.Line)) {
+        Box(Modifier.width(6.dp).fillMaxHeight().background(accent))
         Column(Modifier.weight(1f)) {
             Row(Modifier.fillMaxWidth().background(accent.copy(alpha = 0.15f)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(lane.name, fontWeight = FontWeight.Bold, color = accent)
@@ -351,7 +359,7 @@ private fun LaneCard(lane: LaneTrace) {
                     else -> C.Dim
                 }
                 Text(
-                    lane.status.name.replace('_', ' ').lowercase() + (if (lane.fake) "  FAKE" else "") + (if (lane.model.isNotBlank()) "  ${lane.model}" else ""),
+                    lane.status.name.replace('_', ' ').lowercase() + (if (lane.fake) "  FAKE" else "") + (if (lane.model.isNotBlank() && lane.model != "FAKE") "  ${lane.model}" else ""),
                     style = LabelStyle, color = if (lane.fake) C.Warn else statusColor,
                 )
                 lane.error?.let { Text(it, color = C.Bad, fontSize = 12.sp) }
@@ -363,8 +371,6 @@ private fun LaneCard(lane: LaneTrace) {
         }
     }
 }
-
-private val IntrinsicHeightDp = 96.dp
 
 @Composable
 private fun AnswerRow(label: String, r: Reply) {

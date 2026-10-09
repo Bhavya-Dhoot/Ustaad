@@ -181,6 +181,17 @@ class ChoirNodeTest {
         assertTrue(a1.keySteps.single().startsWith("6*7 = "))
     }
 
+    @Test fun theFakeModelTellsProblemsWithTheSameOpeningLineApart() = runBlocking {
+        val head = "What does this Python program print? Give the exact output.
+"
+        val p1 = Problem(id = "c1", kind = Kind.CODE, text = head + "print(37)", answer = "37", expected = listOf("37"))
+        val p2 = Problem(id = "c2", kind = Kind.CODE, text = head + "print(4, 13)", answer = "4 13", expected = listOf("4 13"))
+        val n = node(FakeLlmClient(), listOf(p1, p2))
+        n.script = FakeScript(delayMs = 1)     // keep the fake model's answers, only make them quick
+        val a = n.solve(SolveRequest("task-8", p2.prompt(), Kind.CODE, Role.SOLVER, 300, 10_000))
+        assertTrue(a.answer, a.answer.startsWith("4 13"))
+    }
+
     @Test fun answersFromTheNodeStayUnderOneKilobyte() = runBlocking {
         val long = "x".repeat(500)
         val n = node(TextLlm { """{"key_steps":["$long","$long","$long"],"answer":"$long","confidence":0.5}""" })
