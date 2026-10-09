@@ -85,8 +85,23 @@ class GgufMetaTest {
         assertEquals(6, info.moeLayers)
         assertEquals(List(6) { 6400L }, info.layerBytes)
         assertEquals(1280L, info.inputBytes)
-        assertEquals(640L, info.outputBytes)
+        assertEquals(320L, info.outputBytes)      // output_norm
+        assertEquals(320L, info.outputHeadBytes)  // output.weight: untied head
+        assertTrue(info.hasUntiedHead)
         assertEquals(6 * 6400L + 1280 + 640, info.tensorBytes)
+    }
+
+    @Test fun tiedEmbeddingsMeanNoSeparateHead() {
+        val bytes = GgufBuilder().apply {
+            kvStr("general.architecture", "qwen35")
+            kvU32("qwen35.block_count", 1)
+            tensor("token_embd.weight", 128)
+            tensor("blk.0.ffn_up.weight", 256)
+            tensor("output_norm.weight", 64)
+        }.build()
+        val info = GgufMeta.read(bytes.inputStream(), "tied.gguf", bytes.size.toLong())
+        assertFalse(info.hasUntiedHead)
+        assertEquals(64L, info.outputBytes)
     }
 
     @Test fun denseModelHasNoExperts() {
@@ -180,6 +195,23 @@ class SplitPlannerTest {
         assertFalse(p.fitsAll())
         // 16 layers x 380 MB = 6.08 GB = 5798 MiB (+1536 MiB planning overhead)
         assertTrue(fits[1].needMb in 7300..7400)
+    }
+
+    @Test fun anUntiedHeadStaysOnTheDriverAndTheFlagsSayso() {
+        val withHead = info().copy(outputHeadBytes = 620_000_000L, outputBytes = 1_000_000L)
+        val p = SplitPlanner.plan(withHead, devs(9000, 9000, 9000))
+        assertTrue(p.headOnDriver)
+        val args = SplitPlanner.serverArgs(p, 50052)
+        assertEquals("^output\\.weight=CPU", args[args.indexOf("-ot") + 1])
+        assertEquals(16 * 380_000_000L + 300_000_000L + 620_000_000L, p.shares[0].weightBytes)  // driver: layers, embedding, head
+        assertEquals(16 * 380_000_000L + 1_000_000L, p.shares[2].weightBytes)                    // last phone: layers, output norm
+        assertTrue(SplitPlanner.argsMatchPlan(p, args))
+    }
+
+    @Test fun aTiedHeadModelGetsNoOverride() {
+        val p = SplitPlanner.plan(info(), devs(9000, 9000))
+        assertFalse(p.headOnDriver)
+        assertFalse(SplitPlanner.serverArgs(p, 50052).contains("-ot"))
     }
 
     @Test fun threePhoneFlagsPlaceEveryLayerWhereThePlanSays() {

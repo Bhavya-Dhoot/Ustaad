@@ -32,6 +32,8 @@ data class PhoneView(
     val online: Boolean = true,
     /** Resident memory of the process serving the split: llama-server on the driver, rpc-server on a peer. */
     val rssMb: Long? = null,
+    /** Highest resident memory of that process so far (VmHWM). */
+    val peakMb: Long? = null,
     /** Peers: anonymous memory of rpc-server, which is the weights received so far. */
     val receivedMb: Long? = null,
     /** Peers: size of rpc-server's on-disk tensor cache. */
@@ -139,9 +141,11 @@ data class MemCloudState(
 @Serializable data class RpcStartRequest(
     val port: Int = 50052,
     val cache: Boolean = true,
-    /** Interface address to listen on; must belong to this phone. Default: this phone's link address. */
+    /** Link address to listen on; must belong to this phone's Wi-Fi or Direct interface. Never 0.0.0.0. Default: the address this request arrived on. */
     val bind: String? = null,
     val threads: Int = 8,
+    /** Model servers the driver stopped on this phone; they are restarted when rpc-server stops, whoever stops it. */
+    val restore: List<RestoreItem> = emptyList(),
 )
 
 @Serializable
@@ -151,6 +155,8 @@ data class RpcStateDto(
     val bind: String?,
     val pid: Long?,
     val rssMb: Long?,
+    /** Highest resident memory of rpc-server since it started (VmHWM). */
+    val peakMb: Long? = null,
     /** Anonymous resident memory: the tensors the driver has sent so far. */
     val anonMb: Long?,
     val cachedBytes: Long,
@@ -160,4 +166,6 @@ data class RpcStateDto(
     val thermalStatus: Int,
     val ramAvailMb: Long,
     val args: List<String>,
+    /** Name of the phone this one is lending memory to, null when not lending. */
+    val lendingTo: String? = null,
 )

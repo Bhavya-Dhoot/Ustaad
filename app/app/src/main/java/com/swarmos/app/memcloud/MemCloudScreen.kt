@@ -71,6 +71,7 @@ fun MemCloudScreen() {
     val peers by AppGraph.registry.peers.collectAsStateWithLifecycle()
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val tick by ModelStore.tick.collectAsStateWithLifecycle()
+    val lending by RpcWorker.lending.collectAsStateWithLifecycle()
     var showExpert by rememberSaveable { mutableStateOf(false) }
 
     // peers' model servers change what the plan can count on; ask while this screen is open
@@ -83,6 +84,15 @@ fun MemCloudScreen() {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // rpc-server has no authentication: while it listens for another phone, say so in plain words
+        lending?.let { l ->
+            SwarmCard {
+                Text(l.sentence, style = SwarmType.body)
+                Text("It stops when the split ends or that phone is out of reach for 10 s.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+                Spacer(Modifier.height(8.dp))
+                SecondaryButton("Stop lending", { RpcWorker.stop("stopped on this phone") }, Modifier.fillMaxWidth())
+            }
+        }
         if (showExpert) {
             ExpertMeshView(st, onBack = { showExpert = false })
             return@Column
@@ -103,7 +113,7 @@ fun MemCloudScreen() {
             Phase.IDLE, Phase.FAILED, Phase.BASELINE -> PlanView(st, peers.filter { !it.away }.sortedBy { it.info.name }.map { it.info.name }, self.name, tick, onExpert = { showExpert = true })
             Phase.PLANNING, Phase.STARTING_PEERS, Phase.LOADING -> LoadingView(st)
             Phase.READY -> RunningView(st, onExpert = { showExpert = true })
-            Phase.DEGRADED -> DroppedView(st)
+            Phase.DEGRADED -> DroppedView(st, peers.filter { !it.away }.map { it.info.nodeId }.toSet())
         }
     }
 }
@@ -299,7 +309,7 @@ private fun PhoneLanes(st: MemCloudState, showProgress: Boolean) {
                 MetricRow("Received", mbText(p.receivedMb), "of ${mbText(share?.weightMb)}")
                 MetricRow("On-disk cache", mbText(p.cachedMb))
             }
-            MetricRow("Memory in use", mbText(p.rssMb))
+            MetricRow("Memory in use", mbText(p.rssMb), "peak ${mbText(p.peakMb)}")
             p.thermalStatus?.let { MetricRow("Temperature", HealthMonitor.thermalWord(it), "status $it") }
             p.rttMs?.let { MetricRow("Round trip from this phone", "%.1f".format(it), "ms") }
         }
@@ -353,7 +363,7 @@ private fun RunningView(st: MemCloudState, onExpert: () -> Unit) {
 // ---------- dropped ----------
 
 @Composable
-private fun DroppedView(st: MemCloudState) {
+private fun DroppedView(st: MemCloudState, onlineIds: Set<String>) {
     val n = st.layers ?: 0
     val lost = st.lostPhone
     SwarmCard {
@@ -375,8 +385,10 @@ private fun DroppedView(st: MemCloudState) {
             Text("${g.tokens} tokens streamed before the phone dropped", style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite))
         }
     }
-    val remaining = st.phones.count { !it.isDriver && it.online }
+    // phones that are online right now (the lost one counts again as soon as its heartbeat is back)
+    val remaining = onlineIds.size
     PrimaryButton("Re-plan with ${remaining + 1} phones", { MemCloud.replan() }, Modifier.fillMaxWidth(), enabled = MemCloudLogic.canReplan(remaining))
+    if (remaining == 0) Note("no other phone is online yet")
     SecondaryButton("Stop and restore phones", { MemCloud.stop() }, Modifier.fillMaxWidth())
     PhoneLanes(st, showProgress = false)
     StepsList(st)

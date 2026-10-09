@@ -35,7 +35,7 @@ data class Fit(val device: PlanDevice, val needMb: Long, val haveMb: Long) {
 
 enum class SplitMode { EQUAL, RAM }
 
-class SplitPlan(val info: GgufInfo, val shares: List<Share>) {
+class SplitPlan(val info: GgufInfo, val shares: List<Share>, val headOnDriver: Boolean = false) {
     val nLayers: Int get() = info.blockCount
     val driver: Share get() = shares.first()
     val remote: List<Share> get() = shares.drop(1).filter { it.layerCount > 0 }
@@ -107,7 +107,7 @@ object SplitPlanner {
      * [devices] must start with the driver. [manual] (one count per device, summing to the layer count) overrides [mode];
      * [mode] EQUAL gives every phone the same number of layers, RAM weights them by free memory.
      */
-    fun plan(info: GgufInfo, devices: List<PlanDevice>, mode: SplitMode = SplitMode.EQUAL, manual: List<Int>? = null): SplitPlan {
+    fun plan(info: GgufInfo, devices: List<PlanDevice>, mode: SplitMode = SplitMode.EQUAL, manual: List<Int>? = null, headOnDriver: Boolean = info.hasUntiedHead): SplitPlan {
         require(devices.isNotEmpty() && devices.first().isDriver) { "the driver must be first" }
         val n = info.blockCount
         val counts = when {
@@ -129,9 +129,12 @@ object SplitPlanner {
             val output = if (lastRemote != null) i == lastRemote else i == 0
             if (input) bytes += info.inputBytes
             if (output) bytes += info.outputBytes
+            // the lm_head follows the output layer unless it is pinned to the driver (spike: -ot ^output\.weight=CPU)
+            val headHere = if (headOnDriver && lastRemote != null) i == 0 else output
+            if (headHere) bytes += info.outputHeadBytes
             Share(d, first, counts[i], bytes, input, output)
         }
-        return SplitPlan(info, shares)
+        return SplitPlan(info, shares, headOnDriver && lastRemote != null)
     }
 
     /**
@@ -151,7 +154,8 @@ object SplitPlanner {
         } else {
             args += listOf("-ngl", "0")
         }
-        args += listOf("-c", ctx.toString(), "-np", "1", "-fit", "off")
+        if (plan.headOnDriver) args += listOf("-ot", "^output\\.weight=CPU")
+        args += listOf("-t", "8", "-c", ctx.toString(), "-np", "1", "-fit", "off")
         return args
     }
 

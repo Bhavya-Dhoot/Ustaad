@@ -2,9 +2,11 @@ package com.swarmos.app.memcloud
 
 import androidx.compose.runtime.Composable
 import com.swarmos.app.SwarmModule
+import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.header
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -28,12 +30,15 @@ object MemCloudModule : SwarmModule {
     override fun Route.routes() {
         post("/rpc/start") {
             val req = body<RpcStartRequest>() ?: RpcStartRequest()
-            when (val r = RpcWorker.start(req)) {
+            // the address the signed request arrived on is the link the driver uses: bind there unless the body names one
+            val via = runCatching { call.request.local.localAddress }.getOrNull()
+            val from = call.request.headers[Signer.HEADER_NODE]
+            when (val r = RpcWorker.start(req, via, from)) {
                 is RpcWorker.StartResult.Ok -> call.respond(if (r.state.state == "READY") HttpStatusCode.OK else HttpStatusCode.Conflict, r.state)
                 is RpcWorker.StartResult.Refused -> call.respond(HttpStatusCode.BadRequest, ErrorBody(r.message))
             }
         }
-        post("/rpc/stop") { call.respond(RpcWorker.stop()) }
+        post("/rpc/stop") { call.respond(RpcWorker.stop("stopped by the driver")) }
         get("/rpc/state") { call.respond(RpcWorker.state()) }
 
         get("/state") { call.respond(MemCloud.state.value) }

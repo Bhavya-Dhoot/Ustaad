@@ -30,12 +30,17 @@ data class GgufInfo(
     val layerBytes: List<Long>,
     /** Bytes of `token_embd.*` (kept by the driver, which tokenises and embeds). */
     val inputBytes: Long,
-    /** Bytes of everything else (output norm, lm_head, rope tables): goes with the last layer range. */
+    /** Bytes of the other tensors outside the layers (output norm, rope tables): goes with the last layer range. */
     val outputBytes: Long,
+    /** Bytes of `output.weight`, the lm_head; 0 when the model ties it to the embedding table (Qwen3.5-4B). */
+    val outputHeadBytes: Long = 0,
 ) {
+    /** An untied lm_head can stay on the driver, so the 600 KB of logits per token never cross the link. */
+    val hasUntiedHead: Boolean get() = outputHeadBytes > 0
+
     val isMoe: Boolean get() = expertCount > 1
     val moeLayers: Int get() = if (isMoe) (blockCount - leadingDenseBlocks).coerceAtLeast(0) else 0
-    val tensorBytes: Long get() = layerBytes.sum() + inputBytes + outputBytes
+    val tensorBytes: Long get() = layerBytes.sum() + inputBytes + outputBytes + outputHeadBytes
 }
 
 class GgufFormatException(message: String) : RuntimeException(message)
@@ -88,6 +93,7 @@ object GgufMeta {
         val layerBytes = LongArray(blockCount)
         var input0 = 0L
         var rest = 0L
+        var head = 0L
         for ((i, t) in sorted.withIndex()) {
             val end = if (i + 1 < sorted.size) sorted[i + 1].offset else dataBytes
             val size = (end - t.offset).coerceAtLeast(0)
@@ -95,6 +101,7 @@ object GgufMeta {
             when {
                 layer != null && layer < blockCount -> layerBytes[layer] += size
                 t.name.startsWith("token_embd") -> input0 += size
+                t.name == "output.weight" -> head += size
                 else -> rest += size
             }
         }
@@ -112,6 +119,7 @@ object GgufMeta {
             layerBytes = layerBytes.toList(),
             inputBytes = input0,
             outputBytes = rest,
+            outputHeadBytes = head,
         )
     }
 

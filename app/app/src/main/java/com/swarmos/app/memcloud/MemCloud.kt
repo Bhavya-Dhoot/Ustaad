@@ -167,8 +167,10 @@ object MemCloud {
         val file = st.file ?: return "nothing to re-plan"
         if (opJob?.isActive == true && st.phase != Phase.LOADING) return "busy: ${st.phase.name}"
         val online = AppGraph.registry.peers.value.filter { !it.away }.map { it.info.nodeId }
-        val keep = MemCloudLogic.replanPeers(participants.map { it.nodeId }, online, peers.map { sel -> AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == sel || it.info.name.equals(sel, true) }?.info?.nodeId ?: sel })
-        if (keep.isEmpty()) return "no phone is online to re-plan with"
+        val asked = peers.map { sel -> AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == sel || it.info.name.equals(sel, true) }?.info?.nodeId ?: sel }
+        // the phones of the last plan that are still online; when none is, whichever phones are online now
+        val keep = MemCloudLogic.replanPeers(participants.map { it.nodeId }, online, asked).ifEmpty { online }
+        if (keep.isEmpty()) return "no other phone is online to re-plan with"
         val old = opJob
         opJob = scope.launch {
             old?.cancel()
@@ -285,7 +287,7 @@ object MemCloud {
         }
         setPhone(p.nodeId) { it.copy(step = "Starting rpc-server", freed = freed, restore = restoreText(p.nodeId)) }
         step("${p.name}: starting rpc-server on ${p.host}:${Ports.RPC} with the tensor cache")
-        val body = SwarmJson.encodeToString(RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host))
+        val body = SwarmJson.encodeToString(RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList()))
         val st = SwarmJson.decodeFromString<RpcStateDto>(AppGraph.nodeClient.raw(HttpMethod.Post, p.addr, "/memcloud/rpc/start", body, 60_000))
         if (st.state != "READY") throw IllegalStateException("rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}")
         setPhone(p.nodeId) { it.copy(step = "rpc-server listening, waiting for weights") }
@@ -343,10 +345,9 @@ object MemCloud {
         coroutineScope {
             for (p in peers) {
                 async {
+                    // the worker restarts its own model servers when rpc-server stops (it holds the list from /rpc/start),
+                    // and does the same on its own if this phone's heartbeat is lost for 10 s
                     runCatching { AppGraph.nodeClient.raw(HttpMethod.Post, p.info.ip, "/memcloud/rpc/stop", "", 10_000) }
-                    for (i in restore[p.info.nodeId] ?: emptyList()) {
-                        runCatching { AppGraph.nodeClient.raw(HttpMethod.Post, p.info.ip, "/models/load", """{"role":"${i.role}","file":"${i.file}","wait":false}""", 15_000) }
-                    }
                 }
             }
         }
@@ -428,7 +429,7 @@ object MemCloud {
         _state.update { cur ->
             val phones = cur.phones.map { v ->
                 if (v.isDriver) {
-                    v.copy(rssMb = LlamaRuntime.rssKb(Role.CHAT)?.div(1024), thermalStatus = ownHealth.thermalStatus, ramAvailMb = ownHealth.ramAvailMb,
+                    v.copy(rssMb = LlamaRuntime.rssKb(Role.CHAT)?.div(1024), peakMb = LlamaRuntime.peakRssKb(Role.CHAT)?.div(1024), thermalStatus = ownHealth.thermalStatus, ramAvailMb = ownHealth.ramAvailMb,
                         step = when (cur.phase) {
                             Phase.READY -> "Serving; layers ${sp.driver.range}"
                             Phase.LOADING -> "Loading its layers ${sp.driver.range} and feeding the others"
@@ -442,7 +443,7 @@ object MemCloud {
                     val received = st?.anonMb ?: v.receivedMb
                     val frac = if (share != null) MemCloudLogic.loadFraction(received, share.weightBytes) ?: v.loadFraction else v.loadFraction
                     v.copy(
-                        rssMb = st?.rssMb ?: v.rssMb, receivedMb = received, cachedMb = st?.let { it.cachedBytes / (1024 * 1024) } ?: v.cachedMb,
+                        rssMb = st?.rssMb ?: v.rssMb, peakMb = st?.peakMb ?: v.peakMb, receivedMb = received, cachedMb = st?.let { it.cachedBytes / (1024 * 1024) } ?: v.cachedMb,
                         loadFraction = if (cur.phase == Phase.READY) 1f else frac,
                         thermalStatus = entry?.health?.thermalStatus ?: st?.thermalStatus ?: v.thermalStatus,
                         ramAvailMb = entry?.health?.ramAvailMb ?: v.ramAvailMb, rttMs = linkRtt,
