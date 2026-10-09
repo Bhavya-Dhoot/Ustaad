@@ -1,0 +1,4 @@
+Pet vaccination record - Biscuit (beagle, invented)
+Rabies booster 12-Aug-2026, next due 12-Aug-2027. Deworming 3-Oct-2026. Vet: Pawfield Clinic (DEMO).
+
+SYNTHETIC DEMO DATA - not a real document

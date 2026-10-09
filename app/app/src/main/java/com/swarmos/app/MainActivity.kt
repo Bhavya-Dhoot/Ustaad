@@ -12,10 +12,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -25,8 +21,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.swarmos.app.core.SwarmService
+import com.swarmos.app.shell.SettingsSheet
+import com.swarmos.app.shell.SetupScreen
 import com.swarmos.app.ui.GalleryPage
 import com.swarmos.app.ui.NavItem
+import com.swarmos.app.ui.ScreenTransition
 import com.swarmos.app.ui.StatsBar
 import com.swarmos.app.ui.SwarmBottomBar
 import com.swarmos.app.ui.SwarmColors
@@ -46,6 +45,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
         applyIntent(intent)
+        // a dozing phone stops answering its peers, so the screen stays on while Ustaad is in front
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         SwarmService.start(this)
         setContent { SwarmTheme { SwarmRoot(galleryPage, onLeaveGallery = { galleryPage = 0 }) } }
     }
@@ -58,8 +59,8 @@ class MainActivity : ComponentActivity() {
     /** `adb shell am start -n com.swarmos.app/.MainActivity --es name "Phone A"` names the node. */
     private fun applyIntent(i: Intent?) {
         i?.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() }?.let { AppGraph.setNodeName(it) }
-        // `--ez keepon true` keeps the screen on while this activity is shown (app flag, no system setting); used to test OriginOS background kills
-        if (i?.getBooleanExtra("keepon", false) == true) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // `--ez setupDone true` marks the first-run setup done (false shows it again), so phones can be driven over adb
+        if (i?.hasExtra(EXTRA_SETUP_DONE) == true) AppGraph.markSetupDone(i.getBooleanExtra(EXTRA_SETUP_DONE, false))
         // `--ez gallery true [--ei galleryPage 3]` opens the UI kit gallery, `--ez gallery false` closes it (debug builds only)
         if (BuildConfig.DEBUG && i?.hasExtra(EXTRA_GALLERY) == true) {
             galleryPage = if (i.getBooleanExtra(EXTRA_GALLERY, false)) i.getIntExtra(EXTRA_GALLERY_PAGE, 1) else 0
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_NAME = "name"
+        const val EXTRA_SETUP_DONE = "setupDone"
         const val EXTRA_GALLERY = "gallery"
         const val EXTRA_GALLERY_PAGE = "galleryPage"
     }
@@ -75,11 +77,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun SwarmRoot(galleryPage: Int, onLeaveGallery: () -> Unit) {
-    val modules = AppGraph.modules
+    val modules = remember { AppGraph.modules.filter { it.showInNav } }
     var selected by rememberSaveable { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
     val items = modules.map { NavItem(it.id, destinationLabel(it.id) ?: it.title) }
     val inGallery = galleryPage > 0
+
+    if (!AppGraph.setupDone) {
+        SetupScreen(onFinish = { AppGraph.markSetupDone(true) })
+        return
+    }
 
     Column(
         Modifier
@@ -88,7 +95,9 @@ private fun SwarmRoot(galleryPage: Int, onLeaveGallery: () -> Unit) {
     ) {
         StatsBar(onEditName = { showSettings = true })
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (inGallery) GalleryPage(galleryPage) else modules[selected].Screen()
+            ScreenTransition(if (inGallery) -galleryPage else selected, Modifier.fillMaxSize()) {
+                if (inGallery) GalleryPage(galleryPage) else modules[selected].Screen()
+            }
         }
         SwarmBottomBar(
             items = items,
@@ -97,17 +106,5 @@ private fun SwarmRoot(galleryPage: Int, onLeaveGallery: () -> Unit) {
         )
     }
 
-    if (showSettings) NameDialog(onDismiss = { showSettings = false })
-}
-
-@Composable
-private fun NameDialog(onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf(AppGraph.registry.self.value.name) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Node name") },
-        text = { OutlinedTextField(value = text, onValueChange = { text = it.take(32) }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { AppGraph.setNodeName(text); onDismiss() }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    if (showSettings) SettingsSheet(onDismiss = { showSettings = false })
 }

@@ -44,9 +44,14 @@ case "$VARIANT" in
   i8mm)    ARCH_ARGS=(-DGGML_CPU_ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm) ;;
   sve2)    ARCH_ARGS=(-DGGML_CPU_ARM_ARCH=armv9-a+dotprod+fp16+i8mm+bf16+sve2) ;;
   kleidi)  ARCH_ARGS=(-DGGML_CPU_ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm -DGGML_CPU_KLEIDIAI=ON) ;;
-  opencl)  ARCH_ARGS=(-DGGML_CPU_ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm
+  opencl)  # needs third_party/opencl/OpenCL-Headers (git clone KhronosGroup/OpenCL-Headers) and
+           # third_party/opencl/lib/libOpenCL.so (adb pull /vendor/lib64/libOpenCL.so) for linking only;
+           # at run time the phone's own /vendor/lib64/libOpenCL.so (Adreno) is loaded.
+           ARCH_ARGS=(-DGGML_CPU_ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm
                       -DGGML_OPENCL=ON -DGGML_OPENCL_USE_ADRENO_KERNELS=ON
-                      -DGGML_OPENCL_EMBED_KERNELS=ON) ;;
+                      -DGGML_OPENCL_EMBED_KERNELS=ON
+                      -DOpenCL_INCLUDE_DIR="$(cygpath -m "$ROOT/third_party/opencl/OpenCL-Headers")"
+                      -DOpenCL_LIBRARY="$(cygpath -m "$ROOT/third_party/opencl/lib/libOpenCL.so")") ;;
   *) echo "unknown variant $VARIANT" >&2; exit 2 ;;
 esac
 
