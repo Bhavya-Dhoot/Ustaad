@@ -108,7 +108,7 @@ fun ThroughputPanel(modifier: Modifier = Modifier, showTitle: Boolean = true) {
 
         Column {
             Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-                Cell("phone", 2.6f, header = true)
+                Cell("phone", 3.4f, header = true)
                 Cell("jobs", 0.8f, header = true)
                 Cell("tok/s", 1.1f, header = true)
                 Cell("load", 1.3f, header = true)
@@ -120,7 +120,7 @@ fun ThroughputPanel(modifier: Modifier = Modifier, showTitle: Boolean = true) {
                 val share = swarmReport?.perPhone?.firstOrNull { it.nodeId == v.nodeId }
                 val caps = v.caps
                 Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.weight(2.6f), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(3.4f), verticalAlignment = Alignment.CenterVertically) {
                         PhoneToken(name, 22.dp)
                         Spacer(Modifier.width(6.dp))
                         Text(if (v.isLocal) "$name (this)" else name, style = SwarmType.mono.copy(fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
