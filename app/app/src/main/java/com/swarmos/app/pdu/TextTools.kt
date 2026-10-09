@@ -97,7 +97,8 @@ object Snippets {
         while (s < flat.length) {
             val e = minOf(s + budget, flat.length)
             val window = lower.substring(s, e)
-            val score = terms.count { it in window }
+            // distinct query words first, then how many times they occur
+            val score = terms.count { it in window } * 1000 + terms.sumOf { t -> window.windowed(t.length).count { it == t } }
             if (score > bestScore) { bestScore = score; bestStart = s }
             if (e == flat.length) break
             s = nextWordStart(flat, s + 40)

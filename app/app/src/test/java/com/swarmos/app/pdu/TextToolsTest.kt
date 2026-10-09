@@ -29,6 +29,28 @@ class QueryTermsTest {
     }
 }
 
+class CoverageTest {
+    private val terms = listOf("warranty", "bill", "laptop")
+
+    @Test fun fullAndPartialCoverage() {
+        assertEquals(1.0, Coverage.of(terms, "Laptop WARRANTY bill, keep it"), 1e-12)
+        assertEquals(1.0 / 3, Coverage.of(terms, "Electricity bill September"), 1e-12)
+        assertEquals(0.0, Coverage.of(terms, "Yoga class schedule"), 1e-12)
+    }
+
+    @Test fun stemVariantsCount() {
+        assertEquals(1.0, Coverage.of(terms, "billing for laptops under warranties"), 1e-12)
+    }
+
+    @Test fun shortWordsNeedAnExactMatch() {
+        assertEquals(0.0, Coverage.of(listOf("tax"), "taxi receipt"), 1e-12)
+    }
+
+    @Test fun noTermsNoCoverage() {
+        assertEquals(0.0, Coverage.of(emptyList(), "anything"), 1e-12)
+    }
+}
+
 class SnippetsTest {
     @Test fun shortTextIsReturnedWhole() {
         assertEquals("a b c", Snippets.best("a  b\nc", listOf("b")))
@@ -37,6 +59,13 @@ class SnippetsTest {
     @Test fun neverLongerThan400() {
         val s = Snippets.best("lorem ipsum ".repeat(300), listOf("ipsum"))
         assertTrue(s.length <= 400)
+    }
+
+    @Test fun denserWindowWinsOverEarlierWindow() {
+        val head = "warranty bill laptop " + "filler words ".repeat(60)
+        val tail = "warranty valid until 13-Mar-2026 warranty claims need the bill for the laptop. " + "z".repeat(1)
+        val s = Snippets.best(head + "padding ".repeat(80) + tail, listOf("warranty", "bill", "laptop"))
+        assertTrue(s, s.contains("valid until 13-Mar-2026"))
     }
 
     @Test fun windowFollowsTheQueryTerms() {

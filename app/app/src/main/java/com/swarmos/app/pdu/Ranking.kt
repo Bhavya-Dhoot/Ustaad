@@ -45,22 +45,39 @@ object HybridRanker {
 
     /**
      * [dense] is the cosine top-N as (chunkId, cosine), best first; [bm25] the BM25 top-N chunk ids, best first.
-     * Result score is RRF normalised to 0..1 (1 = first in both lists). A chunk that only the dense list
-     * returned is dropped unless its cosine reaches [DENSE_MIN_COSINE], so an unrelated question finds nothing.
+     * Only dense matches that reach [DENSE_MIN_COSINE] take part, so with a meaningless embedder (or an unrelated
+     * question) the ranking is pure BM25 and a dense-only noise match cannot appear. Score is RRF normalised to 0..1
+     * (1 = first in every list that has entries).
      */
     fun fuse(dense: List<Pair<Long, Float>>, bm25: List<Long>): List<Fused> {
         val cos = dense.toMap()
         val inBm25 = bm25.toHashSet()
-        val max = 2.0 / (Rrf.K + 1)
-        return Rrf.fuse(listOf(dense.map { it.first }, bm25))
-            .filter { (id, _) -> id in inBm25 || (cos[id] ?: 0f) >= DENSE_MIN_COSINE }
-            .map { (id, s) -> Fused(id, s / max, cos[id] ?: 0f, id in inBm25) }
+        val lists = listOf(dense.filter { it.second >= DENSE_MIN_COSINE }.map { it.first }, bm25).filter { it.isNotEmpty() }
+        if (lists.isEmpty()) return emptyList()
+        val max = lists.size.toDouble() / (Rrf.K + 1)
+        return Rrf.fuse(lists).map { (id, s) -> Fused(id, s / max, cos[id] ?: 0f, id in inBm25) }
     }
 
     /** One chunk per document, keeping the best-ranked one and the order. */
     fun collapseByDoc(cands: List<Candidate>): List<Candidate> {
         val seen = HashSet<String>()
         return cands.filter { seen.add(it.docId) }
+    }
+}
+
+/** Share of the query words that a text contains (stem-tolerant). Comparable across phones, unlike BM25 values. */
+object Coverage {
+    fun of(terms: List<String>, text: String): Double {
+        if (terms.isEmpty()) return 0.0
+        val tokens = Regex("[\\p{L}\\p{N}\\p{M}]+").findAll(text.lowercase()).map { it.value }.toSet()
+        return terms.count { t -> tokens.any { matches(t, it) } }.toDouble() / terms.size
+    }
+
+    fun matches(term: String, token: String): Boolean {
+        if (term == token) return true
+        var p = 0
+        while (p < term.length && p < token.length && term[p] == token[p]) p++
+        return p >= 4 && p >= 0.75 * minOf(term.length, token.length)
     }
 }
 

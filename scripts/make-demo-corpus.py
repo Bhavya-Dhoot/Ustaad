@@ -464,8 +464,12 @@ def push(selected):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--push", action="store_true", help="adb push the corpus to the phones after generating")
+    ap.add_argument("--push-only", action="store_true", help="skip generating, push the files already in docs/demo-corpus")
     ap.add_argument("--phones", default="ABC", help="which phones to push to, e.g. AB")
     args = ap.parse_args()
+    if args.push_only:
+        push(list(args.phones))
+        return
     for p in ("A", "B", "C"):
         import shutil
         shutil.rmtree(ROOT / p, ignore_errors=True)

@@ -59,6 +59,17 @@ class RrfTest {
         assertEquals(listOf(7L), fused.map { it.chunkId })
     }
 
+    @Test fun denseNoiseDoesNotReorderBm25() {
+        // chunk 2 is first in the (meaningless) dense list but far below the cosine floor
+        val fused = HybridRanker.fuse(listOf(2L to 0.08f, 1L to 0.02f), listOf(1L, 2L))
+        assertEquals(listOf(1L, 2L), fused.map { it.chunkId })
+        assertEquals(1.0, fused[0].score, 1e-12)
+    }
+
+    @Test fun nothingAtAllGivesNothing() {
+        assertTrue(HybridRanker.fuse(listOf(1L to 0.1f), emptyList()).isEmpty())
+    }
+
     @Test fun normalisedScoreIsOneForFirstInBothLists() {
         val fused = HybridRanker.fuse(listOf(1L to 0.9f), listOf(1L))
         assertEquals(1.0, fused[0].score, 1e-12)

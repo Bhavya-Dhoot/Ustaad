@@ -1,5 +1,6 @@
 package com.swarmos.app.pdu
 
+import com.swarmos.app.BuildConfig
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
@@ -18,7 +19,7 @@ data class DebugPeersRequest(val ips: List<String>)
 
 @Serializable
 data class AskSource(
-    val n: Int, val phone: String, val nodeId: String, val local: Boolean, val title: String, val kind: String,
+    val n: Int, val phone: String, val nodeId: String, val local: Boolean, val uriHash: String, val title: String, val kind: String,
     val dateMs: Long, val snippet: String, val score: Double,
 )
 
@@ -52,7 +53,7 @@ fun QueryUi.toReport(): AskReport = AskReport(
     withheldPrivate = devices.sumOf { it.withheldPrivate },
     sources = sources.map {
         AskSource(
-            it.n, it.deviceName, it.deviceId, it.local,
+            it.n, it.deviceName, it.deviceId, it.local, if (it.localPrivate) "" else it.hit.uriHash,
             if (it.localPrivate) "(private file on this phone)" else it.hit.title, it.hit.kind, it.hit.dateMs,
             if (it.localPrivate) "" else it.hit.snippet, it.hit.score,
         )
@@ -88,31 +89,34 @@ fun Route.pduRoutes() {
         call.respond(PduEngine.openForPeer(r.uriHash))
     }
 
-    post("/index") {
-        val req = SwarmJson.decodeFromString<IndexRequest>(call.receiveText().ifBlank { "{}" })
-        val report = PduEngine.runRequest(req)
-        call.respond(if (report.error == null) HttpStatusCode.OK else HttpStatusCode.Conflict, report)
-    }
+    // test and dev routes: debug builds only, so a release build exposes just /query and /open
+    if (BuildConfig.DEBUG) {
+        post("/index") {
+            val req = SwarmJson.decodeFromString<IndexRequest>(call.receiveText().ifBlank { "{}" })
+            val report = PduEngine.runRequest(req)
+            call.respond(if (report.error == null) HttpStatusCode.OK else HttpStatusCode.Conflict, report)
+        }
 
-    post("/ask") {
-        val req = SwarmJson.decodeFromString<AskRequest>(call.receiveText())
-        if (req.text.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("empty question"))
-        call.respond(PduEngine.ask(req.text, req.k, req.deadlineMs).toReport())
-    }
+        post("/ask") {
+            val req = SwarmJson.decodeFromString<AskRequest>(call.receiveText())
+            if (req.text.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("empty question"))
+            call.respond(PduEngine.ask(req.text, req.k, req.deadlineMs).toReport())
+        }
 
-    post("/debug/peers") {
-        val req = SwarmJson.decodeFromString<DebugPeersRequest>(call.receiveText())
-        call.respond(PduEngine.addPeersByIp(req.ips))
-    }
+        post("/debug/peers") {
+            val req = SwarmJson.decodeFromString<DebugPeersRequest>(call.receiveText())
+            call.respond(PduEngine.addPeersByIp(req.ips))
+        }
 
-    get("/status") {
-        val c = PduEngine.store.counts()
-        call.respond(
-            StatusReport(
-                c.photos, c.documents, c.scans, c.skipped, c.chunks, c.lastRunMs,
-                PduEngine.store.meta("embedModel"), PduEngine.progress.value.running,
-                PduEngine.store.folders().map { FolderReport(it.folder, it.isPrivate, it.docs) }, PduEngine.progress.value.last,
-            ),
-        )
+        get("/status") {
+            val c = PduEngine.store.counts()
+            call.respond(
+                StatusReport(
+                    c.photos, c.documents, c.scans, c.skipped, c.chunks, c.lastRunMs,
+                    PduEngine.store.meta("embedModel"), PduEngine.progress.value.running,
+                    PduEngine.store.folders().map { FolderReport(it.folder, it.isPrivate, it.docs) }, PduEngine.progress.value.last,
+                ),
+            )
+        }
     }
 }
