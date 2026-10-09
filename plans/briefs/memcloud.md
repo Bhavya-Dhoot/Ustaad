@@ -21,3 +21,5 @@ Verify on the phones:
 - With the large MoE model (docs/models.md) driven from the phone that holds the file: the three-phone split loads and generates; record load time, time to first token, decode tok/s over a 200-token answer, RSS per phone, thermal after 5 minutes of generation. Then the single-phone attempt and what happened.
 - Pull test: force-stop the app on one peer mid-generation: DEGRADED within 10 s, re-plan works.
 - Write docs/benchmarks/2026-10-10-memorycloud-inapp.md with every number and the exact server arguments used.
+
+Screen reference: ui-kit/screens/memorycloud_plan_split, memorycloud_loading, memorycloud_running, memorycloud_phone_dropped, expertmesh_explainer (read ui-kit/README.md first: the layer strip is ONE row of small cells, phones are Phone A/B/C, model names come from the GGUF file, no invented labels).

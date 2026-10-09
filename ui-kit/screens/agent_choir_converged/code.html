@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS - Agent Choir</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts: Geist, Bricolage Grotesque, Shantell Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&amp;family=Geist+Mono:wght@400;500;600;700&amp;family=Geist:wght@300;400;500;600;700&amp;family=Shantell+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "tertiary": "#000000",
+            "on-tertiary-fixed-variant": "#444845",
+            "on-primary": "#ffffff",
+            "outline-variant": "#c6c6ca",
+            "error": "#ba1a1a",
+            "on-error": "#ffffff",
+            "marker-teal-tint": "#1E9BB01F",
+            "marker-magenta": "#C8457E",
+            "on-secondary": "#ffffff",
+            "on-primary-fixed-variant": "#45474a",
+            "secondary": "#5a5f67",
+            "on-primary-fixed": "#1a1c1f",
+            "marker-magenta-tint": "#C8457E1F",
+            "background": "#F6F7F5",
+            "surface-dim": "#d9dad8",
+            "inverse-primary": "#c6c6ca",
+            "primary-fixed-dim": "#c6c6ca",
+            "inverse-on-surface": "#f0f1ef",
+            "on-secondary-fixed": "#171c23",
+            "surface": "#F6F7F5",
+            "on-surface": "#15171A",
+            "surface-container-lowest": "#ffffff",
+            "tertiary-container": "#191c1a",
+            "primary": "#15171A",
+            "marker-tangerine": "#E08A3C",
+            "on-tertiary-fixed": "#191c1a",
+            "secondary-fixed-dim": "#c2c7d0",
+            "surface-container": "#edeeec",
+            "sheet": "#FCFDFB",
+            "surface-container-low": "#f3f4f2",
+            "on-primary-container": "#838487",
+            "on-error-container": "#93000a",
+            "outline": "#15171A",
+            "surface-container-high": "#e7e8e6",
+            "on-surface-variant": "#5E636B",
+            "surface-bright": "#f9faf8",
+            "on-background": "#15171A",
+            "surface-variant": "#e2e3e1",
+            "inverse-surface": "#2e3130",
+            "primary-container": "#15171A",
+            "marker-tangerine-tint": "#E08A3C1F",
+            "surface-container-highest": "#e2e3e1",
+            "secondary-container": "#dee3ec",
+            "on-secondary-container": "#60656d",
+            "tertiary-fixed": "#e0e3df",
+            "surface-tint": "#5d5e62",
+            "error-container": "#ffdad6",
+            "primary-fixed": "#e2e2e6",
+            "tertiary-fixed-dim": "#c4c7c4",
+            "on-tertiary-container": "#818581",
+            "marker-teal": "#1E9BB0",
+            "secondary-fixed": "#dee3ec",
+            "on-tertiary": "#ffffff",
+            "on-secondary-fixed-variant": "#42474f"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "gutter": "0.5rem",
+            "space-lg": "1.5rem",
+            "space-md": "1rem",
+            "margin": "1rem",
+            "space-xs": "0.25rem",
+            "space-sm": "0.5rem",
+            "space-xl": "2rem"
+          },
+          "fontFamily": {
+            "display-hero": ["Geist", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "label-mono": ["Geist Mono", "monospace"],
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "label-md": ["Geist", "sans-serif"],
+            "body-sm": ["Geist", "sans-serif"],
+            "stamp-label": ["Geist Mono", "monospace"]
+          },
+          "fontSize": {
+            "display-hero": ["44px", { "lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "500" }],
+            "body-md": ["15px", { "lineHeight": "22px", "fontWeight": "400" }],
+            "annotation": ["14px", { "lineHeight": "18px", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+            "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "500" }],
+            "headline-lg": ["28px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "headline-md": ["20px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "label-md": ["13px", { "lineHeight": "16px", "fontWeight": "500" }],
+            "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+            "stamp-label": ["11px", { "lineHeight": "13px", "letterSpacing": "0.06em", "fontWeight": "700" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .ink-border { border: 1.5px solid #15171A; }
+    .ink-border-b { border-bottom: 1.5px solid #15171A; }
+    .ink-border-t { border-top: 1.5px solid #15171A; }
+    .ink-border-r { border-right: 1.5px solid #15171A; }
+    .ink-border-l { border-left: 1.5px solid #15171A; }
+    .ink-shadow { box-shadow: 3px 3px 0px 0px #15171A; }
+    .ink-shadow-press:active { transform: translate(3px, 3px); box-shadow: 0px 0px 0px 0px #15171A; }
+    .ink-stamp-double {
+      border: 1.5px solid #15171A;
+      box-shadow: 0 0 0 1.5px #FCFDFB, 0 0 0 3px #15171A;
+    }
+  </style>
+</head>
+<body class="bg-background text-primary font-body-md min-h-screen antialiased flex flex-col items-center select-none pb-28 pt-14">
+<!-- TOP APP BAR (Shared Component Anchor) -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-xs bg-sheet dark:bg-surface-container-low border-b border-outline dark:border-outline-variant h-14">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[20px]" data-icon="hub">hub</span>
+<span class="text-headline-md font-headline-md font-bold text-primary dark:text-inverse-primary tracking-tight">SwarmOS / Node A</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary text-[20px]" data-icon="verified">verified</span>
+</div>
+</header>
+<!-- MAIN SCROLL CANVAS (Constrained to 390px Mobile Viewport) -->
+<main class="w-full max-w-[420px] px-4 flex flex-col gap-4">
+<!-- COMPACT TOP STATUS STRIP -->
+<section class="w-full flex items-center justify-between py-1.5 px-2 bg-sheet ink-border rounded-lg text-label-mono font-label-mono text-primary text-[11px] overflow-x-auto no-scrollbar">
+<div class="flex items-center gap-1.5 shrink-0">
+<!-- Phone Token A -->
+<div class="w-5 h-5 rounded-full bg-marker-teal ink-border flex items-center justify-center font-bold text-[10px] text-primary">
+          A
+        </div>
+<span class="font-bold">Phone A</span>
+</div>
+<div class="h-3 w-[1px] bg-outline shrink-0 mx-1"></div>
+<span class="text-on-surface-variant shrink-0">Cool</span>
+<div class="h-3 w-[1px] bg-outline shrink-0 mx-1"></div>
+<span class="font-bold shrink-0">79%</span>
+<div class="h-3 w-[1px] bg-outline shrink-0 mx-1"></div>
+<span class="text-on-surface-variant shrink-0">8.6 GB</span>
+<div class="h-3 w-[1px] bg-outline shrink-0 mx-1"></div>
+<span class="text-on-surface-variant shrink-0">11ac 433M</span>
+<div class="h-3 w-[1px] bg-outline shrink-0 mx-1"></div>
+<!-- Stamp 0 B TO INTERNET -->
+<span class="shrink-0 font-stamp-label text-stamp-label tracking-tight uppercase ink-border px-1 py-0.5 rounded text-[9px] bg-sheet">
+        0 B TO INTERNET
+      </span>
+</section>
+<!-- HEADER & PROBLEM CONTAINER -->
+<section class="flex flex-col gap-2.5">
+<div class="flex items-baseline justify-between">
+<h1 class="text-headline-lg font-headline-lg text-primary tracking-tight">Agent Choir</h1>
+<span class="text-label-mono font-label-mono text-[11px] text-on-surface-variant">Round 2 Converged</span>
+</div>
+<!-- Problem Statement in Sheet Card -->
+<div class="bg-sheet ink-border rounded-lg p-3 relative">
+<div class="text-[10px] uppercase font-label-mono text-on-surface-variant tracking-wider mb-1">Target Task Problem</div>
+<p class="text-body-md font-body-md text-primary font-normal leading-snug">
+          A shop sells a laptop for Rs 62,400 after a 22% discount. What was the list price?
+        </p>
+</div>
+</section>
+<!-- ROUND INDICATORS ROW -->
+<section class="flex items-center justify-between px-1 py-1">
+<div class="flex items-center gap-2">
+<!-- R1 Indicator (Done) -->
+<div class="flex items-center gap-1 px-2.5 py-1 bg-sheet ink-border rounded-lg text-label-mono font-label-mono text-xs">
+<span class="font-bold">R1</span>
+<span class="material-symbols-outlined text-[14px] font-bold" data-icon="check">check</span>
+</div>
+<!-- R2 Indicator (Done - Converged) -->
+<div class="flex items-center gap-1 px-2.5 py-1 bg-sheet ink-border rounded-lg text-label-mono font-label-mono text-xs">
+<span class="font-bold">R2</span>
+<span class="material-symbols-outlined text-[14px] font-bold" data-icon="check">check</span>
+</div>
+<!-- R3 Indicator (Skipped / Terminated) -->
+<div class="flex items-center gap-1 px-2.5 py-1 bg-background text-on-surface-variant ink-border border-dashed rounded-lg text-label-mono font-label-mono text-xs opacity-60">
+<span>R3</span>
+<span class="text-[10px]">—</span>
+</div>
+</div>
+<!-- Hand annotation note -->
+<div class="font-annotation text-annotation text-primary text-[12px] flex items-center gap-1">
+<span class="text-on-surface-variant">status:</span>
+<span class="font-bold">Consensus locked</span>
+</div>
+</section>
+<!-- PHONE LANES A, B, C (VERTICAL CHRONOLOGICAL STACK) -->
+<section class="flex flex-col gap-3">
+<!-- LANE A (Phone Token A, Marker Teal #1E9BB0) -->
+<div class="w-full bg-sheet ink-border rounded-lg overflow-hidden flex flex-col relative" style="border-left: 6px solid #1E9BB0;">
+<!-- Lane Header Row with 12% tint -->
+<div class="w-full px-3 py-2 flex items-center justify-between border-b ink-border" style="background-color: #1E9BB01F;">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-marker-teal ink-border flex items-center justify-center font-bold text-xs text-primary">
+              A
+            </div>
+<span class="font-bold text-sm tracking-tight text-primary">Phone A</span>
+<span class="text-label-mono text-[11px] text-on-surface-variant ml-1 font-medium">Solver</span>
+</div>
+<div class="flex items-center gap-2 font-label-mono text-[11px] text-primary">
+<span>212 tok</span>
+<span class="text-on-surface-variant">/</span>
+<span>9.4 s</span>
+</div>
+</div>
+<!-- Lane Body -->
+<div class="p-3 text-body-sm flex flex-col gap-2">
+<p class="text-primary leading-tight font-normal text-[13px]">
+            Discount is 22%, meaning customer pays 78% of the list price (P). Equation: <code class="font-label-mono font-medium">0.78 * P = 62,400</code>. Solved: <code class="font-label-mono font-medium">P = 62,400 / 0.78</code>.
+          </p>
+<div class="flex items-center justify-between mt-1 pt-1.5 border-t border-[#E4E7E3]">
+<span class="text-[11px] text-on-surface-variant font-label-mono uppercase">Proposed Output:</span>
+<span class="font-label-mono font-bold text-sm px-2 py-0.5 ink-border bg-background rounded text-primary">80,000</span>
+</div>
+</div>
+</div>
+<!-- LANE B (Phone Token B, Marker Tangerine #E08A3C) -->
+<div class="w-full bg-sheet ink-border rounded-lg overflow-hidden flex flex-col relative" style="border-left: 6px solid #E08A3C;">
+<!-- Lane Header Row with 12% tint -->
+<div class="w-full px-3 py-2 flex items-center justify-between border-b ink-border" style="background-color: #E08A3C1F;">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-marker-tangerine ink-border flex items-center justify-center font-bold text-xs text-primary">
+              B
+            </div>
+<span class="font-bold text-sm tracking-tight text-primary">Phone B</span>
+<span class="text-label-mono text-[11px] text-on-surface-variant ml-1 font-medium">Alt solver</span>
+</div>
+<div class="flex items-center gap-2 font-label-mono text-[11px] text-primary">
+<span>198 tok</span>
+<span class="text-on-surface-variant">/</span>
+<span>8.9 s</span>
+</div>
+</div>
+<!-- Lane Body -->
+<div class="p-3 text-body-sm flex flex-col gap-2">
+<p class="text-primary leading-tight font-normal text-[13px]">
+            Revised calculation in R2: discarded R1 multiplicative approximation (+22%). Adjusted to true divisor 0.78: <code class="font-label-mono font-medium">62,400 / 0.78 = 80,000</code>.
+          </p>
+<div class="flex items-center justify-between mt-1 pt-1.5 border-t border-[#E4E7E3]">
+<span class="text-[11px] text-on-surface-variant font-label-mono uppercase">Revised Output:</span>
+<span class="font-label-mono font-bold text-sm px-2 py-0.5 ink-border bg-background rounded text-primary">80,000</span>
+</div>
+</div>
+</div>
+<!-- LANE C (Phone Token C, Marker Magenta #C8457E) -->
+<div class="w-full bg-sheet ink-border rounded-lg overflow-hidden flex flex-col relative" style="border-left: 6px solid #C8457E;">
+<!-- Lane Header Row with 12% tint -->
+<div class="w-full px-3 py-2 flex items-center justify-between border-b ink-border" style="background-color: #C8457E1F;">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-marker-magenta ink-border flex items-center justify-center font-bold text-xs text-primary">
+              C
+            </div>
+<span class="font-bold text-sm tracking-tight text-primary">Phone C</span>
+<span class="text-label-mono text-[11px] text-on-surface-variant ml-1 font-medium">Critic</span>
+</div>
+<div class="flex items-center gap-2 font-label-mono text-[11px] text-primary">
+<span>140 tok</span>
+<span class="text-on-surface-variant">/</span>
+<span>6.2 s</span>
+</div>
+</div>
+<!-- Lane Body -->
+<div class="p-3 text-body-sm flex flex-col gap-2">
+<p class="text-primary leading-tight font-normal text-[13px]">
+            Consensus review complete. Validated verification algebra: <code class="font-label-mono font-medium">80,000 * (1 - 0.22) = 62,400</code>. Unanimous endorsement granted to Phone A formulation.
+          </p>
+<div class="flex items-center justify-between mt-1 pt-1.5 border-t border-[#E4E7E3]">
+<span class="text-[11px] text-on-surface-variant font-label-mono uppercase">Endorsed Output:</span>
+<span class="font-label-mono font-bold text-sm px-2 py-0.5 ink-border bg-background rounded text-primary">80,000</span>
+</div>
+</div>
+</div>
+</section>
+<!-- MATRIX & RESOLUTION BENTO BLOCK -->
+<section class="grid grid-cols-1 gap-3">
+<!-- AGREEMENT MATRIX & TOOL VERIFICATION -->
+<div class="bg-sheet ink-border rounded-lg p-3 flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[11px] uppercase tracking-wider text-on-surface-variant font-semibold">Agreement Matrix (Round 2)</span>
+<span class="font-label-mono text-[11px] font-bold text-primary">Unanimous 3/3</span>
+</div>
+<div class="flex items-center gap-5 justify-between">
+<!-- 3x3 Agreement Matrix -->
+<div class="inline-grid grid-cols-4 grid-rows-4 gap-1 p-1.5 bg-background ink-border rounded-md">
+<!-- Row 0: Headers -->
+<div class="w-6 h-6 flex items-center justify-center font-label-mono text-[10px] text-on-surface-variant font-bold">\</div>
+<div class="w-6 h-6 rounded-full bg-marker-teal ink-border flex items-center justify-center font-bold text-[10px]">A</div>
+<div class="w-6 h-6 rounded-full bg-marker-tangerine ink-border flex items-center justify-center font-bold text-[10px]">B</div>
+<div class="w-6 h-6 rounded-full bg-marker-magenta ink-border flex items-center justify-center font-bold text-[10px]">C</div>
+<!-- Row 1: Node A -->
+<div class="w-6 h-6 rounded-full bg-marker-teal ink-border flex items-center justify-center font-bold text-[10px]">A</div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+<!-- Row 2: Node B -->
+<div class="w-6 h-6 rounded-full bg-marker-tangerine ink-border flex items-center justify-center font-bold text-[10px]">B</div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+<!-- Row 3: Node C -->
+<div class="w-6 h-6 rounded-full bg-marker-magenta ink-border flex items-center justify-center font-bold text-[10px]">C</div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+<div class="w-6 h-6 bg-sheet ink-border rounded flex items-center justify-center"><span class="material-symbols-outlined text-[16px] text-primary font-bold" data-icon="check">check</span></div>
+</div>
+<!-- Final Prominent Answer Display with Hand-drawn circle -->
+<div class="flex-1 flex flex-col items-center justify-center relative py-2">
+<span class="text-[10px] uppercase font-label-mono text-on-surface-variant tracking-wider mb-0.5">List Price Result</span>
+<div class="relative px-3 py-1.5 flex items-center justify-center">
+<!-- Hand-drawn style ink circle SVG -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none" fill="none" viewbox="0 0 130 52" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 26C11 12 32 4 66 4C102 4 125 11 126 25C127 40 98 48 64 48C28 48 4 39 4 27C4 18 19 8 45 6" stroke="#15171A" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path>
+</svg>
+<div class="font-label-mono font-bold text-2xl tracking-tight text-primary">
+                Rs 80,000
+              </div>
+</div>
+<div class="font-annotation text-annotation text-[12px] text-primary text-center mt-2 leading-none">
+              consensus reached in R2 (+18.9% accuracy)
+            </div>
+</div>
+</div>
+<!-- Tool Check Row & VERIFIED Stamp -->
+<div class="pt-2 border-t border-[#E4E7E3] flex items-center justify-between">
+<div class="font-label-mono text-xs text-primary">
+<span class="text-on-surface-variant">Tool check:</span> 62400 / 0.78 = 80000
+          </div>
+<!-- Double border rubber stamp rotated -4 deg -->
+<div class="transform -rotate-4 px-2 py-0.5 ink-stamp-double bg-sheet text-primary font-stamp-label text-stamp-label uppercase font-bold rounded text-[10px]">
+            VERIFIED
+          </div>
+</div>
+</div>
+</section>
+<!-- TOTALS TELEMETRY PLAIN LIST (Metrics direct on whiteboard) -->
+<section class="flex flex-col py-1 gap-1.5 font-label-mono text-xs">
+<div class="text-[10px] uppercase tracking-wider text-on-surface-variant font-bold mb-0.5">Choir Telemetry Aggregates</div>
+<div class="flex justify-between items-center py-0.5 border-b border-[#E4E7E3]">
+<span class="text-on-surface-variant">Rounds:</span>
+<span class="font-bold text-primary">2</span>
+</div>
+<div class="flex justify-between items-center py-0.5 border-b border-[#E4E7E3]">
+<span class="text-on-surface-variant">Tokens:</span>
+<span class="font-bold text-primary">1,146</span>
+</div>
+<div class="flex justify-between items-center py-0.5 border-b border-[#E4E7E3]">
+<span class="text-on-surface-variant">Wall clock:</span>
+<span class="font-bold text-primary">21.4 s</span>
+</div>
+<div class="flex justify-between items-center py-0.5">
+<span class="text-on-surface-variant">Baseline alone:</span>
+<span class="font-bold text-primary">8.1 s <span class="font-normal text-on-surface-variant">(wrong: 76,128)</span></span>
+</div>
+</section>
+<!-- SECONDARY BUTTONS ROW -->
+<section class="grid grid-cols-2 gap-3 pt-1">
+<button class="bg-sheet ink-border rounded-lg py-2.5 px-4 font-label-md text-label-md text-primary font-semibold text-center hover:bg-surface-container active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" type="button">
+        See messages
+      </button>
+<button class="bg-sheet ink-border rounded-lg py-2.5 px-4 font-label-md text-label-md text-primary font-semibold text-center hover:bg-surface-container active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" type="button">
+        New problem
+      </button>
+</section>
+</main>
+<!-- BOTTOM NAVIGATION BAR (Shared Component Anchor) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-sm py-space-xs bg-sheet dark:bg-surface-container-low border-t border-outline dark:border-outline-variant h-16">
+<!-- Item 1: Swarm -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="lan">lan</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Swarm</span>
+</a>
+<!-- Item 2: Models -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="deployed_code">deployed_code</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Models</span>
+</a>
+<!-- Item 3: Choir (ACTIVE DESTINATION) -->
+<a class="flex flex-col items-center justify-center text-primary dark:text-inverse-primary font-bold border-b-2 border-primary dark:border-inverse-primary pb-0.5 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 relative" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="graphic_eq">graphic_eq</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5 font-bold">Choir</span>
+<!-- Hand-drawn styled active underline accent -->
+<svg class="absolute -bottom-1 left-0 w-full h-[3px]" fill="none" viewbox="0 0 36 3" xmlns="http://www.w3.org/2000/svg">
+<path d="M1 2C8 0.8 28 1.2 35 2" stroke="#15171A" stroke-linecap="round" stroke-width="2"></path>
+</svg>
+</a>
+<!-- Item 4: Data -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="dataset">dataset</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Data</span>
+</a>
+<!-- Item 5: Memory -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="memory">memory</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Memory</span>
+</a>
+</nav>
+</body></html>

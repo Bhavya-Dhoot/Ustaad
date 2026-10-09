@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>SwarmOS - Memory</title>
+<!-- Google Fonts: Bricolage Grotesque, Geist, Shantell Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;700&amp;family=Geist+Mono:wght@400;500;600&amp;family=Geist:wght@400;500;600&amp;family=Shantell+Sans:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "whiteboard": "#F6F7F5",
+            "sheet": "#FCFDFB",
+            "ink": "#15171A",
+            "graphite": "#5E636B",
+            "eraser": "#E4E7E3",
+            "marker-teal": "#1E9BB0",
+            "marker-teal-tint": "#1E9BB01F",
+            "marker-tangerine": "#E08A3C",
+            "marker-tangerine-tint": "#E08A3C1F",
+            "marker-magenta": "#C8457E",
+            "marker-magenta-tint": "#C8457E1F",
+            "primary": "#000000",
+            "secondary": "#5a5f67",
+            "outline": "#76777b",
+            "outline-variant": "#c6c6ca",
+            "surface-container": "#edeeec",
+            "surface-container-low": "#f3f4f2",
+            "surface-container-high": "#e7e8e6",
+            "inverse-primary": "#c6c6ca"
+          },
+          fontFamily: {
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"],
+            "body-sm": ["Geist", "sans-serif"],
+            "label-md": ["Geist", "sans-serif"],
+            "label-mono": ["Geist Mono", "monospace"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "stamp-label": ["Geist Mono", "monospace"]
+          },
+          fontSize: {
+            "headline-lg": ["28px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "headline-md": ["20px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "body-md": ["15px", { lineHeight: "22px", fontWeight: "400" }],
+            "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+            "label-md": ["13px", { lineHeight: "16px", fontWeight: "500" }],
+            "label-mono": ["12px", { lineHeight: "16px", letterSpacing: "0.01em", fontWeight: "500" }],
+            "stamp-label": ["11px", { lineHeight: "13px", letterSpacing: "0.06em", fontWeight: "700" }],
+            "annotation": ["13px", { lineHeight: "16px", fontWeight: "400" }]
+          },
+          spacing: {
+            "space-xs": "0.25rem",
+            "space-sm": "0.5rem",
+            "space-md": "1rem",
+            "space-lg": "1.5rem"
+          }
+        }
+      }
+    };
+  </script>
+<style>
+    /* Whiteboard tactile styling & patterns */
+    body {
+      background-color: #F6F7F5;
+      color: #15171A;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* 1.5px ink border standard */
+    .ink-border {
+      border: 1.5px solid #15171A;
+    }
+    .ink-border-b {
+      border-bottom: 1.5px solid #15171A;
+    }
+    .ink-border-t {
+      border-top: 1.5px solid #15171A;
+    }
+    .ink-border-l {
+      border-left: 1.5px solid #15171A;
+    }
+
+    /* Diagonal hatchings strictly for node markers and caution rubber stamps */
+    .hatch-tangerine {
+      background-color: #FCFDFB;
+      background-image: repeating-linear-gradient(
+        -45deg,
+        #E08A3C,
+        #E08A3C 2px,
+        #FCFDFB 2px,
+        #FCFDFB 5px
+      );
+    }
+    .hatch-magenta {
+      background-color: #FCFDFB;
+      background-image: repeating-linear-gradient(
+        -45deg,
+        #C8457E,
+        #C8457E 2px,
+        #FCFDFB 2px,
+        #FCFDFB 5px
+      );
+    }
+    .hatch-stamp {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(21, 23, 26, 0.12),
+        rgba(21, 23, 26, 0.12) 2px,
+        transparent 2px,
+        transparent 6px
+      );
+    }
+
+    /* 3px hard cast shadow */
+    .hard-shadow {
+      box-shadow: 3px 3px 0px 0px #15171A;
+    }
+    .hard-shadow:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0px 0px 0px 0px #15171A;
+    }
+
+    /* Dot grid canvas pattern */
+    .dot-grid {
+      background-image: radial-gradient(#E4E7E3 1.5px, transparent 1.5px);
+      background-size: 16px 16px;
+    }
+  </style>
+</head>
+<body class="flex justify-center min-h-screen bg-whiteboard select-none">
+<!-- Mobile Hardware Viewport Wrapper (nominal 390px) -->
+<div class="relative w-full max-w-[420px] min-h-screen flex flex-col bg-whiteboard pb-24 border-x border-eraser">
+<!-- Top Status / Navigation Shell (docked full-width top-0) -->
+<header class="fixed top-0 max-w-[420px] w-full z-50 flex items-center justify-between px-space-md py-space-xs bg-sheet border-b border-outline dark:border-outline-variant flat no shadows">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[20px]" data-icon="hub">hub</span>
+<span class="text-label-mono font-label-mono text-ink font-semibold">SwarmOS / Node A</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="verified" style="font-variation-settings: 'FILL' 1;">verified</span>
+<span class="text-label-mono font-label-mono text-graphite text-[11px]">MESH_LOCK</span>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 px-4 pt-16 flex flex-col gap-5">
+<!-- Screen Header with Hand-drawn Underline Detail -->
+<section class="mt-2">
+<div class="flex items-start justify-between">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-ink tracking-tight">MemoryCloud</h1>
+<p class="font-body-sm text-body-sm text-graphite mt-0.5">Distributing layers across ad-hoc mesh.</p>
+</div>
+<!-- Verified Rubber Stamp Badge (-4deg tilt) -->
+<div class="rotate-[-4deg] border-[1.5px] border-ink rounded-[8px] p-[2px] bg-sheet shadow-none">
+<div class="border-[1.5px] border-ink rounded-[5px] px-2 py-0.5 text-center">
+<span class="block font-stamp-label text-stamp-label text-ink tracking-wider">0 B TO INTERNET</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Model Telemetry Card -->
+<section class="bg-sheet rounded-[8px] ink-border p-3 flex flex-col gap-2 relative">
+<div class="flex justify-between items-center text-graphite">
+<span class="font-label-mono text-label-mono tracking-tight uppercase">ACTIVE WEIGHT TENSOR</span>
+<span class="font-label-mono text-label-mono text-ink font-medium">48/48 BLOCKS</span>
+</div>
+<div class="flex justify-between items-baseline border-b border-eraser pb-2">
+<span class="font-label-mono text-[14px] text-ink font-semibold tracking-tight">Qwen3-30B-A3B Q4_K_M</span>
+<!-- Key value with hand-drawn pen loop/underline -->
+<div class="relative inline-block">
+<span class="font-label-mono text-[15px] text-ink font-bold">18.6 GB total</span>
+<!-- Hand-drawn SVG doodle underline -->
+<svg class="absolute -bottom-1 left-0 w-full overflow-visible" fill="none" height="4" preserveaspectratio="none" viewbox="0 0 100 4">
+<path d="M1 2.5C28 1 72 3.8 99 1.5" stroke="#15171A" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+<!-- Metric Key-Value Telemetry Pairs -->
+<div class="grid grid-cols-2 gap-2 pt-0.5">
+<div class="flex justify-between text-label-mono font-label-mono">
+<span class="text-graphite">LOCAL POOL</span>
+<span class="text-ink font-semibold">6.2 GB (A)</span>
+</div>
+<div class="flex justify-between text-label-mono font-label-mono">
+<span class="text-graphite">REMOTE SWARM</span>
+<span class="text-ink font-semibold">12.4 GB (B+C)</span>
+</div>
+</div>
+</section>
+<!-- Discrete Layer Strip Component & Annotation -->
+<section class="flex flex-col gap-2">
+<div class="flex justify-between items-end">
+<div class="flex items-center gap-1.5">
+<span class="font-label-mono text-label-mono text-graphite uppercase">LAYER DEPLOYMENT STRIP</span>
+<span class="font-label-mono text-[10px] text-ink bg-eraser px-1 py-0.2 rounded">00..47</span>
+</div>
+<span class="font-label-mono text-label-mono text-ink">41.6% LOADED</span>
+</div>
+<!-- 48 discrete 10x16px layer cells row (scroll-x safe on narrow devices) -->
+<div class="bg-sheet ink-border rounded-[8px] p-2 overflow-x-auto">
+<div class="flex items-center gap-[3px] min-w-[500px] justify-between py-1">
+<!-- Layers 0-15: Solid Marker Teal (Phone A) -->
+<div class="flex items-center gap-[3px]">
+<template id="teal-cells">
+<!-- Repeated 16 times in script or explicitly populated -->
+</template>
+<!-- 16 Teal Cells -->
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 0 (Phone A)"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 1"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 2"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 3"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 4"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 5"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 6"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 7"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 8"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 9"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 10"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 11"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 12"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 13"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 14"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-teal border border-ink rounded-[1px]" title="Layer 15"></div>
+</div>
+<!-- Layers 16-23: Solid Marker Tangerine (Phone B) -->
+<div class="flex items-center gap-[3px]">
+<div class="w-[7.5px] h-[18px] bg-marker-tangerine border border-ink rounded-[1px]" title="Layer 16 (Phone B)"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-tangerine border border-ink rounded-[1px]" title="Layer 17"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-tangerine border border-ink rounded-[1px]" title="Layer 18"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-tangerine border border-ink rounded-[1px]" title="Layer 19"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-tangerine border border-ink rounded-[1px]" title="Layer 20"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-tangerine border border-ink rounded-[1px]" title="Layer 21"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-tangerine border border-ink rounded-[1px]" title="Layer 22"></div>
+<div class="w-[7.5px] h-[18px] bg-marker-tangerine border border-ink rounded-[1px]" title="Layer 23"></div>
+</div>
+<!-- Layers 24-31: Diagonally Hatched Marker Tangerine (Phone B loading) -->
+<div class="flex items-center gap-[3px]">
+<div class="w-[7.5px] h-[18px] hatch-tangerine border border-ink rounded-[1px]" title="Layer 24 (B loading)"></div>
+<div class="w-[7.5px] h-[18px] hatch-tangerine border border-ink rounded-[1px]" title="Layer 25"></div>
+<div class="w-[7.5px] h-[18px] hatch-tangerine border border-ink rounded-[1px]" title="Layer 26"></div>
+<div class="w-[7.5px] h-[18px] hatch-tangerine border border-ink rounded-[1px]" title="Layer 27"></div>
+<div class="w-[7.5px] h-[18px] hatch-tangerine border border-ink rounded-[1px]" title="Layer 28"></div>
+<div class="w-[7.5px] h-[18px] hatch-tangerine border border-ink rounded-[1px]" title="Layer 29"></div>
+<div class="w-[7.5px] h-[18px] hatch-tangerine border border-ink rounded-[1px]" title="Layer 30"></div>
+<div class="w-[7.5px] h-[18px] hatch-tangerine border border-ink rounded-[1px]" title="Layer 31"></div>
+</div>
+<!-- Layers 32-47: Diagonally Hatched Marker Magenta (Phone C in-flight / queued) -->
+<div class="flex items-center gap-[3px]">
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 32 (Phone C)"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 33"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 34"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 35"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 36"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 37"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 38"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 39"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 40"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 41"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 42"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 43"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 44"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 45"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 46"></div>
+<div class="w-[7.5px] h-[18px] hatch-magenta border border-ink rounded-[1px]" title="Layer 47"></div>
+</div>
+</div>
+</div>
+<!-- Annotation 1: Shantell Sans with organic hand-drawn doodle arrow -->
+<div class="flex items-center gap-2 pl-2 pt-1 text-ink">
+<svg class="shrink-0" fill="none" height="20" viewbox="0 0 28 20" width="28">
+<path d="M4 14C9 8 16 5 24 6" stroke="#15171A" stroke-linecap="round" stroke-width="1.5"></path>
+<path d="M19 2L24.5 5.5L20 10.5" stroke="#15171A" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</svg>
+<span class="font-annotation text-annotation italic text-ink">first load only, cached after</span>
+</div>
+</section>
+<!-- Chronological Vertical Stack of Node Lanes (Phone A, B, C) -->
+<section class="flex flex-col gap-3">
+<span class="font-label-mono text-label-mono text-graphite uppercase tracking-tight">AD-HOC ORCHESTRATION LANES</span>
+<!-- Lane 1: Phone A (Host / Completed) -->
+<div class="bg-sheet rounded-[8px] ink-border overflow-hidden flex flex-col relative border-l-[6px] border-l-marker-teal">
+<!-- Lane Header Row with 12% tint -->
+<div class="px-3 py-2 flex items-center justify-between border-b border-eraser bg-marker-teal-tint">
+<div class="flex items-center gap-2">
+<!-- Node Token A -->
+<div class="w-7 h-7 rounded-full bg-marker-teal ink-border flex items-center justify-center font-headline-md font-bold text-sheet text-sm">
+                A
+              </div>
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-ink font-semibold">Phone A (Self Host)</span>
+<span class="font-label-mono text-[11px] text-graphite">Snapdragon 8 Gen 3</span>
+</div>
+</div>
+<!-- Outline stamp style status -->
+<div class="border-[1.5px] border-ink rounded-[4px] px-1.5 py-0.5 bg-sheet">
+<span class="font-stamp-label text-[10px] text-ink">PINNED IN NPU</span>
+</div>
+</div>
+<!-- Lane Body -->
+<div class="p-3 flex justify-between items-center font-label-mono text-label-mono">
+<span class="text-graphite">Partition: L00-L15</span>
+<span class="text-ink font-semibold">16 of 16 layers ready</span>
+</div>
+</div>
+<!-- Lane 2: Phone B (In Progress) -->
+<div class="bg-sheet rounded-[8px] ink-border overflow-hidden flex flex-col relative border-l-[6px] border-l-marker-tangerine">
+<!-- Lane Header Row with 12% tint -->
+<div class="px-3 py-2 flex items-center justify-between border-b border-eraser bg-marker-tangerine-tint">
+<div class="flex items-center gap-2">
+<!-- Node Token B -->
+<div class="w-7 h-7 rounded-full bg-marker-tangerine ink-border flex items-center justify-center font-headline-md font-bold text-sheet text-sm">
+                B
+              </div>
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-ink font-semibold">Phone B (Peer 01)</span>
+<span class="font-label-mono text-[11px] text-graphite">Tensor G4 via Wi-Fi Direct</span>
+</div>
+</div>
+<div class="border-[1.5px] border-ink rounded-[4px] px-1.5 py-0.5 bg-sheet hatch-stamp">
+<span class="font-stamp-label text-[10px] text-ink">RECEIVING WEIGHTS</span>
+</div>
+</div>
+<!-- Lane Body & Progress -->
+<div class="p-3 flex flex-col gap-2">
+<div class="flex justify-between items-center font-label-mono text-label-mono">
+<span class="text-graphite">Phone B 3.4 of 6.2 GB, 41 MB/s</span>
+<span class="text-ink font-semibold">54.8%</span>
+</div>
+<!-- Thin Ink progress bar without a grey track -->
+<div class="w-full h-[6px] relative overflow-hidden">
+<div class="h-full bg-marker-tangerine ink-border" style="width: 55%;"></div>
+</div>
+</div>
+</div>
+<!-- Lane 3: Phone C (Queued / Starting) -->
+<div class="bg-sheet rounded-[8px] ink-border overflow-hidden flex flex-col relative border-l-[6px] border-l-marker-magenta">
+<!-- Lane Header Row with 12% tint -->
+<div class="px-3 py-2 flex items-center justify-between border-b border-eraser bg-marker-magenta-tint">
+<div class="flex items-center gap-2">
+<!-- Node Token C -->
+<div class="w-7 h-7 rounded-full bg-marker-magenta ink-border flex items-center justify-center font-headline-md font-bold text-sheet text-sm">
+                C
+              </div>
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-ink font-semibold">Phone C (Peer 02)</span>
+<span class="font-label-mono text-[11px] text-graphite">Dimensity 9300 via BLE/AWDL</span>
+</div>
+</div>
+<div class="border-[1.5px] border-ink rounded-[4px] px-1.5 py-0.5 bg-sheet hatch-stamp">
+<span class="font-stamp-label text-[10px] text-ink">QUEUED / STARTING</span>
+</div>
+</div>
+<!-- Lane Body & Progress -->
+<div class="p-3 flex flex-col gap-2">
+<div class="flex justify-between items-center font-label-mono text-label-mono">
+<span class="text-graphite">Phone C 0.8 of 6.2 GB, 28 MB/s</span>
+<span class="text-ink font-semibold">12.9%</span>
+</div>
+<!-- Thin Ink progress bar without a grey track -->
+<div class="w-full h-[6px] relative overflow-hidden">
+<div class="h-full bg-marker-magenta ink-border" style="width: 13%;"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom Interactive Action Area -->
+<section class="mt-1 mb-3 flex flex-col gap-2">
+<!-- Secondary Button "Cancel" (Sheet fill, 1.5px Ink border, Ink typography, 8px corners, no shadow) -->
+<button class="w-full py-3 bg-sheet ink-border rounded-[8px] font-label-mono text-label-mono font-semibold text-ink active:translate-x-[1px] active:translate-y-[1px] transition-transform flex items-center justify-center gap-2" type="button">
+<span class="material-symbols-outlined text-[18px]" data-icon="close">close</span>
+<span>Cancel Transfer</span>
+</button>
+</section>
+</main>
+<!-- BottomNavBar Component (Docked full-width bottom-0, 5 destinations, Memory ACTIVE) -->
+<nav class="fixed bottom-0 max-w-[420px] w-full z-50 flex justify-around items-center px-space-sm py-space-xs bg-sheet border-t border-outline dark:border-outline-variant flat no shadows">
+<!-- Destination 1: Swarm -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#swarm">
+<span class="material-symbols-outlined text-[22px]" data-icon="lan">lan</span>
+<span class="text-label-md font-label-md text-[11px] leading-tight mt-0.5">Swarm</span>
+</a>
+<!-- Destination 2: Models -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#models">
+<span class="material-symbols-outlined text-[22px]" data-icon="deployed_code">deployed_code</span>
+<span class="text-label-md font-label-md text-[11px] leading-tight mt-0.5">Models</span>
+</a>
+<!-- Destination 3: Choir -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#choir">
+<span class="material-symbols-outlined text-[22px]" data-icon="graphic_eq">graphic_eq</span>
+<span class="text-label-md font-label-md text-[11px] leading-tight mt-0.5">Choir</span>
+</a>
+<!-- Destination 4: Data -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#data">
+<span class="material-symbols-outlined text-[22px]" data-icon="dataset">dataset</span>
+<span class="text-label-md font-label-md text-[11px] leading-tight mt-0.5">Data</span>
+</a>
+<!-- Destination 5: Memory (ACTIVE ITEM) -->
+<a class="flex flex-col items-center justify-center text-primary dark:text-inverse-primary font-bold border-b-2 border-primary dark:border-inverse-primary pb-0.5 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#memory">
+<span class="material-symbols-outlined text-[22px]" data-icon="memory" style="font-variation-settings: 'FILL' 1;">memory</span>
+<span class="text-label-md font-label-md text-[11px] leading-tight mt-0.5">Memory</span>
+</a>
+</nav>
+</div>
+</body></html>

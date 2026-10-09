@@ -10,6 +10,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.PipelineCall
+import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
@@ -84,7 +86,7 @@ class NodeServer {
         }
     }
 
-    private suspend fun PipelineContext<Unit, io.ktor.server.application.PipelineCall>.requireSignature() {
+    private suspend fun PipelineContext<Unit, PipelineCall>.requireSignature() {
         val req = call.request
         if (req.httpMethod == HttpMethod.Get && req.path() == "/v1/hello") return
         // debug builds only: adb tooling reads the pairing payload without a signature
@@ -102,7 +104,7 @@ class NodeServer {
         }
     }
 
-    private suspend fun PipelineContext<Unit, io.ktor.server.application.PipelineCall>.reject(msg: String) {
+    private suspend fun PipelineContext<Unit, PipelineCall>.reject(msg: String) {
         call.respond(HttpStatusCode.Unauthorized, ErrorBody(msg))
         finish()
     }
