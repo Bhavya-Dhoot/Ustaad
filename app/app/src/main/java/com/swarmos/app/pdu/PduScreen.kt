@@ -30,11 +30,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
-import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -66,6 +64,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.ui.MetricStyle
+import com.swarmos.app.ui.PrimaryButton
+import com.swarmos.app.ui.SecondaryButton
 import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.accentFor
 import kotlinx.coroutines.Dispatchers
@@ -125,13 +125,11 @@ private fun LibraryPage(go: (String) -> Unit) {
                 Text(AppGraph.embedder.modelName.let { if (it == "FAKE") "embedder FAKE" else "embedder $it" }, style = MetricStyle, color = SwarmColors.Dim)
                 Text("%,d".format(counts.chunks), style = MetricStyle.copy(fontSize = 40.sp), color = SwarmColors.Cyan)
                 Text("chunks indexed on this phone")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        if (counts.lastRunMs > 0) "last indexed " + DateUtils.getRelativeTimeSpanString(counts.lastRunMs, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS) else "not indexed yet",
-                        style = MetricStyle, color = SwarmColors.Dim,
-                    )
-                    if (PduEngine.lastSearchMs >= 0) Text("last search ${PduEngine.lastSearchMs} ms", style = MetricStyle, color = SwarmColors.Dim)
-                }
+                Text(
+                    if (counts.lastRunMs > 0) "last indexed " + DateUtils.getRelativeTimeSpanString(counts.lastRunMs, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS) else "not indexed yet",
+                    style = MetricStyle, color = SwarmColors.Dim,
+                )
+                if (PduEngine.lastSearchMs >= 0) Text("last search ${PduEngine.lastSearchMs} ms", style = MetricStyle, color = SwarmColors.Dim)
                 if (progress.running) {
                     LinearProgressIndicator(progress = { if (progress.total > 0) progress.done / progress.total.toFloat() else 0f }, Modifier.fillMaxWidth())
                     Text("${progress.label}  ${progress.done}/${progress.total}  ${progress.current}", style = MetricStyle, maxLines = 2)
@@ -175,8 +173,8 @@ private fun LibraryPage(go: (String) -> Unit) {
             }
         }
 
-        Button(onClick = { go("ask") }, Modifier.fillMaxWidth()) { Text("Ask the swarm") }
-        OutlinedButton(onClick = { go("scan") }, Modifier.fillMaxWidth()) { Text("Scan a document") }
+        PrimaryButton("Ask the swarm", { go("ask") }, Modifier.fillMaxWidth())
+        SecondaryButton("Scan a document", { go("scan") }, Modifier.fillMaxWidth())
     }
 }
 
@@ -190,7 +188,7 @@ private fun SourceRow(title: String, sub: String, action: String, enabled: Boole
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(sub, style = MetricStyle, color = SwarmColors.Dim)
         }
-        OutlinedButton(onClick = onClick, enabled = enabled) { Text(action) }
+        SecondaryButton(action, onClick, enabled = enabled)
     }
 }
 
@@ -212,10 +210,11 @@ private fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
         OutlinedTextField(
             value = text, onValueChange = { text = it }, label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 3,
         )
-        Button(
-            onClick = { val t = text.trim(); if (t.isNotEmpty()) PduEngine.scope.launch { PduEngine.ask(t) } },
-            enabled = !busy && text.isNotBlank(), modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (busy) "Searching..." else "Ask") }
+        PrimaryButton(
+            if (busy) "Searching..." else "Ask",
+            { val t = text.trim(); if (t.isNotEmpty()) PduEngine.scope.launch { PduEngine.ask(t) } },
+            Modifier.fillMaxWidth(), enabled = !busy && text.isNotBlank(),
+        )
 
         val cur = q
         if (cur != null) {
@@ -247,7 +246,7 @@ private fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
                     }
                 })
             }
-            OutlinedButton(onClick = onAudit, Modifier.fillMaxWidth()) { Text("Query audit") }
+            SecondaryButton("Query audit", onAudit, Modifier.fillMaxWidth())
         }
     }
 }
@@ -352,10 +351,11 @@ private fun AuditPage(onBack: () -> Unit) {
             for (t in s.titles) Text(t, style = MetricStyle, color = SwarmColors.Dim)
         }
 
-        OutlinedButton(
-            onClick = { scope.launch { verify = withContext(Dispatchers.IO) { AppGraph.audit.verify() }.let { if (it.ok) "CHAIN OK, ${it.entries} entries" else "CHAIN BROKEN at line ${it.badLine}: ${it.reason}" } } },
+        SecondaryButton(
+            "Verify local audit ledger",
+            { scope.launch { verify = withContext(Dispatchers.IO) { AppGraph.audit.verify() }.let { if (it.ok) "CHAIN OK, ${it.entries} entries" else "CHAIN BROKEN at line ${it.badLine}: ${it.reason}" } } },
             Modifier.fillMaxWidth(),
-        ) { Text("Verify local audit ledger") }
+        )
         verify?.let { Text(it, style = MetricStyle, color = if (it.startsWith("CHAIN OK")) SwarmColors.Ok else SwarmColors.Bad) }
     }
 }
@@ -400,8 +400,9 @@ private fun ScanPage(onBack: () -> Unit) {
                         }
                     },
                 )
-                Button(
-                    onClick = {
+                PrimaryButton(
+                    "Capture",
+                    {
                         val f = File(ctx.cacheDir, "scan-${System.currentTimeMillis()}.jpg")
                         imageCapture.takePicture(
                             ImageCapture.OutputFileOptions.Builder(f).build(), ContextCompat.getMainExecutor(ctx),
@@ -426,7 +427,7 @@ private fun ScanPage(onBack: () -> Unit) {
                         )
                     },
                     Modifier.fillMaxWidth(),
-                ) { Text("Capture") }
+                )
             }
         } else {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -443,10 +444,11 @@ private fun ScanPage(onBack: () -> Unit) {
                     Switch(checked = keepPrivate, onCheckedChange = { keepPrivate = it })
                 }
                 val text = recognised
-                Button(
+                PrimaryButton(
+                    "Add to index",
                     enabled = text != null && text.trim().length >= PduIndexer.MIN_OCR_CHARS && title.isNotBlank(),
                     onClick = {
-                        val file = shot ?: return@Button
+                        val file = shot ?: return@PrimaryButton
                         status = "indexing..."
                         scope.launch {
                             val rep = withContext(Dispatchers.IO) {
@@ -457,8 +459,8 @@ private fun ScanPage(onBack: () -> Unit) {
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Add to index") }
-                OutlinedButton(onClick = { shot?.delete(); shot = null; recognised = null; status = null }, Modifier.fillMaxWidth()) { Text("Retake") }
+                )
+                SecondaryButton("Retake", { shot?.delete(); shot = null; recognised = null; status = null }, Modifier.fillMaxWidth())
                 if (text != null && text.trim().length < PduIndexer.MIN_OCR_CHARS) Text("Fewer than ${PduIndexer.MIN_OCR_CHARS} characters found, nothing to index.", color = SwarmColors.Warn)
             }
         }
