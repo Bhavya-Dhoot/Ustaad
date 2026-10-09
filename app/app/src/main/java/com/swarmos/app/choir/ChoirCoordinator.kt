@@ -169,7 +169,7 @@ class ChoirCoordinator(
         fun replyOf(a: NodeAnswer, wall: Long): Reply {
             val t = ToolChecker.check(problem, a.answer, a.keySteps, options.useProblemCheck)
             val detail = if (t.source != "none") "${t.detail} (${t.source})" else t.detail
-            return Reply(a.answer, a.confidence, a.keySteps, a.tokens, a.ms, wall, t.result, detail)
+            return Reply(a.answer, a.confidence, a.keySteps, a.tokens, a.ms, wall, t.result, detail, t.source)
         }
 
         // ---- R1: blind parallel solve ------------------------------------------------------------
@@ -216,7 +216,7 @@ class ChoirCoordinator(
 
         // ---- R2: exchange, only if the normalised answers differ ----------------------------------
         fun votesNow() = lanes.filter { it.latest != null }.map {
-            Vote(it.p.nodeId, it.latest!!.answer, it.latest!!.confidence, it.latest!!.check, it.latest!!.keySteps)
+            Vote(it.p.nodeId, it.latest!!.answer, it.latest!!.confidence, it.latest!!.check, it.latest!!.keySteps, it.latest!!.checkSource)
         }
 
         val r1Voters = lanes.filter { it.r1 != null }
