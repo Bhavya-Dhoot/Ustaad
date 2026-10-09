@@ -122,3 +122,13 @@ Node identity: `nodeId` = first 8 hex of SHA-256 of ANDROID_ID; `name` = "Phone 
 - A number shown in the UI or written in docs/benchmarks/ comes from a run on the iQOO phones.
 - Phones are shared between workers. Before a timed measurement, check nothing else is hammering the phone (`top -n 1 -m 5`), and say in your report which phone you used and when.
 - Do not change phone system settings (developer options, device_config, battery settings) without saying so in the report. Never factory-reset, never uninstall anything that is not `com.swarmos.app*`.
+
+## 9. Addenda (2026-10-10)
+
+1. Variants: `-PidSuffix=.x -PportOffset=N` builds an app that installs beside the base app and listens on 8787+N / 8788+N (constants in `core/Ports.kt`). Worker variants: link `.link` offset 10, choir `.choir` offset 20, pdu `.pdu` offset 30. The llm and memcloud workers use the base id `com.swarmos.app`, offset 0, and are the only ones that install the base id while variants are in flight.
+2. Debug builds share the fixed pairing secret `swarmos-dev-secret`, so dev phones trust each other with no QR scan. QR pairing replaces the secret at runtime. Node names are set over adb: `am start -n <pkg>/com.swarmos.app.MainActivity --es name "Phone A"`.
+3. SwarmLink primary link = Wi-Fi Direct autonomous group on 5 GHz created by the app (`WifiP2pConfig.Builder().setNetworkName().setPassphrase().setGroupOperatingBand(5 GHz)`), because an app can create and join it without user dialogs and without internet. Same-LAN (any shared Wi-Fi, including a phone hotspot the user turns on) is the zero-setup path and must always work. LocalOnlyHotspot is not used (band not controllable). Pairing payload = JSON {name, nodeId, ips[], port, secret, p2p{ssid, pass}?}; shown as QR and also accepted through the deep link `swarmos://pair?d=<base64url>` so it can be injected over adb.
+4. Private Data Union store = plain SQLite via `androidx.sqlite` bundled driver: FTS5 table for BM25 + BLOB column for 256-dim float embeddings, cosine by brute force in Kotlin. sqlite-vec is dropped (no NDK build needed; brute force is milliseconds at demo scale).
+5. Models live in the base app's external files dir: `/sdcard/Android/data/com.swarmos.app/files/models/*.gguf` (adb can push there). The PC copy is `H:\UStaaf\models\`.
+6. Scoring hooks from the hackathon rules (15 % creative phone use measured from device telemetry): camera is used for QR pairing and for "scan a document into the Data Union"; voice input (Android on-device SpeechRecognizer) on the query boxes is a stretch item.
+7. `scripts/swarm-call.sh <ip[:port]> <METHOD> <path> [json-body]` signs and sends a Node API request from the PC with the dev secret (written by the link worker).

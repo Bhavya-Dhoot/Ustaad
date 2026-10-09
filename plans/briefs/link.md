@@ -1,0 +1,25 @@
+# Brief: SwarmLink (G1) — swarm-network-engineer
+
+Task (one sentence): Build the SwarmLink module (package `com.swarmos.app.link`) so three phones find each other, pair, keep a heartbeat, and measure throughput and RTT in-app over same-LAN and over an app-created 5 GHz Wi-Fi Direct group, with the numbers written to docs/benchmarks/.
+
+Read first: CLAUDE.md, docs/CONTRACTS.md (all, especially sections 5, 6, 9), .claude/agents/swarm-network-engineer.md, plans/briefs/_common.md, docs/PRD.md section 5.1, docs/benchmarks/2026-10-09-swarmlink-lan-baseline.md, scripts/tput/tput.c, and section 0 plus the recommendation section of docs/research/02-swarmlink-android-networking.md. Then the scaffold code you build on: app/app/src/main/java/com/swarmos/app/AppGraph.kt, core/*, link/*.
+
+Build flags: `-PidSuffix=.link -PportOffset=10` (package com.swarmos.app.link, node port 8797, probe port 8798).
+
+You own: app/app/src/main/java/com/swarmos/app/link/** , app/app/src/test/java/com/swarmos/app/link/** , scripts/swarm-call.sh , docs/benchmarks/2026-10-10-swarmlink-*.md. link/NodeServer.kt and link/NodeClient.kt are yours from now on; keep their public API backward compatible.
+
+Build:
+1. Discovery on a shared LAN: register and browse NSD service type `_swarmos._tcp` (port = node port, TXT: nodeId, name). On discovery call GET /v1/hello, then a signed GET /v1/health; if the signature is accepted the peer is trusted and added to AppGraph.registry. Debug builds share the dev secret, so three phones on the same Wi-Fi must appear in each other's peer list with no user action. Also accept a manual "add peer by IP".
+2. Heartbeat: every 1 s a signed GET /v1/health to each peer; record RTT (ms) per peer; 3 misses marks the peer away; recover automatically. Expose per-peer StateFlow (health, rttMs, lastSeen, state).
+3. Pairing: "Host" shows a QR (ZXing) of the pairing payload from CONTRACTS 9.3 with a fresh random secret; "Join" scans it with CameraX + ML Kit barcode scanning; the deep link `swarmos://pair?d=<base64url>` does the same (add the manifest intent-filter and the MainActivity handling in your worktree and list the lines in your report). A debug-only unsigned route GET /v1/link/pairing-payload returns the host's current payload so it can be injected over adb for testing.
+4. Wi-Fi Direct link: "Host over Wi-Fi Direct" creates an autonomous group on 5 GHz with a known network name (must start with `DIRECT-xy-`) and passphrase through `WifiP2pConfig.Builder`; the joiner connects with the same network name and passphrase through `WifiP2pManager.connect` (no invitation dialog expected), binds sockets to the p2p network/interface, and reaches the host at the group owner address. Request the runtime permissions (NEARBY_WIFI_DEVICES, ACCESS_FINE_LOCATION, CAMERA). Phones must stay connected to their normal Wi-Fi at the same time (STA+P2P concurrency exists on this chip) so wireless adb keeps working; if joining the group drops the infrastructure Wi-Fi, stop, record it, and continue testing with phone C driven over USB (serial 10BFAT216Z000XQ).
+5. Throughput and RTT probe (Kotlin port of scripts/tput/tput.c): raw TCP on the probe port, 100 MB default, 1 MiB writes, receiver-timed Mbps; RTT = 200 one-byte ping-pongs with TCP_NODELAY, report min/avg/p95/max. Triggered from the Link screen per peer and by signed POST /v1/link/tput {peerNodeId, megabytes}. The result includes the link description read on the phone (interface name, Wi-Fi standard, PHY link speed, frequency), is appended to filesDir/tput.jsonl and returned as JSON.
+6. Link screen: this node, peer list (name with accent colour, IP, link type LAN or DIRECT, RTT, state, thermal, battery), buttons Host / Join / Direct / Measure, last probe results. For the StatsBar expose a StateFlow<Boolean> "internet validated on any network" from ConnectivityManager and report the one-line hook needed.
+7. scripts/swarm-call.sh per CONTRACTS 9.7 (openssl HMAC + curl), plus a signed GET /v1/link/peers route listing peers and their state.
+
+Verify on the phones:
+- Install your variant on A, B, C; set names; within 15 s each phone lists the two others as online (scripts/swarm-call.sh GET /v1/link/peers on each).
+- Force-stop your app on B: A and C mark it away within 5 s; restart it: back within 10 s.
+- Deep-link pairing: inject host A's payload into B over adb; B adopts the new secret and is trusted by A; a request signed with the wrong secret gets HTTP 401.
+- Probe over LAN between each pair in both directions (100 MB + RTT), and over the Wi-Fi Direct 5 GHz group (A host; B and C clients): record Mbps, RTT, Wi-Fi standard, PHY speed and frequency of the p2p interface (dumpsys wifip2p or the in-app reading), and group formation time. Write docs/benchmarks/2026-10-10-swarmlink-g1.md as a table with date-time, phones, link, and whether another workload was running.
+- 20-minute soak: screen off on B and C, foreground service running; count heartbeat misses and check logcat for the system killing your package. Report honestly; list any battery or whitelist settings that would be needed (do not change them).
