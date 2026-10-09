@@ -36,7 +36,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
@@ -91,50 +95,67 @@ fun SettingsSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        modifier = Modifier.border(1.5.dp, SwarmColors.ink, SheetShape),
         shape = SheetShape,
         containerColor = SwarmColors.sheet,
         contentColor = SwarmColors.ink,
         scrimColor = SwarmColors.ink.copy(alpha = 0.2f),
-        dragHandle = {
-            Box(Modifier.padding(vertical = 12.dp).size(width = 40.dp, height = 4.dp).background(SwarmColors.ink, CircleShape))
-        },
+        dragHandle = null,
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                Text("Settings", style = SwarmType.display)
-                Wordmark(Modifier.padding(bottom = 4.dp))
+        Column(Modifier.fillMaxWidth().drawBehind { drawSheetEdge() }) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(width = 40.dp, height = 4.dp).background(SwarmColors.ink, CircleShape))
             }
-            Hairline()
-            SwarmTextField(
-                value = name,
-                onValueChange = { name = it.take(32) },
-                label = "Phone name",
-                error = if (name.isBlank()) "Give this phone a name." else null,
-            )
-            IdentityPicker(selected = phoneLetter(name), onPick = { name = it })
-            Hairline()
-            PairingSecretRow()
-            RemoveAnimationsRow()
-            AuditLogCard()
-            Text("Ustaad ${BuildConfig.VERSION_NAME}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
-            PrimaryButton(
-                "Save changes",
-                onClick = {
-                    if (name.isNotBlank()) AppGraph.setNodeName(name)
-                    close()
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = name.isNotBlank(),
-            )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                    Text("Settings", style = SwarmType.display)
+                    Wordmark(Modifier.padding(bottom = 4.dp))
+                }
+                Hairline()
+                SwarmTextField(
+                    value = name,
+                    onValueChange = { name = it.take(32) },
+                    label = "Phone name",
+                    error = if (name.isBlank()) "Give this phone a name." else null,
+                )
+                IdentityPicker(selected = phoneLetter(name), onPick = { name = it })
+                Hairline()
+                PairingSecretRow()
+                RemoveAnimationsRow()
+                AuditLogCard()
+                Text("Ustaad ${BuildConfig.VERSION_NAME}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
+                PrimaryButton(
+                    "Save changes",
+                    onClick = {
+                        if (name.isNotBlank()) AppGraph.setNodeName(name)
+                        close()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = name.isNotBlank(),
+                )
+            }
         }
     }
+}
+
+/** 1.5 dp Ink edge along the top and both sides of the sheet (an open path: the bottom is off screen). */
+private fun DrawScope.drawSheetEdge() {
+    val half = 0.75.dp.toPx()
+    val r = 16.dp.toPx()
+    val path = Path().apply {
+        moveTo(half, size.height)
+        lineTo(half, r)
+        arcTo(Rect(half, half, half + 2 * r, half + 2 * r), 180f, 90f, false)
+        lineTo(size.width - r, half)
+        arcTo(Rect(size.width - half - 2 * r, half, size.width - half, half + 2 * r), 270f, 90f, false)
+        lineTo(size.width - half, size.height)
+    }
+    drawPath(path, SwarmColors.ink, style = Stroke(1.5.dp.toPx()))
 }
 
 /** The three phone tokens; the picked one has a second ring. Picking sets the name to "Phone A/B/C". */

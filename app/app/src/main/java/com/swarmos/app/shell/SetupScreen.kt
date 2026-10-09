@@ -63,7 +63,6 @@ import com.swarmos.app.ui.SwarmIcon
 import com.swarmos.app.ui.SwarmShape
 import com.swarmos.app.ui.SwarmTheme
 import com.swarmos.app.ui.SwarmType
-import com.swarmos.app.ui.Tag
 
 /** Small Bricolage wordmark, used only at the top of the setup screen and in the settings sheet. */
 @Composable
@@ -117,14 +116,14 @@ fun SetupScreen(onFinish: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 16.dp),
         ) {
             Wordmark()
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
             Text("Three things before we start", style = SwarmType.display)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Ustaad needs these to find your other phones and to keep working with the screen off.",
+                "These let Ustaad find your other phones.",
                 style = SwarmType.body.copy(color = SwarmColors.graphite),
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SetupRow(
                     icon = SwarmIcon.Nearby,
@@ -159,11 +158,10 @@ fun SetupScreen(onFinish: () -> Unit) {
                     SetupRow(
                         icon = SwarmIcon.Play,
                         title = "Allow background start",
-                        reason = "Opens the Ustaad page in system settings.",
+                        reason = "Optional. Opens the Ustaad page in system settings.",
                         done = false,
-                        button = "Open settings",
+                        button = "Open",
                         onClick = { ctx.openAppSettings() },
-                        optional = true,
                     )
                     Note(
                         "Without this the phone stops the swarm when the screen is off.",
@@ -196,7 +194,6 @@ private fun SetupRow(
     done: Boolean,
     button: String,
     onClick: () -> Unit,
-    optional: Boolean = false,
 ) {
     Row(
         Modifier
@@ -212,7 +209,6 @@ private fun SetupRow(
             Text(title, style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp))
             Spacer(Modifier.height(2.dp))
             Text(reason, style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite))
-            if (optional) Tag("optional", Modifier.padding(top = 6.dp))
         }
         Spacer(Modifier.width(12.dp))
         if (done) {
