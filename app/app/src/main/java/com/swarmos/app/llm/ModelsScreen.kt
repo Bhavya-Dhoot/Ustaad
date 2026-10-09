@@ -52,10 +52,12 @@ import com.swarmos.app.AppGraph
 import com.swarmos.app.core.HealthMonitor
 import com.swarmos.app.ui.EmptyHint
 import com.swarmos.app.ui.ErrorNote
+import com.swarmos.app.ui.Hairline
 import com.swarmos.app.ui.HeroMetric
 import com.swarmos.app.ui.InkProgress
 import com.swarmos.app.ui.MetricRow
 import com.swarmos.app.ui.Note
+import com.swarmos.app.ui.PhoneToken
 import com.swarmos.app.ui.PrimaryButton
 import com.swarmos.app.ui.SectionTitle
 import com.swarmos.app.ui.SecondaryButton
@@ -186,7 +188,8 @@ private fun Metric(label: String, value: String) {
 private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: List<Pair<String, String>>, fakeNote: String?) {
     var showLog by remember { mutableStateOf(false) }
     val role = st.role
-    SwarmCard {
+    // Loaded servers are flat rows separated by hairlines (ui-kit/screens/models); only model files are boxed cards.
+    Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Tag(tag)
             Spacer(Modifier.width(8.dp))
@@ -252,6 +255,8 @@ private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: Lis
             if (lines.isEmpty()) Text("No log lines yet.", style = GraphiteLabel)
             for (l in lines) Text(l.take(160), style = SwarmType.mono.copy(fontSize = 10.sp, lineHeight = 13.sp, color = SwarmColors.graphite), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
+        Spacer(Modifier.height(4.dp))
+        Hairline()
     }
 }
 
@@ -396,7 +401,15 @@ private fun BenchPage(onBack: () -> Unit) {
             )
             Text("Benchmark", style = SwarmType.display)
         }
-        Text(r?.model ?: chat.modelName ?: "no chat model loaded", style = SwarmType.mono.copy(color = SwarmColors.graphite))
+        val self by AppGraph.registry.self.collectAsStateWithLifecycle()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PhoneToken(self.name, 28.dp)
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(self.name, style = SwarmType.label)
+                Text(r?.model ?: chat.modelName ?: "no chat model loaded", style = SwarmType.mono.copy(color = SwarmColors.graphite))
+            }
+        }
 
         SwarmCard {
             Box(Modifier.fillMaxWidth()) {
