@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Whiteboard palette (docs/design/DESIGN.md section 2); Compose uses SwarmColors, this is for the window. -->
+    <color name="whiteboard">#FFF6F7F5</color>
+    <color name="sheet">#FFFCFDFB</color>
+    <color name="ink">#FF15171A</color>
+</resources>

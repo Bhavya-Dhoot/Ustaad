@@ -76,6 +76,7 @@ dependencies {
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.slf4j.android) // Ktor logs through slf4j; without a binding every server error is silent
 
     implementation(libs.zxing.core)
     implementation(libs.camerax.core)

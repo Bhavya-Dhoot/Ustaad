@@ -50,6 +50,7 @@ pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfbo
 androidx-sqlite = { module = "androidx.sqlite:sqlite", version.ref = "androidxSqlite" }
 androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "androidxSqlite" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+slf4j-android = { module = "uk.uuid.slf4j:slf4j-android", version = "2.0.20-0" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
