@@ -250,7 +250,18 @@ object LinkRuntime {
                 withContext(Dispatchers.IO) {
                     PeerLinks.pausing(session) {
                         _progress.value = MeasureProgress(st.key, "rtt", 0, 0)
-                        val rtt = client.rtt(pings)
+                        // OriginOS freezes a backgrounded app and resets its sockets; a peer that was just thawed
+                        // refuses the first connection, so retry the (cheap) RTT stage before the bulk run
+                        var rtt: RttStats? = null
+                        var attempt = 0
+                        while (rtt == null) {
+                            try {
+                                rtt = client.rtt(pings)
+                            } catch (e: java.io.IOException) {
+                                if (++attempt >= 4) throw e
+                                Thread.sleep(1_500)
+                            }
+                        }
                         val total = megabytes.toLong() * TputProtocol.MB
                         _progress.value = MeasureProgress(st.key, "throughput", 0, total)
                         var lastPublished = 0L
