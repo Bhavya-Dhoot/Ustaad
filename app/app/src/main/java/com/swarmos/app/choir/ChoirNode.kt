@@ -4,6 +4,10 @@ import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.LlmClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonArray
@@ -32,7 +36,7 @@ class ChoirNode(
     @Volatile
     var script: FakeScript? = null
 
-    private class TaskState(val problem: String, val kind: Kind, val role: Role, var own: Candidate?)
+    private class TaskState(val problem: String, val kind: Kind, val role: Role, @Volatile var own: Candidate?)
 
     private val tasks: MutableMap<String, TaskState> = Collections.synchronizedMap(
         object : LinkedHashMap<String, TaskState>() {
@@ -136,16 +140,26 @@ class ChoirNode(
             useFake -> CannedLlm(fake(), sc?.delayMs?.takeIf { it > 0 } ?: FakePlanner.delayFor(taskId, nodeId, round), sc?.tokens ?: 60)
             else -> real
         }
+        // The model call runs on its own job and only the WAIT is bounded: a client whose chat() cannot be cancelled
+        // (a blocking socket) is cancelled best-effort and abandoned, so this lane still ends at its deadline.
+        val job = modelScope.async { client.chat(chat) }
         return try {
-            val res = withTimeoutOrNull(budgetMs.coerceAtLeast(1)) { client.chat(chat) }
-                ?: return Outcome("", 0, client.modelName, useFake, "timeout after ${budgetMs} ms")
-            Outcome(res.text, res.stats.completionTokens, client.modelName, useFake)
+            val res = withTimeoutOrNull(budgetMs.coerceAtLeast(1)) { job.await() }
+            if (res == null) {
+                job.cancel()
+                Outcome("", 0, client.modelName, useFake, "timeout after ${budgetMs} ms")
+            } else {
+                Outcome(res.text, res.stats.completionTokens, client.modelName, useFake)
+            }
         } catch (e: CancellationException) {
+            job.cancel()
             throw e
         } catch (t: Throwable) {
             Outcome("", 0, client.modelName, useFake, "model error: ${t.message ?: t::class.simpleName}")
         }
     }
+
+    private val modelScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private fun finishAnswer(taskId: String, round: Int, me: NodeIdentity, o: Outcome, t0: Long): NodeAnswer {
         val ms = clock() - t0

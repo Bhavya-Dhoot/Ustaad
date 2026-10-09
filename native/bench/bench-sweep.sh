@@ -13,7 +13,7 @@ $ADB -s "$SER" push "$(cygpath -m "$HERE")/runrss.sh" /data/local/tmp/llama/runr
 for cfg in "${CONFIGS[@]}"; do
   t="${cfg%%:*}"; mask=""; [ "$cfg" != "$t" ] && mask="${cfg#*:}"
   pre=""; [ -n "$mask" ] && pre="taskset $mask"
-  $ADB -s "$SER" shell "cd /data/local/tmp/llama; COOL_MC=${COOL_MC:-} COOL_MAX=${COOL_MAX:-900} KEEPAWAKE=${KEEPAWAKE:-0} sh runrss.sh /data/local/tmp/llama/sweep $pre $BIN/libllama-bench.so -m $MODEL -p ${PP:-512} -n ${TG:-128} -t $t -r $REPS -o json" </dev/null
+  $ADB -s "$SER" shell "cd /data/local/tmp/llama; COOL_MC=${COOL_MC:-} COOL_STATUS_MAX=${COOL_STATUS_MAX:-1} COOL_MAX=${COOL_MAX:-3600} KEEPAWAKE=${KEEPAWAKE:-0} sh runrss.sh /data/local/tmp/llama/sweep $pre $BIN/libllama-bench.so -m $MODEL -p ${PP:-512} -n ${TG:-128} -t $t -r $REPS ${EXTRA:-} -o json" </dev/null
   json=$($ADB -s "$SER" shell "cat /data/local/tmp/llama/sweep.out" </dev/null | tr -d '\r')
   rss=$($ADB -s "$SER" shell "cat /data/local/tmp/llama/sweep.rss" </dev/null | tr -d '\r')
   echo "$json" | python -I -c "

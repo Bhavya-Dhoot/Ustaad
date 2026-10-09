@@ -2,6 +2,7 @@ package com.swarmos.app.choir
 
 import androidx.compose.runtime.Composable
 import com.swarmos.app.AppGraph
+import com.swarmos.app.BuildConfig
 import com.swarmos.app.SwarmModule
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
@@ -53,14 +54,16 @@ object ChoirModule : SwarmModule {
         post("/revise") { call.rpc<ReviseRequest, NodeAnswer>("revise") { ChoirController.node.revise(it) } }
         post("/judge") { call.rpc<JudgeRequest, JudgeAnswer>("judge") { ChoirController.node.judge(it) } }
 
-        // debug: register peers by IP, script fake answers on this node
-        post("/debug/peers") {
-            call.plain<DebugPeers, DebugPeersResult>("debug.peers") { ChoirController.registerPeers(it.ips) }
-        }
-        post("/debug/script") {
-            call.plain<FakeScript, JsonObject>("debug.script") { sc ->
-                ChoirController.node.script = sc.takeUnless { it.isEmpty() }
-                buildJsonObject { put("ok", true); put("active", ChoirController.node.script != null) }
+        // debug builds only: connect peers by IP through the link module, script fake answers on this node
+        if (BuildConfig.DEBUG) {
+            post("/debug/peers") {
+                call.plain<DebugPeers, DebugPeersResult>("debug.peers") { ChoirController.registerPeers(it.ips) }
+            }
+            post("/debug/script") {
+                call.plain<FakeScript, JsonObject>("debug.script") { sc ->
+                    ChoirController.node.script = sc.takeUnless { it.isEmpty() }
+                    buildJsonObject { put("ok", true); put("active", ChoirController.node.script != null) }
+                }
             }
         }
 
@@ -82,6 +85,8 @@ object ChoirModule : SwarmModule {
                 call.respondJson(ChoirController.runEval(ids, RunOptions(useCheck), withSamples))
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: EvalRefused) {
+                call.respondJson(ErrorBody(e.message ?: "eval refused"), HttpStatusCode.Conflict)
             } catch (t: Throwable) {
                 call.respondJson(ErrorBody(t.message ?: t::class.simpleName ?: "eval failed"), HttpStatusCode.InternalServerError)
             }

@@ -58,6 +58,57 @@ class RuntimeHelpersTest {
         assertNull(slowdownNote(pts(10.0, 5.0))) // too few minutes to call it a trend
     }
 
+    @Test fun aKilledServerIsRestartedOnceThenLeftFailed() {
+        val ready = RestartPolicy.decide(Role.CHAT, wasReady = true, serviceUp = true, restartsUsed = 0, aliveMs = 40_000, extraArgs = emptyList())
+        assertEquals(RestartPolicy.Decision.Restart(1, 2_000), ready)
+        val again = RestartPolicy.decide(Role.CHAT, wasReady = true, serviceUp = true, restartsUsed = 1, aliveMs = 40_000, extraArgs = emptyList())
+        assertEquals(RestartPolicy.Decision.GiveUp, again)
+        // a restarted server that then ran for two minutes starts a fresh episode
+        val stable = RestartPolicy.decide(Role.EMBED, wasReady = true, serviceUp = true, restartsUsed = 1, aliveMs = 130_000, extraArgs = emptyList())
+        assertEquals(RestartPolicy.Decision.Restart(1, 2_000), stable)
+    }
+
+    @Test fun deathsThatAreNotOursToRepairAreIgnored() {
+        fun d(role: Role = Role.CHAT, wasReady: Boolean = true, up: Boolean = true, args: List<String> = emptyList()) =
+            RestartPolicy.decide(role, wasReady, up, 0, 10_000, args)
+        assertEquals(RestartPolicy.Decision.Ignore, d(wasReady = false)) // never got ready: bad model or flags
+        assertEquals(RestartPolicy.Decision.Ignore, d(up = false))        // the service is going down
+        assertEquals(RestartPolicy.Decision.Ignore, d(role = Role.RPC))
+        assertEquals(RestartPolicy.Decision.Ignore, d(args = listOf("--rpc", "10.0.0.2:50052"))) // a split server is MemoryCloud's to re-plan
+    }
+
+    @Test fun zombieProcessesCountAsGone() {
+        assertTrue(ProcInfo.isZombie("Name:\tlibllama-server.so\nState:\tZ (zombie)\nPid:\t123\n"))
+        assertFalse(ProcInfo.isZombie("Name:\tlibllama-server.so\nState:\tS (sleeping)\nPid:\t123\n"))
+        assertFalse(ProcInfo.isZombie("no state line"))
+    }
+
+    @Test fun serviceStartLoadsCatalogDefaultsOnlyNeverTheLastLargeModel() {
+        val big = "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
+        val present = listOf(
+            PresentModel(big, 18_556_686_752L, true),
+            PresentModel("gemma-4-E4B_q4_0-it.gguf", 5_154_941_280L, true),
+            PresentModel("Qwen3.5-4B-Q4_K_M.gguf", 2_740_937_888L, true),
+            PresentModel("embeddinggemma-300M-Q8_0.gguf", 333_590_944L, true),
+        )
+        assertEquals("Qwen3.5-4B-Q4_K_M.gguf", ModelStore.autoLoadChoice(Role.CHAT, present))
+        assertEquals("embeddinggemma-300M-Q8_0.gguf", ModelStore.autoLoadChoice(Role.EMBED, present))
+        // default missing or still downloading: load nothing for that role rather than another model
+        assertNull(ModelStore.autoLoadChoice(Role.CHAT, present.filter { it.file == big }))
+        assertNull(ModelStore.autoLoadChoice(Role.CHAT, listOf(PresentModel("Qwen3.5-4B-Q4_K_M.gguf", 1_000, false))))
+    }
+
+    @Test fun everyCatalogEntryHasAPinnedSizeAndSha256() {
+        for (e in ModelCatalog.entries) {
+            assertEquals("${e.file} sha256", 64, e.sha256.length)
+            assertTrue("${e.file} bytes", e.bytes > 0)
+        }
+        assertEquals(
+            "6c997b8af17debdfb01d890214400ccbab00db6acc0ba8da5de1cc906c4774d0",
+            ModelCatalog.byFile("Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf")!!.sha256,
+        )
+    }
+
     @Test fun rolesParseByTag() {
         assertEquals(Role.CHAT, Role.parse("chat"))
         assertEquals(Role.EMBED, Role.parse(" EMBED "))
