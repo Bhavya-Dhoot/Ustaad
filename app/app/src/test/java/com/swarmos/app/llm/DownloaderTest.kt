@@ -38,7 +38,10 @@ class DownloaderTest {
         dir.deleteRecursively()
     }
 
+    private var userAgent: String? = null
+
     private fun serve(ex: HttpExchange) {
+        userAgent = ex.requestHeaders.getFirst("User-Agent")
         val range = ex.requestHeaders.getFirst("Range")
         if (range != null && honourRange) {
             ranged.incrementAndGet()
@@ -102,6 +105,11 @@ class DownloaderTest {
         }
         assertFalse(dest.exists())
         assertFalse(File(dir, "m.gguf.part").exists())
+    }
+
+    @Test fun userAgentSaysUstaad() = runBlocking {
+        Downloader().download(url, File(dir, "m.gguf"), data.size.toLong(), sha, Counter())
+        assertTrue("User-Agent was $userAgent", userAgent!!.startsWith("Ustaad"))
     }
 
     @Test fun contentRangeTotalParses() {

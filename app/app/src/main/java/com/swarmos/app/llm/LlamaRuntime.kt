@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.atomic.AtomicInteger
 
 enum class ServerState { STOPPED, STARTING, READY, FAILED }
 
@@ -37,6 +38,10 @@ data class ServerStatus(
     val startedAtMs: Long = 0L,
     /** Milliseconds from launch to READY (load time). */
     val readyAfterMs: Long? = null,
+    /** Banner text for the UI: the server was killed and is being restarted, or was restarted, or will not be. Null normally. */
+    val notice: String? = null,
+    /** Automatic restarts used in the current failure episode (0 or 1). */
+    val restarts: Int = 0,
 ) {
     /** File name without extension, e.g. "Qwen3.5-4B-Q4_K_M"; null for RPC or when stopped. */
     val modelName: String? get() = modelPath?.let { File(it).name.removeSuffix(".gguf") }
@@ -56,16 +61,32 @@ object LlamaRuntime {
     private const val READY_TIMEOUT_MS = 300_000L
     private const val LOG_FILE_CAP = 8L * 1024 * 1024
 
+    /** How long to wait for a killed orphan to vanish from /proc before its port is checked. */
+    private const val ORPHAN_WAIT_MS = 5_000L
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val locks = Role.entries.associateWith { Mutex() }
+
+    /**
+     * Bumped by [stop]. A start remembers the value it was requested under and gives up when it changed, so a Stop that
+     * arrives while a start is queued, killing orphans or loading can never be followed by a server nobody asked for.
+     */
+    private val epochs = Role.entries.associateWith { AtomicInteger(0) }
+
+    /** Held while a child is being launched and published in [running], and while orphans are scanned (an orphan scan must not kill a child that is about to be published). */
+    private val procLock = Any()
+
+    private class StartConfig(val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>)
 
     private class Running(
         val role: Role,
         val process: Process,
         val ring: LogRing,
         val startedNs: Long,
+        val cfg: StartConfig,
     ) {
         @Volatile var stopRequested = false
+        @Volatile var wasReady = false
     }
 
     private val running = java.util.concurrent.ConcurrentHashMap<Role, Running>()
@@ -111,7 +132,7 @@ object LlamaRuntime {
             }
         }
         val load = scope.launch {
-            killOrphans()
+            awaitGone(killOrphans(), ORPHAN_WAIT_MS)
             if (ModelStore.autoload.value) loadDefaults() else Log.i(TAG, "autoload is off: no model is loaded at start")
         }
         serviceJobs = listOf(wire, load)
@@ -120,8 +141,8 @@ object LlamaRuntime {
     @Volatile private var schedCapacity = -1
 
     /**
-     * Starts the default chat and embedding models (the last file loaded for each role, else the catalog default) when
-     * they are present. Returns one handle per role that was started; roles whose file is missing are skipped.
+     * Starts the catalog default chat and embedding models (Qwen3.5-4B, EmbeddingGemma-300M) when they are present.
+     * Returns one handle per role that was started; roles whose file is missing are skipped.
      */
     fun loadDefaults(): List<Deferred<ServerStatus>> =
         listOf(Role.CHAT, Role.EMBED).mapNotNull { role ->
@@ -175,16 +196,18 @@ object LlamaRuntime {
         extraArgs: List<String> = emptyList(),
         port: Int = role.defaultPort,
         env: Map<String, String> = emptyMap(),
-    ): Deferred<ServerStatus> = scope.async { startInternal(role, modelPath, extraArgs, port, env) }
+    ): Deferred<ServerStatus> {
+        val epoch = epochs.getValue(role).get() // a stop() after this point cancels this start
+        val cfg = StartConfig(modelPath, extraArgs, port, env)
+        return scope.async { startInternal(role, cfg, epoch, auto = false) }
+    }
 
-    private suspend fun startInternal(
-        role: Role,
-        modelPath: String?,
-        extraArgs: List<String>,
-        port: Int,
-        env: Map<String, String>,
-    ): ServerStatus = locks.getValue(role).withLock {
-        stopLocked(role)
+    private suspend fun startInternal(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus = locks.getValue(role).withLock {
+        val modelPath = cfg.modelPath
+        val port = cfg.port
+        if (epochs.getValue(role).get() != epoch) return@withLock statusOf(role) // stopped before this start began
+        val prior = statusOf(role)
+        stopProcess(role) // waits until the old process is gone, so its port is free
         val ctx = AppGraph.appContext
         if (!serviceUp) return@withLock fail(role, "SwarmService is not running", modelPath, port)
         val bin = File(ctx.applicationInfo.nativeLibraryDir, role.binary)
@@ -192,36 +215,50 @@ object LlamaRuntime {
         if (role != Role.RPC && (modelPath == null || !File(modelPath).isFile)) {
             return@withLock fail(role, "model file not found: $modelPath", modelPath, port)
         }
-        if (!waitForPort(role, port, 3_000)) {
-            return@withLock fail(role, "port $port is already in use by another process on this phone", modelPath, port)
+        if (!ensurePortFree(role, port)) {
+            return@withLock fail(role, "port $port is still in use after two retries (another app or an adb shell process holds it)", modelPath, port)
         }
-        val args = LlamaArgs.build(role, modelPath, port, extraArgs)
+        if (epochs.getValue(role).get() != epoch) return@withLock statusOf(role)
+        val args = LlamaArgs.build(role, modelPath, port, cfg.extraArgs)
         val cmd = listOf(bin.absolutePath) + args
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
         val ring = LogRing()
+        val restarts = if (auto) prior.restarts else 0
+        val startingNotice = if (auto) prior.notice else null
         setStatus(role) {
-            ServerStatus(role, ServerState.STARTING, null, modelPath, port, null, args, System.currentTimeMillis())
+            ServerStatus(role, ServerState.STARTING, null, modelPath, port, null, args, System.currentTimeMillis(), null, startingNotice, restarts)
         }
-        val proc = try {
-            ProcessBuilder(cmd)
-                .directory(ctx.filesDir)
-                .redirectErrorStream(true)
-                .apply {
-                    environment()["LD_LIBRARY_PATH"] = ctx.applicationInfo.nativeLibraryDir
-                    environment()["LLAMA_CACHE"] = File(ctx.filesDir, "llama-cache").apply { mkdirs() }.path // rpc-server -c needs it (no $HOME on Android)
-                    environment().putAll(env)
-                }
-                .start()
-        } catch (e: Exception) {
-            return@withLock fail(role, "cannot exec ${bin.name}: ${e.message}", modelPath, port)
+        val run: Running
+        synchronized(procLock) {
+            val proc = try {
+                ProcessBuilder(cmd)
+                    .directory(ctx.filesDir)
+                    .redirectErrorStream(true)
+                    .apply {
+                        environment()["LD_LIBRARY_PATH"] = ctx.applicationInfo.nativeLibraryDir
+                        environment()["LLAMA_CACHE"] = File(ctx.filesDir, "llama-cache").apply { mkdirs() }.path // rpc-server -c needs it (no $HOME on Android)
+                        environment().putAll(cfg.env)
+                    }
+                    .start()
+            } catch (e: Exception) {
+                return@withLock fail(role, "cannot exec ${bin.name}: ${e.message}", modelPath, port)
+            }
+            run = Running(role, proc, ring, System.nanoTime(), cfg)
+            running[role] = run
         }
-        val run = Running(role, proc, ring, System.nanoTime())
-        running[role] = run
+        val proc = run.process
+        // stop() may have run between the epoch check above and the publish just now: it found nothing to kill, so do it here
+        if (epochs.getValue(role).get() != epoch) {
+            run.stopRequested = true
+            running.remove(role, run)
+            killProcess(proc)
+            return@withLock statusOf(role)
+        }
         val pid = pidOf(proc)
         setStatus(role) { it.copy(pid = pid) }
         Log.i(TAG, "${role.tag}: started pid=$pid ${cmd.joinToString(" ")}")
         pump(run, logFile)
-        watchExit(run, modelPath, port)
+        watchExit(run)
 
         // wait for readiness
         val deadline = System.nanoTime() + READY_TIMEOUT_MS * 1_000_000
@@ -232,8 +269,11 @@ object LlamaRuntime {
                 delay(400)
                 if (!proc.isAlive || !probe(role, port)) continue
                 warmUp(role, port)
+                if (run.stopRequested || epochs.getValue(role).get() != epoch) return@withLock statusOf(role)
                 val ms = (System.nanoTime() - run.startedNs) / 1_000_000
-                setStatus(role) { it.copy(state = ServerState.READY, readyAfterMs = ms) }
+                run.wasReady = true
+                val doneNotice = if (auto) "Restarted automatically after the server was killed." else null
+                setStatus(role) { it.copy(state = ServerState.READY, readyAfterMs = ms, notice = doneNotice) }
                 Log.i(TAG, "${role.tag}: READY after $ms ms")
                 return@withLock statusOf(role)
             }
@@ -249,15 +289,18 @@ object LlamaRuntime {
         fail(role, "${ProcInfo.describeExit(code)} during start; last log: ${ring.tail(3).joinToString(" | ")}", modelPath, port)
     }
 
-    /** Stops [role] (SIGTERM, then SIGKILL after 3 s). Safe to call when it is not running. */
+    /**
+     * Stops [role] (SIGTERM, then SIGKILL after 3 s). Safe to call when it is not running, and safe while a start for this
+     * role is queued, checking ports or loading: that start is cancelled (see [epochs]) instead of racing with this stop.
+     * It also ends the automatic restart of a server that was killed.
+     */
     fun stop(role: Role) {
-        val run = running[role] ?: run {
-            setStatus(role) { ServerStatus(role, port = it.port) }
-            return
+        epochs.getValue(role).incrementAndGet()
+        val run = running.remove(role)
+        if (run != null) {
+            run.stopRequested = true
+            killProcess(run.process)
         }
-        run.stopRequested = true
-        killProcess(run.process)
-        running.remove(role, run)
         setStatus(role) { ServerStatus(role, port = it.port) }
     }
 
@@ -266,10 +309,12 @@ object LlamaRuntime {
         for (r in Role.entries) stop(r)
     }
 
-    /** Stops [role] and waits until the process is really gone, so its port is free for the next start. */
-    private fun stopLocked(role: Role) {
-        val run = running[role] ?: return
-        stop(role)
+    /** Called by a start that already holds the role lock: kills the old process of [role] and waits until it is really gone. */
+    private fun stopProcess(role: Role) {
+        val run = running.remove(role) ?: return
+        run.stopRequested = true
+        killProcess(run.process)
+        setStatus(role) { ServerStatus(role, port = it.port) }
         if (!waitFor(run.process, 4_000)) {
             run.process.destroyForcibly()
             waitFor(run.process, 2_000)
@@ -299,9 +344,24 @@ object LlamaRuntime {
         return portFree(role, port)
     }
 
+    /**
+     * Frees [port] for a new server: the first try, then two retries, each after killing this app's stale servers (left
+     * by an earlier app process) and waiting until they have really vanished from /proc (a SIGKILL is asynchronous).
+     */
+    private suspend fun ensurePortFree(role: Role, port: Int): Boolean {
+        if (waitForPort(role, port, 1_500)) return true
+        repeat(2) {
+            awaitGone(killOrphans(), ORPHAN_WAIT_MS)
+            if (waitForPort(role, port, 3_000)) return true
+        }
+        return false
+    }
+
     private fun fail(role: Role, reason: String, modelPath: String?, port: Int): ServerStatus {
         Log.e(TAG, "${role.tag}: FAILED: $reason")
-        setStatus(role) { ServerStatus(role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs) }
+        setStatus(role) {
+            ServerStatus(role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs, null, it.notice, it.restarts)
+        }
         return statusOf(role)
     }
 
@@ -343,17 +403,43 @@ object LlamaRuntime {
         }, "llama-log-${run.role.tag}").apply { isDaemon = true }.start()
     }
 
-    /** Reports unexpected exits (this is the evidence for the phantom-process / OriginOS question). */
-    private fun watchExit(run: Running, modelPath: String?, port: Int) {
+    /**
+     * Reports unexpected exits (this is the evidence for the phantom-process / OriginOS question) and, when
+     * [RestartPolicy] allows, restarts the server once after a backoff with a banner ([ServerStatus.notice]).
+     */
+    private fun watchExit(run: Running) {
         scope.launch {
             val code = run.process.waitFor()
             val aliveMs = (System.nanoTime() - run.startedNs) / 1_000_000
             if (run.stopRequested) return@launch
             val last = run.ring.tail(3).joinToString(" | ")
-            val reason = "${ProcInfo.describeExit(code)} after ${aliveMs / 1000} s; last log: $last"
+            val what = ProcInfo.describeExit(code)
+            val reason = "$what after ${aliveMs / 1000} s; last log: $last"
             Log.e(TAG, "${run.role.tag}: DIED pid=${pidOf(run.process)} $reason")
-            if (running[run.role] === run) running.remove(run.role)
-            setStatus(run.role) { ServerStatus(run.role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs) }
+            if (running[run.role] === run) running.remove(run.role, run)
+            val role = run.role
+            val cfg = run.cfg
+            setStatus(role) {
+                ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, null, it.restarts)
+            }
+            val epoch = epochs.getValue(role).get()
+            when (val d = RestartPolicy.decide(role, run.wasReady, serviceUp, statusOf(role).restarts, aliveMs, cfg.extraArgs)) {
+                RestartPolicy.Decision.Ignore -> {}
+                RestartPolicy.Decision.GiveUp -> setStatus(role) {
+                    it.copy(notice = "The server was killed again ($what), so it is not restarted. Tap Load to start it.")
+                }
+                is RestartPolicy.Decision.Restart -> {
+                    setStatus(role) {
+                        it.copy(
+                            state = ServerState.STARTING,
+                            notice = "The server was killed ($what). Restarting in ${d.delayMs / 1000} s.",
+                            restarts = d.attempt,
+                        )
+                    }
+                    delay(d.delayMs)
+                    if (serviceUp && epochs.getValue(role).get() == epoch) startInternal(role, cfg, epoch, auto = true)
+                }
+            }
         }
     }
 
@@ -409,10 +495,14 @@ object LlamaRuntime {
         }
     }
 
-    /** Kills llama-server / rpc-server processes left behind by an earlier app process (same uid), so ports are free. */
-    private fun killOrphans() {
+    /**
+     * Kills llama-server / rpc-server processes left behind by an earlier app process (same uid), so ports are free.
+     * Returns the pids it signalled: a SIGKILL is asynchronous, callers [awaitGone] before they bind a port.
+     */
+    private fun killOrphans(): List<Int> = synchronized(procLock) {
         val mine = AndroidProcess.myPid()
-        val dirs = File("/proc").listFiles { f -> f.name.all(Char::isDigit) } ?: return
+        val dirs = File("/proc").listFiles { f -> f.name.all(Char::isDigit) } ?: return emptyList()
+        val killed = ArrayList<Int>()
         for (d in dirs) {
             val pid = d.name.toInt()
             if (pid == mine) continue
@@ -422,9 +512,25 @@ object LlamaRuntime {
                 if (running.values.none { pidOf(it.process) == pid.toLong() }) {
                     Log.w(TAG, "killing orphan $exe pid=$pid")
                     AndroidProcess.killProcess(pid)
+                    killed += pid
                 }
             }
         }
+        killed
+    }
+
+    /** Waits until every pid in [pids] has left /proc (or is a zombie awaiting its parent), at most [timeoutMs]. */
+    private suspend fun awaitGone(pids: List<Int>, timeoutMs: Long) {
+        if (pids.isEmpty()) return
+        val end = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < end && pids.any { !isGone(it) }) delay(100)
+        pids.filter { !isGone(it) }.takeIf { it.isNotEmpty() }?.let { Log.w(TAG, "orphans still present after $timeoutMs ms: $it") }
+    }
+
+    private fun isGone(pid: Int): Boolean = try {
+        !File("/proc/$pid").exists() || ProcInfo.isZombie(File("/proc/$pid/status").readText())
+    } catch (_: Exception) {
+        true
     }
 
     /** The android.jar stubs do not expose Process.pid() on every API level, so ask the implementation class. */
