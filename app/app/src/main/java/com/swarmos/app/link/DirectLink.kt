@@ -295,6 +295,8 @@ object DirectLink {
                     } else if (s.phase == "idle" && g != null && !lock.isLocked) {
                         refresh() // a group appeared (made by the system or by an earlier process)
                     }
+                    // a client that is in the group (also one picked up after an app restart) keeps its path to the owner remembered
+                    _state.value.let { cur -> if (cur.phase == "up" && cur.role == "client") cur.ownerAddress?.let { PeerLinks.remember(it, com.swarmos.app.core.Ports.NODE) } }
                     val st = stored()
                     if (g == null && st?.role == "host" && !lock.isLocked && _state.value.phase != "starting" && System.currentTimeMillis() >= hostRetryAt) {
                         hostRetryAt = System.currentTimeMillis() + 20_000

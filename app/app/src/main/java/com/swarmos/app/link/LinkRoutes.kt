@@ -55,6 +55,8 @@ data class SelfView(
     val hosting: Boolean,
     val direct: DirectState,
     val internetValidated: Boolean,
+    /** Name of the host whose pairing code is waiting for the person to confirm, if any. */
+    val pendingPairing: String? = null,
 )
 
 @Serializable
@@ -127,7 +129,7 @@ fun selfView(): SelfView {
     val self = AppGraph.selfInfo()
     return SelfView(
         self.nodeId, self.name, self.ip, Ports.NODE, Pairing.fingerprint(AppGraph.pairingSecret),
-        LinkRuntime.hosting.value != null, DirectLink.state.value, InternetState.validated.value,
+        LinkRuntime.hosting.value != null, DirectLink.state.value, InternetState.validated.value, LinkRuntime.pendingPairing.value?.name,
     )
 }
 

@@ -446,31 +446,38 @@ object LinkRuntime {
     suspend fun rttProbe(peerNodeId: String, link: LinkType?, n: Int, gapMs: Long, tcpPings: Int): RttReport = probeLock.withLock {
         val ctx = AppGraph.appContext
         val self = AppGraph.registry.self.value
-        val session = PeerLinks.find(peerNodeId, link)
+        // peerNodeId == this phone: the same two probes against 127.0.0.1, i.e. the cost of the software stack with no radio
+        val loop = peerNodeId == self.nodeId
+        val session = if (loop) null else PeerLinks.find(peerNodeId, link)
             ?: return@withLock RttReport(OffsetDateTime.now().withNano(0).toString(), self.name, "?", "", link?.name ?: "?", n, gapMs, error = "unknown peer or link")
-        val st = session.status.value
+        val st = session?.status?.value
+        val ip = if (loop) "127.0.0.1" else st!!.ip
+        val port = if (loop) Ports.NODE else st!!.port
         val h = AppGraph.health.state.value
         var report = RttReport(
-            OffsetDateTime.now().withNano(0).toString(), self.name, st.name, st.ip, st.link.name, n, gapMs,
+            OffsetDateTime.now().withNano(0).toString(), self.name, if (loop) self.name else st!!.name, ip, if (loop) "LOOPBACK" else st!!.link.name, n, gapMs,
             lock = WifiLocks.held.value.name, foreground = AppForeground.foreground.value, thermalStatus = h.thermalStatus,
         )
         try {
             withContext(Dispatchers.IO) {
-                PeerLinks.pausing(session) {
+                session?.probing?.incrementAndGet()
+                try {
                     if (n > 0) {
                         val samples = LongArray(n)
                         for (i in 0 until n) {
                             val t0 = System.nanoTime()
-                            AppGraph.nodeClient.getPinned<com.swarmos.app.core.NodeHealth>(st.hostPort, "/health", 3_000)
+                            AppGraph.nodeClient.getPinned<com.swarmos.app.core.NodeHealth>("$ip:$port", "/health", 3_000)
                             samples[i] = System.nanoTime() - t0
                             if (gapMs > 0) kotlinx.coroutines.delay(gapMs)
                         }
                         report = report.copy(http = rttStats(samples))
                     }
                     if (tcpPings > 0) {
-                        val client = TputClient({ AppGraph.pairingSecret }) { LinkRoute.openSocket(ctx, st.ip, st.port + 1) }
+                        val client = TputClient({ AppGraph.pairingSecret }) { LinkRoute.openSocket(ctx, ip, port + 1) }
                         report = report.copy(tcp = client.rtt(tcpPings))
                     }
+                } finally {
+                    session?.probing?.decrementAndGet()
                 }
             }
         } catch (t: Throwable) {

@@ -77,8 +77,12 @@ class TputAuthTest {
             Thread.sleep(200)
             Socket("127.0.0.1", port).use { second ->
                 second.soTimeout = 2_000
-                second.getOutputStream().apply { write(TputAuth.token(KEY, TputProtocol.MODE_ECHO)); write('a'.code); flush() }
-                assertTrue("second connection is closed, not served", runCatching { second.getInputStream().read() }.getOrDefault(-1) < 0)
+                // the server closes it at once, so the write or the read may already fail: both mean "not served"
+                val served = runCatching {
+                    second.getOutputStream().apply { write(TputAuth.token(KEY, TputProtocol.MODE_ECHO)); write('a'.code); flush() }
+                    second.getInputStream().read()
+                }.getOrDefault(-1)
+                assertTrue("second connection is closed, not served", served < 0)
             }
             assertTrue(server.refused.get() >= 1)
             first.close()
