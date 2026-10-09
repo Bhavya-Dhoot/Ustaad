@@ -91,16 +91,22 @@ object OcrMerge {
 
     fun needsDevanagari(latin: String): Boolean = latin.count { it.isLetterOrDigit() } < SHORT_LATIN_CHARS
 
-    /** The Latin text, then every Devanagari line that the Latin text does not already contain. Both texts are kept. */
+    /**
+     * The Latin text, then the Devanagari recogniser's lines that contain Devanagari script and that the Latin text
+     * does not already have. Both texts are kept; the second pass re-reads Latin lines slightly differently, and those
+     * variants add nothing, so they are not appended.
+     */
     fun merge(latin: String, devanagari: String?): String {
         if (devanagari.isNullOrBlank()) return latin
         val known = latin.lineSequence().map(::key).filter { it.isNotEmpty() }.toList()
         val extra = devanagari.lineSequence().map { it.trim() }.filter { line ->
             val k = key(line)
-            k.isNotEmpty() && known.none { it == k || it.contains(k) || k.contains(it) }
+            hasDevanagari(line) && k.isNotEmpty() && known.none { it == k || it.contains(k) || k.contains(it) }
         }.toList()
         return if (extra.isEmpty()) latin else latin.trimEnd() + "\n" + extra.joinToString("\n")
     }
+
+    private fun hasDevanagari(line: String): Boolean = line.any { it.code in 0x0900..0x097F }
 
     private fun key(line: String): String = line.lowercase().filter { it.isLetterOrDigit() }
 }

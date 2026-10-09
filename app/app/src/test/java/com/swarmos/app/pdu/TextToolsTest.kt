@@ -46,6 +46,12 @@ class OcrMergeTest {
         )
     }
 
+    @Test fun latinLinesReReadBySecondPassAreNotAppended() {
+        val latin = "Due date 12-Oct-2 026\nBill amount INR 599.00"
+        val deva = "Due date 12-Oct-2026\nBill amount INR 599.00\nबिल की राशि 599 रुपये"
+        assertEquals(latin + "\nबिल की राशि 599 रुपये", OcrMerge.merge(latin, deva))
+    }
+
     @Test fun nothingFromTheSecondPassKeepsTheLatinText() {
         assertEquals("abc", OcrMerge.merge("abc", null))
         assertEquals("abc", OcrMerge.merge("abc", "  \n "))

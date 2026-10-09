@@ -14,6 +14,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,7 +44,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -136,7 +136,7 @@ internal fun ScanPage(onBack: () -> Unit) {
                 bmp?.let { Image(it.asImageBitmap(), "captured page", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             }
             Corners()
-            if (shot == null && hasCamera) Note("align edges", Modifier.align(Alignment.TopEnd).padding(12.dp), rotation = 3f)
+            if (shot == null && hasCamera) Box(Modifier.align(Alignment.TopEnd).padding(16.dp).background(SwarmColors.sheet, SwarmShape).padding(horizontal = 8.dp, vertical = 2.dp)) { Note("align edges", rotation = 3f) }
         }
 
         if (shot == null) {
@@ -211,17 +211,18 @@ internal fun ScanPage(onBack: () -> Unit) {
     }
 }
 
-/** Four Ink corner brackets over the viewfinder. */
+/** Four corner brackets over the viewfinder: Sheet on top of Ink, so they show on a dark preview and on a bright page. */
 @Composable
 private fun Corners() {
     Canvas(Modifier.fillMaxSize().padding(10.dp)) {
-        val s = Stroke(3.dp.toPx(), cap = StrokeCap.Round)
         val len = 28.dp.toPx()
         val w = size.width
         val h = size.height
         fun corner(x: Float, y: Float, dx: Float, dy: Float) {
-            drawLine(SwarmColors.ink, Offset(x, y), Offset(x + dx * len, y), s.width, StrokeCap.Round)
-            drawLine(SwarmColors.ink, Offset(x, y), Offset(x, y + dy * len), s.width, StrokeCap.Round)
+            for ((color, width) in listOf(SwarmColors.ink to 6.dp.toPx(), SwarmColors.sheet to 3.dp.toPx())) {
+                drawLine(color, Offset(x, y), Offset(x + dx * len, y), width, StrokeCap.Round)
+                drawLine(color, Offset(x, y), Offset(x, y + dy * len), width, StrokeCap.Round)
+            }
         }
         corner(0f, 0f, 1f, 1f)
         corner(w, 0f, -1f, 1f)
