@@ -214,7 +214,8 @@ fun ChoirScreen() {
     LaunchedEffect(eval.running) { if (eval.running && showBoard) listState.animateScrollToItem(if (showRun) 3 else 2) }
 
     val fakeModel = AppGraph.llm.modelName == "FAKE"
-    val peersOnline = peers.filter { !it.away }.sortedBy { it.info.name }
+    val peersSorted = peers.sortedBy { it.info.name }
+    val peersOnline = peersSorted.filter { !it.away }
 
     Column(Modifier.fillMaxWidth().background(SwarmColors.whiteboard)) {
         // title and round dots stay in view whatever is scrolled
@@ -269,9 +270,13 @@ fun ChoirScreen() {
             item(key = "phones") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SectionTitle("Phones in this run")
+                    // roles go to the phones that will be asked; an away phone is listed but takes no role
+                    var asked = 0
                     PhonesCard(
                         listOf(Triple(self.name, "Solver (coordinator)", self.chatModel ?: AppGraph.llm.modelName)) +
-                            peersOnline.mapIndexed { i, p -> Triple(p.info.name, roleLabel(ChoirCoordinator.roleForPeer(i)), p.info.chatModel ?: "model unknown") },
+                            peersSorted.map { p ->
+                                Triple(p.info.name, if (p.away) "Away, not asked" else roleLabel(ChoirCoordinator.roleForPeer(asked++)), p.info.chatModel ?: "model unknown")
+                            },
                     )
                     if (peersOnline.isEmpty()) Text("No peers online: the coordinator runs alone.", style = SwarmType.label.copy(fontSize = 12.sp, color = SwarmColors.graphite))
                 }
@@ -516,13 +521,13 @@ private fun RunSection(r: RunTrace, now: Long) {
 private fun LaneCard(lane: LaneTrace) {
     val tokens = (lane.r1?.tokens ?: 0) + (lane.r2?.tokens ?: 0)
     val wall = lane.latest?.wallMs
-    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR
+    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY
     val streaming = lane.status == LaneStatus.SOLVING || lane.status == LaneStatus.REVISING || lane.status == LaneStatus.JUDGING
     Lane(
         name = lane.name,
         role = roleLabel(lane.role),
         trailing = {
-            if (failed) Stamp(if (lane.status == LaneStatus.TIMED_OUT) "Timed out" else "Error", caution = true, small = true)
+            if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; else -> "Error" }, caution = true, small = true)
             else {
                 Text("$tokens tok", style = Mono11Dim)
                 Spacer(Modifier.width(8.dp))
