@@ -1,0 +1,25 @@
+# Brief: SwarmLink phase 2, multi-transport and throughput — swarm-network-engineer
+
+Founder requirement (2026-10-10): optimise heavily for throughput between the phones; use Bluetooth and Wi-Fi Direct together, plus LAN, wherever it helps; keep behaviour consistent while several transports are in use.
+
+Task (one sentence): Turn SwarmLink into one logical channel per peer that runs over several transports at once (Wi-Fi Direct, LAN, Bluetooth), picks and combines them by measurement, fails over without losing or duplicating a request, and is tuned for the highest measured throughput and lowest round-trip time on these phones.
+
+Read first: CLAUDE.md, docs/CONTRACTS.md, plans/briefs/_common.md, plans/briefs/link.md (phase 1, already done by you), docs/benchmarks/2026-10-10-swarmlink-g1.md (your phase-1 numbers), then your own link/ code.
+
+Build flags: `-PidSuffix=.link -PportOffset=10`. You own link/** and scripts/swarm-call.sh as before, plus docs/benchmarks/2026-10-10-swarmlink-throughput.md.
+
+Build, in this order (measure before and after each step; keep a step only if the numbers say so):
+1. Path model: each peer has a set of paths {LAN, DIRECT, BT}. Each path has state, EWMA round-trip time, loss count and last measured Mbps. `NodeClient` sends on the best healthy path (lowest RTT for small requests, highest Mbps for bulk), with hysteresis so it does not flap. Expose the per-peer path table as StateFlow and on GET /v1/link/paths.
+2. Consistency: every request carries a unique id header (X-Swarm-Req). The server keeps a short-lived cache of completed request ids and replays the stored response for a duplicate instead of running it twice. On a transport error or timeout the client retries the same id on the next path. Write a JVM test for the dedup cache and for "fail on path 1, succeed on path 2, executed once".
+3. Latency: hold a WifiLock in WIFI_MODE_FULL_LOW_LATENCY while the app is in the foreground and a swarm is active (and HIGH_PERF otherwise); set TCP_NODELAY on control sockets; keep connections alive (connection pooling, no new TCP handshake per heartbeat). Measure RTT min/avg/p95 with and without the low-latency lock on LAN and on DIRECT.
+4. Bulk throughput: parallel striped streams for bulk transfers (1, 2, 4, 8 TCP connections, 1 MiB chunks with index + CRC32, reassembled in order), large socket buffers (try 1 MB and 4 MB), and measure each setting on LAN and on DIRECT, both directions, 200 MB. Then multipath: stripe the same transfer across LAN and DIRECT at once; keep multipath only if the aggregate is at least 15 % above the best single path, otherwise bulk uses the best single path. Record the Wi-Fi standard, PHY speed, frequency and channel width of each interface during the runs (two radios or one shared channel decides this; say which it is on these phones).
+5. Wi-Fi Direct tuning: prefer 5 GHz, and try 6 GHz if the API and region allow; record what the phones actually negotiate. After the first pairing, peers must be able to re-form the Direct group with no QR and no taps.
+6. Bluetooth: (a) BLE advertise + scan for rendezvous with no Wi-Fi at all: a paired peer nearby is detected and the Wi-Fi Direct credentials are exchanged over an encrypted GATT characteristic (encrypt with the pairing secret) so the Direct group forms automatically; (b) a Bluetooth control path (GATT or RFCOMM, whichever is more reliable here) that can carry heartbeats and small signed requests up to 1 KB when no Wi-Fi path is up, so Agent Choir messages still get through; measure its throughput and RTT and expose it as path BT. Bluetooth never carries bulk data. Runtime permissions BLUETOOTH_SCAN, BLUETOOTH_ADVERTISE, BLUETOOTH_CONNECT are grantable over adb.
+7. Address selection for llama.cpp RPC: expose `bestBulkAddress(peerNodeId): InetAddress?` (the peer's IP on the fastest bulk path) for the MemoryCloud module.
+8. Swarm screen: show per peer the active paths as small labelled chips with live RTT and last Mbps, and one line of aggregate link capacity. Real values only.
+
+Verify on the three phones and write docs/benchmarks/2026-10-10-swarmlink-throughput.md:
+- A table of every measured setting (streams, buffer size, low-latency lock on or off, LAN, DIRECT, multipath), with date-time, direction, Mbps, RTT min/avg/p95, and the chosen default with the reason.
+- Failover test: start a 200 MB transfer and a loop of small requests, then disable the primary path on one phone (for DIRECT remove the group; for LAN you may toggle Wi-Fi with `adb shell svc wifi disable` on phone C over USB only, and re-enable it afterwards): no request is lost or executed twice; report recovery time.
+- Bluetooth-only test on phone C over USB: with Wi-Fi off on C, the peer is still listed through BT, a signed 1 KB request round-trips, and when Wi-Fi comes back the paths upgrade automatically.
+- Radio tests can disturb the other workers (wireless adb runs over the same Wi-Fi): do the disruptive ones in one short window, restore everything, run `bash H:/UStaaf/scripts/adb-connect.sh` afterwards, and list exactly what you toggled and when.

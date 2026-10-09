@@ -17,4 +17,5 @@ while [ -z "$slot" ]; do
   [ -z "$slot" ] && sleep 5
 done
 trap 'rm -rf "$slot"' EXIT INT TERM
-cd "$ROOT" && ./gradlew --console=plain "$@"
+# cap worker threads: two concurrent builds must not peg all 16 threads (the PC hard-crashed under full load on 2026-10-10 00:49)
+cd "$ROOT" && ./gradlew --console=plain --max-workers=6 "$@"

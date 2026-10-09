@@ -19,3 +19,4 @@
 - Files that are not in git live only in the main checkout: `H:\UStaaf\native\` (llama.cpp binaries under `native/prebuilt/arm64-v8a/` when ready), `H:\UStaaf\models\` (GGUF files), `H:\UStaaf\third_party\`. Read them by absolute path.
 - Before your final report run `git merge master` once more, rebuild, and commit, so your branch merges cleanly.
 - Screen design reference: `ui-kit/README.md` and `ui-kit/screens/<name>/screen.png` + `code.html` (the founder's Google Stitch export; the README maps screens to modules and lists what not to copy). `docs/design/DESIGN.md` is the binding design system. Match the structure and content order of your module's screens; show only real values.
+- Naming: the product is called **Ustaad**. Any text a user can see says Ustaad, never SwarmOS. Do not rename packages, classes, routes or application ids; the orchestrator does that once at the end.
