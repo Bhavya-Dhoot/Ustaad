@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
     /** `adb shell am start -n com.swarmos.app/.MainActivity --es name "Phone A"` names the node. */
     private fun applyIntent(i: Intent?) {
         i?.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() }?.let { AppGraph.setNodeName(it) }
+        i?.data?.takeIf { it.scheme == "swarmos" }?.let { com.swarmos.app.link.LinkModule.handleDeepLink(it.toString()) }
     }
 
     companion object {

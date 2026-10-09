@@ -1,6 +1,7 @@
 package com.swarmos.app.link
 
 import com.swarmos.app.AppGraph
+import com.swarmos.app.BuildConfig
 import com.swarmos.app.core.Ports
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
@@ -49,11 +50,17 @@ class NodeServer {
         } catch (t: Throwable) {
             engine = null
             AppGraph.audit.append("server.error", JsonObject(mapOf("message" to JsonPrimitive(t.toString()))))
+            return
+        }
+        // SwarmLink background work (probe server, NSD, heartbeats) lives and dies with the node server
+        runCatching { LinkRuntime.start() }.onFailure {
+            AppGraph.audit.append("link.error", JsonObject(mapOf("message" to JsonPrimitive(it.toString()))))
         }
     }
 
     @Synchronized
     fun stop() {
+        runCatching { LinkRuntime.stop() }
         engine?.stop(300, 1000)
         engine = null
     }
@@ -80,6 +87,8 @@ class NodeServer {
     private suspend fun PipelineContext<Unit, io.ktor.server.application.PipelineCall>.requireSignature() {
         val req = call.request
         if (req.httpMethod == HttpMethod.Get && req.path() == "/v1/hello") return
+        // debug builds only: adb tooling reads the pairing payload without a signature
+        if (BuildConfig.DEBUG && req.httpMethod == HttpMethod.Get && req.path() == "/v1/link/pairing-payload") return
 
         val node = req.header(Signer.HEADER_NODE)
         val ts = req.header(Signer.HEADER_TS)?.toLongOrNull()
