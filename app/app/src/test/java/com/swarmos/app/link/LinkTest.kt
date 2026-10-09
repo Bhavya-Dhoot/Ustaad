@@ -156,3 +156,31 @@ class TputLoopbackTest {
         }
     }
 }
+
+class SoakCountersAndPathPolicyTest {
+    @Test fun countersTrackBeatsMissesAwayAndLongestGap() {
+        val t = HeartbeatTracker()
+        t.onSuccess(2.0, 1_000)
+        t.onSuccess(2.0, 2_000)
+        t.onMiss(); t.onMiss(); t.onMiss()          // away once
+        t.onSuccess(2.0, 9_000)                      // back after a 7 s gap
+        assertEquals(3, t.beats)
+        assertEquals(3, t.missesTotal)
+        assertEquals(1, t.awayCount)
+        assertEquals(7_000L, t.maxGapMs)
+    }
+
+    private fun status(link: LinkType, state: LinkState) = PeerStatus(
+        "n1", "Phone B", "10.0.0.2", 8797, link, state, null, 0, 0, null,
+        com.swarmos.app.core.NodeInfo("n1", "Phone B", "s", "10.0.0.2", "v", null, null),
+    )
+
+    @Test fun defaultPolicyPrefersAnOnlineDirectPathThenAnyOnlineThenAnything() {
+        val lan = status(LinkType.LAN, LinkState.ONLINE)
+        val direct = status(LinkType.DIRECT, LinkState.ONLINE)
+        assertEquals(LinkType.DIRECT, PreferDirectOnline.choose(listOf(lan, direct))?.link)
+        assertEquals(LinkType.LAN, PreferDirectOnline.choose(listOf(lan, direct.copy(state = LinkState.AWAY)))?.link)
+        assertEquals(LinkType.LAN, PreferDirectOnline.choose(listOf(lan.copy(state = LinkState.AWAY), direct.copy(state = LinkState.AWAY)))?.link)
+        assertNull(PreferDirectOnline.choose(emptyList()))
+    }
+}

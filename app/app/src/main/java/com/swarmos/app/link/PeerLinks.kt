@@ -79,6 +79,9 @@ object PeerLinks {
 
     private val selfId get() = AppGraph.registry.self.value.nodeId
 
+    /** Which path carries traffic to a peer that has several. Replace to change transport choice everywhere. */
+    @Volatile var pathPolicy: PathPolicy = PreferDirectOnline
+
     @Synchronized
     fun start() {
         if (!scope.isActive) scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -130,9 +133,8 @@ object PeerLinks {
     fun find(nodeId: String, link: LinkType? = null): PeerSession? {
         val all = sessions.values.filter { it.status.value.nodeId == nodeId }
         if (link != null) return all.firstOrNull { it.status.value.link == link }
-        return all.firstOrNull { it.status.value.link == LinkType.DIRECT && it.status.value.state == LinkState.ONLINE }
-            ?: all.firstOrNull { it.status.value.state == LinkState.ONLINE }
-            ?: all.firstOrNull()
+        val key = pathPolicy.choose(all.map { it.status.value })?.key
+        return all.firstOrNull { it.status.value.key == key }
     }
 
     /** Hello, signed health, then a heartbeat session. [announce] asks the peer to add us back (reverse registration). */
@@ -225,6 +227,7 @@ object PeerLinks {
             it.copy(
                 state = s.tracker.state, rttMs = s.tracker.rttMs, misses = s.tracker.misses,
                 lastSeenMs = if (h != null) now else it.lastSeenMs, health = h ?: it.health,
+                beats = s.tracker.beats, missesTotal = s.tracker.missesTotal, awayCount = s.tracker.awayCount, maxGapMs = s.tracker.maxGapMs,
             )
         }
         publish()
@@ -282,7 +285,7 @@ object PeerLinks {
             reg.markAway(nodeId)
             return
         }
-        val p = online.firstOrNull { it.link == LinkType.DIRECT } ?: online.first()
+        val p = pathPolicy.choose(online) ?: online.first()
         val ipField = if (p.port == Ports.NODE) p.ip else "${p.ip}:${p.port}"
         val info = p.info.copy(ip = ipField)
         val cur = reg.peers.value.firstOrNull { it.info.nodeId == nodeId }

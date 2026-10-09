@@ -83,7 +83,7 @@ object DirectLink {
     @Suppress("DEPRECATION")
     private fun staConnected(ctx: Context): Boolean {
         val wi = ctx.getSystemService(WifiManager::class.java)?.connectionInfo
-        return wi != null && wi.networkId != -1
+        return wi != null && (wi.frequency > 0 || wi.linkSpeed > 0) // networkId is redacted (-1) without foreground location access
     }
 
     private suspend fun clearExisting(mgr: WifiP2pManager, ch: WifiP2pManager.Channel) {

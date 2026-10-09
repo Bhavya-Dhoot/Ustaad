@@ -36,6 +36,10 @@ data class PeerView(
     val batteryPct: Int?,
     val linkStandard: String?,
     val linkSpeedMbps: Int?,
+    val beats: Int = 0,
+    val missesTotal: Int = 0,
+    val awayCount: Int = 0,
+    val maxGapMs: Long = 0,
 )
 
 @Serializable
@@ -70,6 +74,7 @@ fun peerViews(now: Long = System.currentTimeMillis()): List<PeerView> = PeerLink
         p.nodeId, p.name, p.ip, p.port, p.link.name, p.state.name.lowercase(), p.rttMs, p.lastSeenMs,
         if (p.lastSeenMs > 0) now - p.lastSeenMs else -1, p.misses,
         p.health?.thermalStatus, p.health?.batteryPct, p.health?.linkStandard, p.health?.linkSpeedMbps,
+        p.beats, p.missesTotal, p.awayCount, p.maxGapMs,
     )
 }
 

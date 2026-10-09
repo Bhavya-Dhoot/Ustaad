@@ -50,7 +50,7 @@ object LinkInfo {
             return LinkDesc(local.ifName, local.address, null, null, null, null, null, null, null, "non-station interface")
         }
         val wi = ctx.getSystemService(WifiManager::class.java)?.connectionInfo
-        val connected = wi != null && wi.networkId != -1
+        val connected = wi != null && (wi.frequency > 0 || wi.linkSpeed > 0) // networkId is redacted (-1) without foreground location access
         return LinkDesc(
             iface = local.ifName,
             localIp = local.address,

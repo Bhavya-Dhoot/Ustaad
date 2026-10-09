@@ -5,7 +5,7 @@ import com.swarmos.app.core.NodeInfo
 
 enum class LinkState { ONLINE, AWAY }
 
-/** Everything the UI and /v1/link/peers say about one peer on one link. */
+/** Everything the UI and /v1/link/peers say about one peer on one link (one "path"). */
 data class PeerStatus(
     val nodeId: String,
     val name: String,
@@ -18,9 +18,30 @@ data class PeerStatus(
     val misses: Int,
     val health: NodeHealth?,
     val info: NodeInfo,
+    /** Soak counters since this session was created. */
+    val beats: Int = 0,
+    val missesTotal: Int = 0,
+    val awayCount: Int = 0,
+    val maxGapMs: Long = 0,
 ) {
     val key: String get() = "$nodeId/${link.name}"
     val hostPort: String get() = "$ip:$port"
+}
+
+/**
+ * The one place that decides which path carries traffic to a peer that has several (LAN, DIRECT, later BT).
+ * [PeerLinks.pathPolicy] holds the active policy; callers never pick a transport themselves.
+ */
+fun interface PathPolicy {
+    fun choose(paths: List<PeerStatus>): PeerStatus?
+}
+
+/** Default: the Wi-Fi Direct path when it is up, else any online path, else whatever exists. */
+object PreferDirectOnline : PathPolicy {
+    override fun choose(paths: List<PeerStatus>): PeerStatus? =
+        paths.firstOrNull { it.link == LinkType.DIRECT && it.state == LinkState.ONLINE }
+            ?: paths.firstOrNull { it.state == LinkState.ONLINE }
+            ?: paths.firstOrNull()
 }
 
 /**
@@ -36,11 +57,22 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
         private set
     var lastSeenMs: Long = 0
         private set
+    var beats: Int = 0
+        private set
+    var missesTotal: Int = 0
+        private set
+    var awayCount: Int = 0
+        private set
+    /** Longest time between two successful heartbeats. */
+    var maxGapMs: Long = 0
+        private set
 
     fun onSuccess(rttMs: Double, nowMs: Long): Boolean {
         val changed = state != LinkState.ONLINE
+        if (lastSeenMs > 0) maxGapMs = maxOf(maxGapMs, nowMs - lastSeenMs)
         state = LinkState.ONLINE
         misses = 0
+        beats++
         this.rttMs = rttMs
         lastSeenMs = nowMs
         return changed
@@ -48,8 +80,10 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
 
     fun onMiss(): Boolean {
         misses++
+        missesTotal++
         if (state == LinkState.ONLINE && misses >= missesToAway) {
             state = LinkState.AWAY
+            awayCount++
             rttMs = null
             return true
         }
@@ -61,6 +95,7 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
         misses = missesToAway
         rttMs = null
         val changed = state != LinkState.AWAY
+        if (changed) awayCount++
         state = LinkState.AWAY
         return changed
     }
