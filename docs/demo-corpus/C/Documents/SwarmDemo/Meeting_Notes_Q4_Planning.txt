@@ -1,0 +1,7 @@
+Meeting notes - Q4 planning, 2 Oct 2026
+Attendees: Tara, Ravi, Meena, Rhea.
+Decisions: launch the dashboard on 20 Nov, freeze features on 6 Nov, Ravi owns the data migration.
+Actions: Tara to share mock-ups by Friday, Meena to book the review room, Rhea to update the roadmap.
+Risks: vendor API change could slip the migration by one week.
+
+SYNTHETIC DEMO DATA - not a real document
