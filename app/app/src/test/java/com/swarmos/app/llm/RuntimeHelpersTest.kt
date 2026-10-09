@@ -51,6 +51,13 @@ class RuntimeHelpersTest {
         assertEquals("chat only, not for structured output", ModelCatalog.CHAT_ONLY_NOTE)
     }
 
+    @Test fun slowdownNoteNamesTheFirstMinuteBelowNinetyPercent() {
+        fun pts(vararg v: Double) = v.mapIndexed { i, d -> SustainedPoint(i + 1, d, "NONE") }
+        assertEquals("slower from minute 4", slowdownNote(pts(10.0, 9.8, 9.5, 8.0, 7.0)))
+        assertNull(slowdownNote(pts(10.0, 9.8, 9.6, 9.5)))
+        assertNull(slowdownNote(pts(10.0, 5.0))) // too few minutes to call it a trend
+    }
+
     @Test fun rolesParseByTag() {
         assertEquals(Role.CHAT, Role.parse("chat"))
         assertEquals(Role.EMBED, Role.parse(" EMBED "))
