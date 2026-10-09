@@ -15,7 +15,7 @@ Devices (verified 2026-10-09, see docs/device-probes/):
 - iQOO B = serial 10BFAU14Q6000XR, wireless ADB 192.168.242.23:5555, build 16.0.21.12
 - adb = C:\Users\DELL\AppData\Local\Android\Sdk\platform-tools\adb.exe ; NDK 28.2 ; JDK 17 ; no Android Studio GUI needed, use gradlew.
 - iQOO C = serial 10BFAT216Z000XQ, wireless ADB 192.168.242.76:5555, build 16.0.20.1 (joined 2026-10-10)
-- RESERVED (founder, since 2026-10-10 03:30): phone A is in the founder's hands. No adb commands, installs, launches or inference on A until the founder releases it. All device work runs on B and C.
+- RESERVED (founder, changed 2026-10-10 03:40): phone B is in the founder's hands. No adb commands, installs, launches or inference on B until the founder releases it. All device work runs on A and C. (A was reserved for ten minutes before that and is free again.)
 - Redmi M2101K6P is NOT a target. Ignore it.
 - In Git Bash always `export MSYS_NO_PATHCONV=1` before adb shell commands with absolute paths.
 
