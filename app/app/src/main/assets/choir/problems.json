@@ -1,0 +1,202 @@
+[
+ {
+  "id": "m1",
+  "kind": "MATH",
+  "group": "arith",
+  "text": "A bakery bakes 48 muffins per tray and fills 7 trays. It sells 5/8 of all the muffins at Rs 12 each and the rest at Rs 9 each. How much money does the bakery make, in rupees?",
+  "check": "48*7*5/8*12+48*7*3/8*9",
+  "answer": "3654"
+ },
+ {
+  "id": "m2",
+  "kind": "MATH",
+  "group": "arith",
+  "text": "A train travels 3 hours 40 minutes at 72 km/h and then 1 hour 20 minutes at 90 km/h. How many kilometres does it travel in total?",
+  "check": "72*(3+40/60)+90*(1+20/60)",
+  "answer": "384"
+ },
+ {
+  "id": "m3",
+  "kind": "MATH",
+  "group": "arith",
+  "text": "Ravi buys 3 notebooks at Rs 45 each and 2 pens at Rs 18 each and pays with a Rs 500 note. He then spends half of his change on a snack. How many rupees of the change are left?",
+  "check": "(500-(3*45+2*18))/2",
+  "answer": "164.5"
+ },
+ {
+  "id": "m4",
+  "kind": "MATH",
+  "group": "arith",
+  "text": "A tank holds 1200 litres. A tap fills it at 25 litres per minute while a drain empties it at 10 litres per minute. Both run together from an empty tank. After how many minutes is the tank full?",
+  "check": "1200/(25-10)",
+  "answer": "80"
+ },
+ {
+  "id": "m5",
+  "kind": "MATH",
+  "group": "arith",
+  "text": "A class has 36 students. One third are absent. Of the students who are present, three quarters handed in their homework. How many present students did not hand in homework?",
+  "check": "36*(1-1/3)*(1-3/4)",
+  "answer": "6"
+ },
+ {
+  "id": "m6",
+  "kind": "MATH",
+  "group": "arith",
+  "text": "Meera is 4 times as old as her son. In 6 years she will be 3 times as old as him. How old is Meera now?",
+  "check": "4*((3*6-6)/(4-3))",
+  "answer": "48"
+ },
+ {
+  "id": "m7",
+  "kind": "MATH",
+  "group": "arith",
+  "text": "A shopkeeper buys 15 kg of rice at Rs 42 per kg and 10 kg of rice at Rs 57 per kg, mixes them and sells the mixture at Rs 60 per kg. What is his total profit in rupees?",
+  "check": "25*60-(15*42+10*57)",
+  "answer": "300"
+ },
+ {
+  "id": "m8",
+  "kind": "MATH",
+  "group": "arith",
+  "text": "A phone plan costs Rs 299 for the first 28 days and Rs 11 for each extra day after that. Aman uses it for 45 days. How many rupees does he pay in total?",
+  "check": "299+(45-28)*11",
+  "answer": "486"
+ },
+ {
+  "id": "p1",
+  "kind": "MATH",
+  "group": "pct",
+  "text": "A shirt costs Rs 800. The shop raises the price by 25% and then gives a 20% discount on the new price. What is the final price in rupees?",
+  "check": "800*(1+25/100)*(1-20/100)",
+  "answer": "800"
+ },
+ {
+  "id": "p2",
+  "kind": "MATH",
+  "group": "pct",
+  "text": "Sugar and water are mixed in the ratio 3:5 to make 960 ml of syrup. How many ml of water must be added to change the ratio to 3:7?",
+  "check": "960*3/8*7/3-960*5/8",
+  "answer": "240"
+ },
+ {
+  "id": "p3",
+  "kind": "MATH",
+  "group": "pct",
+  "text": "A laptop sells for Rs 62,400 after a 22% discount. What was the list price in rupees?",
+  "check": "62400/(1-22/100)",
+  "answer": "80000"
+ },
+ {
+  "id": "p4",
+  "kind": "MATH",
+  "group": "pct",
+  "text": "In an exam 40% of 250 students failed. Of the students who passed, 20% scored a distinction. How many students scored a distinction?",
+  "check": "250*(1-40/100)*20/100",
+  "answer": "30"
+ },
+ {
+  "id": "q1",
+  "kind": "MCQ",
+  "group": "mcq",
+  "text": "All bloops are razzies. All razzies are lazzies. Which statement must be true?",
+  "options": [
+   "All bloops are lazzies.",
+   "All lazzies are bloops.",
+   "Some lazzies are not razzies.",
+   "No razzie is a bloop."
+  ],
+  "answer": "A",
+  "expected": [
+   "A"
+  ]
+ },
+ {
+  "id": "q2",
+  "kind": "MCQ",
+  "group": "mcq",
+  "text": "Five friends sit in a row of five seats numbered 1 to 5 from the left. Dev sits in seat 1. Asha sits next to Dev. Bala sits immediately to the right of Chitra. Esha sits somewhere to the right of Bala. Who sits in seat 3?",
+  "options": [
+   "Asha",
+   "Bala",
+   "Chitra",
+   "Esha"
+  ],
+  "answer": "C",
+  "expected": [
+   "C"
+  ]
+ },
+ {
+  "id": "q3",
+  "kind": "MCQ",
+  "group": "mcq",
+  "text": "If it rained, the match was cancelled. The match was not cancelled. Which conclusion is certain?",
+  "options": [
+   "It rained.",
+   "The match was played in the rain.",
+   "Nothing can be concluded.",
+   "It did not rain."
+  ],
+  "answer": "D",
+  "expected": [
+   "D"
+  ]
+ },
+ {
+  "id": "q4",
+  "kind": "MCQ",
+  "group": "mcq",
+  "text": "Exactly one of three boxes holds a coin. Box 1 says: 'The coin is in this box.' Box 2 says: 'The coin is not in this box.' Box 3 says: 'The coin is not in box 1.' Exactly one of the three statements is true. Which box holds the coin?",
+  "options": [
+   "Box 1",
+   "Box 2",
+   "Box 3",
+   "It cannot be determined."
+  ],
+  "answer": "B",
+  "expected": [
+   "B"
+  ]
+ },
+ {
+  "id": "c1",
+  "kind": "CODE",
+  "group": "code",
+  "text": "What does this Python program print? Give the exact output.\ndef f(n):\n    t = 0\n    for i in range(1, n + 1):\n        if i % 3 == 0:\n            continue\n        t += i\n    return t\nprint(f(10))",
+  "answer": "37",
+  "expected": [
+   "37"
+  ]
+ },
+ {
+  "id": "c2",
+  "kind": "CODE",
+  "group": "code",
+  "text": "What does this Python program print? Give the exact output.\na = [3, 1, 4, 1, 5]\nb = []\nfor x in a:\n    if x not in b:\n        b.append(x)\nprint(len(b), sum(b))",
+  "answer": "4 13",
+  "expected": [
+   "4 13"
+  ]
+ },
+ {
+  "id": "c3",
+  "kind": "CODE",
+  "group": "code",
+  "text": "What does this Python program print? Give the exact output.\ns = \"swarm\"\nr = \"\"\nfor ch in s:\n    r = ch + r\nprint(r[:3])",
+  "answer": "mra",
+  "expected": [
+   "mra"
+  ]
+ },
+ {
+  "id": "c4",
+  "kind": "CODE",
+  "group": "code",
+  "text": "What does this Python program print? Give the exact output.\ndef g(x):\n    if x <= 1:\n        return 1\n    return x * g(x - 2)\nprint(g(7))",
+  "answer": "105",
+  "expected": [
+   "105"
+  ]
+ }
+]

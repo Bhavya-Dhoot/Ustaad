@@ -1,0 +1,58 @@
+package com.swarmos.app.pdu
+
+import kotlinx.serialization.Serializable
+
+/** Wire format of POST /v1/pdu/query. Query text only: never embeddings. */
+@Serializable
+data class PduQuery(val qid: String, val text: String, val k: Int = 5, val deadlineMs: Int = 1500)
+
+/** One snippet a phone is willing to hand to a peer. No path, no EXIF, no embedding. */
+@Serializable
+data class PduHit(
+    val title: String,
+    val uriHash: String,
+    val kind: String,
+    val dateMs: Long,
+    val snippet: String,
+    val score: Double,
+    val rank: Int,
+)
+
+@Serializable
+data class PduResponse(
+    val qid: String,
+    val hits: List<PduHit>,
+    val indexedChunks: Int,
+    val tookMs: Long,
+    val withheldPrivate: Int,
+)
+
+@Serializable
+data class PduOpenRequest(val uriHash: String)
+
+@Serializable
+data class PduOpenResult(val opened: Boolean, val via: String, val title: String? = null, val error: String? = null)
+
+/** A retrieved chunk on the owning phone. Never leaves the phone as-is; see [PeerResponder]. */
+data class Candidate(
+    val chunkId: Long,
+    val docId: String,
+    val title: String,
+    val kind: String,
+    val dateMs: Long,
+    val folder: String,
+    val isPrivate: Boolean,
+    val text: String,
+    val score: Double,
+)
+
+/** Hits from one device in the order that device ranked them. */
+data class DeviceHits(val deviceId: String, val deviceName: String, val local: Boolean, val hits: List<PduHit>)
+
+data class MergedHit(
+    val deviceId: String,
+    val deviceName: String,
+    val local: Boolean,
+    val hit: PduHit,
+    val rrf: Double,
+)
