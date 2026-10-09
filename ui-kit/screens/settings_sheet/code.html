@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS / Node A - Settings</title>
+<!-- Material Symbols Outlined literal link -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Typography imports -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;700&amp;family=Geist+Mono:wght@400;500;700&amp;family=Geist:wght@400;500;600&amp;family=Shantell+Sans:ital,wght@0,400;0,600;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "outline-variant": "#c6c6ca",
+            "surface": "#F6F7F5",
+            "surface-bright": "#f9faf8",
+            "tertiary": "#000000",
+            "primary-fixed": "#e2e2e6",
+            "surface-container-lowest": "#ffffff",
+            "error": "#ba1a1a",
+            "tertiary-fixed-dim": "#c4c7c4",
+            "surface-tint": "#5d5e62",
+            "on-secondary": "#ffffff",
+            "inverse-on-surface": "#f0f1ef",
+            "secondary": "#5E636B",
+            "on-tertiary-container": "#818581",
+            "surface-container-low": "#f3f4f2",
+            "surface-container-high": "#e7e8e6",
+            "marker-tangerine-tint": "#E08A3C1F",
+            "secondary-fixed": "#dee3ec",
+            "marker-teal": "#1E9BB0",
+            "marker-tangerine": "#E08A3C",
+            "on-tertiary": "#ffffff",
+            "on-primary-fixed": "#1a1c1f",
+            "marker-teal-tint": "#1E9BB01F",
+            "surface-variant": "#e2e3e1",
+            "primary": "#15171A",
+            "on-secondary-container": "#60656d",
+            "secondary-container": "#dee3ec",
+            "tertiary-fixed": "#e0e3df",
+            "outline": "#76777b",
+            "surface-container-highest": "#e2e3e1",
+            "primary-fixed-dim": "#c6c6ca",
+            "inverse-primary": "#c6c6ca",
+            "tertiary-container": "#191c1a",
+            "on-tertiary-fixed": "#191c1a",
+            "on-primary": "#ffffff",
+            "on-error": "#ffffff",
+            "on-secondary-fixed": "#171c23",
+            "on-primary-container": "#838487",
+            "error-container": "#ffdad6",
+            "on-tertiary-fixed-variant": "#444845",
+            "on-surface-variant": "#45474a",
+            "on-background": "#191c1b",
+            "primary-container": "#1a1c1f",
+            "marker-magenta-tint": "#C8457E1F",
+            "on-primary-fixed-variant": "#45474a",
+            "surface-dim": "#d9dad8",
+            "on-secondary-fixed-variant": "#42474f",
+            "background": "#F6F7F5",
+            "surface-container": "#edeeec",
+            "sheet": "#FCFDFB",
+            "marker-magenta": "#C8457E",
+            "on-surface": "#15171A",
+            "on-error-container": "#93000a",
+            "secondary-fixed-dim": "#c2c7d0",
+            "inverse-surface": "#2e3130",
+            "eraser": "#E4E7E3"
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "2xl": "1rem",
+            "full": "9999px"
+          },
+          spacing: {
+            "gutter": "0.5rem",
+            "space-lg": "1.5rem",
+            "margin": "1rem",
+            "space-xs": "0.25rem",
+            "space-xl": "2rem",
+            "space-sm": "0.5rem",
+            "space-md": "1rem"
+          },
+          fontFamily: {
+            "body-sm": ["Geist", "sans-serif"],
+            "label-mono": ["Geist Mono", "monospace"],
+            "stamp-label": ["Geist Mono", "monospace"],
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "display-hero": ["Geist Mono", "monospace"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "label-md": ["Geist", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"]
+          },
+          fontSize: {
+            "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+            "label-mono": ["13px", { lineHeight: "16px", letterSpacing: "0em", fontWeight: "500" }],
+            "stamp-label": ["12px", { lineHeight: "14px", letterSpacing: "0.06em", fontWeight: "700" }],
+            "headline-lg": ["28px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "display-hero": ["44px", { lineHeight: "48px", letterSpacing: "-0.02em", fontWeight: "500" }],
+            "headline-md": ["20px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "annotation": ["14px", { lineHeight: "18px", letterSpacing: "-0.01em", fontWeight: "400" }],
+            "label-md": ["13px", { lineHeight: "16px", fontWeight: "500" }],
+            "body-md": ["15px", { lineHeight: "22px", fontWeight: "400" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 20px;
+      line-height: 1;
+      display: inline-block;
+      text-transform: none;
+      letter-spacing: normal;
+      word-wrap: normal;
+      white-space: nowrap;
+      direction: ltr;
+    }
+    .dot-grid {
+      background-image: radial-gradient(#E4E7E3 1.5px, transparent 1.5px);
+      background-size: 16px 16px;
+    }
+    .btn-hard-shadow {
+      box-shadow: 3px 3px 0px 0px #15171A;
+    }
+    .btn-hard-shadow:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0px 0px 0px 0px #15171A;
+    }
+  </style>
+</head>
+<body class="bg-background text-primary antialiased h-full flex justify-center items-center font-body-md select-none">
+<!-- Mobile Viewport Container (Nominal 390px, Scalable) -->
+<div class="relative w-full max-w-[390px] h-full max-h-[844px] bg-background overflow-hidden border-[1.5px] border-primary flex flex-col justify-between shadow-2xl">
+<!-- ========================================== -->
+<!-- UNDERLYING APP CONTENT (Dimmed Underneath) -->
+<!-- ========================================== -->
+<div class="absolute inset-0 flex flex-col dot-grid pointer-events-none opacity-40">
+<!-- TopAppBar (From Shared Component JSON Spec) -->
+<header class="w-full flex items-center justify-between px-space-md py-space-xs bg-sheet border-b-[1.5px] border-primary z-10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="hub">hub</span>
+<span class="font-headline-md text-headline-md font-bold text-primary tracking-tight">SwarmOS / Node A</span>
+</div>
+<div class="flex items-center">
+<span class="material-symbols-outlined text-primary" data-icon="verified">verified</span>
+</div>
+</header>
+<!-- Simulated Whiteboard Instrument Background -->
+<div class="p-4 space-y-4">
+<!-- Telemetry Hero Header -->
+<div class="space-y-1">
+<span class="font-label-mono text-label-mono text-secondary uppercase">TOPOLOGY ACTIVE / TOKENS</span>
+<div class="font-display-hero text-display-hero text-primary">84.2<span class="text-sm font-label-mono text-secondary"> T/s</span></div>
+</div>
+<!-- Node Lane A -->
+<div class="bg-sheet border-[1.5px] border-primary rounded-lg p-3 border-l-[6px] border-l-marker-teal">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<div class="w-7 h-7 rounded-full bg-marker-teal border-[1.5px] border-primary flex items-center justify-center font-headline-md text-primary font-bold">A</div>
+<span class="font-headline-md text-headline-md">Pixel 8 (Local)</span>
+</div>
+<span class="font-label-mono text-label-mono">0 ms</span>
+</div>
+<div class="flex justify-between font-label-mono text-body-sm text-secondary">
+<span>Layers 0-11 cached</span>
+<span class="text-primary font-bold">100% OK</span>
+</div>
+</div>
+<!-- Node Lane B -->
+<div class="bg-sheet border-[1.5px] border-primary rounded-lg p-3 border-l-[6px] border-l-marker-tangerine">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<div class="w-7 h-7 rounded-full bg-marker-tangerine border-[1.5px] border-primary flex items-center justify-center font-headline-md text-primary font-bold">B</div>
+<span class="font-headline-md text-headline-md">Galaxy S23</span>
+</div>
+<span class="font-label-mono text-label-mono">14 ms</span>
+</div>
+<div class="flex justify-between font-label-mono text-body-sm text-secondary">
+<span>Layers 12-21 cached</span>
+<span class="text-primary font-bold">4.2 GB</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Scrim / Dimmer Overlay -->
+<div class="absolute inset-0 bg-primary/20 backdrop-blur-[1px] z-20"></div>
+<!-- ========================================== -->
+<!-- SCREEN 21: SETTINGS BOTTOM SHEET / OVERLAY -->
+<!-- ========================================== -->
+<div class="relative z-30 w-full mt-auto bg-sheet border-t-[1.5px] border-x-[1.5px] border-primary rounded-t-[16px] px-4 pt-3 pb-6 flex flex-col gap-4">
+<!-- Drag Handle Bar -->
+<div class="w-full flex justify-center py-1">
+<div class="w-10 h-1 bg-primary rounded-full"></div>
+</div>
+<!-- Sheet Header & Handwritten Note -->
+<div class="flex items-baseline justify-between border-b-[1.5px] border-eraser pb-2">
+<h2 class="font-headline-lg text-headline-lg text-primary tracking-tight">Settings</h2>
+<!-- Single hand-drawn annotation (Shantell Sans, max 2 notes) -->
+<span class="font-annotation text-annotation text-secondary -rotate-2">Node parameters</span>
+</div>
+<!-- Sheet Contents Container -->
+<div class="flex flex-col gap-3.5">
+<!-- 1. Labelled Input "Phone name" -->
+<div class="flex flex-col gap-1">
+<label class="font-label-mono text-label-mono text-secondary">Phone name</label>
+<div class="relative flex items-center">
+<input class="w-full bg-sheet border-[1.5px] border-primary rounded-lg px-3 py-2 text-primary font-label-mono text-body-md focus:outline-none focus:ring-0 select-text" readonly="" type="text" value="Phone A"/>
+<span class="absolute right-3 font-label-mono text-xs text-secondary">LOCAL</span>
+</div>
+</div>
+<!-- 2. "Marker identity" Token Row -->
+<div class="flex flex-col gap-1.5">
+<div class="flex items-baseline justify-between">
+<span class="font-label-mono text-label-mono text-secondary">Marker identity</span>
+<span class="font-label-mono text-[11px] text-secondary">Node identity color in cluster</span>
+</div>
+<div class="flex items-center gap-3">
+<!-- Token A (Selected with double Ink outline ring) -->
+<button aria-label="Select Phone A identity" class="relative w-8 h-8 rounded-full bg-marker-teal border-[1.5px] border-primary flex items-center justify-center p-[2px] transition-transform active:scale-95 ring-2 ring-primary ring-offset-2 ring-offset-sheet">
+<span class="font-headline-md text-primary font-bold text-sm">A</span>
+</button>
+<!-- Token B -->
+<button aria-label="Select Phone B identity" class="w-7 h-7 rounded-full bg-marker-tangerine border-[1.5px] border-primary flex items-center justify-center opacity-70 hover:opacity-100 transition-opacity active:scale-95">
+<span class="font-headline-md text-primary font-bold text-sm">B</span>
+</button>
+<!-- Token C -->
+<button aria-label="Select Phone C identity" class="w-7 h-7 rounded-full bg-marker-magenta border-[1.5px] border-primary flex items-center justify-center opacity-70 hover:opacity-100 transition-opacity active:scale-95">
+<span class="font-headline-md text-primary font-bold text-sm">C</span>
+</button>
+</div>
+</div>
+<!-- 3. Security Row: "Pairing secret" -->
+<div class="flex items-center justify-between py-2 border-y-[1.5px] border-eraser">
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-primary font-medium">Pairing secret</span>
+<span class="font-label-mono text-label-mono text-secondary tracking-widest">••••••••</span>
+</div>
+<!-- Secondary Button -->
+<button class="bg-sheet border-[1.5px] border-primary rounded-lg px-3 py-1 font-label-mono text-label-mono text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform">
+            Reset
+          </button>
+</div>
+<!-- 4. System Preference: Switch toggle for "Remove animations" -->
+<div class="flex items-center justify-between">
+<div class="flex flex-col pr-2">
+<span class="font-body-md text-body-md font-medium text-primary">Remove animations</span>
+<span class="font-body-sm text-body-sm text-secondary">Disables token streaming and layer transitions</span>
+</div>
+<!-- Physical Switch Toggle (No gradients/glows) -->
+<button aria-checked="false" class="w-11 h-6 rounded-full border-[1.5px] border-primary bg-eraser flex items-center p-0.5 transition-colors focus:outline-none" role="switch">
+<div class="w-4 h-4 rounded-full bg-sheet border-[1.5px] border-primary translate-x-0 transition-transform"></div>
+</button>
+</div>
+<!-- 5. Audit Row with Rubber Stamp -->
+<div class="flex items-center justify-between bg-surface border-[1.5px] border-primary rounded-lg p-2.5">
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-primary">Audit log</span>
+<!-- Hand-drawn underline accent on single key value -->
+<div class="inline-block relative">
+<span class="font-label-mono text-body-md font-bold text-primary">1,204 entries</span>
+<svg class="absolute -bottom-1 left-0 w-full h-[3px] text-primary overflow-visible" fill="none" preserveaspectratio="none" viewbox="0 0 80 3">
+<path d="M0,2 C25,0 55,3 80,1" stroke="#15171A" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+<!-- Physical Rubber Stamp "CHAIN OK" (Double 1.5px outline, -4 deg) -->
+<div class="border-[1.5px] border-primary p-[1.5px] rounded-lg -rotate-4">
+<div class="border-[1.5px] border-primary rounded px-2 py-0.5 font-stamp-label text-stamp-label text-primary">
+              CHAIN OK
+            </div>
+</div>
+</div>
+<!-- 6. Primary Action: "Save changes" Button (Hard 3px offset shadow) -->
+<div class="pt-1">
+<button class="w-full bg-primary text-sheet font-label-mono text-body-md font-medium py-3 rounded-lg border-[1.5px] border-primary btn-hard-shadow transition-all duration-75 flex items-center justify-center">
+            Save changes
+          </button>
+</div>
+</div>
+</div>
+<!-- ========================================== -->
+<!-- BottomNavBar (From Shared Component JSON)  -->
+<!-- ========================================== -->
+<nav class="relative z-30 w-full bg-sheet border-t-[1.5px] border-primary flex justify-around items-center px-space-sm py-space-xs">
+<!-- 1. Swarm (Active Tab) -->
+<button class="flex flex-col items-center justify-center text-primary font-bold border-b-2 border-primary pb-0.5 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-primary" data-icon="lan">lan</span>
+<span class="font-label-md text-label-md">Swarm</span>
+</button>
+<!-- 2. Models -->
+<button class="flex flex-col items-center justify-center text-secondary pb-1 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-secondary" data-icon="deployed_code">deployed_code</span>
+<span class="font-label-md text-label-md">Models</span>
+</button>
+<!-- 3. Choir -->
+<button class="flex flex-col items-center justify-center text-secondary pb-1 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-secondary" data-icon="graphic_eq">graphic_eq</span>
+<span class="font-label-md text-label-md">Choir</span>
+</button>
+<!-- 4. Data -->
+<button class="flex flex-col items-center justify-center text-secondary pb-1 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-secondary" data-icon="dataset">dataset</span>
+<span class="font-label-md text-label-md">Data</span>
+</button>
+<!-- 5. Memory -->
+<button class="flex flex-col items-center justify-center text-secondary pb-1 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75">
+<span class="material-symbols-outlined text-secondary" data-icon="memory">memory</span>
+<span class="font-label-md text-label-md">Memory</span>
+</button>
+</nav>
+</div>
+</body></html>

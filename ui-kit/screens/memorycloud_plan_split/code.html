@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS - MemoryCloud</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Geist+Mono:wght@400;500;600&amp;family=Geist:wght@400;500;600&amp;family=Shantell+Sans:ital,wght@0,400;0,500;1,400&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "outline-variant": "#c6c6ca",
+            "surface": "#f9faf8",
+            "surface-bright": "#f9faf8",
+            "tertiary": "#000000",
+            "primary-fixed": "#e2e2e6",
+            "surface-container-lowest": "#ffffff",
+            "error": "#ba1a1a",
+            "tertiary-fixed-dim": "#c4c7c4",
+            "surface-tint": "#5d5e62",
+            "on-secondary": "#ffffff",
+            "inverse-on-surface": "#f0f1ef",
+            "secondary": "#5a5f67",
+            "on-tertiary-container": "#818581",
+            "surface-container-low": "#f3f4f2",
+            "surface-container-high": "#e7e8e6",
+            "marker-tangerine-tint": "#E08A3C1F",
+            "secondary-fixed": "#dee3ec",
+            "marker-teal": "#1E9BB0",
+            "marker-tangerine": "#E08A3C",
+            "on-tertiary": "#ffffff",
+            "on-primary-fixed": "#1a1c1f",
+            "marker-teal-tint": "#1E9BB01F",
+            "surface-variant": "#e2e3e1",
+            "primary": "#15171A",
+            "on-secondary-container": "#60656d",
+            "secondary-container": "#dee3ec",
+            "tertiary-fixed": "#e0e3df",
+            "outline": "#15171A",
+            "surface-container-highest": "#e2e3e1",
+            "primary-fixed-dim": "#c6c6ca",
+            "inverse-primary": "#c6c6ca",
+            "tertiary-container": "#191c1a",
+            "on-tertiary-fixed": "#191c1a",
+            "on-primary": "#ffffff",
+            "on-error": "#ffffff",
+            "on-secondary-fixed": "#171c23",
+            "on-primary-container": "#838487",
+            "error-container": "#ffdad6",
+            "on-tertiary-fixed-variant": "#444845",
+            "on-surface-variant": "#45474a",
+            "on-background": "#191c1b",
+            "primary-container": "#1a1c1f",
+            "marker-magenta-tint": "#C8457E1F",
+            "on-primary-fixed-variant": "#45474a",
+            "surface-dim": "#d9dad8",
+            "on-secondary-fixed-variant": "#42474f",
+            "background": "#F6F7F5",
+            "surface-container": "#edeeec",
+            "sheet": "#FCFDFB",
+            "marker-magenta": "#C8457E",
+            "on-surface": "#191c1b",
+            "on-error-container": "#93000a",
+            "secondary-fixed-dim": "#c2c7d0",
+            "inverse-surface": "#2e3130",
+            "whiteboard": "#F6F7F5",
+            "graphite": "#5E636B",
+            "eraser": "#E4E7E3"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "gutter": "0.5rem",
+            "space-lg": "1.5rem",
+            "margin": "1rem",
+            "space-xs": "0.25rem",
+            "space-xl": "2rem",
+            "space-sm": "0.5rem",
+            "space-md": "1rem"
+          },
+          "fontFamily": {
+            "body-sm": ["Geist", "sans-serif"],
+            "label-mono": ["Geist Mono", "monospace"],
+            "stamp-label": ["Geist Mono", "monospace"],
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "display-hero": ["Geist Mono", "monospace"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "label-md": ["Geist", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"]
+          },
+          "fontSize": {
+            "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+            "label-mono": ["13px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "500" }],
+            "stamp-label": ["11px", { "lineHeight": "13px", "letterSpacing": "0.08em", "fontWeight": "700" }],
+            "headline-lg": ["26px", { "lineHeight": "30px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "display-hero": ["40px", { "lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "500" }],
+            "headline-md": ["20px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "annotation": ["13px", { "lineHeight": "16px", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+            "label-md": ["13px", { "lineHeight": "16px", "fontWeight": "500" }],
+            "body-md": ["15px", { "lineHeight": "22px", "fontWeight": "400" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .hatch-pattern {
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(21, 23, 26, 0.14),
+        rgba(21, 23, 26, 0.14) 2.5px,
+        transparent 2.5px,
+        transparent 5.5px
+      );
+    }
+    .shadow-hard-btn {
+      box-shadow: 3px 3px 0px 0px #15171A;
+    }
+    .shadow-hard-btn:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0px 0px 0px 0px #15171A;
+    }
+    .border-ink {
+      border: 1.5px solid #15171A;
+    }
+    .border-ink-cell {
+      border: 1px solid #15171A;
+    }
+  </style>
+</head>
+<body class="bg-whiteboard text-primary antialiased min-h-screen flex flex-col items-center select-none pb-20">
+<!-- Android Viewport Frame -->
+<div class="w-full max-w-[420px] min-h-screen bg-whiteboard flex flex-col relative">
+<!-- Top Status Bar & App Bar from JSON -->
+<header class="bg-sheet border-b border-outline w-full sticky top-0 z-40 flex items-center justify-between px-space-md py-space-xs h-14">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="hub">hub</span>
+<span class="text-headline-md font-headline-md font-bold text-primary tracking-tight">SwarmOS / Node A</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="font-label-mono text-label-mono text-graphite text-xs">LOCAL</span>
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="verified">verified</span>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 px-4 pt-4 pb-6 flex flex-col gap-4">
+<!-- Title Header Area -->
+<section class="flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<h1 class="text-headline-lg font-headline-lg text-primary tracking-tight">MemoryCloud</h1>
+<span class="font-label-mono text-label-mono text-xs px-2 py-0.5 rounded bg-surface-container border border-outline/30">PLAN 03/03</span>
+</div>
+<p class="text-body-md font-body-md text-graphite">A model too big for one phone, split by layers.</p>
+</section>
+<!-- Model Card -->
+<section class="bg-sheet border-ink rounded-lg p-3.5 flex flex-col gap-3 relative overflow-hidden">
+<div class="flex items-start justify-between gap-2">
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono font-semibold text-primary text-[14px]">Qwen3-30B-A3B Q4_K_M</span>
+<span class="font-body-sm text-body-sm text-graphite mt-0.5">Distributed tensor partition</span>
+</div>
+<!-- Hatched Rubber Stamp Badge -->
+<div class="relative shrink-0 rotate-[-4deg] border-[1.5px] border-primary rounded-lg p-[1.5px] bg-whiteboard">
+<div class="border-[1.5px] border-primary rounded-[5px] px-1.5 py-1 hatch-pattern flex items-center justify-center">
+<span class="font-stamp-label text-stamp-label text-primary tracking-wider font-bold">TOO BIG FOR ONE PHONE</span>
+</div>
+</div>
+</div>
+<div class="h-[1px] w-full bg-eraser"></div>
+<!-- Telemetry Key-Value Row -->
+<div class="grid grid-cols-2 gap-3 items-baseline">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-graphite">Total footprint</span>
+<div class="inline-flex items-baseline gap-1 mt-0.5">
+<span class="font-display-hero text-[30px] leading-tight font-label-mono text-primary font-bold">18.6</span>
+<span class="font-label-mono text-body-sm text-graphite font-semibold">GB</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-graphite">Layer depth</span>
+<div class="relative inline-flex items-baseline gap-1 mt-0.5 w-fit">
+<span class="font-display-hero text-[30px] leading-tight font-label-mono text-primary font-bold">48</span>
+<span class="font-label-mono text-body-sm text-graphite font-semibold">layers</span>
+<!-- Hand-drawn style ink underline -->
+<svg class="absolute -bottom-1.5 left-0 w-full h-[6px] overflow-visible text-primary" fill="none" viewbox="0 0 70 6" xmlns="http://www.w3.org/2000/svg">
+<path d="M1 3.8C18 1.5 45 4.8 69 2.2" stroke="#15171A" stroke-linecap="round" stroke-width="2"></path>
+</svg>
+</div>
+</div>
+</div>
+</section>
+<!-- Layer Strip Partition Canvas -->
+<section class="bg-sheet border-ink rounded-lg p-3.5 flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-label-mono text-primary font-semibold">Layer Allocation Map</span>
+<span class="font-label-mono text-xs text-graphite">48 contiguous blocks</span>
+</div>
+<!-- 48 Cells Strip: 6px x 16px each, 1px ink outline, split in 3 runs of 16 -->
+<div class="w-full overflow-x-auto pb-1 pt-1">
+<div class="flex items-center justify-between w-full min-w-[320px] gap-[1.5px] py-0.5 px-0.5 bg-whiteboard border border-eraser rounded">
+<!-- Layers 0-15: Marker Teal (#1E9BB0) -->
+<div class="flex gap-[1.5px] flex-1">
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 00"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 01"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 02"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 03"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 04"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 05"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 06"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 07"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 08"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 09"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 10"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 11"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 12"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 13"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 14"></div>
+<div class="h-4 w-full bg-marker-teal border-ink-cell rounded-[1px]" title="Layer 15"></div>
+</div>
+<div class="w-[3px]"></div>
+<!-- Layers 16-31: Marker Tangerine (#E08A3C) -->
+<div class="flex gap-[1.5px] flex-1">
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 16"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 17"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 18"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 19"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 20"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 21"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 22"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 23"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 24"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 25"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 26"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 27"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 28"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 29"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 30"></div>
+<div class="h-4 w-full bg-marker-tangerine border-ink-cell rounded-[1px]" title="Layer 31"></div>
+</div>
+<div class="w-[3px]"></div>
+<!-- Layers 32-47: Marker Magenta (#C8457E) -->
+<div class="flex gap-[1.5px] flex-1">
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 32"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 33"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 34"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 35"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 36"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 37"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 38"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 39"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 40"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 41"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 42"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 43"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 44"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 45"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 46"></div>
+<div class="h-4 w-full bg-marker-magenta border-ink-cell rounded-[1px]" title="Layer 47"></div>
+</div>
+</div>
+</div>
+<!-- Handwritten Annotation Notes in Shantell Sans -->
+<div class="flex justify-between items-center px-1 pt-0.5">
+<div class="flex items-center gap-1">
+<svg class="w-3 h-3 text-primary" fill="none" viewbox="0 0 12 12">
+<path d="M6 1V8M6 8L3.5 5.5M6 8L8.5 5.5" stroke="#15171A" stroke-linecap="round" stroke-width="1.2"></path>
+</svg>
+<span class="font-annotation text-annotation text-primary font-medium">0-15</span>
+</div>
+<div class="flex items-center gap-1">
+<svg class="w-3 h-3 text-primary" fill="none" viewbox="0 0 12 12">
+<path d="M6 1V8M6 8L3.5 5.5M6 8L8.5 5.5" stroke="#15171A" stroke-linecap="round" stroke-width="1.2"></path>
+</svg>
+<span class="font-annotation text-annotation text-primary font-medium">16-31</span>
+</div>
+<div class="flex items-center gap-1">
+<svg class="w-3 h-3 text-primary" fill="none" viewbox="0 0 12 12">
+<path d="M6 1V8M6 8L3.5 5.5M6 8L8.5 5.5" stroke="#15171A" stroke-linecap="round" stroke-width="1.2"></path>
+</svg>
+<span class="font-annotation text-annotation text-primary font-medium">32-47</span>
+</div>
+</div>
+</section>
+<!-- Three Lanes Stacked in Phone Order A, B, C -->
+<section class="flex flex-col gap-2.5">
+<div class="flex items-center justify-between px-0.5">
+<span class="font-label-mono text-label-mono text-graphite text-xs uppercase tracking-wider">Device Lanes</span>
+<span class="font-label-mono text-label-mono text-graphite text-xs">3 active nodes</span>
+</div>
+<!-- LANE A -->
+<div class="bg-sheet border-ink rounded-lg overflow-hidden flex relative">
+<!-- 6px solid marker band -->
+<div class="w-1.5 bg-marker-teal shrink-0"></div>
+<div class="p-3 flex-1 flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<!-- Phone Token -->
+<div class="w-7 h-7 rounded-full bg-marker-teal border-ink flex items-center justify-center shrink-0">
+<span class="font-headline-md font-bold text-sheet text-xs">A</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-md font-body-md font-semibold text-primary leading-tight">Phone A (Local)</span>
+<span class="font-label-mono text-body-sm text-graphite">Layers 00 - 15</span>
+</div>
+</div>
+<!-- Stepper Control -->
+<div class="flex items-center border-ink rounded-lg bg-whiteboard overflow-hidden h-7">
+<button class="w-7 h-full flex items-center justify-center border-r border-eraser active:bg-eraser text-primary font-label-mono font-bold text-sm leading-none">-</button>
+<span class="px-2 font-label-mono text-label-mono text-xs text-primary font-semibold">16</span>
+<button class="w-7 h-full flex items-center justify-center border-l border-eraser active:bg-eraser text-primary font-label-mono font-bold text-sm leading-none">+</button>
+</div>
+</div>
+<div class="flex items-center justify-between pt-1 border-t border-eraser text-xs">
+<div class="flex items-center gap-1 font-label-mono text-graphite">
+<span>Load:</span>
+<span class="text-primary font-semibold">6.2 GB</span>
+</div>
+<div class="font-label-mono text-primary font-medium">
+                8.6 GB free
+              </div>
+</div>
+</div>
+</div>
+<!-- LANE B -->
+<div class="bg-sheet border-ink rounded-lg overflow-hidden flex relative">
+<!-- 6px solid marker band -->
+<div class="w-1.5 bg-marker-tangerine shrink-0"></div>
+<div class="p-3 flex-1 flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<!-- Phone Token -->
+<div class="w-7 h-7 rounded-full bg-marker-tangerine border-ink flex items-center justify-center shrink-0">
+<span class="font-headline-md font-bold text-sheet text-xs">B</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-md font-body-md font-semibold text-primary leading-tight">Phone B (Pixel 8)</span>
+<span class="font-label-mono text-body-sm text-graphite">Layers 16 - 31</span>
+</div>
+</div>
+<!-- Stepper Control -->
+<div class="flex items-center border-ink rounded-lg bg-whiteboard overflow-hidden h-7">
+<button class="w-7 h-full flex items-center justify-center border-r border-eraser active:bg-eraser text-primary font-label-mono font-bold text-sm leading-none">-</button>
+<span class="px-2 font-label-mono text-label-mono text-xs text-primary font-semibold">16</span>
+<button class="w-7 h-full flex items-center justify-center border-l border-eraser active:bg-eraser text-primary font-label-mono font-bold text-sm leading-none">+</button>
+</div>
+</div>
+<div class="flex items-center justify-between pt-1 border-t border-eraser text-xs">
+<div class="flex items-center gap-1 font-label-mono text-graphite">
+<span>Load:</span>
+<span class="text-primary font-semibold">6.2 GB</span>
+</div>
+<div class="font-label-mono text-primary font-medium">
+                7.4 GB free
+              </div>
+</div>
+</div>
+</div>
+<!-- LANE C -->
+<div class="bg-sheet border-ink rounded-lg overflow-hidden flex relative">
+<!-- 6px solid marker band -->
+<div class="w-1.5 bg-marker-magenta shrink-0"></div>
+<div class="p-3 flex-1 flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<!-- Phone Token -->
+<div class="w-7 h-7 rounded-full bg-marker-magenta border-ink flex items-center justify-center shrink-0">
+<span class="font-headline-md font-bold text-sheet text-xs">C</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-md font-body-md font-semibold text-primary leading-tight">Phone C (Galaxy S23)</span>
+<span class="font-label-mono text-body-sm text-graphite">Layers 32 - 47</span>
+</div>
+</div>
+<!-- Stepper Control -->
+<div class="flex items-center border-ink rounded-lg bg-whiteboard overflow-hidden h-7">
+<button class="w-7 h-full flex items-center justify-center border-r border-eraser active:bg-eraser text-primary font-label-mono font-bold text-sm leading-none">-</button>
+<span class="px-2 font-label-mono text-label-mono text-xs text-primary font-semibold">16</span>
+<button class="w-7 h-full flex items-center justify-center border-l border-eraser active:bg-eraser text-primary font-label-mono font-bold text-sm leading-none">+</button>
+</div>
+</div>
+<div class="flex items-center justify-between pt-1 border-t border-eraser text-xs">
+<div class="flex items-center gap-1 font-label-mono text-graphite">
+<span>Load:</span>
+<span class="text-primary font-semibold">6.2 GB</span>
+</div>
+<div class="font-label-mono text-primary font-medium">
+                6.9 GB free
+              </div>
+</div>
+</div>
+</div>
+</section>
+<!-- Action Buttons Section -->
+<section class="flex flex-col gap-2.5 pt-2">
+<!-- Single Primary Button with 3px hard shadow -->
+<button class="w-full h-12 bg-primary text-sheet font-headline-md font-semibold text-body-md rounded-lg shadow-hard-btn transition-transform flex items-center justify-center gap-2">
+<span>Load across 3 phones</span>
+<span class="material-symbols-outlined text-[18px]" data-icon="deployed_code">deployed_code</span>
+</button>
+<!-- Secondary Button -->
+<button class="w-full h-11 bg-sheet border-ink text-primary font-headline-md font-semibold text-body-md rounded-lg active:bg-whiteboard transition-colors flex items-center justify-center">
+          Try on this phone alone
+        </button>
+</section>
+</main>
+<!-- Persistent Bottom Navigation Bar from Shared Components JSON -->
+<!-- Destination count: 5. Active: Memory (5th destination) -->
+<nav class="bg-sheet border-t border-outline fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-sm py-space-xs h-16 max-w-[420px] mx-auto right-0">
+<!-- Item 1: Swarm -->
+<a class="flex flex-col items-center justify-center text-secondary pb-1 hover:text-primary transition-colors flex-1" href="#">
+<span class="material-symbols-outlined" data-icon="lan">lan</span>
+<span class="font-label-md text-label-md mt-0.5">Swarm</span>
+</a>
+<!-- Item 2: Models -->
+<a class="flex flex-col items-center justify-center text-secondary pb-1 hover:text-primary transition-colors flex-1" href="#">
+<span class="material-symbols-outlined" data-icon="deployed_code">deployed_code</span>
+<span class="font-label-md text-label-md mt-0.5">Models</span>
+</a>
+<!-- Item 3: Choir -->
+<a class="flex flex-col items-center justify-center text-secondary pb-1 hover:text-primary transition-colors flex-1" href="#">
+<span class="material-symbols-outlined" data-icon="graphic_eq">graphic_eq</span>
+<span class="font-label-md text-label-md mt-0.5">Choir</span>
+</a>
+<!-- Item 4: Data -->
+<a class="flex flex-col items-center justify-center text-secondary pb-1 hover:text-primary transition-colors flex-1" href="#">
+<span class="material-symbols-outlined" data-icon="dataset">dataset</span>
+<span class="font-label-md text-label-md mt-0.5">Data</span>
+</a>
+<!-- Item 5: Memory (Active destination) -->
+<a class="flex flex-col items-center justify-center text-primary font-bold border-b-2 border-primary pb-0.5 hover:text-primary transition-colors flex-1" href="#">
+<span class="material-symbols-outlined" data-icon="memory">memory</span>
+<span class="font-label-md text-label-md mt-0.5">Memory</span>
+</a>
+</nav>
+</div>
+</body></html>

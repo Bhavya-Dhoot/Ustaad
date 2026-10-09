@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS - Data Union</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;700&amp;family=Geist+Mono:wght@400;500;600&amp;family=Geist:wght@400;500;600&amp;family=Shantell+Sans:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "surface-container-low": "#f3f4f2",
+            "surface": "#f9faf8",
+            "surface-variant": "#e2e3e1",
+            "marker-teal-tint": "#1E9BB01F",
+            "on-primary-container": "#838487",
+            "outline": "#76777b",
+            "on-surface": "#191c1b",
+            "inverse-surface": "#2e3130",
+            "tertiary-fixed-dim": "#c4c7c4",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-high": "#e7e8e6",
+            "secondary-fixed": "#dee3ec",
+            "marker-tangerine-tint": "#E08A3C1F",
+            "tertiary-container": "#191c1a",
+            "secondary-container": "#dee3ec",
+            "surface-tint": "#5d5e62",
+            "on-tertiary-fixed": "#191c1a",
+            "sheet": "#FCFDFB",
+            "on-tertiary-container": "#818581",
+            "marker-teal": "#1E9BB0",
+            "inverse-primary": "#c6c6ca",
+            "on-error-container": "#93000a",
+            "error-container": "#ffdad6",
+            "surface-dim": "#d9dad8",
+            "on-primary-fixed": "#1a1c1f",
+            "primary-fixed-dim": "#c6c6ca",
+            "marker-tangerine": "#E08A3C",
+            "on-secondary-fixed": "#171c23",
+            "on-surface-variant": "#45474a",
+            "secondary-fixed-dim": "#c2c7d0",
+            "on-tertiary-fixed-variant": "#444845",
+            "on-tertiary": "#ffffff",
+            "background": "#F6F7F5",
+            "on-primary-fixed-variant": "#45474a",
+            "on-secondary": "#ffffff",
+            "on-secondary-container": "#60656d",
+            "inverse-on-surface": "#f0f1ef",
+            "surface-container": "#edeeec",
+            "secondary": "#5a5f67",
+            "on-error": "#ffffff",
+            "primary": "#15171A",
+            "marker-magenta-tint": "#C8457E1F",
+            "tertiary": "#15171A",
+            "on-primary": "#ffffff",
+            "tertiary-fixed": "#e0e3df",
+            "marker-magenta": "#C8457E",
+            "on-secondary-fixed-variant": "#42474f",
+            "primary-fixed": "#e2e2e6",
+            "on-background": "#15171A",
+            "error": "#ba1a1a",
+            "surface-container-highest": "#e2e3e1",
+            "primary-container": "#1a1c1f",
+            "surface-bright": "#f9faf8",
+            "outline-variant": "#c6c6ca",
+            "graphite": "#5E636B",
+            "erasersmudge": "#E4E7E3"
+          },
+          borderRadius: {
+            "DEFAULT": "8px",
+            "lg": "8px",
+            "xl": "8px",
+            "full": "9999px"
+          },
+          spacing: {
+            "space-md": "1rem",
+            "gutter": "0.5rem",
+            "space-lg": "1.5rem",
+            "space-sm": "0.5rem",
+            "space-xl": "2rem",
+            "margin": "1rem",
+            "space-xs": "0.25rem"
+          },
+          fontFamily: {
+            "label-mono": ["Geist Mono", "monospace"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "display-hero": ["Geist", "sans-serif"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "body-md": ["Geist", "sans-serif"],
+            "body-sm": ["Geist", "sans-serif"],
+            "label-md": ["Geist", "sans-serif"],
+            "stamp-label": ["Geist Mono", "monospace"]
+          },
+          fontSize: {
+            "label-mono": ["12px", { lineHeight: "15px", letterSpacing: "0em", fontWeight: "500" }],
+            "headline-md": ["20px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "headline-lg": ["28px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "display-hero": ["40px", { lineHeight: "44px", letterSpacing: "-0.02em", fontWeight: "600" }],
+            "annotation": ["13px", { lineHeight: "17px", letterSpacing: "-0.01em", fontWeight: "400" }],
+            "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+            "body-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+            "label-md": ["12px", { lineHeight: "15px", fontWeight: "500" }],
+            "stamp-label": ["11px", { lineHeight: "13px", letterSpacing: "0.05em", fontWeight: "700" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* 16px Dot grid for swarm canvas */
+    .bg-dot-grid {
+      background-image: radial-gradient(#D5D8D3 1.25px, transparent 1.25px);
+      background-size: 16px 16px;
+    }
+
+    /* Directional diagonal hatch for caution stamp */
+    .hatch-pattern {
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(21, 23, 26, 0.12),
+        rgba(21, 23, 26, 0.12) 2px,
+        transparent 2px,
+        transparent 5px
+      );
+    }
+
+    /* Ink 1.5px structural borders */
+    .border-ink {
+      border-width: 1.5px;
+      border-color: #15171A;
+    }
+    .border-ink-double {
+      border: 3px double #15171A;
+    }
+
+    /* Streaming caret animation */
+    @keyframes blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+    .streaming-caret {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      vertical-align: -0.15em;
+      background-color: #15171A;
+      animation: blink 0.85s infinite;
+    }
+
+    /* Hard cast shadow for buttons */
+    .hard-shadow {
+      box-shadow: 3px 3px 0px 0px #15171A;
+    }
+    .hard-shadow:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0px 0px 0px 0px #15171A;
+    }
+  </style>
+</head>
+<body class="bg-background text-primary antialiased min-h-screen flex justify-center selection:bg-surface-variant">
+<!-- Mobile Viewport Container nominally 390px -->
+<div class="w-full max-w-[412px] min-h-screen flex flex-col bg-background relative border-x border-erasersmudge pb-24 shadow-sm">
+<!-- Top Status Strip (Hardware / Telemetry Bar) -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-xs bg-sheet border-b border-outline dark:border-outline-variant max-w-[412px] mx-auto right-0" style="border-bottom-width: 1.5px; border-bottom-color: #15171A;">
+<div class="flex items-center gap-1.5 font-label-mono text-label-mono text-primary">
+<div class="w-4 h-4 rounded-full bg-marker-teal border border-primary flex items-center justify-center text-[9px] font-headline-md font-bold text-sheet leading-none">A</div>
+<span class="font-semibold tracking-tight">Phone A</span>
+<span class="text-graphite">·</span>
+<span class="text-graphite">Cool</span>
+<span class="text-graphite">·</span>
+<span>79%</span>
+<span class="text-graphite">·</span>
+<span>8.6 GB</span>
+<span class="text-graphite">·</span>
+<span class="text-graphite">11ac 433M</span>
+</div>
+<!-- Stamp: 0 B TO INTERNET -->
+<div class="border border-primary px-1.5 py-0.5 rounded-[3px] bg-sheet shrink-0">
+<span class="font-stamp-label text-[10px] tracking-wider uppercase font-bold text-primary block leading-none">0 B TO INTERNET</span>
+</div>
+</header>
+<!-- Content Workspace -->
+<main class="flex-1 px-space-md pt-14 pb-4 flex flex-col gap-3.5">
+<!-- Title & Local Annotation -->
+<div class="flex items-baseline justify-between pt-2">
+<div class="flex items-baseline gap-2.5">
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight">Data Union</h1>
+<!-- Hand-drawn style note (Max 1 of 2 on screen) -->
+<span class="font-annotation text-annotation text-graphite -rotate-2 select-none">
+            local peer RAG
+          </span>
+</div>
+<span class="font-label-mono text-label-mono text-graphite">P2P INDEX v2</span>
+</div>
+<!-- Question Input Module -->
+<section class="flex flex-col gap-1.5">
+<label class="font-label-mono text-label-mono text-graphite flex items-center justify-between" for="query-input">
+<span>Question</span>
+<span class="text-[11px] text-graphite">k=3 peer sources</span>
+</label>
+<div class="relative flex items-center bg-sheet rounded border-ink overflow-hidden">
+<input class="w-full bg-transparent border-0 py-2.5 pl-3 pr-11 font-body-md text-body-md text-primary placeholder-graphite focus:ring-0 focus:outline-none" id="query-input" readonly="" type="text" value="Where is the warranty bill for my laptop?"/>
+<button aria-label="Dictate prompt" class="absolute right-2 p-1.5 rounded text-primary hover:bg-surface-container active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 flex items-center justify-center" type="button">
+<span class="material-symbols-outlined text-[19px] text-primary" style="font-variation-settings: 'FILL' 0, 'wght' 500;">mic</span>
+</button>
+</div>
+<!-- Latency / Performance Timing Strip -->
+<div class="flex items-center justify-between px-1 font-label-mono text-[11px] text-graphite bg-surface-container-low py-1 rounded border border-erasersmudge">
+<div class="flex items-center gap-1">
+<span>embed</span>
+<span class="text-primary font-semibold">31 ms</span>
+</div>
+<span class="text-erasersmudge">|</span>
+<div class="flex items-center gap-1">
+<span>search</span>
+<span class="text-primary font-semibold">18 ms</span>
+</div>
+<span class="text-erasersmudge">|</span>
+<div class="flex items-center gap-1">
+<span>peers</span>
+<span class="text-primary font-semibold">64 ms</span>
+</div>
+<span class="text-erasersmudge">|</span>
+<div class="flex items-center gap-1">
+<span>first word</span>
+<!-- Hand-drawn key metric highlight with subtle rough underline -->
+<span class="text-primary font-bold relative inline-block">
+              0.9 s
+              <svg class="absolute -bottom-1 left-0 w-full h-[3px] text-primary overflow-visible" fill="none" viewbox="0 0 24 3">
+<path d="M0.5 1.8C6.5 0.5 16.5 0.8 23.5 1.5" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
+</span>
+</div>
+</div>
+</section>
+<!-- Section: Sources (Retrieved Snippets) -->
+<section class="flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<h2 class="font-headline-md text-headline-md text-primary text-[17px]">Sources</h2>
+<span class="font-label-mono text-[11px] px-1.5 py-0.2 bg-surface-container border border-erasersmudge rounded text-graphite">3 matches</span>
+</div>
+<span class="font-label-mono text-label-mono text-graphite">BLE Direct</span>
+</div>
+<div class="flex flex-col gap-2">
+<!-- Card 1: Phone B (Marker Tangerine) -->
+<article class="bg-sheet rounded border-ink p-2.5 relative border-l-[6px] border-l-marker-tangerine flex flex-col gap-1.5">
+<div class="flex items-center justify-between border-b border-erasersmudge pb-1.5">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-marker-tangerine border border-primary flex items-center justify-center text-[10px] font-headline-md font-bold text-sheet">B</div>
+<span class="font-body-sm font-semibold text-primary">Phone B</span>
+<span class="font-label-mono text-[11px] text-graphite ml-1">14 Mar 2025</span>
+</div>
+<span class="font-label-mono text-label-mono font-medium text-primary bg-surface-container-low px-1.5 py-0.5 rounded border border-erasersmudge">IMG_2231.jpg</span>
+</div>
+<p class="font-body-sm text-body-sm text-primary leading-snug">
+              Koramangala Computers - Tax invoice. ThinkBook 14 G7, serial PF4X91KQ. Warranty 36 months from 14 Mar 2025.
+            </p>
+</article>
+<!-- Card 2: Phone A (Marker Teal) -->
+<article class="bg-sheet rounded border-ink p-2.5 relative border-l-[6px] border-l-marker-teal flex flex-col gap-1.5">
+<div class="flex items-center justify-between border-b border-erasersmudge pb-1.5">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-marker-teal border border-primary flex items-center justify-center text-[10px] font-headline-md font-bold text-sheet">A</div>
+<span class="font-body-sm font-semibold text-primary">Phone A</span>
+<span class="font-label-mono text-[11px] text-graphite ml-1">16 Mar 2025</span>
+</div>
+<span class="font-label-mono text-label-mono font-medium text-primary bg-surface-container-low px-1.5 py-0.5 rounded border border-erasersmudge">warranty-certificate.pdf</span>
+</div>
+<p class="font-body-sm text-body-sm text-primary leading-snug">
+              Extended warranty policy EW-2291-774 valid until 13 Mar 2029.
+            </p>
+</article>
+<!-- Card 3: Phone A (Marker Teal) -->
+<article class="bg-sheet rounded border-ink p-2.5 relative border-l-[6px] border-l-marker-teal flex flex-col gap-1.5">
+<div class="flex items-center justify-between border-b border-erasersmudge pb-1.5">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-marker-teal border border-primary flex items-center justify-center text-[10px] font-headline-md font-bold text-sheet">A</div>
+<span class="font-body-sm font-semibold text-primary">Phone A</span>
+<span class="font-label-mono text-[11px] text-graphite ml-1">13 Mar 2025</span>
+</div>
+<span class="font-label-mono text-label-mono font-medium text-primary bg-surface-container-low px-1.5 py-0.5 rounded border border-erasersmudge">laptop-order-email.txt</span>
+</div>
+<p class="font-body-sm text-body-sm text-graphite line-clamp-1 leading-snug">
+              Order confirmed: Lenovo ThinkBook 14 G7 IAP. Delivery dispatch notice Bangalore Hub...
+            </p>
+</article>
+</div>
+</section>
+<!-- Caution Row: Hatched Rubber Stamp -->
+<section class="flex items-center gap-2.5 bg-sheet p-2 rounded border-ink">
+<!-- Physical Rubber Stamp Caution (-4 deg, double border, 20% hatch pattern) -->
+<div class="relative border-ink-double rounded px-2 py-0.5 -rotate-4 hatch-pattern shrink-0 bg-sheet">
+<span class="font-stamp-label text-stamp-label tracking-wider uppercase font-bold text-primary block leading-none">
+            INCOMPLETE
+          </span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-primary leading-tight">Phone C did not answer in 1.5 s</span>
+<span class="font-label-mono text-[11px] text-graphite">Query quorum 2/3 responded</span>
+</div>
+</section>
+<!-- Section: Answer (Synthesized Local Response) -->
+<section class="flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<h2 class="font-headline-md text-headline-md text-primary text-[17px]">Answer</h2>
+<span class="font-label-mono text-[11px] text-graphite">llama-3.2-1b-local</span>
+</div>
+<!-- Second subtle annotation -->
+<span class="font-annotation text-annotation text-graphite select-none">
+            zero cloud leaks
+          </span>
+</div>
+<div class="bg-sheet rounded border-ink p-3 relative flex flex-col gap-2">
+<p class="font-body-md text-body-md text-primary leading-relaxed">
+            Your laptop is covered until 14 Mar 2028 under standard 36-month warranty
+            <span class="inline-flex items-center justify-center font-label-mono text-[11px] font-semibold bg-marker-tangerine-tint text-primary border border-primary px-1 rounded mx-0.5 align-baseline">[1]</span>,
+            with extended policy active through 13 Mar 2029
+            <span class="inline-flex items-center justify-center font-label-mono text-[11px] font-semibold bg-marker-teal-tint text-primary border border-primary px-1 rounded mx-0.5 align-baseline">[2]</span><span class="streaming-caret"></span>
+</p>
+<!-- Single Ink Primary Button with 3px Hard Shadow -->
+<div class="pt-2 border-t border-erasersmudge flex items-center justify-between">
+<span class="font-label-mono text-[11px] text-graphite">Confidence 98.4%</span>
+<button class="bg-primary text-sheet font-label-mono text-label-mono font-semibold px-3 py-1.5 rounded hard-shadow transition-all duration-75 flex items-center gap-1.5" type="button">
+<span>Export Claim File</span>
+<span class="material-symbols-outlined text-[15px]" style="font-variation-settings: 'FILL' 0, 'wght' 500;">download</span>
+</button>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar (Persistent 5-Destination Shell) -->
+<!-- Matches Shared Components JSON: "BottomNavBar" with label_texts: ["Swarm", "Models", "Choir", "Data", "Memory"] -->
+<!-- Active Destination: "Data" per user task specification -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-sm py-space-xs bg-sheet max-w-[412px] mx-auto right-0" style="border-top-width: 1.5px; border-top-color: #15171A;">
+<!-- Tab 1: Swarm (Inactive) -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 0, 'wght' 400;">lan</span>
+<span class="font-label-md text-[11px]">Swarm</span>
+</a>
+<!-- Tab 2: Models (Inactive) -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 0, 'wght' 400;">deployed_code</span>
+<span class="font-label-md text-[11px]">Models</span>
+</a>
+<!-- Tab 3: Choir (Inactive) -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 0, 'wght' 400;">graphic_eq</span>
+<span class="font-label-md text-[11px]">Choir</span>
+</a>
+<!-- Tab 4: Data (ACTIVE) -->
+<a class="flex flex-col items-center justify-center text-primary dark:text-inverse-primary font-bold border-b-2 border-primary dark:border-inverse-primary pb-0.5 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1, 'wght' 600;">dataset</span>
+<span class="font-label-md text-[11px] font-bold">Data</span>
+</a>
+<!-- Tab 5: Memory (Inactive) -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary dark:hover:text-inverse-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75 min-w-[56px]" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 0, 'wght' 400;">memory</span>
+<span class="font-label-md text-[11px]">Memory</span>
+</a>
+</nav>
+</div>
+</body></html>

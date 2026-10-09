@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SwarmOS - ExpertMesh Explainer</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&amp;family=Geist+Mono:wght@400..700&amp;family=Geist:wght@400;500;600;700&amp;family=Shantell+Sans:ital,wght@0,400..700;1,400&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "whiteboard": "#F6F7F5",
+            "sheet": "#FCFDFB",
+            "ink": "#15171A",
+            "graphite": "#5E636B",
+            "smudge": "#E4E7E3",
+            "marker-teal": "#1E9BB0",
+            "marker-teal-tint": "#1E9BB01F",
+            "marker-tangerine": "#E08A3C",
+            "marker-tangerine-tint": "#E08A3C1F",
+            "marker-magenta": "#C8457E",
+            "marker-magenta-tint": "#C8457E1F",
+            // System standard mappings
+            "outline-variant": "#E4E7E3",
+            "surface": "#F6F7F5",
+            "surface-bright": "#F6F7F5",
+            "tertiary": "#15171A",
+            "primary-fixed": "#e2e2e6",
+            "surface-container-lowest": "#FCFDFB",
+            "error": "#ba1a1a",
+            "surface-tint": "#5d5e62",
+            "on-secondary": "#ffffff",
+            "inverse-on-surface": "#f0f1ef",
+            "secondary": "#5E636B",
+            "surface-container-low": "#F6F7F5",
+            "surface-container-high": "#e7e8e6",
+            "secondary-fixed": "#dee3ec",
+            "surface-variant": "#e2e3e1",
+            "primary": "#15171A",
+            "on-secondary-container": "#60656d",
+            "secondary-container": "#dee3ec",
+            "tertiary-fixed": "#e0e3df",
+            "outline": "#15171A",
+            "surface-container-highest": "#e2e3e1",
+            "primary-fixed-dim": "#c6c6ca",
+            "inverse-primary": "#c6c6ca",
+            "tertiary-container": "#191c1a",
+            "on-tertiary-fixed": "#191c1a",
+            "on-primary": "#ffffff",
+            "on-error": "#ffffff",
+            "on-primary-container": "#838487",
+            "surface-dim": "#d9dad8",
+            "background": "#F6F7F5",
+            "surface-container": "#edeeec",
+            "on-surface": "#15171A",
+            "inverse-surface": "#2e3130"
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          spacing: {
+            "gutter": "0.5rem",
+            "space-lg": "1.5rem",
+            "margin": "1rem",
+            "space-xs": "0.25rem",
+            "space-xl": "2rem",
+            "space-sm": "0.5rem",
+            "space-md": "1rem"
+          },
+          fontFamily: {
+            "body-sm": ["Geist", "sans-serif"],
+            "label-mono": ["Geist Mono", "monospace"],
+            "stamp-label": ["Geist Mono", "monospace"],
+            "headline-lg": ["Bricolage Grotesque", "sans-serif"],
+            "display-hero": ["Geist", "sans-serif"],
+            "headline-md": ["Bricolage Grotesque", "sans-serif"],
+            "annotation": ["Shantell Sans", "cursive"],
+            "label-md": ["Geist", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"]
+          },
+          fontSize: {
+            "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+            "label-mono": ["13px", { lineHeight: "16px", letterSpacing: "0em", fontWeight: "500" }],
+            "stamp-label": ["12px", { lineHeight: "14px", letterSpacing: "0.06em", fontWeight: "700" }],
+            "headline-lg": ["28px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "display-hero": ["44px", { lineHeight: "48px", letterSpacing: "-0.02em", fontWeight: "500" }],
+            "headline-md": ["20px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "annotation": ["14px", { lineHeight: "18px", letterSpacing: "-0.01em", fontWeight: "400" }],
+            "label-md": ["13px", { lineHeight: "16px", fontWeight: "500" }],
+            "body-md": ["15px", { lineHeight: "22px", fontWeight: "400" }]
+          }
+        }
+      }
+    };
+  </script>
+<style>
+    /* Dot Grid Background for Canvas */
+    .bg-dot-grid {
+      background-image: radial-gradient(#15171A 1.2px, transparent 1.2px);
+      background-size: 16px 16px;
+    }
+    
+    /* Diagonal Hatch for Caution Stamps and In-flight States */
+    .hatch-pattern {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(21, 23, 26, 0.12),
+        rgba(21, 23, 26, 0.12) 2px,
+        transparent 2px,
+        transparent 6px
+      );
+    }
+  </style>
+</head>
+<body class="bg-whiteboard text-ink font-body-md antialiased min-h-screen flex flex-col justify-between selection:bg-marker-teal-tint">
+<!-- TOP APP BAR (from Shared Components JSON) -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-xs bg-sheet border-b border-outline dark:border-outline-variant">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-ink text-[22px]" data-icon="hub">hub</span>
+<span class="text-headline-md font-headline-md font-bold text-ink">SwarmOS / Node A</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-ink text-[20px]" data-icon="verified">verified</span>
+</div>
+</header>
+<!-- MAIN SCROLLABLE CONTENT (Screen 19: ExpertMesh) -->
+<main class="w-full max-w-[430px] mx-auto px-4 pt-16 pb-24 flex-1 flex flex-col">
+<!-- Title Section -->
+<div class="pt-3 pb-4">
+<div class="flex items-center justify-between">
+<h1 class="font-headline-lg text-headline-lg text-ink font-bold tracking-tight">ExpertMesh</h1>
+<!-- Rubber Stamp: Physical Stamp Badge -->
+<div class="border-[1.5px] border-ink rounded-[4px] p-[2px] -rotate-3 select-none">
+<div class="border-[1.5px] border-ink px-2 py-0.5 rounded-[2px] font-label-mono text-[10px] font-bold text-ink tracking-wider uppercase">
+            CHAIN OK
+          </div>
+</div>
+</div>
+<p class="font-body-md text-graphite text-[14px] leading-5 mt-0.5">Why experts are grouped by layer, not scattered.</p>
+</div>
+<!-- DIAGRAM CONTAINER: Sheet with 1.5px Ink outline and faint dot grid -->
+<div class="relative bg-sheet rounded-lg border-[1.5px] border-ink p-3 mb-5 overflow-hidden">
+<!-- Background 16px Dot Grid -->
+<div class="absolute inset-0 bg-dot-grid opacity-15 pointer-events-none"></div>
+<!-- Diagram Header: Node assignments / bands descriptor -->
+<div class="relative z-10 flex items-center justify-between pb-2 mb-2 border-b border-smudge">
+<div class="flex items-center gap-3">
+<!-- Token A -->
+<div class="flex items-center gap-1.5">
+<span class="w-[20px] h-[20px] rounded-full border-[1.5px] border-ink bg-marker-teal flex items-center justify-center font-headline-md text-[11px] font-bold text-ink">A</span>
+<span class="font-label-mono text-[11px] text-graphite">L0-15</span>
+</div>
+<!-- Token B -->
+<div class="flex items-center gap-1.5">
+<span class="w-[20px] h-[20px] rounded-full border-[1.5px] border-ink bg-marker-tangerine flex items-center justify-center font-headline-md text-[11px] font-bold text-ink">B</span>
+<span class="font-label-mono text-[11px] text-graphite">L16-31</span>
+</div>
+<!-- Token C -->
+<div class="flex items-center gap-1.5">
+<span class="w-[20px] h-[20px] rounded-full border-[1.5px] border-ink bg-marker-magenta flex items-center justify-center font-headline-md text-[11px] font-bold text-ink">C</span>
+<span class="font-label-mono text-[11px] text-graphite">L32-47</span>
+</div>
+</div>
+<span class="font-label-mono text-[11px] text-graphite">8 exp / layer</span>
+</div>
+<!-- MATRIX CONTAINER WITH SVG OVERLAY FOR DOODLE CONNECTORS -->
+<div class="relative z-10">
+<!-- SVG doodle paths layer -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none z-20" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="6" refy="5" viewbox="0 0 10 10">
+<path d="M 1 2 L 7 5 L 1 8 z" fill="#15171A"></path>
+</marker>
+</defs>
+<!-- Doodle hop 1: From Layer 1 (Phone A) to Layer 2 (Phone B) -->
+<!-- Active Cell L1 E6 (~x: 232, y: 55) to L2 E3 (~x: 125, y: 77) -->
+<path d="M 235 56 Q 220 74, 134 76" fill="none" marker-end="url(#arrow)" stroke="#15171A" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+<!-- Doodle hop 2: From Layer 3 (Phone B) to Layer 4 (Phone C) -->
+<!-- Active Cell L3 E2 (~x: 93, y: 110) to L4 E5 (~x: 198, y: 135) -->
+<path d="M 95 114 Q 120 135, 194 135" fill="none" marker-end="url(#arrow)" stroke="#15171A" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<!-- Matrix Rows -->
+<div class="flex flex-col gap-1.5 py-1">
+<!-- BAND A: Top 2 visible rows (Phone A - Teal Tint) -->
+<div class="relative p-1 rounded border-l-[4px] border-marker-teal bg-marker-teal-tint flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[10px] text-ink font-semibold">LAYER 00</span>
+<div class="grid grid-cols-8 gap-1.5 flex-1 max-w-[270px]">
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border-[2px] border-ink rounded-[2px] bg-marker-teal/20 relative"><span class="absolute inset-0 m-auto w-1 h-1 bg-ink rounded-full"></span></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[10px] text-ink font-semibold">LAYER 07</span>
+<div class="grid grid-cols-8 gap-1.5 flex-1 max-w-[270px]">
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border-[2px] border-ink rounded-[2px] bg-marker-teal/20 relative"><span class="absolute inset-0 m-auto w-1 h-1 bg-ink rounded-full"></span></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+</div>
+</div>
+</div>
+<!-- Handwritten Note 1: First hop -->
+<div class="flex items-center justify-end px-2 -my-1 relative z-30">
+<span class="font-annotation text-[13px] text-ink rotate-1">1 hop per band ↘</span>
+</div>
+<!-- BAND B: Middle 2 visible rows (Phone B - Tangerine Tint) -->
+<div class="relative p-1 rounded border-l-[4px] border-marker-tangerine bg-marker-tangerine-tint flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[10px] text-ink font-semibold">LAYER 16</span>
+<div class="grid grid-cols-8 gap-1.5 flex-1 max-w-[270px]">
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border-[2px] border-ink rounded-[2px] bg-marker-tangerine/30 relative"><span class="absolute inset-0 m-auto w-1 h-1 bg-ink rounded-full"></span></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[10px] text-ink font-semibold">LAYER 23</span>
+<div class="grid grid-cols-8 gap-1.5 flex-1 max-w-[270px]">
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border-[2px] border-ink rounded-[2px] bg-marker-tangerine/30 relative"><span class="absolute inset-0 m-auto w-1 h-1 bg-ink rounded-full"></span></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+</div>
+</div>
+</div>
+<!-- BAND C: Bottom 2 visible rows (Phone C - Magenta Tint) -->
+<div class="relative p-1 rounded border-l-[4px] border-marker-magenta bg-marker-magenta-tint flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[10px] text-ink font-semibold">LAYER 32</span>
+<div class="grid grid-cols-8 gap-1.5 flex-1 max-w-[270px]">
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border-[2px] border-ink rounded-[2px] bg-marker-magenta/30 relative"><span class="absolute inset-0 m-auto w-1 h-1 bg-ink rounded-full"></span></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[10px] text-ink font-semibold">LAYER 47</span>
+<div class="grid grid-cols-8 gap-1.5 flex-1 max-w-[270px]">
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border-[2px] border-ink rounded-[2px] bg-marker-magenta/30 relative"><span class="absolute inset-0 m-auto w-1 h-1 bg-ink rounded-full"></span></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border border-ink/40 rounded-[2px]"></div>
+<div class="h-[18px] bg-sheet border-[2px] border-ink rounded-[2px] bg-marker-magenta/30 relative"><span class="absolute inset-0 m-auto w-1 h-1 bg-ink rounded-full"></span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Diagram Caption/Legend Footer -->
+<div class="relative z-10 pt-2.5 mt-2 border-t border-smudge flex items-center justify-between text-graphite font-label-mono text-[11px]">
+<div class="flex items-center gap-1.5">
+<div class="w-2.5 h-2.5 border-[2px] border-ink bg-whiteboard rounded-[1px]"></div>
+<span>Active expert (top-2 MoE)</span>
+</div>
+<span>48 total layers</span>
+</div>
+</div>
+<!-- PLAIN CALCULATION SECTION (Geist Mono, no boxed cards) -->
+<div class="mb-5 space-y-1.5">
+<div class="font-label-mono text-graphite text-[13px] flex items-center justify-between py-0.5 border-b border-smudge">
+<span>round trip</span>
+<span class="text-ink font-semibold">11 ms</span>
+</div>
+<div class="font-label-mono text-graphite text-[12px] leading-4 py-0.5 border-b border-smudge">
+        48 MoE layers x 11 ms = <span class="text-ink font-semibold">528 ms</span> per token if experts were remote
+      </div>
+<div class="font-label-mono text-graphite text-[13px] flex items-center justify-between py-0.5">
+<span>ceiling</span>
+<span class="text-ink font-semibold">1.9 tok/s</span>
+</div>
+</div>
+<!-- HIGHLIGHTED SUMMARY SECTION -->
+<div class="bg-sheet border-[1.5px] border-ink rounded-lg p-3.5 mb-6 relative">
+<div class="flex flex-col">
+<span class="font-label-mono text-[12px] text-graphite uppercase tracking-wide">Topology Efficiency</span>
+<p class="font-headline-md text-[16px] text-ink font-semibold mt-1">
+          grouped by layer range: 2 hops per token, measured
+        </p>
+<!-- Large key metric with hand-drawn Ink circle -->
+<div class="flex items-baseline gap-2 mt-2">
+<div class="relative inline-flex items-center justify-center px-3 py-1">
+<!-- Hand-drawn SVG circle -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none" fill="none" preserveaspectratio="none" viewbox="0 0 120 48">
+<path d="M 12 24 C 10 9, 35 4, 60 5 C 95 6, 114 12, 112 26 C 110 39, 82 44, 52 44 C 22 44, 4 36, 6 22 C 7 14, 18 8, 30 7" stroke="#15171A" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="font-label-mono text-[26px] font-bold text-ink tracking-tight">8.4 tok/s</span>
+</div>
+<span class="font-label-mono text-[12px] text-graphite">(4.4x speedup)</span>
+</div>
+</div>
+</div>
+<!-- ACTIONS: Secondary button "Back to MemoryCloud" -->
+<div class="mt-auto pt-2">
+<button class="w-full bg-sheet text-ink border-[1.5px] border-ink font-label-md text-[14px] font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" onclick="window.history.back()">
+<span class="material-symbols-outlined text-[18px]" data-icon="arrow_back">arrow_back</span>
+        Back to MemoryCloud
+      </button>
+</div>
+</main>
+<!-- BOTTOM NAVIGATION BAR (from Shared Components JSON: Memory active) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-sm py-space-xs bg-sheet border-t border-outline dark:border-outline-variant">
+<!-- 0: Swarm (Inactive) -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[22px]" data-icon="lan">lan</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Swarm</span>
+</a>
+<!-- 1: Models (Inactive) -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[22px]" data-icon="deployed_code">deployed_code</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Models</span>
+</a>
+<!-- 2: Choir (Inactive) -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[22px]" data-icon="graphic_eq">graphic_eq</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Choir</span>
+</a>
+<!-- 3: Data (Inactive) -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed pb-1 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[22px]" data-icon="dataset">dataset</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Data</span>
+</a>
+<!-- 4: Memory (Active per JSON style_active_navigation) -->
+<a class="flex flex-col items-center justify-center text-primary dark:text-inverse-primary font-bold border-b-2 border-primary dark:border-inverse-primary pb-0.5 hover:text-primary active:translate-x-[1px] active:translate-y-[1px] transition-transform duration-75" href="#">
+<span class="material-symbols-outlined text-[22px]" data-icon="memory">memory</span>
+<span class="text-label-md font-label-md text-[11px] mt-0.5">Memory</span>
+</a>
+</nav>
+</body></html>
