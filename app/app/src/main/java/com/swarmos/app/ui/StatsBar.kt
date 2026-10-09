@@ -101,8 +101,18 @@ fun StatusStrip(
             ) {
                 PhoneToken(name, 28.dp)
                 Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(name, style = SwarmType.title.copy(fontSize = 15.sp, lineHeight = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // the stamp sits on the name row so the metrics below get the full width: with a charging phone on 5 GHz
+                // "Cool 100% chg 5.7 GB 11ac 390 Mbps" does not fit beside it and the link speed was cut off
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            name, Modifier.weight(1f),
+                            style = SwarmType.title.copy(fontSize = 15.sp, lineHeight = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        if (hot) Stamp("Hot", caution = true, small = true)
+                        else if (wanBytes == 0L) Stamp("0 B to internet", small = true)
+                        else Stamp("$wanBytes B to internet", caution = true, small = true)
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                         val style = SwarmType.mono.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SwarmColors.graphite)
                         Text(thermal, style = if (hot) style.copy(color = SwarmColors.ink, fontWeight = FontWeight.W700) else style, maxLines = 1)
@@ -112,9 +122,6 @@ fun StatusStrip(
                     }
                 }
             }
-            if (hot) Stamp("Hot", caution = true, small = true)
-            else if (wanBytes == 0L) Stamp("0 B to internet", small = true)
-            else Stamp("$wanBytes B to internet", caution = true, small = true)
         }
     }
 }
