@@ -168,7 +168,14 @@ class ChoirCoordinator(
 
         fun replyOf(a: NodeAnswer, wall: Long): Reply {
             val t = ToolChecker.check(problem, a.answer, a.keySteps, options.useProblemCheck)
-            val detail = if (t.source != "none") "${t.detail} (${t.source})" else t.detail
+            val basis = when (t.source) {
+                PROBLEM_CHECK -> "problem's test"
+                "model-expression" -> "model's own steps"
+                "quote-exists" -> "source text"
+                "option-letters" -> "option letters"
+                else -> null
+            }
+            val detail = if (basis != null) "${t.detail} (${basis})" else t.detail
             return Reply(a.answer, a.confidence, a.keySteps, a.tokens, a.ms, wall, t.result, detail, t.source)
         }
 
