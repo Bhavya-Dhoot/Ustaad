@@ -12,6 +12,7 @@ Devices (verified 2026-10-09, see docs/device-probes/):
 - iQOO A = serial 10BFC41T2N001UZ, wireless ADB 192.168.242.89:5555, build 16.0.24.1
 - iQOO B = serial 10BFAU14Q6000XR, wireless ADB 192.168.242.23:5555, build 16.0.21.12
 - adb = C:\Users\DELL\AppData\Local\Android\Sdk\platform-tools\adb.exe ; NDK 28.2 ; JDK 17 ; no Android Studio GUI needed, use gradlew.
+- iQOO C = serial 10BFAT216Z000XQ, wireless ADB 192.168.242.76:5555, build 16.0.20.1 (joined 2026-10-10)
 - Redmi M2101K6P is NOT a target. Ignore it.
 - In Git Bash always `export MSYS_NO_PATHCONV=1` before adb shell commands with absolute paths.
 
