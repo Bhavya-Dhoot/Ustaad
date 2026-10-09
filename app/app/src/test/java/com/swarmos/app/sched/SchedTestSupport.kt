@@ -46,7 +46,12 @@ class TestLlm(
         emit(ChatChunk("", done = true, stats = ChatStats(5, tokens, 1.0, delayMs.toDouble())))
     }
 
-    override suspend fun embed(texts: List<String>): List<FloatArray> = texts.map { floatArrayOf(it.length.toFloat()) }
+    val embedCalls = AtomicInteger()
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> {
+        embedCalls.incrementAndGet()
+        return texts.map { floatArrayOf(it.length.toFloat()) }
+    }
 }
 
 /**
