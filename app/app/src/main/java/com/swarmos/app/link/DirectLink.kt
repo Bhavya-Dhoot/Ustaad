@@ -198,6 +198,25 @@ object DirectLink {
         }
     }
 
+    /**
+     * Pick up a group that outlived the app process (the system keeps it) so [state], the QR payload and probes
+     * stay consistent. Returns the credentials when this phone owns the group (the owner can read the passphrase).
+     */
+    suspend fun refresh(): P2pCreds? = lock.withLock {
+        val ctx = AppGraph.appContext
+        val mgr = manager(ctx)
+        val ch = channel(ctx, mgr)
+        val g = groupInfo(mgr, ch) ?: return@withLock null
+        val local = LinkRoute.localLinks().firstOrNull { it.ifName == g.`interface` }
+        val owner = if (g.isGroupOwner) local?.address else connectionInfo(mgr, ch)?.groupOwnerAddress?.hostAddress
+        val f = frequencyOf(g)
+        _state.value = DirectState(
+            role = if (g.isGroupOwner) "host" else "client", phase = "up", ssid = g.networkName, iface = g.`interface`,
+            localAddress = local?.address, ownerAddress = owner, frequencyMhz = f, band = LinkInfo.bandOf(f), staConnected = staConnected(ctx),
+        )
+        if (g.isGroupOwner && !g.passphrase.isNullOrEmpty()) P2pCreds(g.networkName, g.passphrase) else null
+    }
+
     suspend fun stop() = lock.withLock {
         val ctx = AppGraph.appContext
         val mgr = manager(ctx)

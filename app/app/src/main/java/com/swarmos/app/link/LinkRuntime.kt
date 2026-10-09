@@ -98,6 +98,7 @@ object LinkRuntime {
         runCatching { tputServer = TputServer(Ports.TPUT).also { it.start() } }
             .onFailure { Log.w(TAG, "tput server: $it") }
         PeerLinks.start()
+        scope.launch { runCatching { DirectLink.refresh() }.getOrNull()?.let { hostCreds = it } }
         val self = AppGraph.registry.self.value
         discovery = Discovery(ctx, scope) { AppGraph.registry.self.value.nodeId }.also { it.start(self.nodeId, self.name, Ports.NODE) }
         scope.launch {

@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -75,11 +76,14 @@ fun LinkScreen() {
         if (missing.isNotEmpty()) launcher.launch(missing.toTypedArray())
     }
     BackHandler(page != Page.Home) { page = Page.Home }
-    when (val p = page) {
-        Page.Home -> HomePage(onHost = { page = Page.Host }, onJoin = { page = Page.Join }, onLink = { page = Page.Detail(it) })
-        Page.Host -> HostPage(onBack = { page = Page.Home })
-        Page.Join -> JoinPage(onBack = { page = Page.Home })
-        is Page.Detail -> DetailPage(p.key, onBack = { page = Page.Home })
+    // no Surface above the tab content, so set the text colour here (works for dark and light themes)
+    Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface) {
+        when (val p = page) {
+            Page.Home -> HomePage(onHost = { page = Page.Host }, onJoin = { page = Page.Join }, onLink = { page = Page.Detail(it) })
+            Page.Host -> HostPage(onBack = { page = Page.Home })
+            Page.Join -> JoinPage(onBack = { page = Page.Home })
+            is Page.Detail -> DetailPage(p.key, onBack = { page = Page.Home })
+        }
     }
 }
 
@@ -211,12 +215,12 @@ private fun Topology(selfName: String, peers: List<PeerStatus>, results: List<Tp
                 Text(p.name, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
             }
             val mbps = results.firstOrNull { it.toNodeId == p.nodeId && it.link == p.link.name && it.mbpsReceiver != null }?.mbpsReceiver
-            val label = listOfNotNull(mbps?.let { "${fmt1(it)} Mbps" }, p.rttMs?.let { "${fmt1(it)} ms" }, if (p.state == LinkState.AWAY) "away" else null).joinToString("   ")
+            val label = listOfNotNull(mbps?.let { "${fmt1(it)} Mbps" }, p.rttMs?.let { "${fmt1(it)} ms" }, if (p.state == LinkState.AWAY) "away" else null).joinToString("\n")
             if (label.isNotEmpty()) {
                 Text(
-                    label, style = MonoStyle.copy(fontSize = 11.sp),
+                    label, style = MonoStyle.copy(fontSize = 11.sp), color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
-                        .offset((selfX + peerX(i)) / 2 - 48.dp, (selfY + peerY) / 2 - 10.dp)
+                        .offset(selfX + (peerX(i) - selfX) * 0.62f - 36.dp, selfY + (peerY - selfY) * 0.62f - 16.dp)
                         .background(MaterialTheme.colorScheme.surface)
                         .padding(horizontal = 4.dp),
                 )
