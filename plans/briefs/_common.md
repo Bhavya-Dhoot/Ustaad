@@ -11,3 +11,10 @@
 - Leave one runnable check behind for non-trivial logic (a JVM unit test under `app/app/src/test/` for your package) and run it with `./gradlew :app:testDebugUnitTest`.
 - UI: use the theme and shared composables in `ui/`; keep screens plain and legible; all metrics in tabular numerals; anything produced by the fake model is labelled FAKE. A visual redesign pass happens later, so do not spend time on styling.
 - Return at most 40 lines: files created (paths), what you verified and the decisive output line for each check, which phones and when, shared-file edits needed, deviations from the contract and why, open problems. No pasted logs.
+
+## Addendum: shared build machine and base snapshot
+
+- Run every Gradle command through the lock wrapper so at most two builds run on this PC at once: `bash H:/UStaaf/scripts/gradle-locked.sh "<your worktree>/app" :app:assembleDebug <-P flags>` (same for `:app:testDebugUnitTest`). It may wait for a slot; that is expected. Never start `./gradlew` directly, never kill other Java or Gradle processes.
+- Your worktree was branched from a snapshot taken while the scaffold worker was still finishing the first build. If the base project does not build for reasons outside your package (Gradle, plugin or dependency versions, a compile error in shared files), do not fix it yourself: run `git merge master` in your worktree to pick up the scaffold worker's fixes (retry every few minutes; keep writing your own code meanwhile). If master still does not build 30 minutes after you started, say so in your report and deliver code plus unit tests anyway.
+- Files that are not in git live only in the main checkout: `H:\UStaaf\native\` (llama.cpp binaries under `native/prebuilt/arm64-v8a/` when ready), `H:\UStaaf\models\` (GGUF files), `H:\UStaaf\third_party\`. Read them by absolute path.
+- Before your final report run `git merge master` once more, rebuild, and commit, so your branch merges cleanly.
