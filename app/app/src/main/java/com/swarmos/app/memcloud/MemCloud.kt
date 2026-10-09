@@ -526,7 +526,7 @@ object MemCloud {
             // a dead stream usually means a dead phone: do not wait for the next watch tick
             if (_state.value.phase == Phase.READY) {
                 val culprit = lostPeer()?.first ?: unresponsivePeer()
-                if (culprit != null) degrade(culprit, "stream failed: ${e.message}")
+                if (culprit != null) degrade(culprit, "stream failed (${e.message ?: e.javaClass.simpleName})")
             }
         }
     }

@@ -1,11 +1,13 @@
 package com.swarmos.app.sched
 
+import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
 import com.swarmos.app.llm.ChatRequest
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.header
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytesWriter
@@ -51,13 +53,20 @@ private suspend inline fun <reified T : Any> RoutingCall.answer(block: () -> T) 
     }
 }
 
-/** GET /caps, POST /chat, POST /chat-stream, POST /embed: what a phone offers to the rest of the swarm. */
-fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS) {
+/**
+ * GET /caps, POST /chat, POST /chat-stream, POST /embed: what a phone offers to the rest of the swarm.
+ * [peerName] turns the node id that signed a request into the phone's name for the live state line (null when unknown).
+ */
+fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS, peerName: (String?) -> String? = { null }) {
+    fun RoutingCall.caller(): String? = peerName(request.header(Signer.HEADER_NODE))
+
     get("/caps") { call.answer { node.caps() } }
 
     post("/chat") {
         val job = call.receiveJson<ChatJobRequest>() ?: return@post
-        call.answer { node.chat(job.jobId, job.request.toRequest(), job.model) }
+        SchedActivity.whileServing(call.caller()) {
+            call.answer { node.chat(job.jobId, job.request.toRequest(), job.model) }
+        }
     }
 
     // Server-sent events. The slot is taken before the 200 is committed, so a full phone still answers 429.
@@ -74,7 +83,9 @@ fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS) 
         }
         try {
             call.response.header(HttpHeaders.CacheControl, "no-cache")
-            call.respondBytesWriter(ContentType.Text.EventStream) { writeEvents(slot, job.request.toRequest(), streamPingMs) }
+            SchedActivity.whileServing(call.caller()) {
+                call.respondBytesWriter(ContentType.Text.EventStream) { writeEvents(slot, job.request.toRequest(), streamPingMs) }
+            }
         } finally {
             slot.close() // also runs when the caller hangs up: the next write or ping throws and ends the stream
         }
@@ -82,7 +93,9 @@ fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS) 
 
     post("/embed") {
         val job = call.receiveJson<EmbedJobRequest>() ?: return@post
-        call.answer { node.embed(job.jobId, job.texts) }
+        SchedActivity.whileServing(call.caller()) {
+            call.answer { node.embed(job.jobId, job.texts) }
+        }
     }
 }
 

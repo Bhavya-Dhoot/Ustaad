@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity() {
         if (i?.hasExtra(EXTRA_SETUP_DONE) == true) AppGraph.markSetupDone(i.getBooleanExtra(EXTRA_SETUP_DONE, false))
         // `--ez autoload false` turns "Load models at start" off (true turns it on); it is persisted and read when the service starts
         if (i?.hasExtra(EXTRA_AUTOLOAD) == true) com.swarmos.app.llm.ModelStore.setAutoload(i.getBooleanExtra(EXTRA_AUTOLOAD, true))
+        // `--ez gpu false` forces the chat model onto the CPU build (true allows the GPU build again); persisted, applies from the next chat load
+        if (i?.hasExtra(EXTRA_GPU) == true) com.swarmos.app.llm.ModelStore.setUseGpu(i.getBooleanExtra(EXTRA_GPU, true))
         // `--es activity 'Running a check (7 of 20).'` shows that line in the banner and the notification, with a Stop action; `--es activity ''` clears it (debug builds only)
         if (BuildConfig.DEBUG && i?.hasExtra(EXTRA_ACTIVITY) == true) {
             val line = i.getStringExtra(EXTRA_ACTIVITY).orEmpty()
@@ -104,6 +106,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_NAME = "name"
         const val EXTRA_SETUP_DONE = "setupDone"
         const val EXTRA_AUTOLOAD = "autoload"
+        const val EXTRA_GPU = "gpu"
         const val EXTRA_ACTIVITY = "activity"
         const val EXTRA_GALLERY = "gallery"
         const val EXTRA_GALLERY_PAGE = "galleryPage"

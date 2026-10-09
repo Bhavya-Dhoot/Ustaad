@@ -86,6 +86,12 @@ object MemCloudLogic {
         }
     }
 
+    /** The sentence shown when the model would run on this phone alone: splitting it then costs speed and proves only the mechanism. */
+    const val SPLIT_COSTS_SPEED = "This model fits on one phone. Splitting it is slower than running it alone; it is shown only to prove the mechanism."
+
+    /** True when the whole file plus the planning overhead fits in what this phone can give ([haveMb], after its own servers stop). */
+    fun fitsOnOnePhone(fileBytes: Long, haveMb: Long): Boolean = fileBytes / (1024 * 1024) + SplitPlanner.OVERHEAD_MB <= haveMb
+
     /** Whether a new load may start from [phase] (the caller has already checked that no operation is running). */
     fun canStart(phase: Phase): Boolean = phase != Phase.READY && phase != Phase.DEGRADED
 

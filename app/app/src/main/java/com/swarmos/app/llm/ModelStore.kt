@@ -142,6 +142,18 @@ object ModelStore {
 
     private const val KEY_AUTOLOAD = "autoload"
 
+    private val _useGpu by lazy { MutableStateFlow(prefs().getBoolean(KEY_GPU, true)) }
+
+    /** "Use GPU for chat" (default on): the chat server starts on the OpenCL build and falls back to the CPU build if that fails. Applies from the next load. */
+    val useGpu: StateFlow<Boolean> get() = _useGpu
+
+    fun setUseGpu(on: Boolean) {
+        prefs().edit().putBoolean(KEY_GPU, on).apply()
+        _useGpu.value = on
+    }
+
+    private const val KEY_GPU = "use_gpu"
+
     private fun prefs() = AppGraph.appContext.getSharedPreferences("swarm_llm", Context.MODE_PRIVATE)
 
     // ---- download ----
@@ -155,6 +167,8 @@ object ModelStore {
             var lastBytes = 0L
             var lastNs = System.nanoTime()
             var rate = 0L
+            val activityKey = "download-${entry.file}"
+            ModelsActivity.set(activityKey, ModelsActivity.downloadText(0, entry.bytes), onStop = { cancelDownload(entry.file) })
             val listener = object : Downloader.Listener {
                 override fun onNetworkBytes(n: Long) { _wanBytes.value = wan.addAndGet(n) }
                 override fun onProgress(done: Long, total: Long) {
@@ -162,10 +176,14 @@ object ModelStore {
                     if (now - lastNs >= 1_000_000_000L) {
                         rate = (done - lastBytes) * 1_000_000_000L / (now - lastNs)
                         lastBytes = done; lastNs = now
+                        ModelsActivity.update(activityKey, ModelsActivity.downloadText(done, total)) // once a second: it is also a notification
                     }
                     setState(entry.file, DownloadState.Downloading(done, total, rate))
                 }
-                override fun onVerifying() { setState(entry.file, DownloadState.Verifying) }
+                override fun onVerifying() {
+                    setState(entry.file, DownloadState.Verifying)
+                    ModelsActivity.update(activityKey, "Checking a downloaded model.")
+                }
             }
             try {
                 Downloader().download(entry.url, fileOf(entry.file), entry.bytes.takeIf { it > 0 }, entry.sha256.takeIf { it.isNotEmpty() }, listener)
@@ -175,6 +193,8 @@ object ModelStore {
                 throw e
             } catch (e: Exception) {
                 setState(entry.file, DownloadState.Failed(e.message ?: e.toString()))
+            } finally {
+                ModelsActivity.end(activityKey)
             }
             refresh()
         }

@@ -4,11 +4,13 @@ import androidx.compose.runtime.Composable
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
 import com.swarmos.app.SwarmModule
+import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.request.header
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
@@ -127,6 +129,10 @@ private inline fun <reified T> audit(kind: String, v: T) {
     AppGraph.audit.append(kind, SwarmJson.encodeToJsonElement(v))
 }
 
+/** The name of the phone that signed this request, if it is in the registry. */
+private fun peerName(nodeId: String?): String? =
+    AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == nodeId }?.info?.name
+
 /** Protocol message handler: decode, audit the message in and out, respond. */
 private suspend inline fun <reified Req, reified Res> ApplicationCall.rpc(name: String, crossinline f: suspend (Req) -> Res) {
     val req = try {
@@ -135,8 +141,9 @@ private suspend inline fun <reified Req, reified Res> ApplicationCall.rpc(name: 
         return respondJson(ErrorBody("bad request: ${t.message}"), HttpStatusCode.BadRequest)
     }
     audit("choir.$name.in", req)
+    val from = request.header(Signer.HEADER_NODE)
     val res = try {
-        f(req)
+        ChoirActivity.during(ChoirActivity.solvingFor(peerName(from))) { f(req) }
     } catch (e: CancellationException) {
         throw e
     } catch (t: Throwable) {

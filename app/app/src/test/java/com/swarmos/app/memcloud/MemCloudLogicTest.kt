@@ -133,6 +133,12 @@ class MemCloudLogicTest {
         assertNull(MemCloudLogic.activityText(MemCloudState(phase = Phase.FAILED)))
     }
 
+    @Test fun aModelThatFitsOnePhoneIsFlaggedAsSlowerWhenSplit() {
+        assertTrue(MemCloudLogic.fitsOnOnePhone(2_740_937_888L, 9_000))     // 4B on a phone with 9 GB to give
+        assertFalse(MemCloudLogic.fitsOnOnePhone(18_556_686_752L, 13_621))  // 30B needs 17.7 GB of weights alone
+        assertTrue(MemCloudLogic.SPLIT_COSTS_SPEED.contains("slower"))
+    }
+
     @Test fun aNewLoadIsRefusedWhileASplitIsServingOrDegraded() {
         assertFalse(MemCloudLogic.canStart(Phase.READY))
         assertFalse(MemCloudLogic.canStart(Phase.DEGRADED))

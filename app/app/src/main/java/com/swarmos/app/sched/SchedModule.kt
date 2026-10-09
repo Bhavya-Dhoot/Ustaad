@@ -88,7 +88,7 @@ object SchedModule : SwarmModule {
     override val showInNav = false   // embedded in the Swarm screen through ThroughputPanel()
 
     override fun Route.routes() {
-        schedNodeRoutes(Sched.node)
+        schedNodeRoutes(Sched.node, peerName = { id -> AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == id }?.info?.name })
         schedBatchRoutes(Sched.batches)
         schedPhonesRoute { Sched.swarm }
         if (BuildConfig.DEBUG) {

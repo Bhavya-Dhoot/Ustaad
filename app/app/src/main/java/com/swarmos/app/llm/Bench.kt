@@ -2,6 +2,9 @@ package com.swarmos.app.llm
 
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.core.ThermalLevel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +30,8 @@ data class BenchResult(
     val thermalStart: String,
     val threads: Int?,
     val atEpochMs: Long,
+    /** "GPU" or "CPU": the llama-server build the chat model ran on. */
+    val backend: String? = null,
 )
 
 @Serializable
@@ -73,11 +78,11 @@ object Bench {
 
     /**
      * Why a benchmark must not start at [thermalStatus], or null when it may. Heavy repeated generation is refused when the
-     * shared definition (HealthMonitor.isHot: SEVERE and up) says the phone is hot; chat requests are not affected.
+     * shared definition (ThermalLevel.isTooHot: SEVERE and up) says the phone is too hot; chat requests are not affected.
      * Pure so it can be unit-tested.
      */
     fun blockReasonFor(thermalStatus: Int): String? =
-        if (HealthMonitor.isHot(thermalStatus)) {
+        if (ThermalLevel.isTooHot(thermalStatus)) {
             "Phone is ${HealthMonitor.thermalName(thermalStatus)} (thermal status $thermalStatus). Benchmark is off until it cools to MODERATE or lower."
         } else {
             null
@@ -96,9 +101,9 @@ object Bench {
         _error.value = null
         _text.value = ""
         try {
-            runOnce().also { _last.value = it }
+            announced(ModelsActivity.benchText(null, 0)) { runOnce() }.also { _last.value = it }
         } catch (e: Exception) {
-            _error.value = e.message ?: e.toString()
+            _error.value = if (e is kotlinx.coroutines.CancellationException) "Benchmark stopped." else e.message ?: e.toString()
             throw e
         } finally {
             _running.value = false
@@ -112,25 +117,46 @@ object Bench {
         _error.value = null
         _sustained.value = emptyList()
         try {
-            val start = System.nanoTime()
-            val perMinute = HashMap<Int, MutableList<Double>>()
-            var lastThermal = "?"
-            while ((System.nanoTime() - start) < minutes * 60_000_000_000L) {
-                // a loop of generations must never keep a hot phone busy: stop as soon as the guard trips
-                blockReason()?.let { _error.value = "Stopped after ${perMinute.size} min: $it"; return@withLock _sustained.value }
-                val r = runOnce()
-                _last.value = r
-                lastThermal = r.thermal
-                val minute = ((System.nanoTime() - start) / 60_000_000_000L).toInt().coerceAtMost(minutes - 1)
-                perMinute.getOrPut(minute) { mutableListOf() }.add(r.decodeTokPerSec)
-                _sustained.value = perMinute.toSortedMap().map { (m, v) -> SustainedPoint(m + 1, v.average(), lastThermal) }
+            announced(ModelsActivity.benchText(1, minutes)) {
+                val start = System.nanoTime()
+                val perMinute = HashMap<Int, MutableList<Double>>()
+                var lastThermal = "?"
+                while ((System.nanoTime() - start) < minutes * 60_000_000_000L) {
+                    // a loop of generations must never keep a hot phone busy: stop as soon as the guard trips
+                    blockReason()?.let { _error.value = "Stopped after ${perMinute.size} min: $it"; return@announced _sustained.value }
+                    val now = ((System.nanoTime() - start) / 60_000_000_000L).toInt().coerceAtMost(minutes - 1)
+                    ModelsActivity.update(BENCH_KEY, ModelsActivity.benchText(now + 1, minutes))
+                    val r = runOnce()
+                    _last.value = r
+                    lastThermal = r.thermal
+                    val minute = ((System.nanoTime() - start) / 60_000_000_000L).toInt().coerceAtMost(minutes - 1)
+                    perMinute.getOrPut(minute) { mutableListOf() }.add(r.decodeTokPerSec)
+                    _sustained.value = perMinute.toSortedMap().map { (m, v) -> SustainedPoint(m + 1, v.average(), lastThermal) }
+                }
+                _sustained.value
             }
-            _sustained.value
         } catch (e: Exception) {
-            _error.value = e.message ?: e.toString()
+            _error.value = if (e is kotlinx.coroutines.CancellationException) "Benchmark stopped." else e.message ?: e.toString()
             throw e
         } finally {
             _running.value = false
+        }
+    }
+
+    private const val BENCH_KEY = "bench"
+
+    /**
+     * Runs [block] while the phone's activity banner says [text]; the banner's Stop action cancels the block (the
+     * chat stream is cancelled with it, so llama-server frees the slot). The cancellation reaches the caller as a
+     * CancellationException, the banner entry is removed in every case.
+     */
+    private suspend fun <T> announced(text: String, block: suspend () -> T): T = coroutineScope {
+        val work = async { block() }
+        ModelsActivity.set(BENCH_KEY, text, onStop = { work.cancel() })
+        try {
+            work.await()
+        } finally {
+            ModelsActivity.end(BENCH_KEY)
         }
     }
 
@@ -173,6 +199,7 @@ object Bench {
             thermalStart = thermalStart,
             threads = threads,
             atEpochMs = System.currentTimeMillis(),
+            backend = st.backend?.name,
         )
     }
 }

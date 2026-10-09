@@ -1,6 +1,6 @@
 package com.swarmos.app.sched
 
-import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.core.ThermalLevel
 
 /** Ranks phones from their [Caps]. Higher is better; [Double.NEGATIVE_INFINITY] means "never use for this request". */
 object Scheduler {
@@ -12,9 +12,9 @@ object Scheduler {
     /** Pushes a degraded phone below every healthy one while keeping the faster degraded phone first. */
     const val DEGRADED_OFFSET = 1_000_000.0
 
-    /** Hot by the app's one definition ([HealthMonitor.isHot], the HOT stamp), or under 15 % battery and not charging. */
+    /** Too hot by the app's one definition ([ThermalLevel.isTooHot], the HOT stamp), or under 15 % battery and not charging. */
     fun isDegraded(caps: Caps): Boolean =
-        HealthMonitor.isHot(caps.thermalStatus) || (caps.batteryPct in 0 until LOW_BATTERY_PCT && !caps.charging)
+        ThermalLevel.isTooHot(caps.thermalStatus) || (caps.batteryPct in 0 until LOW_BATTERY_PCT && !caps.charging)
 
     /**
      * Measured decode tokens/s, divided by 1 + queued jobs; degraded phones are used last. A phone with capacity 0

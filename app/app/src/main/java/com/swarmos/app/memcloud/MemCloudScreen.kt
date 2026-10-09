@@ -177,6 +177,7 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
             if (info.isMoe) MetricRow("Experts per layer, used per token", "${info.expertCount} / ${info.expertUsedCount}")
             MetricRow("Free on this phone", gb(ownAvail * 1048576), "GB")
         }
+        if (MemCloudLogic.fitsOnOnePhone(info.fileBytes, ownAvail)) ErrorNote(MemCloudLogic.SPLIT_COSTS_SPEED)
         SectionTitle("Where the layers go")
         LayerStrip(plan.assignments(), List(plan.nLayers) { true })
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -340,6 +341,11 @@ private fun RunningView(st: MemCloudState, onExpert: () -> Unit) {
         g?.ttftMs?.let { MetricRow("Time to first token", "%.2f".format(it / 1000.0), "s") }
         for (p in st.phones.filter { !it.isDriver }) p.rttMs?.let { MetricRow("Round trip to ${p.name}", "%.1f".format(it), "ms") }
         st.boundariesPerToken?.let { MetricRow("Phone boundaries per token", it.toString()) }
+    }
+    val alone = st.shares.firstOrNull()?.let { MemCloudLogic.fitsOnOnePhone(st.fileBytes ?: Long.MAX_VALUE, it.haveMb) } == true
+    if (alone) {
+        ErrorNote(MemCloudLogic.SPLIT_COSTS_SPEED)
+        st.smallModel?.let { Text("Alone on this phone: ${tok(it.tokPerSec)} tok/s (${it.name}).", style = SwarmType.mono.copy(fontSize = 12.sp)) }
     }
     if (n > 0) LayerStrip(shareAssignments(st.shares, n), List(n) { true })
     SwarmTextField(prompt, { prompt = it }, "Ask the split model", singleLine = false)

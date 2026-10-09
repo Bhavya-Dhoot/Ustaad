@@ -42,14 +42,18 @@ data class ServerStatus(
     val notice: String? = null,
     /** Automatic restarts used in the current failure episode (0 or 1). */
     val restarts: Int = 0,
+    /** Which llama-server build this CHAT server runs on (GPU = OpenCL, CPU = i8mm); null for the other roles and while stopped. */
+    val backend: Backend? = null,
 ) {
     /** File name without extension, e.g. "Qwen3.5-4B-Q4_K_M"; null for RPC or when stopped. */
     val modelName: String? get() = modelPath?.let { File(it).name.removeSuffix(".gguf") }
 }
 
 /**
- * Launches and supervises the shipped llama.cpp binaries (libllama-server.so, librpc-server.so) as child processes
- * of the app, from nativeLibraryDir (the only place an app may exec from). One process per [Role].
+ * Launches and supervises the shipped llama.cpp binaries (libllama-server.so, libllama-server-gpu.so, librpc-server.so) as
+ * child processes of the app, from nativeLibraryDir (the only place an app may exec from). One process per [Role].
+ * CHAT starts on the OpenCL (GPU) build and falls back to the CPU build when that does not get READY ([BackendPlan]);
+ * [ServerStatus.backend] says which one runs. The embedder, rpc-server and a split chat server (`--rpc`) use the CPU build.
  *
  * Public API for other modules (MemoryCloud, Choir, Data Union):
  *  - [start] / [stop] / [stopAll] / [status] / [statusOf] / [logTail] / [rssKb] / [lastStats]
@@ -59,6 +63,9 @@ data class ServerStatus(
 object LlamaRuntime {
     private const val TAG = "LlamaRuntime"
     private const val READY_TIMEOUT_MS = 300_000L
+
+    /** The GPU build compiles kernels at its first start (a few seconds) and loads the weights into GPU buffers; past this the CPU build takes over. */
+    private const val GPU_READY_TIMEOUT_MS = 120_000L
     private const val LOG_FILE_CAP = 8L * 1024 * 1024
 
     /** How long to wait for a killed orphan to vanish from /proc before its port is checked. */
@@ -76,7 +83,8 @@ object LlamaRuntime {
     /** Held while a child is being launched and published in [running], and while orphans are scanned (an orphan scan must not kill a child that is about to be published). */
     private val procLock = Any()
 
-    private class StartConfig(val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>, val readyTimeoutMs: Long = READY_TIMEOUT_MS)
+    /** [cpuOnly]: skip the GPU build (set when a server that had fallen back to the CPU is restarted). */
+    private data class StartConfig(val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>, val cpuOnly: Boolean = false, val readyTimeoutMs: Long = READY_TIMEOUT_MS)
 
     private class Running(
         val role: Role,
@@ -84,6 +92,7 @@ object LlamaRuntime {
         val ring: LogRing,
         val startedNs: Long,
         val cfg: StartConfig,
+        val backend: Backend,
     ) {
         @Volatile var stopRequested = false
         @Volatile var wasReady = false
@@ -123,8 +132,8 @@ object LlamaRuntime {
                 val chat = st.getValue(Role.CHAT)
                 syncClient(Role.CHAT, chat, AppGraph.llm) { AppGraph.llm = it }
                 syncClient(Role.EMBED, st.getValue(Role.EMBED), AppGraph.embedder) { AppGraph.embedder = it }
-                // the scheduler accepts as many parallel chat jobs as the chat server has slots, none while there is no server
-                val cap = if (chat.state == ServerState.READY) LlamaArgs.slots(chat.args) else 0
+                // one scheduler job at a time while the chat server is READY (parallel slots add no throughput), none otherwise
+                val cap = if (chat.state == ServerState.READY) LlamaArgs.SCHED_CAPACITY else 0
                 if (cap != schedCapacity) {
                     schedCapacity = cap
                     Sched.setCapacity(cap)
@@ -202,11 +211,26 @@ object LlamaRuntime {
     ): Deferred<ServerStatus> {
         // A newer start or a stop() after this point cancels this start; a pending automatic restart is superseded too.
         val epoch = epochs.getValue(role).incrementAndGet()
-        val cfg = StartConfig(modelPath, extraArgs, port, env, readyTimeoutMs)
+        val cfg = StartConfig(modelPath, extraArgs, port, env, readyTimeoutMs = readyTimeoutMs)
         return scope.async { startInternal(role, cfg, epoch, auto = false) }
     }
 
-    private suspend fun startInternal(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus = locks.getValue(role).withLock {
+    /** Result of launching one server process: [retry] is true when the process failed for a reason worth trying the next backend for. */
+    private class Attempt(val status: ServerStatus, val retry: Boolean)
+
+    /** Announces the load on the phone's activity banner (with a Stop action) while it queues and runs, then starts under the role lock. */
+    private suspend fun startInternal(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus {
+        val text = ModelsActivity.loadText(role) ?: return startLocked(role, cfg, epoch, auto)
+        val key = ModelsActivity.loadKey(role) + "-$epoch" // one entry per start: a superseded start must not clear the newer one
+        ModelsActivity.set(key, text, onStop = { stop(role) })
+        try {
+            return startLocked(role, cfg, epoch, auto)
+        } finally {
+            ModelsActivity.end(key)
+        }
+    }
+
+    private suspend fun startLocked(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus = locks.getValue(role).withLock {
         val modelPath = cfg.modelPath
         val port = cfg.port
         if (epochs.getValue(role).get() != epoch) return@withLock statusOf(role) // stopped before this start began
@@ -214,23 +238,51 @@ object LlamaRuntime {
         stopProcess(role) // waits until the old process is gone, so its port is free
         val ctx = AppGraph.appContext
         if (!serviceUp) return@withLock fail(role, "SwarmService is not running", modelPath, port)
-        val bin = File(ctx.applicationInfo.nativeLibraryDir, role.binary)
-        if (!bin.exists()) return@withLock fail(role, "${role.binary} is not in the APK (nativeLibraryDir ${bin.parent})", modelPath, port)
         if (role != Role.RPC && (modelPath == null || !File(modelPath).isFile)) {
             return@withLock fail(role, "model file not found: $modelPath", modelPath, port)
         }
-        if (!ensurePortFree(role, port)) {
-            return@withLock fail(role, "port $port is still in use after two retries (another app or an adb shell process holds it)", modelPath, port)
+        val libDir = File(ctx.applicationInfo.nativeLibraryDir)
+        val plan = BackendPlan.choose(role, cfg.extraArgs, ModelStore.useGpu.value, File(libDir, LlamaArgs.GPU_BINARY).exists(), cfg.cpuOnly)
+        var fallbackNote: String? = null
+        var last = statusOf(role)
+        for (backend in plan) {
+            val a = launchAttempt(role, cfg, epoch, auto, prior, backend, libDir, fallbackNote)
+            last = a.status
+            if (!a.retry) return@withLock last
+            // The GPU server did not get READY: say so, then try the CPU build (the next entry of the plan).
+            fallbackNote = "The GPU server failed (${last.reason?.take(160) ?: "unknown reason"}). Running on the CPU build."
         }
-        if (epochs.getValue(role).get() != epoch) return@withLock statusOf(role)
-        val args = LlamaArgs.build(role, modelPath, port, cfg.extraArgs)
+        last
+    }
+
+    /**
+     * Launches [role] once on [backend] and waits for READY. A GPU attempt that fails (exec error, exit, no health, a failing
+     * first request) reports `retry = true`; stops, supersession and CPU failures do not.
+     */
+    private suspend fun launchAttempt(
+        role: Role, cfg: StartConfig, epoch: Int, auto: Boolean, prior: ServerStatus,
+        backend: Backend, libDir: File, fallbackNote: String?,
+    ): Attempt {
+        val ctx = AppGraph.appContext
+        val modelPath = cfg.modelPath
+        val port = cfg.port
+        val gpu = backend == Backend.GPU
+        val shownBackend = if (role == Role.CHAT) backend else null
+        val retryOnFail = gpu
+        val bin = File(libDir, LlamaArgs.binaryFor(role, backend))
+        if (!bin.exists()) return Attempt(fail(role, "${bin.name} is not in the APK (nativeLibraryDir ${bin.parent})", modelPath, port, shownBackend), retryOnFail)
+        if (!ensurePortFree(role, port)) {
+            return Attempt(fail(role, "port $port is still in use after two retries (another app or an adb shell process holds it)", modelPath, port, shownBackend), false)
+        }
+        if (epochs.getValue(role).get() != epoch) return Attempt(statusOf(role), false)
+        val args = LlamaArgs.build(role, modelPath, port, cfg.extraArgs, backend)
         val cmd = listOf(bin.absolutePath) + args
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
         val ring = LogRing()
         val restarts = if (auto) prior.restarts else 0
-        val startingNotice = if (auto) prior.notice else null
+        val startingNotice = fallbackNote ?: if (auto) prior.notice else null
         setStatus(role) {
-            ServerStatus(role, ServerState.STARTING, null, modelPath, port, null, args, System.currentTimeMillis(), null, startingNotice, restarts)
+            ServerStatus(role, ServerState.STARTING, null, modelPath, port, null, args, System.currentTimeMillis(), null, startingNotice, restarts, shownBackend)
         }
         val run: Running
         synchronized(procLock) {
@@ -245,9 +297,9 @@ object LlamaRuntime {
                     }
                     .start()
             } catch (e: Exception) {
-                return@withLock fail(role, "cannot exec ${bin.name}: ${e.message}", modelPath, port)
+                return Attempt(fail(role, "cannot exec ${bin.name}: ${e.message}", modelPath, port, shownBackend), retryOnFail)
             }
-            run = Running(role, proc, ring, System.nanoTime(), cfg)
+            run = Running(role, proc, ring, System.nanoTime(), cfg, backend)
             running[role] = run
         }
         val proc = run.process
@@ -256,47 +308,60 @@ object LlamaRuntime {
             run.stopRequested = true
             running.remove(role, run)
             killProcess(proc)
-            return@withLock statusOf(role)
+            return Attempt(statusOf(role), false)
         }
         val pid = pidOf(proc)
         setStatus(role) { it.copy(pid = pid) }
-        Log.i(TAG, "${role.tag}: started pid=$pid ${cmd.joinToString(" ")}")
+        Log.i(TAG, "${role.tag}: started on $backend pid=$pid ${cmd.joinToString(" ")}")
         pump(run, logFile)
         watchExit(run)
 
-        // wait for readiness
-        val deadline = System.nanoTime() + cfg.readyTimeoutMs * 1_000_000
+        // wait for readiness (the GPU build gets a shorter deadline: the CPU fallback is waiting)
+        val deadlineMs = if (gpu) GPU_READY_TIMEOUT_MS else cfg.readyTimeoutMs
+        val deadline = System.nanoTime() + deadlineMs * 1_000_000
         while (System.nanoTime() < deadline) {
             if (!proc.isAlive) break
             if (epochs.getValue(role).get() != epoch) { // stopped, or superseded by a newer start: stop loading at once
                 run.stopRequested = true
                 running.remove(role, run)
                 killProcess(proc)
-                return@withLock statusOf(role)
+                return Attempt(statusOf(role), false)
             }
             if (probe(role, port)) {
                 // A health answer only counts if OUR process is still alive a moment later (guards against a foreign server on the port).
                 delay(400)
                 if (!proc.isAlive || !probe(role, port)) continue
-                warmUp(role, port)
-                if (run.stopRequested || epochs.getValue(role).get() != epoch) return@withLock statusOf(role)
+                val warmOk = warmUp(role, port)
+                if (run.stopRequested || epochs.getValue(role).get() != epoch) return Attempt(statusOf(role), false)
+                if (!proc.isAlive) break
+                if (gpu && !warmOk) { // READY on paper, but the first generation failed on the GPU: use the CPU build instead
+                    run.stopRequested = true
+                    running.remove(role, run)
+                    killProcess(proc)
+                    waitFor(proc, 4_000)
+                    return Attempt(fail(role, "the first request failed on the GPU", modelPath, port, shownBackend), true)
+                }
                 val ms = (System.nanoTime() - run.startedNs) / 1_000_000
                 run.wasReady = true
-                val doneNotice = if (auto) "Restarted automatically after the server was killed." else null
+                val doneNotice = fallbackNote ?: if (auto) "Restarted automatically after the server was killed." else null
                 setStatus(role) { it.copy(state = ServerState.READY, readyAfterMs = ms, notice = doneNotice) }
-                Log.i(TAG, "${role.tag}: READY after $ms ms")
-                return@withLock statusOf(role)
+                Log.i(TAG, "${role.tag}: READY on $backend after $ms ms")
+                return Attempt(statusOf(role), false)
             }
             delay(300)
         }
         if (proc.isAlive) {
             run.stopRequested = true
+            running.remove(role, run)
             killProcess(proc)
-            return@withLock fail(role, "not ready after ${cfg.readyTimeoutMs / 1000} s; ${ring.tail(1).lastOrNull().orEmpty()}", modelPath, port)
+            waitFor(proc, 4_000)
+            return Attempt(fail(role, "not ready after ${deadlineMs / 1000} s; ${ring.tail(1).lastOrNull().orEmpty()}", modelPath, port, shownBackend), retryOnFail)
         }
-        if (run.stopRequested) return@withLock statusOf(role)
+        if (run.stopRequested) return Attempt(statusOf(role), false)
+        run.stopRequested = true // the exit is reported here, not by watchExit
+        running.remove(role, run)
         val code = runCatching { proc.exitValue() }.getOrDefault(-1)
-        fail(role, "${ProcInfo.describeExit(code)} during start; last log: ${ring.tail(3).joinToString(" | ")}", modelPath, port)
+        return Attempt(fail(role, "${ProcInfo.describeExit(code)} during start; last log: ${ring.tail(3).joinToString(" | ")}", modelPath, port, shownBackend), retryOnFail)
     }
 
     /**
@@ -367,11 +432,11 @@ object LlamaRuntime {
         return false
     }
 
-    private fun fail(role: Role, reason: String, modelPath: String?, port: Int): ServerStatus {
+    private fun fail(role: Role, reason: String, modelPath: String?, port: Int, backend: Backend? = null): ServerStatus {
         Log.e(TAG, "${role.tag}: FAILED: $reason")
         setStatus(role) {
             val note = if (it.restarts > 0) "The automatic restart failed. Tap Load to start it again." else null
-            ServerStatus(role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs, null, note, it.restarts)
+            ServerStatus(role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs, null, note, it.restarts, backend)
         }
         return statusOf(role)
     }
@@ -423,6 +488,7 @@ object LlamaRuntime {
             val code = run.process.waitFor()
             val aliveMs = (System.nanoTime() - run.startedNs) / 1_000_000
             if (run.stopRequested) return@launch
+            if (!run.wasReady) return@launch // a server that dies while it starts is reported (and, for the GPU build, retried on the CPU) by its start
             val last = run.ring.tail(3).joinToString(" | ")
             val what = ProcInfo.describeExit(code)
             val reason = "$what after ${aliveMs / 1000} s; last log: $last"
@@ -431,8 +497,7 @@ object LlamaRuntime {
             val role = run.role
             val cfg = run.cfg
             setStatus(role) {
-                // a server that never got ready was reported by its start; keep that note, otherwise the decision below sets one
-                ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, if (run.wasReady) null else it.notice, it.restarts)
+                ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, null, it.restarts, it.backend)
             }
             val epoch = epochs.getValue(role).get()
             when (val d = RestartPolicy.decide(role, run.wasReady, serviceUp, statusOf(role).restarts, aliveMs, cfg.extraArgs)) {
@@ -449,24 +514,35 @@ object LlamaRuntime {
                         )
                     }
                     delay(d.delayMs)
-                    if (serviceUp && epochs.getValue(role).get() == epoch) startInternal(role, cfg, epoch, auto = true)
+                    // a GPU server that was killed is restarted on the GPU (with the CPU fallback); a CPU server stays on the CPU
+                    val again = cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU)
+                    if (serviceUp && epochs.getValue(role).get() == epoch) startInternal(role, again, epoch, auto = true)
                 }
             }
         }
     }
 
-    /** One 1-token request so the weights are paged in before the server is reported READY. Failures are ignored. */
-    private fun warmUp(role: Role, port: Int) {
+    /**
+     * One 1-token request so the weights are paged in before the server is reported READY. True when the server answered
+     * with a 2xx (always true for RPC). A failing warm-up is ignored on the CPU build and sends the GPU build to the CPU fallback.
+     */
+    private fun warmUp(role: Role, port: Int): Boolean {
         val (path, body) = when (role) {
             Role.CHAT -> "/v1/chat/completions" to
                 """{"messages":[{"role":"user","content":"Hi"}],"max_tokens":1,"temperature":0,"chat_template_kwargs":{"enable_thinking":false}}"""
             Role.EMBED -> "/v1/embeddings" to """{"input":["warm up"]}"""
-            Role.RPC -> return
+            Role.RPC -> return true
         }
-        try {
+        return try {
             val c = LlamaHttp.post("http://127.0.0.1:$port$path", body, 120_000)
-            try { LlamaHttp.readBody(c) } finally { c.disconnect() }
+            try {
+                LlamaHttp.readBody(c)
+                c.responseCode in 200..299
+            } finally {
+                c.disconnect()
+            }
         } catch (_: Exception) {
+            false
         }
     }
 
@@ -523,7 +599,7 @@ object LlamaRuntime {
             if (pid == mine) continue
             val cmd = try { File(d, "cmdline").readText() } catch (_: Exception) { continue }
             val exe = cmd.substringBefore('\u0000')
-            if (exe.endsWith("libllama-server.so") || exe.endsWith("librpc-server.so")) {
+            if (exe.endsWith("libllama-server.so") || exe.endsWith(LlamaArgs.GPU_BINARY) || exe.endsWith("librpc-server.so")) {
                 if (running.values.none { pidOf(it.process) == pid.toLong() }) {
                     Log.w(TAG, "killing orphan $exe pid=$pid")
                     AndroidProcess.killProcess(pid)
