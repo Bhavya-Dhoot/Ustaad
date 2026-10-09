@@ -186,7 +186,7 @@ class JobExecutorTest {
     }
 
     @Test fun nodeCapacityOneAnswersBusyToAConcurrentDistinctJob() = runBlocking {
-        val phone = FakePhone("p", TestLlm(delayMs = 150), scope)
+        val phone = FakePhone("p", TestLlm(delayMs = 2000) /* long enough that the second call always lands while the first is running, even on a loaded machine */, scope)
         val first = async { phone.node.chat("a", req("one")) }
         while (phone.node.chatExec.running == 0) delay(2)
         try {
