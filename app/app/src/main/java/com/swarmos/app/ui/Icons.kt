@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** The one line-icon family of the app: drawn on a 24 unit grid with a 1.5 dp round stroke. */
-enum class SwarmIcon { Swarm, Models, Choir, Data, Memory, Plus, Join, Gauge }
+enum class SwarmIcon { Swarm, Models, Choir, Data, Memory, Plus, Join, Gauge, Nearby, Bell, Battery, Check, Play }
 
 /** Bottom bar icon for a module id ("link", "models", "choir", "pdu", "memcloud"). */
 fun iconForModule(id: String): SwarmIcon = when (id) {
@@ -106,6 +106,42 @@ private fun DrawScope.drawLineIcon(icon: SwarmIcon, tint: Color) {
                 topLeft = p(2.5f, 3f), size = Size(19f * s, 19f * s), style = stroke,
             )
             line(12f, 12.5f, 16.5f, 7.5f)
+        }
+        SwarmIcon.Nearby -> {
+            drawCircle(tint, 1.6f * s, p(12f, 12f), style = stroke)
+            for (r in listOf(5.5f, 9.5f)) {
+                for (start in listOf(-50f, 130f)) {
+                    drawArc(
+                        tint, startAngle = start, sweepAngle = 100f, useCenter = false,
+                        topLeft = p(12f - r, 12f - r), size = Size(2f * r * s, 2f * r * s), style = stroke,
+                    )
+                }
+            }
+        }
+        SwarmIcon.Bell -> {
+            val bell = Path().apply {
+                moveTo(5f * s, 17.5f * s)
+                lineTo(6.8f * s, 15.8f * s)
+                lineTo(6.8f * s, 10.5f * s)
+                cubicTo(6.8f * s, 7.5f * s, 9f * s, 5.5f * s, 12f * s, 5.5f * s)
+                cubicTo(15f * s, 5.5f * s, 17.2f * s, 7.5f * s, 17.2f * s, 10.5f * s)
+                lineTo(17.2f * s, 15.8f * s)
+                lineTo(19f * s, 17.5f * s)
+                close()
+            }
+            drawPath(bell, tint, style = stroke)
+            line(12f, 3.2f, 12f, 5.5f)
+            poly(10f, 19.8f, 10.6f, 20.8f, 13.4f, 20.8f, 14f, 19.8f)
+        }
+        SwarmIcon.Battery -> {
+            box(2.5f, 7f, 16f, 10f, 2f)
+            line(21.5f, 10.5f, 21.5f, 13.5f)
+            poly(11.8f, 9f, 8.5f, 12.6f, 12.5f, 12.6f, 9.5f, 15.5f)
+        }
+        SwarmIcon.Check -> poly(5f, 12.5f, 10f, 17.5f, 19f, 7f)
+        SwarmIcon.Play -> {
+            drawCircle(tint, 9f * s, p(12f, 12f), style = stroke)
+            poly(10f, 8f, 10f, 16f, 16.5f, 12f, close = true)
         }
     }
 }

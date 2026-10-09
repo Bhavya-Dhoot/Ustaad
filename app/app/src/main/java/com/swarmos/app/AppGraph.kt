@@ -51,6 +51,14 @@ object AppGraph {
     /** HMAC key shared by paired nodes. Replace via [setPairingSecret] (QR pairing will call it). */
     val pairingSecret: String get() = secret
 
+    /** False until the first-run setup is completed or skipped (stored in [SwarmPrefs]). */
+    var setupDone by mutableStateOf(true)
+        private set
+
+    /** In-app "Remove animations" preference; `rememberAnimationsEnabled()` honours it besides the system setting. */
+    var removeAnimations by mutableStateOf(false)
+        private set
+
     val registry: NodeRegistry by lazy { NodeRegistry(buildSelf()) }
     val health: HealthMonitor by lazy { HealthMonitor(appContext) { registry.self.value.nodeId } }
     val audit: AuditLog by lazy { AuditLog(File(appContext.filesDir, "audit.jsonl")) }
@@ -67,6 +75,10 @@ object AppGraph {
         prefs = SwarmPrefs(appContext)
         val (name, savedSecret) = runBlocking(Dispatchers.IO) { prefs.name() to prefs.secret() }
         storedName = name
+        runBlocking(Dispatchers.IO) { prefs.setupDone() to prefs.removeAnimations() }.let { (done, remove) ->
+            setupDone = done
+            removeAnimations = remove
+        }
         secret = savedSecret ?: if (BuildConfig.DEBUG) DEV_SECRET else randomSecret().also {
             ioScope.launch { prefs.setSecret(it) }
         }
@@ -94,6 +106,19 @@ object AppGraph {
         secret = newSecret
         ioScope.launch { prefs.setSecret(newSecret) }
         audit.append("pairing.secret_set") // the secret itself is never logged
+    }
+
+    /** New random secret; every paired phone has to pair again. */
+    fun resetPairingSecret() = setPairingSecret(randomSecret())
+
+    fun markSetupDone(done: Boolean) {
+        setupDone = done
+        ioScope.launch { prefs.setSetupDone(done) }
+    }
+
+    fun markAnimationsRemoved(remove: Boolean) {
+        removeAnimations = remove
+        ioScope.launch { prefs.setRemoveAnimations(remove) }
     }
 
     @SuppressLint("HardwareIds")

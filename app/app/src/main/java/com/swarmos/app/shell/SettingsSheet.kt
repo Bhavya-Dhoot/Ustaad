@@ -1,0 +1,300 @@
+package com.swarmos.app.shell
+
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.swarmos.app.AppGraph
+import com.swarmos.app.BuildConfig
+import com.swarmos.app.core.AuditVerify
+import com.swarmos.app.ui.ErrorNote
+import com.swarmos.app.ui.Hairline
+import com.swarmos.app.ui.PhoneToken
+import com.swarmos.app.ui.PrimaryButton
+import com.swarmos.app.ui.SecondaryButton
+import com.swarmos.app.ui.Stamp
+import com.swarmos.app.ui.SwarmColors
+import com.swarmos.app.ui.SwarmShape
+import com.swarmos.app.ui.SwarmTextField
+import com.swarmos.app.ui.SwarmType
+import com.swarmos.app.ui.phoneLetter
+import com.swarmos.app.ui.rememberAnimationsEnabled
+import com.swarmos.app.ui.underlinePath
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
+
+private val SheetShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+
+/** "Phone A", "Phone B", "Phone C" in the order of the identity picker. */
+internal val PHONE_IDENTITIES = listOf("Phone A", "Phone B", "Phone C")
+
+/**
+ * Settings, opened from the status strip: phone name, identity (A, B, C sets the name and with it the
+ * marker colour), pairing secret, remove animations, audit log check and the app version.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsSheet(onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val self by AppGraph.registry.self.collectAsStateWithLifecycle()
+    var name by remember { mutableStateOf(self.name) }
+    fun close() {
+        scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = SheetShape,
+        containerColor = SwarmColors.sheet,
+        contentColor = SwarmColors.ink,
+        scrimColor = SwarmColors.ink.copy(alpha = 0.2f),
+        dragHandle = null,
+    ) {
+        Column(Modifier.fillMaxWidth().drawBehind { drawSheetEdge() }) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(width = 40.dp, height = 4.dp).background(SwarmColors.ink, CircleShape))
+            }
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                    Text("Settings", style = SwarmType.display)
+                    Wordmark(Modifier.padding(bottom = 4.dp))
+                }
+                Hairline()
+                SwarmTextField(
+                    value = name,
+                    onValueChange = { name = it.take(32) },
+                    label = "Phone name",
+                    error = if (name.isBlank()) "Give this phone a name." else null,
+                )
+                IdentityPicker(selected = phoneLetter(name), onPick = { name = it })
+                Hairline()
+                PairingSecretRow()
+                RemoveAnimationsRow()
+                AuditLogCard()
+                Text("Ustaad ${BuildConfig.VERSION_NAME}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
+                PrimaryButton(
+                    "Save changes",
+                    onClick = {
+                        if (name.isNotBlank()) AppGraph.setNodeName(name)
+                        close()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = name.isNotBlank(),
+                )
+            }
+        }
+    }
+}
+
+/** 1.5 dp Ink edge along the top and both sides of the sheet (an open path: the bottom is off screen). */
+private fun DrawScope.drawSheetEdge() {
+    val half = 0.75.dp.toPx()
+    val r = 16.dp.toPx()
+    val path = Path().apply {
+        moveTo(half, size.height)
+        lineTo(half, r)
+        arcTo(Rect(half, half, half + 2 * r, half + 2 * r), 180f, 90f, false)
+        lineTo(size.width - r, half)
+        arcTo(Rect(size.width - half - 2 * r, half, size.width - half, half + 2 * r), 270f, 90f, false)
+        lineTo(size.width - half, size.height)
+    }
+    drawPath(path, SwarmColors.ink, style = Stroke(1.5.dp.toPx()))
+}
+
+/** The three phone tokens; the picked one has a second ring. Picking sets the name to "Phone A/B/C". */
+@Composable
+private fun IdentityPicker(selected: Char?, onPick: (String) -> Unit) {
+    Column {
+        Text("Identity", style = SwarmType.label.copy(color = SwarmColors.graphite))
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            PHONE_IDENTITIES.forEach { phone ->
+                val isSelected = phone.last() == selected
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clickable(role = Role.RadioButton) { onPick(phone) }
+                        .semantics {
+                            contentDescription = phone
+                            this.selected = isSelected
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier.size(42.dp).then(if (isSelected) Modifier.border(1.5.dp, SwarmColors.ink, CircleShape) else Modifier),
+                        contentAlignment = Alignment.Center,
+                    ) { PhoneToken(phone, 32.dp) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PairingSecretRow() {
+    var confirming by remember { mutableStateOf(false) }
+    var wasReset by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text("Pairing secret", style = SwarmType.body.copy(fontWeight = FontWeight.W500))
+                Text("••••••••", style = SwarmType.mono.copy(color = SwarmColors.graphite))
+            }
+            SecondaryButton("Reset", onClick = { confirming = true; wasReset = false }, enabled = !confirming)
+        }
+        if (confirming) {
+            ErrorNote("A new secret means every paired phone has to pair with this one again.")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SecondaryButton("Cancel", onClick = { confirming = false })
+                SecondaryButton("Reset secret", onClick = {
+                    AppGraph.resetPairingSecret()
+                    confirming = false
+                    wasReset = true
+                })
+            }
+        } else if (wasReset) {
+            Text("New secret set. Pair the other phones again.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+        }
+    }
+}
+
+@Composable
+private fun RemoveAnimationsRow() {
+    val removed = AppGraph.removeAnimations
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = removed, role = Role.Switch, onValueChange = { AppGraph.markAnimationsRemoved(it) }),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text("Remove animations", style = SwarmType.body.copy(fontWeight = FontWeight.W500))
+            Text("Stamps and lines show only their final state.", style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite))
+        }
+        InkSwitch(removed)
+    }
+}
+
+/** Flat switch: Smudge track when off, Ink when on, round Sheet knob with an Ink outline. */
+@Composable
+private fun InkSwitch(checked: Boolean) {
+    val animate = rememberAnimationsEnabled()
+    val knobX by animateDpAsState(if (checked) 20.dp else 0.dp, if (animate) tween(120) else snap(), label = "knob")
+    Box(Modifier.size(width = 52.dp, height = 48.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .size(width = 44.dp, height = 26.dp)
+                .background(if (checked) SwarmColors.ink else SwarmColors.smudge, CircleShape)
+                .border(1.5.dp, SwarmColors.ink, CircleShape)
+                .padding(2.5.dp),
+        ) {
+            Box(Modifier.offset(x = knobX).size(18.dp).background(SwarmColors.sheet, CircleShape).border(1.5.dp, SwarmColors.ink, CircleShape))
+        }
+    }
+}
+
+@Composable
+private fun AuditLogCard() {
+    val scope = rememberCoroutineScope()
+    var count by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(Unit) { count = withContext(Dispatchers.IO) { AppGraph.audit.entries().size } }
+    var result by remember { mutableStateOf<AuditVerify?>(null) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(SwarmColors.sheet, SwarmShape)
+            .border(1.5.dp, SwarmColors.ink, SwarmShape)
+            .padding(12.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text("Audit log", style = SwarmType.label.copy(color = SwarmColors.graphite))
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    count?.let { String.format(Locale.US, "%,d %s", it, if (it == 1) "entry" else "entries") } ?: " ",
+                    Modifier
+                        .drawWithCache {
+                            val path = underlinePath(-2.dp.toPx(), size.width + 4.dp.toPx(), size.height - 1.dp.toPx(), 2.dp.toPx(), seed = 21)
+                            val stroke = Stroke(2.dp.toPx(), cap = StrokeCap.Round)
+                            onDrawBehind { drawPath(path, SwarmColors.ink, style = stroke) }
+                        }
+                        .padding(bottom = 5.dp),
+                    style = SwarmType.mono.copy(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.W700),
+                )
+            }
+            SecondaryButton("Verify", onClick = {
+                scope.launch {
+                    withContext(Dispatchers.IO) { AppGraph.audit.entries().size to AppGraph.audit.verify() }.let { (n, r) ->
+                        count = n
+                        result = r
+                    }
+                }
+            })
+        }
+        result?.let { r ->
+            Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                key(r) { Stamp(if (r.ok) "Chain OK" else "Chain broken", caution = !r.ok) }
+                if (!r.ok) {
+                    Spacer(Modifier.width(10.dp))
+                    ErrorNote("First bad entry: ${r.badLine}", Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
