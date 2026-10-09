@@ -101,6 +101,7 @@ private fun ModelsPage(onBench: () -> Unit) {
     val lastStats by LlamaRuntime.lastStats.collectAsStateWithLifecycle()
     val embedMs by LlamaRuntime.lastEmbedMsPerText.collectAsStateWithLifecycle()
     val autoload by ModelStore.autoload.collectAsStateWithLifecycle()
+    val useGpu by ModelStore.useGpu.collectAsStateWithLifecycle()
 
     // The file list can change without a state change (adb push), so re-list every 2 s while visible.
     var present by remember { mutableStateOf<List<PresentModel>>(emptyList()) }
@@ -149,7 +150,15 @@ private fun ModelsPage(onBench: () -> Unit) {
         )
         if (rpc.state != ServerState.STOPPED) ServerCard("RPC", rpc, rss[Role.RPC], emptyList(), null)
 
-        AutoloadRow(autoload)
+        SettingRow(
+            "Load models at start", autoload,
+            "The chat and embedding models load when Ustaad starts.", "Models load only when you tap Load.",
+        ) { ModelStore.setAutoload(it) }
+        SettingRow(
+            "Use GPU for chat", useGpu,
+            "The chat model runs on the phone's GPU and falls back to the CPU if that fails. Applies from the next load.",
+            "The chat model runs on the CPU. Applies from the next load.",
+        ) { ModelStore.setUseGpu(it) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SecondaryButton("Unload all", onClick = { LlamaRuntime.stopAll() }, enabled = anyRunning)
             SecondaryButton("Load defaults", onClick = { LlamaRuntime.loadDefaults() })
@@ -192,6 +201,8 @@ private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: Lis
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Tag(tag)
+            // which llama-server build runs the chat model: GPU (OpenCL) or CPU (fallback)
+            st.backend?.let { if (st.state != ServerState.STOPPED) { Spacer(Modifier.width(4.dp)); Tag(it.name) } }
             Spacer(Modifier.width(8.dp))
             Text(
                 st.modelName ?: "not loaded",
@@ -267,17 +278,14 @@ private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: Lis
 
 /** "Load models at start": persisted, default on. Read by the service when it starts. */
 @Composable
-private fun AutoloadRow(on: Boolean) {
+private fun SettingRow(title: String, on: Boolean, onText: String, offText: String, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().toggleable(value = on, role = SemanticsRole.Switch, onValueChange = { ModelStore.setAutoload(it) }),
+        Modifier.fillMaxWidth().toggleable(value = on, role = SemanticsRole.Switch, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text("Load models at start", style = SwarmType.body.copy(fontWeight = FontWeight.W500))
-            Text(
-                if (on) "The chat and embedding models load when Ustaad starts." else "Models load only when you tap Load.",
-                style = GraphiteLabel.copy(fontWeight = FontWeight.W400),
-            )
+            Text(title, style = SwarmType.body.copy(fontWeight = FontWeight.W500))
+            Text(if (on) onText else offText, style = GraphiteLabel.copy(fontWeight = FontWeight.W400))
         }
         InkSwitch(on)
     }
@@ -432,6 +440,7 @@ private fun BenchPage(onBack: () -> Unit) {
             MetricRow("Thermal at end", r?.thermal ?: "-")
             MetricRow("Thermal now", HealthMonitor.thermalName(health.thermalStatus))
             MetricRow("Threads", r?.threads?.toString() ?: "-")
+            MetricRow("Backend", r?.backend ?: "-")
         }
 
         if (blocked != null) Note(blocked)

@@ -142,6 +142,18 @@ object ModelStore {
 
     private const val KEY_AUTOLOAD = "autoload"
 
+    private val _useGpu by lazy { MutableStateFlow(prefs().getBoolean(KEY_GPU, true)) }
+
+    /** "Use GPU for chat" (default on): the chat server starts on the OpenCL build and falls back to the CPU build if that fails. Applies from the next load. */
+    val useGpu: StateFlow<Boolean> get() = _useGpu
+
+    fun setUseGpu(on: Boolean) {
+        prefs().edit().putBoolean(KEY_GPU, on).apply()
+        _useGpu.value = on
+    }
+
+    private const val KEY_GPU = "use_gpu"
+
     private fun prefs() = AppGraph.appContext.getSharedPreferences("swarm_llm", Context.MODE_PRIVATE)
 
     // ---- download ----

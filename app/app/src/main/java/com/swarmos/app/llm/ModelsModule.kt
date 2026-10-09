@@ -35,6 +35,8 @@ data class RoleStateDto(
     /** Banner text while a killed server is restarted automatically (null otherwise), and how many restarts were used. */
     val notice: String? = null,
     val restarts: Int = 0,
+    /** "GPU" (OpenCL build) or "CPU" for the chat server, null for the other roles and while stopped. */
+    val backend: String? = null,
 )
 
 @Serializable
@@ -58,6 +60,8 @@ data class ModelsStateDto(
     /** The persisted "Load models at start" setting. */
     val autoload: Boolean,
     val selftestRunning: Boolean,
+    /** The persisted "Use GPU for chat" setting (applies from the next chat load). */
+    val useGpu: Boolean = true,
 )
 
 /**
@@ -133,6 +137,14 @@ object ModelsModule : SwarmModule {
             call.respond(stateDto())
         }
 
+        // POST /v1/models/gpu {"enabled":false}  the persisted "Use GPU for chat" setting (applies from the next chat load)
+        post("/gpu") {
+            val req = runCatching { SwarmJson.decodeFromString<AutoloadRequest>(call.receiveText()) }.getOrNull()
+                ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("body must be {\"enabled\":true|false}"))
+            ModelStore.setUseGpu(req.enabled)
+            call.respond(stateDto())
+        }
+
         // POST /v1/models/selftest   starts the check (streamed chat, 10 JSON-schema generations, embeddings, one thinking probe)
         //                            and answers 202 at once; poll GET /v1/models/selftest. ?wait=true answers with the result.
         post("/selftest") {
@@ -192,6 +204,7 @@ object ModelsModule : SwarmModule {
                 structuredOutput = st.modelName?.let { ModelCatalog.allowsSchema(it) } ?: true,
                 notice = st.notice,
                 restarts = st.restarts,
+                backend = st.backend?.name,
             )
         }
         val stats = LlamaRuntime.lastStats.value
@@ -212,6 +225,7 @@ object ModelsModule : SwarmModule {
             sustained = Bench.sustained.value,
             autoload = ModelStore.autoload.value,
             selftestRunning = Selftest.running.value,
+            useGpu = ModelStore.useGpu.value,
         )
     }
 
