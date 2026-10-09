@@ -18,6 +18,24 @@ class HealthMonitorTest {
     }
 
     @Test
+    fun thermalLevelHasTheWordAndTheTwoThresholds() {
+        assertEquals(listOf("Cool", "Warm", "Hot", "Severe", "Severe", "Severe", "Severe"), (0..6).map { ThermalLevel.of(it).word })
+        assertEquals(listOf(false, false, true, true, true, true, true), (0..6).map { ThermalLevel.of(it).degraded })
+        assertEquals(listOf(false, false, false, true, true, true, true), (0..6).map { ThermalLevel.of(it).tooHot })
+        assertEquals(ThermalLevel.Cool, ThermalLevel.of(-1))
+    }
+
+    @Test
+    fun rawStatusHelpersAgreeWithTheLevel() {
+        for (s in -1..7) {
+            assertEquals(ThermalLevel.of(s).degraded, ThermalLevel.isDegraded(s))
+            assertEquals(ThermalLevel.of(s).tooHot, ThermalLevel.isTooHot(s))
+        }
+        assertEquals(2, ThermalLevel.DEGRADED_FROM) // the scheduler's old HOT_THERMAL_STATUS
+        assertEquals(3, ThermalLevel.TOO_HOT_FROM)  // the benchmark guard's old BLOCK_FROM_THERMAL
+    }
+
+    @Test
     fun hotStampFromThermalStatusThreeUp() {
         assertFalse(HealthMonitor.isHot(0))
         assertFalse(HealthMonitor.isHot(2))

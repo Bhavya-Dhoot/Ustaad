@@ -20,9 +20,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import com.swarmos.app.core.SwarmService
 import com.swarmos.app.shell.SettingsSheet
 import com.swarmos.app.shell.SetupScreen
+import com.swarmos.app.shell.StartupSkeleton
 import com.swarmos.app.ui.GalleryPage
 import com.swarmos.app.ui.NavItem
 import com.swarmos.app.ui.ScreenTransition
@@ -32,6 +34,7 @@ import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.SwarmTheme
 import com.swarmos.app.ui.destinationLabel
 import com.swarmos.app.ui.galleryTab
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     /** Debug only: 0 = normal app, 1..N = a page of the UI kit gallery (see ui/Gallery.kt). */
@@ -44,7 +47,7 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
-        applyIntent(intent)
+        applyWhenReady(intent)
         // a dozing phone stops answering its peers, so the screen stays on while Ustaad is in front
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         SwarmService.start(this)
@@ -53,7 +56,27 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        applyIntent(intent)
+        applyWhenReady(intent)
+        // opening the app again is the one tap that starts Ustaad after "Stop Ustaad"
+        if (!SwarmService.running.value) SwarmService.start(this)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        AppGraph.foreground.value = true // the service holds its wake and Wi-Fi locks while this is true or a peer is online
+    }
+
+    override fun onStop() {
+        AppGraph.foreground.value = false
+        super.onStop()
+    }
+
+    /** Settings and the audit log load off the main thread; intents are applied once that is done. */
+    private fun applyWhenReady(i: Intent?) {
+        lifecycleScope.launch {
+            AppGraph.awaitReady()
+            applyIntent(i)
+        }
     }
 
     /** `adb shell am start -n com.swarmos.app/.MainActivity --es name "Phone A"` names the node. */
@@ -87,6 +110,10 @@ private fun SwarmRoot(galleryPage: Int, onLeaveGallery: () -> Unit) {
     val items = modules.map { NavItem(it.id, destinationLabel(it.id) ?: it.title) }
     val inGallery = galleryPage > 0
 
+    if (!AppGraph.ready) {
+        StartupSkeleton()
+        return
+    }
     if (!AppGraph.setupDone) {
         SetupScreen(onFinish = { AppGraph.markSetupDone(true) })
         return

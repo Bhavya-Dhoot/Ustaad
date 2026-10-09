@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.core.ThermalLevel
 
 /**
  * The one compact status strip at the top of every screen: phone token and name (tap to rename),
@@ -48,20 +49,20 @@ fun StatsBar(
 ) {
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val h by AppGraph.health.state.collectAsStateWithLifecycle()
-    val thermal = HealthMonitor.thermalWord(h.thermalStatus)
+    val level = ThermalLevel.of(h.thermalStatus)
     val battery = if (h.batteryPct < 0) "?" else "${h.batteryPct}%" + if (h.charging) " chg" else ""
     val ram = "%.1f GB".format(h.ramAvailMb / 1024.0)
     val link = HealthMonitor.linkLabel(h.linkStandard, h.linkSpeedMbps)
     StatusStrip(
         name = self.name,
-        thermal = thermal,
+        thermal = level.word,
         battery = battery,
         freeMemory = ram,
         link = link,
         wanBytes = wanBytes,
         onEditName = onEditName,
         modifier = modifier,
-        hot = HealthMonitor.isHot(h.thermalStatus),
+        hot = level.tooHot,
     )
 }
 
