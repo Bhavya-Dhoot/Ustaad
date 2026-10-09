@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.sp
  * Text input per DESIGN.md: label above (never floating, never a placeholder), Sheet fill,
  * 1.5 dp Ink outline, 8 dp corners, 48 dp tall. [helper] sits below in Graphite; [error] replaces
  * it, in Ink with a hatched bar on its left (no red). Set [mono] for file names, IPs and numbers.
+ * Pass [minLines] (or [maxLines]) for a multi-line box. [trailing] is a slot inside the box at its
+ * right end (a 48 dp mic button, say); in a multi-line box it sits at the bottom.
  */
 @Composable
 fun SwarmTextField(
@@ -41,28 +43,41 @@ fun SwarmTextField(
     singleLine: Boolean = true,
     mono: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    minLines: Int = 1,
+    maxLines: Int = Int.MAX_VALUE,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
+    val oneLine = singleLine && minLines <= 1 && maxLines == Int.MAX_VALUE
     Column(modifier.fillMaxWidth()) {
         Text(label, style = SwarmType.label.copy(color = SwarmColors.graphite))
         Spacer(Modifier.height(4.dp))
-        Box(
+        Row(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
                 .background(SwarmColors.sheet, SwarmShape)
-                .border(1.5.dp, SwarmColors.ink, SwarmShape)
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            contentAlignment = Alignment.CenterStart,
+                .border(1.5.dp, SwarmColors.ink, SwarmShape),
+            verticalAlignment = if (oneLine) Alignment.CenterVertically else Alignment.Bottom,
         ) {
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = if (mono) SwarmType.mono.copy(fontSize = 14.sp, lineHeight = 20.sp) else SwarmType.body,
-                singleLine = singleLine,
-                keyboardOptions = keyboardOptions,
-                cursorBrush = SolidColor(SwarmColors.ink),
-            )
+            Box(
+                Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp, end = if (trailing != null) 4.dp else 12.dp, top = 12.dp, bottom = 12.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = if (mono) SwarmType.mono.copy(fontSize = 14.sp, lineHeight = 20.sp) else SwarmType.body,
+                    singleLine = oneLine,
+                    minLines = minLines,
+                    maxLines = if (oneLine) 1 else maxLines,
+                    keyboardOptions = keyboardOptions,
+                    cursorBrush = SolidColor(SwarmColors.ink),
+                )
+            }
+            if (trailing != null) trailing()
         }
         if (error != null) {
             Row(Modifier.padding(top = 4.dp).height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
