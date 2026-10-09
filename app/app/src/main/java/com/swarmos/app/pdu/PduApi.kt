@@ -32,6 +32,9 @@ import kotlinx.serialization.decodeFromString
 data class DebugScanRequest(val path: String, val title: String, val share: Boolean = false)
 
 @Serializable
+data class DebugOcrReport(val chars: Int, val latinChars: Int, val devanagariChars: Int?, val ms: Long)
+
+@Serializable
 data class DebugShareRequest(val folder: String, val shared: Boolean)
 
 @Serializable
@@ -69,7 +72,7 @@ data class AskTimings(val embedMs: Long, val localSearchMs: Long, val firstCards
 
 @Serializable
 data class AskReport(
-    val qid: String, val question: String, val answer: String, val model: String, val incomplete: Boolean,
+    val qid: String, val question: String, val answer: String, val model: String, val incomplete: Boolean, val lexicalOnly: Boolean,
     val withheldPrivate: Int, val sources: List<AskSource>, val devices: List<AskDevice>, val timings: AskTimings,
 )
 
@@ -85,7 +88,7 @@ data class StatusReport(
 
 /** Everything a caller of the signed debug routes may see about this phone's own private items is a count, never text. */
 fun QueryUi.toReport(): AskReport = AskReport(
-    qid = qid, question = text, answer = answer, model = model, incomplete = incomplete,
+    qid = qid, question = text, answer = answer, model = model, incomplete = incomplete, lexicalOnly = lexicalOnly,
     withheldPrivate = devices.sumOf { it.withheldPrivate },
     sources = sources.map {
         AskSource(
@@ -180,6 +183,19 @@ fun Route.pduRoutes() {
             } catch (e: IllegalStateException) {
                 call.respond(HttpStatusCode.Conflict, ErrorBody(e.message ?: "not available"))
             }
+        }
+
+        // OCR only: no MediaStore write, no index; shows that ML Kit still works (and how long it takes) on this phone
+        post("/debug/ocr") {
+            val r = SwarmJson.decodeFromString<DebugScanRequest>(call.receiveText())
+            val rep = withContext(Dispatchers.IO) {
+                val bmp = Ocr.decode(AppGraph.appContext, Uri.fromFile(File(r.path)).toString())
+                val t0 = System.nanoTime()
+                val o = Ocr.recognizeAll(bmp)
+                bmp.recycle()
+                DebugOcrReport(o.text.length, o.latin.length, o.devanagari?.length, (System.nanoTime() - t0) / 1_000_000)
+            }
+            call.respond(rep)
         }
 
         // the adb path to share a folder in a debug build (in the demo build the owner flips the switch in the library)

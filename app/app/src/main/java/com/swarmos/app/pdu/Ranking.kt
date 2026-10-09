@@ -40,8 +40,13 @@ data class Fused(val chunkId: Long, val score: Double, val cosine: Float, val in
 
 /** Dense + BM25 on one phone, fused with RRF. */
 object HybridRanker {
-    /** A dense-only match must be at least this similar. Calibrated against nothing yet: re-tune with the real embedder. */
-    const val DENSE_MIN_COSINE = 0.30f
+    /**
+     * A dense match must be at least this similar to count. Measured on Phone A with EmbeddingGemma-300M Q8_0 (first 256 dims,
+     * renormalised, no task prefixes) over 11 demo files and 6 questions: relevant files 0.43 to 0.61, other files 0.15 to 0.39
+     * (a typical file sits near 0.30, so 0.30 let unrelated files through). Small sample: re-measure with POST /v1/pdu/debug/scores
+     * whenever the model or the prefixes change.
+     */
+    const val DENSE_MIN_COSINE = 0.40f
 
     /**
      * [dense] is the cosine top-N as (chunkId, cosine), best first; [bm25] the BM25 top-N chunk ids, best first.
