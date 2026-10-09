@@ -83,6 +83,7 @@ object Sched {
 object SchedModule : SwarmModule {
     override val id = "sched"
     override val title = "Swarm load"
+    override val showInNav = false   // embedded in the Swarm screen through ThroughputPanel()
 
     override fun Route.routes() {
         schedNodeRoutes(Sched.node)

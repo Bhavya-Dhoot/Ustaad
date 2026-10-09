@@ -9,4 +9,6 @@ interface SwarmModule {
     val title: String             // tab label
     fun Route.routes()            // Ktor routes mounted under /v1/<id>/ on the node server
     @Composable fun Screen()      // tab content
+    /** false = routes only, no bottom-bar destination (the screen is embedded elsewhere). */
+    val showInNav: Boolean get() = true
 }
