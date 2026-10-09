@@ -41,9 +41,9 @@ class CosineTest {
 
 class RrfTest {
     @Test fun itemInBothListsWins() {
-        val fused = Rrf.fuse(listOf(listOf("a", "b", "c"), listOf("c", "b", "d")))
+        val fused = Rrf.fuse(listOf(listOf("a", "b", "c"), listOf("b", "c", "d")))
         assertEquals(listOf("b", "c", "a", "d"), fused.map { it.first })
-        assertEquals(1.0 / 62 + 1.0 / 62, fused[0].second, 1e-12)
+        assertEquals(1.0 / 62 + 1.0 / 61, fused[0].second, 1e-12)
     }
 
     @Test fun hybridDropsDenseNoiseButKeepsBm25() {

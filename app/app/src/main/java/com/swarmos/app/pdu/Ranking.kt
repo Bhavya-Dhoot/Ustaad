@@ -19,7 +19,7 @@ object Cosine {
             val base = r * dim
             for (d in 0 until dim) dot += matrix[base + d] * query[d]
             if (heap.size < n) heap.add(Scored(r, dot))
-            else if (dot > heap.peek().score) { heap.poll(); heap.add(Scored(r, dot)) }
+            else if (dot > (heap.peek()?.score ?: Float.NEGATIVE_INFINITY)) { heap.poll(); heap.add(Scored(r, dot)) }
         }
         return heap.sortedByDescending { it.score }
     }
