@@ -201,6 +201,55 @@ class PduStore(path: String) {
         HybridRanker.collapseByDoc(cands)
     }
 
+
+    /**
+     * Calibration view of one question (debug route only): for the strongest chunks by dense cosine and by BM25,
+     * the raw cosine, the raw FTS5 bm25() value (negative, more negative is better), ranks, query-word coverage,
+     * the normalised RRF score and whether the chunk would be returned. Also the cosine spread over every chunk,
+     * which shows where unrelated text sits for the current embedder. Titles of private chunks are not named.
+     */
+    fun explain(queryEmb: FloatArray, terms: List<String>, topN: Int = 10): Pair<CosineSpread?, List<ScoreRow>> = synchronized(lock) {
+        if (rows == 0) return null to emptyList()
+        val all = FloatArray(rows) { r ->
+            var dot = 0f
+            val base = r * DIM
+            for (d in 0 until DIM) dot += matrix[base + d] * queryEmb[d]
+            dot
+        }
+        val sorted = all.sortedArray()
+        val spread = CosineSpread(
+            sorted.first().toDouble(), sorted[sorted.size / 2].toDouble(), sorted[(sorted.size * 9) / 10].toDouble(), sorted.last().toDouble(),
+        )
+        val denseTop = Cosine.topK(matrix, DIM, rows, queryEmb, topN)
+        val denseRank = denseTop.mapIndexed { i, sc -> ids[sc.row] to i + 1 }.toMap()
+        val match = QueryTerms.ftsMatch(terms)
+        val bm25 = if (match == null) emptyList() else query(
+            "SELECT rowid, bm25(chunks_fts, 1.0, 2.0) FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts, 1.0, 2.0) LIMIT ?",
+            { it.bindText(1, match); it.bindLong(2, topN.toLong()) },
+        ) { it.getLong(0) to it.getDouble(1) }
+        val bm25Rank = bm25.mapIndexed { i, (id, _) -> id to i + 1 }.toMap()
+        val bm25Raw = bm25.toMap()
+        val fusedScore = HybridRanker.fuse(denseTop.map { ids[it.row] to it.score }, bm25.map { it.first }).associate { it.chunkId to it.score }
+        val union = (denseRank.keys + bm25Rank.keys).toList()
+        if (union.isEmpty()) return spread to emptyList()
+        val rowOf = HashMap<Long, Int>().also { m -> for (r in 0 until rows) m[ids[r]] = r }
+        val info = query(
+            "SELECT id, title, kind, isPrivate, text FROM chunks WHERE id IN (${union.joinToString(",") { "?" }})",
+            { st -> union.forEachIndexed { i, id -> st.bindLong(i + 1, id) } },
+        ) { listOf(it.getLong(0), it.getText(1), it.getText(2), it.getLong(3), it.getText(4)) }.associateBy { it[0] as Long }
+        val out = union.mapNotNull { id ->
+            val r = info[id] ?: return@mapNotNull null
+            val priv = (r[3] as Long) == 1L
+            val cos = all[rowOf[id]!!]
+            val cov = Coverage.of(terms, (r[1] as String) + " " + (r[4] as String))
+            ScoreRow(
+                if (priv) "(private file)" else r[1] as String, r[2] as String, priv, cos.toDouble(), denseRank[id], bm25Raw[id], bm25Rank[id],
+                cov, fusedScore[id] ?: 0.0, id in fusedScore && HybridRanker.passes(cos, cov),
+            )
+        }.sortedWith(compareByDescending<ScoreRow> { it.passes }.thenByDescending { it.rrf }.thenByDescending { it.cosine })
+        spread to out
+    }
+
     // ---- internals ----------------------------------------------------------------------------------------
 
     private class Row(val id: Long, val docId: String, val title: String, val kind: String, val dateMs: Long, val folder: String, val priv: Boolean, val text: String)

@@ -118,11 +118,20 @@ fun Route.pduRoutes() {
                 val ctx = AppGraph.appContext
                 val f = File(r.path)
                 val bmp = Ocr.decode(ctx, Uri.fromFile(f).toString())
-                val text = Ocr.recognize(bmp).also { bmp.recycle() }
+                val text = Ocr.recognizeAll(bmp).text.also { bmp.recycle() }
                 val (uri, modified) = PduIndexer.saveScan(ctx, f, r.keepPrivate)
                 PduEngine.indexScan(uri, modified, r.title, r.keepPrivate, text)
             }
             call.respond(rep)
+        }
+
+        post("/debug/prefixes") {
+            call.respond(PduEngine.setPrefixes(SwarmJson.decodeFromString<PrefixRequest>(call.receiveText())))
+        }
+
+        post("/debug/scores") {
+            val req = SwarmJson.decodeFromString<AskRequest>(call.receiveText())
+            call.respond(PduEngine.explain(req.text, req.k))
         }
 
         post("/debug/peers") {

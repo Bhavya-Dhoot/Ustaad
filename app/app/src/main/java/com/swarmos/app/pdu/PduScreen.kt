@@ -413,7 +413,7 @@ private fun ScanPage(onBack: () -> Unit) {
                                     scope.launch {
                                         val text = withContext(Dispatchers.Default) {
                                             val bmp = Ocr.decode(ctx, Uri.fromFile(f).toString())
-                                            Ocr.recognize(bmp).also { bmp.recycle() }
+                                            Ocr.recognizeAll(bmp).text.also { bmp.recycle() }
                                         }
                                         recognised = text
                                         title = text.lineSequence().map { it.trim() }.firstOrNull { it.length >= 3 }?.take(40)

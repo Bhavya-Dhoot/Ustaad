@@ -1,6 +1,7 @@
 package com.swarmos.app.pdu
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,6 +27,33 @@ class QueryTermsTest {
 
     @Test fun devanagariWordsSurvive() {
         assertEquals(listOf("बिजली", "बिल"), QueryTerms.terms("बिजली बिल"))
+    }
+}
+
+class OcrMergeTest {
+    @Test fun shortLatinResultTriggersTheSecondPass() {
+        assertTrue(OcrMerge.needsDevanagari("Meeting 28-Oct 5 pm"))
+        assertTrue(OcrMerge.needsDevanagari(""))
+        assertFalse(OcrMerge.needsDevanagari("word ".repeat(60)))
+    }
+
+    @Test fun devanagariLinesAreAppendedAndKnownLinesDropped() {
+        val latin = "Meeting 28-Oct 5 pm\nSYNTHETIC DEMO DATA"
+        val deva = "दूध वाले को 1200 रुपये देने हैं\nMeeting 28-Oct 5 pm\nसीमा जी को फोन करना है\nsynthetic demo data"
+        assertEquals(
+            "Meeting 28-Oct 5 pm\nSYNTHETIC DEMO DATA\nदूध वाले को 1200 रुपये देने हैं\nसीमा जी को फोन करना है",
+            OcrMerge.merge(latin, deva),
+        )
+    }
+
+    @Test fun nothingFromTheSecondPassKeepsTheLatinText() {
+        assertEquals("abc", OcrMerge.merge("abc", null))
+        assertEquals("abc", OcrMerge.merge("abc", "  \n "))
+        assertEquals("abc def", OcrMerge.merge("abc def", "ABC DEF"))
+    }
+
+    @Test fun hindiQuestionKeepsItsContentWords() {
+        assertEquals(listOf("दूध", "वाले", "कितने", "रुपये", "देने"), QueryTerms.terms("दूध वाले को कितने रुपये देने हैं"))
     }
 }
 
