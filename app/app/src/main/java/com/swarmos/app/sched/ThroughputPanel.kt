@@ -105,10 +105,10 @@ fun ThroughputPanel(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(12.dp))
         Text("PHONES", style = LabelStyle)
         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-            Cell("name", 1.5f, LabelStyle.color)
+            Cell("name", 2f, LabelStyle.color)
             Cell("jobs", 0.7f, LabelStyle.color)
             Cell("tok/s", 1f, LabelStyle.color)
-            Cell("run/slots", 1f, LabelStyle.color)
+            Cell("load", 1.2f, LabelStyle.color)
             Cell("thermal", 1.2f, LabelStyle.color)
         }
         views.forEach { v ->
@@ -116,15 +116,15 @@ fun ThroughputPanel(modifier: Modifier = Modifier) {
             val share = swarmReport?.perPhone?.firstOrNull { it.nodeId == v.nodeId }
             val caps = v.caps
             Row(Modifier.fillMaxWidth().background(SwarmColors.Surface).padding(vertical = 4.dp, horizontal = 4.dp)) {
-                Cell(if (v.isLocal) "$name (this)" else name, 1.5f, accentFor(name))
+                Cell(if (v.isLocal) "$name (this)" else name, 2f, accentFor(name))
                 Cell((share?.jobs ?: 0).toString(), 0.7f)
                 Cell(share?.let { "%.1f".format(it.tokPerSec) } ?: "-", 1f)
                 if (v.up && caps != null) {
-                    Cell("${caps.running}/${caps.capacity} q${caps.queued}", 1f)
+                    Cell("${caps.running}/${caps.capacity} q${caps.queued}", 1.2f)
                     val hot = caps.thermalStatus >= 2
                     Cell(HealthMonitor.thermalName(caps.thermalStatus), 1.2f, if (hot) SwarmColors.Warn else SwarmColors.Text)
                 } else {
-                    Cell("unreachable", 2.2f, SwarmColors.Bad)
+                    Cell("unreachable", 2.6f, SwarmColors.Bad)
                 }
             }
             Spacer(Modifier.height(2.dp))
@@ -136,7 +136,7 @@ fun ThroughputPanel(modifier: Modifier = Modifier) {
 @Composable
 private fun ResultCard(title: String, r: BatchReport?, modifier: Modifier = Modifier) {
     Column(modifier.background(SwarmColors.Surface).padding(8.dp)) {
-        Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Text(title, color = SwarmColors.Text, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         if (r == null) {
             Text("not run yet", style = MetricStyle, color = SwarmColors.Dim)
             return@Column
