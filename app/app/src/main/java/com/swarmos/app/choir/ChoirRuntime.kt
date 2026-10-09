@@ -82,6 +82,9 @@ object ChoirController {
 
     fun newTaskId(): String = "t-" + UUID.randomUUID().toString().take(8)
 
+    /** One phone, three samples for the eval harness: the coordinator alone, sequentially. */
+    private suspend fun samplesFor(p: Problem): SamplesResult = ChoirSamples.run(p, newTaskId(), selfParticipant())
+
     /** Free text problem (also used by the screen). For MCQ put the lettered options into the text. */
     fun customProblem(text: String, kind: Kind, check: String? = null, answer: String = ""): Problem =
         Problem(id = "custom", kind = kind, text = text.trim(), check = check?.takeIf { it.isNotBlank() }, answer = answer)
@@ -108,13 +111,13 @@ object ChoirController {
     }
 
     /** Runs the built-in set (or the given ids) one after another; stores filesDir/choir-eval-<ts>.json. */
-    suspend fun runEval(ids: List<String>?, options: RunOptions = RunOptions()): EvalReport = gate.withLock {
+    suspend fun runEval(ids: List<String>?, options: RunOptions = RunOptions(), withSamples: Boolean = true): EvalReport = gate.withLock {
         val list = if (ids == null) problems else ids.mapNotNull { id -> problems.firstOrNull { it.id == id } }
         _busy.value = true
         var fake = false
         val nodes = mutableSetOf<String>()
         try {
-            _eval.value = EvalProgress(running = true, total = list.size)
+            _eval.value = EvalProgress(running = true, total = list.size, useProblemCheck = options.useProblemCheck)
             val rows = ChoirEval.run(
                 list,
                 runOne = { p ->
@@ -125,10 +128,11 @@ object ChoirController {
                         it.lanes.forEach { l -> nodes.add(l.name) }
                     }
                 },
+                runSamples = if (withSamples) ::samplesFor else null,
                 onProgress = { done, cur ->
                     _eval.value = EvalProgress(
                         running = cur != null, done = done.size, total = list.size, current = cur?.id,
-                        rows = done, summary = ChoirEval.summarize(done), fake = fake,
+                        rows = done, summary = ChoirEval.summarize(done), fake = fake, useProblemCheck = options.useProblemCheck,
                     )
                 },
             )
@@ -147,7 +151,7 @@ object ChoirController {
             )
             _eval.value = EvalProgress(
                 running = false, done = rows.size, total = list.size, lastFile = report.file,
-                summary = report.summary, rows = rows, fake = report.fake,
+                summary = report.summary, rows = rows, fake = report.fake, useProblemCheck = options.useProblemCheck,
             )
             report
         } catch (e: CancellationException) {
@@ -160,8 +164,8 @@ object ChoirController {
         }
     }
 
-    fun startEval(options: RunOptions = RunOptions()) {
-        scope.launch { runCatching { runEval(null, options) } }
+    fun startEval(options: RunOptions = RunOptions(), withSamples: Boolean = true) {
+        scope.launch { runCatching { runEval(null, options, withSamples) } }
     }
 
     /** Debug: register peers by IP ("ip" or "ip:port"): GET /v1/hello on each, add it to the registry. */

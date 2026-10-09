@@ -63,8 +63,9 @@ object LlamaJson {
                     })
                 })
             }
-            put("chat_template_kwargs", buildJsonObject { put("enable_thinking", false) })
             extra?.forEach { (k, v) -> put(k, v) }
+            // Thinking is off for every call and written last, so no caller or `extra` field can switch it back on.
+            put("chat_template_kwargs", buildJsonObject { put("enable_thinking", false) })
         }
         return body.toString()
     }

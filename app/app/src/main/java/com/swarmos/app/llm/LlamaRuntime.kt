@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Process as AndroidProcess
 import android.util.Log
 import com.swarmos.app.AppGraph
+import com.swarmos.app.sched.Sched
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -98,19 +99,34 @@ object LlamaRuntime {
         serviceUp = true
         val wire = scope.launch {
             _status.collect { st ->
-                syncClient(Role.CHAT, st.getValue(Role.CHAT), AppGraph.llm) { AppGraph.llm = it }
+                val chat = st.getValue(Role.CHAT)
+                syncClient(Role.CHAT, chat, AppGraph.llm) { AppGraph.llm = it }
                 syncClient(Role.EMBED, st.getValue(Role.EMBED), AppGraph.embedder) { AppGraph.embedder = it }
+                // the scheduler accepts as many parallel chat jobs as the chat server has slots, none while there is no server
+                val cap = if (chat.state == ServerState.READY) LlamaArgs.slots(chat.args) else 0
+                if (cap != schedCapacity) {
+                    schedCapacity = cap
+                    Sched.setCapacity(cap)
+                }
             }
         }
         val load = scope.launch {
             killOrphans()
-            for (role in listOf(Role.CHAT, Role.EMBED)) {
-                val file = ModelStore.autoLoadFile(role) ?: continue
-                launch { start(role, file.absolutePath) }
-            }
+            if (ModelStore.autoload.value) loadDefaults() else Log.i(TAG, "autoload is off: no model is loaded at start")
         }
         serviceJobs = listOf(wire, load)
     }
+
+    @Volatile private var schedCapacity = -1
+
+    /**
+     * Starts the default chat and embedding models (the last file loaded for each role, else the catalog default) when
+     * they are present. Returns one handle per role that was started; roles whose file is missing are skipped.
+     */
+    fun loadDefaults(): List<Deferred<ServerStatus>> =
+        listOf(Role.CHAT, Role.EMBED).mapNotNull { role ->
+            ModelStore.autoLoadFile(role)?.let { startAsync(role, it.absolutePath) }
+        }
 
     /** Called by SwarmService.onDestroy: kill every child, restore the fake clients. */
     @Synchronized
@@ -121,6 +137,8 @@ object LlamaRuntime {
         stopAll()
         AppGraph.llm = com.swarmos.app.llm.FakeLlmClient()
         AppGraph.embedder = com.swarmos.app.llm.FakeLlmClient()
+        schedCapacity = 0
+        Sched.setCapacity(0)
     }
 
     private fun syncClient(role: Role, st: ServerStatus, current: LlmClient, set: (LlmClient) -> Unit) {

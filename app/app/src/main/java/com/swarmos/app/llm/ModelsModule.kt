@@ -30,10 +30,12 @@ data class RoleStateDto(
     val port: Int,
     val rssMb: Long?,
     val loadMs: Long?,
+    /** false: the loaded model is chat only and refuses JSON-schema calls (see ModelCatalog). */
+    val structuredOutput: Boolean = true,
 )
 
 @Serializable
-data class PresentDto(val file: String, val bytes: Long, val complete: Boolean)
+data class PresentDto(val file: String, val bytes: Long, val complete: Boolean, val structuredOutput: Boolean = true)
 
 @Serializable
 data class ModelsStateDto(
@@ -50,13 +52,28 @@ data class ModelsStateDto(
     val thermal: String,
     val benchBlockedReason: String?,
     val sustained: List<SustainedPoint>,
+    /** The persisted "Load models at start" setting. */
+    val autoload: Boolean,
+    val selftestRunning: Boolean,
 )
 
+/**
+ * role "chat" | "embed" | "rpc" loads [file] (rpc takes none); role "defaults" loads the default chat and embedding
+ * models like a service start does. [wait] defaults to true for one role and to false for "defaults" (two loads take
+ * longer than the 45 s the node server keeps an idle connection: answer 202 and poll GET /state).
+ */
 @Serializable
-data class LoadRequest(val role: String, val file: String = "", val wait: Boolean = true)
+data class LoadRequest(val role: String, val file: String = "", val wait: Boolean? = null)
 
+/** role "chat" | "embed" | "rpc" | "all" (every server this app started). */
 @Serializable
 data class StopRequest(val role: String)
+
+@Serializable
+data class AutoloadRequest(val enabled: Boolean)
+
+@Serializable
+data class SelftestStateDto(val running: Boolean, val result: SelftestResult?, val error: String?)
 
 /** Models tab: model files, the llama-server processes, a benchmark. Routes are mounted under /v1/models/. */
 object ModelsModule : SwarmModule {
@@ -69,8 +86,13 @@ object ModelsModule : SwarmModule {
         post("/load") {
             val req = runCatching { SwarmJson.decodeFromString<LoadRequest>(call.receiveText()) }.getOrNull()
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("body must be {\"role\":\"chat|embed\",\"file\":\"<name>.gguf\"}"))
+            if (req.role.trim().equals("defaults", ignoreCase = true)) { // the models a service start would load
+                val jobs = LlamaRuntime.loadDefaults()
+                if (req.wait == true) jobs.forEach { it.await() }
+                return@post call.respond(if (req.wait == true) HttpStatusCode.OK else HttpStatusCode.Accepted, stateDto())
+            }
             val role = Role.parse(req.role)
-                ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("role must be chat, embed or rpc"))
+                ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("role must be chat, embed, rpc or defaults"))
             if (role == Role.RPC) { // rpc-server takes no model: {"role":"rpc","file":""} starts it on 127.0.0.1:50052
                 val st = LlamaRuntime.start(Role.RPC, null)
                 return@post call.respond(if (st.state == ServerState.READY) HttpStatusCode.OK else HttpStatusCode.Conflict, stateDto())
@@ -79,7 +101,7 @@ object ModelsModule : SwarmModule {
                 return@post call.respond(HttpStatusCode.NotFound, ErrorBody("no such model file: ${req.file}"))
             }
             val job = loadModelAsync(role, req.file)
-            if (req.wait) {
+            if (req.wait != false) {
                 job.await()
                 call.respond(stateDto())
             } else {
@@ -90,22 +112,38 @@ object ModelsModule : SwarmModule {
         post("/stop") {
             val req = runCatching { SwarmJson.decodeFromString<StopRequest>(call.receiveText()) }.getOrNull()
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("body must be {\"role\":\"chat|embed\"}"))
+            if (req.role.trim().equals("all", ignoreCase = true)) { // unload everything: chat, embed and rpc
+                LlamaRuntime.stopAll()
+                return@post call.respond(stateDto())
+            }
             val role = Role.parse(req.role)
-                ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("role must be chat, embed or rpc"))
+                ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("role must be chat, embed, rpc or all"))
             LlamaRuntime.stop(role)
             call.respond(stateDto())
         }
 
-        // POST /v1/models/selftest  streamed chat, 10 JSON-schema generations and embeddings through the real clients
-        post("/selftest") {
-            try {
-                call.respond(Selftest.run())
-            } catch (e: IllegalStateException) {
-                call.respond(HttpStatusCode.Conflict, ErrorBody(e.message ?: "selftest failed"))
-            } catch (e: Exception) {
-                call.respond(HttpStatusCode.InternalServerError, ErrorBody(e.message ?: e.toString()))
-            }
+        // POST /v1/models/autoload {"enabled":false}  the persisted "Load models at start" setting (affects the next service start)
+        post("/autoload") {
+            val req = runCatching { SwarmJson.decodeFromString<AutoloadRequest>(call.receiveText()) }.getOrNull()
+                ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("body must be {\"enabled\":true|false}"))
+            ModelStore.setAutoload(req.enabled)
+            call.respond(stateDto())
         }
+
+        // POST /v1/models/selftest   starts the check (streamed chat, 10 JSON-schema generations, embeddings, one thinking probe)
+        //                            and answers 202 at once; poll GET /v1/models/selftest. ?wait=true answers with the result.
+        post("/selftest") {
+            if (Selftest.running.value) return@post call.respond(HttpStatusCode.Conflict, ErrorBody("a selftest is already running"))
+            if (call.request.queryParameters["wait"] == "true") {
+                Selftest.runRecorded()
+                return@post call.respond(selftestDto())
+            }
+            scope.launch { Selftest.runRecorded() }
+            // give the coroutine a moment to flip `running` so the answer already says so
+            kotlinx.coroutines.delay(50)
+            call.respond(HttpStatusCode.Accepted, selftestDto())
+        }
+        get("/selftest") { call.respond(selftestDto()) }
 
         // POST /v1/models/bench                 one run (512-token prompt, 128 generated tokens), answers with the result
         // POST /v1/models/bench?minutes=N       repeated for N minutes; answers 202 at once (the node server drops a
@@ -134,6 +172,8 @@ object ModelsModule : SwarmModule {
     @Composable
     override fun Screen() = ModelsScreen()
 
+    private fun selftestDto() = SelftestStateDto(Selftest.running.value, Selftest.last.value, Selftest.error.value)
+
     internal fun stateDto(): ModelsStateDto {
         val roles = Role.entries.associate { r ->
             val st = LlamaRuntime.statusOf(r)
@@ -146,6 +186,7 @@ object ModelsModule : SwarmModule {
                 port = st.port,
                 rssMb = if (st.state == ServerState.STOPPED) null else LlamaRuntime.rssKb(r)?.div(1024),
                 loadMs = st.readyAfterMs,
+                structuredOutput = st.modelName?.let { ModelCatalog.allowsSchema(it) } ?: true,
             )
         }
         val stats = LlamaRuntime.lastStats.value
@@ -154,7 +195,7 @@ object ModelsModule : SwarmModule {
         return ModelsStateDto(
             node = AppGraph.registry.self.value.name,
             roles = roles,
-            present = ModelStore.present().map { PresentDto(it.file, it.bytes, it.complete) },
+            present = ModelStore.present().map { PresentDto(it.file, it.bytes, it.complete, ModelCatalog.allowsSchema(it.file)) },
             wanBytes = ModelStore.wanBytes.value,
             lastDecodeTokPerSec = stats?.decodeTokPerSec?.takeIf { it > 0 },
             lastPrefillTokPerSec = bench?.prefillTokPerSec?.takeIf { it > 0 },
@@ -164,6 +205,8 @@ object ModelsModule : SwarmModule {
             thermal = com.swarmos.app.core.HealthMonitor.thermalName(thermalNow),
             benchBlockedReason = Bench.blockReasonFor(thermalNow),
             sustained = Bench.sustained.value,
+            autoload = ModelStore.autoload.value,
+            selftestRunning = Selftest.running.value,
         )
     }
 

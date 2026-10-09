@@ -185,6 +185,8 @@ data class Reply(
     val wallMs: Long = 0,
     val check: CheckResult = CheckResult.NOT_CHECKABLE,
     val checkDetail: String = "",
+    /** What the check was based on: "problem-check" (a test supplied with the problem), "model-expression", "option-letters", "quote-exists" or "none". */
+    val checkSource: String = "none",
 )
 
 @Serializable
@@ -225,6 +227,9 @@ data class FinalTrace(
     val verified: Boolean,
     val label: String,
     val votes: List<VoteRow> = emptyList(),
+    /** Tool-check result of the chosen answer and what it was based on (see [Reply.checkSource]). */
+    val check: CheckResult = CheckResult.NOT_CHECKABLE,
+    val checkSource: String = "none",
 )
 
 @Serializable
