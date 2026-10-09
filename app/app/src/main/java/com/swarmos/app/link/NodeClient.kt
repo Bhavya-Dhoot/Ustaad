@@ -123,10 +123,14 @@ class NodeClient(private val secret: () -> String, private val selfId: () -> Str
                 setBody(body)
             }
         }
+        val text = resp.bodyAsText()
+        // only a holder of the pairing secret can produce this header; anything else is not a peer
+        if (!ResponseAuth.verify(secret(), resp.status.value, reqId, text, resp.headers[HEADER_RSP_SIG])) {
+            throw UntrustedResponse("the answer from $hostPort is not authenticated (missing or wrong $HEADER_RSP_SIG)")
+        }
         val node = resp.headers[Signer.HEADER_NODE]
         val fg = resp.headers[HEADER_FG]
         if (node != null && fg != null) PeerLinks.noteForeground(node, fg == "1")
-        val text = resp.bodyAsText()
         if (!resp.status.isSuccess()) throw NodeHttpException(resp.status.value, text)
         return text
     }

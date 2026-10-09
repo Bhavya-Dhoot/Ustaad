@@ -86,19 +86,28 @@ private class StripedSession(val header: Striped.Header, sink: (Int, ByteArray) 
 }
 
 /** Receiving side, used by [TputServer] after it has read the mode byte 'M'. */
-class StripedReceiver(private val sink: (Int, ByteArray) -> Unit = { _, _ -> }) {
+class StripedReceiver(private val limits: TputLimits = TputLimits(), private val sink: (Int, ByteArray) -> Unit = { _, _ -> }) {
     private val sessions = ConcurrentHashMap<UUID, StripedSession>()
 
     fun handle(inp: DataInputStream, out: java.io.OutputStream) {
         val h = Striped.readHeader(inp)
+        // a header that asks for more than the caps allow is refused before anything is allocated
+        if (h.streams !in 1..16 || h.streamIdx >= h.streams || h.chunkSize !in 1..(16 shl 20) || h.totalBytes !in 0..limits.maxBytes ||
+            h.totalChunks < 0 || h.totalChunks.toLong() * h.chunkSize < h.totalBytes || sessions.size >= 8 && !sessions.containsKey(h.session)
+        ) throw IOException("striped transfer refused: header outside the limits")
         val s = sessions.computeIfAbsent(h.session) { StripedSession(h, sink) }
         s.users.incrementAndGet()
+        val deadline = System.nanoTime() + limits.maxSeconds * 1_000_000_000L
+        var streamBytes = 0L
         try {
             try {
                 while (true) {
                     val idx = inp.readInt()
                     if (idx == Striped.END) break
+                    if (System.nanoTime() > deadline) throw IOException("striped transfer over its time cap")
                     val len = inp.readInt()
+                    streamBytes += len
+                    if (streamBytes > h.totalBytes) throw IOException("more bytes than the header announced")
                     val crc = inp.readInt()
                     if (len < 0 || len > (16 shl 20)) throw IOException("bad chunk length $len")
                     val data = ByteArray(len)
@@ -144,7 +153,7 @@ class StripedResult(
  * Sender: [openers] gives one connected socket per path (index = path). [streams] threads share one chunk counter,
  * so a faster path automatically carries more chunks. [labels] names the paths in the result.
  */
-class StripedSender(private val openers: List<() -> Socket>, private val labels: List<String>) {
+class StripedSender(private val secret: () -> String, private val openers: List<() -> Socket>, private val labels: List<String>) {
     fun send(
         megabytes: Int, streams: Int, chunkSize: Int = Striped.DEFAULT_CHUNK, onProgress: ((Long) -> Unit)? = null,
     ): StripedResult {
@@ -174,7 +183,7 @@ class StripedSender(private val openers: List<() -> Socket>, private val labels:
                     try {
                         val path = i % openers.size
                         val out = DataOutputStream(java.io.BufferedOutputStream(s.getOutputStream(), 64 * 1024))
-                        out.writeByte(Striped.MODE)
+                        out.write(TputAuth.token(secret(), Striped.MODE))
                         Striped.writeHeader(out, Striped.Header(session, streams, i, totalChunks, chunkSize, totalBytes))
                         out.flush()
                         ready.await()

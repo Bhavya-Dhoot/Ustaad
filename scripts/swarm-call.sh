@@ -20,8 +20,8 @@ NODE="${SWARM_NODE:-pc}"
 case "$URLPATH" in /v1|/v1/*) ;; /*) URLPATH="/v1$URLPATH" ;; *) URLPATH="/v1/$URLPATH" ;; esac
 case "$HOST" in *:*) ;; *) HOST="$HOST:8787" ;; esac
 
-# the signed path is the path without any query string
-SIGPATH="${URLPATH%%\?*}"
+# the signed path is the raw URI, query string included
+SIGPATH="$URLPATH"
 TS="$(date +%s%3N)"
 NL=$'\n'
 MSG="${METHOD}${NL}${SIGPATH}${NL}${TS}${NL}${BODY}"
@@ -29,7 +29,8 @@ SIG="$(printf '%s' "$MSG" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{pr
 
 args=(-sS -m "${SWARM_MAXTIME:-300}" -X "$METHOD" -w '\nHTTP %{http_code}\n')
 if [ "${SWARM_UNSIGNED:-0}" != "1" ]; then
-  args+=(-H "X-Swarm-Node: $NODE" -H "X-Swarm-Ts: $TS" -H "X-Swarm-Sig: $SIG")
+  # X-Swarm-Req is required on requests that change state; the node dedups on it
+  args+=(-H "X-Swarm-Node: $NODE" -H "X-Swarm-Ts: $TS" -H "X-Swarm-Sig: $SIG" -H "X-Swarm-Req: pc-$TS-$RANDOM")
 fi
 if [ -n "$BODY" ]; then
   args+=(-H 'Content-Type: application/json' --data-binary "$BODY")

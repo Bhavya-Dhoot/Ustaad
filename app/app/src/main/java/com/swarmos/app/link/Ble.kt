@@ -441,7 +441,10 @@ object BleLink : SmallTransport {
 
     /** A request that arrived over Bluetooth runs against this phone's own node server on loopback. */
     private suspend fun handleIncoming(msg: BleMsg): BleMsg = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val path = msg.p ?: return@withContext BleMsg(t = "rsp", s = 400, b = """{"error":"no path"}""")
+        val reqId = msg.h?.get(HEADER_REQ) ?: ""
+        // answers made here (not by the node server) are authenticated the same way
+        fun local(status: Int, body: String) = BleMsg(t = "rsp", s = status, b = body, h = mapOf(HEADER_RSP_SIG to ResponseAuth.sign(AppGraph.pairingSecret, status, reqId, body)))
+        val path = msg.p ?: return@withContext local(400, """{"error":"no path"}""")
         val conn = URL("http://127.0.0.1:${Ports.NODE}$path").openConnection() as HttpURLConnection
         try {
             conn.requestMethod = msg.m ?: "GET"
@@ -455,8 +458,8 @@ object BleLink : SmallTransport {
             }
             val code = conn.responseCode
             val body = (if (code < 400) conn.inputStream else conn.errorStream)?.use { it.readBytes() } ?: ByteArray(0)
-            if (body.size > MAX_RESPONSE) BleMsg(t = "rsp", s = 413, b = """{"error":"response too large for bluetooth"}""")
-            else BleMsg(t = "rsp", s = code, b = String(body))
+            if (body.size > MAX_RESPONSE) local(413, """{"error":"response too large for bluetooth"}""")
+            else BleMsg(t = "rsp", s = code, b = String(body), h = conn.getHeaderField(HEADER_RSP_SIG)?.let { mapOf(HEADER_RSP_SIG to it) })
         } finally {
             conn.disconnect()
         }
@@ -469,30 +472,32 @@ object BleLink : SmallTransport {
     ): String {
         val chan = byNode[path.nodeId]?.takeIf { it.ready } ?: throw IOException("no bluetooth channel to ${path.name}")
         val rpc = chan.rpc ?: throw IOException("bluetooth channel closing")
-        val rsp = rpc.call(BleMsg(t = "req", m = method, p = fullPath, h = headers, b = body.ifEmpty { null }), timeoutMs)
+        return unwrap(headers, rpc.call(BleMsg(t = "req", m = method, p = fullPath, h = headers, b = body.ifEmpty { null }), timeoutMs))
+    }
+
+    /** Check the answer's HMAC (as for HTTP), then return the body or throw the HTTP error it carries. */
+    private fun unwrap(requestHeaders: Map<String, String>, rsp: BleMsg): String {
         val status = rsp.s ?: 502
-        if (status !in 200..299) throw NodeHttpException(status, rsp.b ?: "")
-        return rsp.b ?: ""
+        val body = rsp.b ?: ""
+        if (!ResponseAuth.verify(AppGraph.pairingSecret, status, requestHeaders[HEADER_REQ] ?: "", body, rsp.h?.get(HEADER_RSP_SIG))) {
+            throw UntrustedResponse("the Bluetooth answer is not authenticated")
+        }
+        if (status !in 200..299) throw NodeHttpException(status, body)
+        return body
     }
 
     /** Unsigned or signed GET over the channel to [nodeId] (used for hello, the trust check and the heartbeat). */
     suspend fun get(nodeId: String, fullPath: String, signed: Boolean, timeoutMs: Long): String {
         val headers = if (signed) AppGraph.nodeClient.signedHeaders(HttpMethod.Get, fullPath, "", UUID.randomUUID().toString()) else emptyMap()
         val chan = byNode[nodeId]?.takeIf { it.ready } ?: throw IOException("no bluetooth channel")
-        val rsp = (chan.rpc ?: throw IOException("channel closing")).call(BleMsg(t = "req", m = "GET", p = fullPath, h = headers), timeoutMs)
-        val status = rsp.s ?: 502
-        if (status !in 200..299) throw NodeHttpException(status, rsp.b ?: "")
-        return rsp.b ?: ""
+        return unwrap(headers, (chan.rpc ?: throw IOException("channel closing")).call(BleMsg(t = "req", m = "GET", p = fullPath, h = headers), timeoutMs))
     }
 
     /** Signed POST over the channel to [nodeId] only (never falls back to Wi-Fi): bench and tests. */
     suspend fun post(nodeId: String, fullPath: String, body: String, timeoutMs: Long): String {
         val headers = AppGraph.nodeClient.signedHeaders(HttpMethod.Post, fullPath, body, UUID.randomUUID().toString())
         val chan = byNode[nodeId]?.takeIf { it.ready } ?: throw IOException("no bluetooth channel")
-        val rsp = (chan.rpc ?: throw IOException("channel closing")).call(BleMsg(t = "req", m = "POST", p = fullPath, h = headers, b = body), timeoutMs)
-        val status = rsp.s ?: 502
-        if (status !in 200..299) throw NodeHttpException(status, rsp.b ?: "")
-        return rsp.b ?: ""
+        return unwrap(headers, (chan.rpc ?: throw IOException("channel closing")).call(BleMsg(t = "req", m = "POST", p = fullPath, h = headers, b = body), timeoutMs))
     }
 
     suspend fun health(nodeId: String, timeoutMs: Long): NodeHealth =

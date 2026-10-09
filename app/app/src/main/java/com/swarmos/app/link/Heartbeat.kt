@@ -44,24 +44,33 @@ data class PeerStatus(
  * the next success brings it back. Both calls return true when the state changed.
  */
 class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = LinkState.ONLINE) {
+    @Volatile
     var state: LinkState = start
         private set
+    @Volatile
     var misses: Int = 0
         private set
+    @Volatile
     var rttMs: Double? = null
         private set
+    @Volatile
     var lastSeenMs: Long = 0
         private set
+    @Volatile
     var beats: Int = 0
         private set
+    @Volatile
     var missesTotal: Int = 0
         private set
+    @Volatile
     var awayCount: Int = 0
         private set
     /** Longest time between two successful heartbeats. */
+    @Volatile
     var maxGapMs: Long = 0
         private set
 
+    @Synchronized
     fun onSuccess(rttMs: Double, nowMs: Long): Boolean {
         val changed = state != LinkState.ONLINE
         if (lastSeenMs > 0) maxGapMs = maxOf(maxGapMs, nowMs - lastSeenMs)
@@ -73,6 +82,7 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
         return changed
     }
 
+    @Synchronized
     fun onMiss(): Boolean {
         misses++
         missesTotal++
@@ -86,6 +96,7 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
     }
 
     /** The peer told us it is leaving (POST /link/bye). */
+    @Synchronized
     fun onBye(): Boolean {
         misses = missesToAway
         rttMs = null

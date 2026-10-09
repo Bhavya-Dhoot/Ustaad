@@ -67,6 +67,22 @@ data class TputResult(
 )
 
 @Serializable
+data class FailoverResult(
+    val sent: Int,
+    val ok: Int,
+    val failed: Int,
+    val maxMs: Double = 0.0,
+    /** Requests that had to leave a path (transport error or path lost) and were retried on another with the same id. */
+    val pathFailovers: Int = 0,
+    /** How often the receiver's handler ran during the test; equals [ok] when nothing was lost or run twice. */
+    val executionsOnPeer: Int? = null,
+    val disruptedAtMs: Long? = null,
+    val recoveredAtMs: Long? = null,
+    val notes: List<String> = emptyList(),
+    val error: String? = null,
+)
+
+@Serializable
 data class BleBenchResult(
     val time: String,
     val from: String,
@@ -127,6 +143,11 @@ object LinkRuntime {
 
     val internetValidated: StateFlow<Boolean> get() = InternetState.validated
 
+    private val _serverError = MutableStateFlow<String?>(null)
+    /** Set when the node API or probe port could not be opened (port already in use); shown on the Swarm screen. */
+    val serverError: StateFlow<String?> = _serverError.asStateFlow()
+    fun reportServerError(message: String?) { _serverError.value = message }
+
     private val tputFile get() = File(AppGraph.appContext.filesDir, "tput.jsonl")
 
     @Synchronized
@@ -136,8 +157,7 @@ object LinkRuntime {
         val ctx = AppGraph.appContext
         InternetState.start(ctx)
         loadResults()
-        runCatching { tputServer = TputServer(Ports.TPUT).also { it.start() } }
-            .onFailure { Log.w(TAG, "tput server: $it") }
+        openTputServer()
         PeerLinks.start()
         AppForeground.start(ctx, scope)
         scope.launch { PeerLinks.peers.collect { WifiLocks.reevaluate() } }
@@ -155,7 +175,14 @@ object LinkRuntime {
     @Synchronized
     fun restartTputServer() {
         tputServer?.stop()
-        runCatching { tputServer = TputServer(Ports.TPUT).also { it.start() } }.onFailure { Log.w(TAG, "tput server: $it") }
+        openTputServer()
+    }
+
+    private fun openTputServer() {
+        runCatching { tputServer = TputServer(Ports.TPUT, { AppGraph.pairingSecret }).also { it.start() } }.onFailure {
+            Log.w(TAG, "tput server: $it")
+            _serverError.value = "Probe port ${Ports.TPUT} could not be opened (${it.message ?: it::class.simpleName}); another app may be using it"
+        }
     }
 
     @Synchronized
@@ -216,8 +243,10 @@ object LinkRuntime {
         return payload
     }
 
+    /** Stop showing the code and take the Wi-Fi Direct group down with it (the stored credentials go too). */
     fun stopHosting() {
         _hosting.value = null
+        if (DirectLink.state.value.role == "host") scope.launch { runCatching { DirectLink.stop() } }
     }
 
     suspend fun stopDirect() {
@@ -264,14 +293,39 @@ object LinkRuntime {
     }
 
     /** `swarmos://pair?d=...`, a raw payload or JSON. Runs in the background; the outcome lands in [message]. */
-    fun handleDeepLink(text: String) {
+    fun handleDeepLink(text: String, confirmed: Boolean = false) {
         val p = Pairing.parse(text)
         if (p == null) {
-            _message.value = "Not a SwarmOS pairing code"
+            _message.value = "Not an Ustaad pairing code"
             return
         }
+        if (!confirmed) {
+            // taking a new pairing secret and joining a group must be the person's decision: ask first
+            _pending.value = p
+            _message.value = "Waiting for you to confirm pairing with ${p.name}"
+            return
+        }
+        beginAdopt(p)
+    }
+
+    private fun beginAdopt(p: PairingPayload) {
         _message.value = "Pairing with ${p.name}..."
         scope.launch { runCatching { adopt(p) }.onFailure { _message.value = "Pairing failed: ${it.message}" } }
+    }
+
+    private val _pending = MutableStateFlow<PairingPayload?>(null)
+    /** A pairing code that was scanned or opened and is waiting for the person to confirm. */
+    val pendingPairing: StateFlow<PairingPayload?> = _pending.asStateFlow()
+
+    fun confirmPairing() {
+        val p = _pending.value ?: return
+        _pending.value = null
+        beginAdopt(p)
+    }
+
+    fun cancelPairing() {
+        _pending.value = null
+        _message.value = "Pairing cancelled"
     }
 
     suspend fun addPeer(host: String, port: Int): ConnectResult {
@@ -305,7 +359,7 @@ object LinkRuntime {
             val st = session.status.value
             val probePort = st.port + 1
             val local = LinkRoute.findLocalFor(st.ip)
-            val client = TputClient { LinkRoute.openSocket(ctx, st.ip, probePort) }
+            val client = TputClient({ AppGraph.pairingSecret }) { LinkRoute.openSocket(ctx, st.ip, probePort) }
             var base = TputResult(
                 time = OffsetDateTime.now().withNano(0).toString(), ts = System.currentTimeMillis(),
                 fromNodeId = self.nodeId, fromName = self.name, toNodeId = st.nodeId, toName = st.name,
@@ -351,6 +405,7 @@ object LinkRuntime {
                         } else {
                             val sts = used.map { it.status.value }
                             val sender = StripedSender(
+                                { AppGraph.pairingSecret },
                                 sts.map { ps -> { LinkRoute.openSocket(ctx, ps.ip, ps.port + 1) } }, sts.map { it.link.name },
                             )
                             val t = sender.send(megabytes, maxOf(streams, 1, sts.size), onProgress = onProgress)
@@ -413,7 +468,7 @@ object LinkRuntime {
                         report = report.copy(http = rttStats(samples))
                     }
                     if (tcpPings > 0) {
-                        val client = TputClient { LinkRoute.openSocket(ctx, st.ip, st.port + 1) }
+                        val client = TputClient({ AppGraph.pairingSecret }) { LinkRoute.openSocket(ctx, st.ip, st.port + 1) }
                         report = report.copy(tcp = client.rtt(tcpPings))
                     }
                 }
@@ -449,6 +504,51 @@ object LinkRuntime {
             res = res.copy(error = t.message ?: t::class.simpleName)
         }
         res
+    }
+
+    /**
+     * Failover check: [n] signed POST /link/sleep (ms = 0) requests, one every [intervalMs], each with its own request id
+     * through the normal [NodeClient] path selection. The receiver counts how often the handler really ran (/sleep-count);
+     * after the run `executionsOnPeer` must equal `ok` (nothing lost, nothing run twice). Disable a path while it runs.
+     */
+    suspend fun failoverTest(peerNodeId: String, n: Int, intervalMs: Long, timeoutMs: Long): FailoverResult {
+        val peer = PeerLinks.pathsOf(peerNodeId).firstOrNull() ?: return FailoverResult(0, 0, 0, error = "unknown peer")
+        val host = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == peerNodeId }?.info?.ip ?: peer.ip
+        val run = System.currentTimeMillis()
+        suspend fun peerCount(): Int? {
+            repeat(10) {
+                runCatching { com.swarmos.app.core.SwarmJson.decodeFromString<Map<String, Int>>(AppGraph.nodeClient.raw(HttpMethod.Get, host, "/link/sleep-count", "", 4_000))["executions"] }
+                    .getOrNull()?.let { return it }
+                kotlinx.coroutines.delay(1_000)
+            }
+            return null
+        }
+        val before = peerCount()
+        var ok = 0; var failed = 0; var maxMs = 0.0
+        val slow = mutableListOf<String>()
+        var firstSlowAt = -1L; var recoveredAt = -1L
+        val t0 = System.currentTimeMillis()
+        val lossBefore = PeerLinks.pathsOf(peerNodeId).sumOf { it.lossCount }
+        for (i in 0 until n) {
+            val s = System.nanoTime()
+            val good = try {
+                AppGraph.nodeClient.raw(HttpMethod.Post, host, "/link/sleep", """{"ms":0}""", timeoutMs, "ft-$run-$i"); true
+            } catch (t: Throwable) { slow += "#$i failed: ${t.message?.take(80)}"; false }
+            val ms = (System.nanoTime() - s) / 1e6
+            if (good) ok++ else failed++
+            maxMs = maxOf(maxMs, ms)
+            if ((!good || ms > 1_000) && firstSlowAt < 0) firstSlowAt = System.currentTimeMillis() - t0
+            if (good && ms < 1_000 && firstSlowAt >= 0 && recoveredAt < 0) recoveredAt = System.currentTimeMillis() - t0
+            if (ms > 500) slow += "#$i took ${"%.0f".format(ms)} ms"
+            kotlinx.coroutines.delay(intervalMs)
+        }
+        val after = peerCount()
+        val loss = PeerLinks.pathsOf(peerNodeId).sumOf { it.lossCount } - lossBefore
+        return FailoverResult(
+            sent = n, ok = ok, failed = failed, maxMs = maxMs, pathFailovers = loss,
+            executionsOnPeer = if (before != null && after != null) after - before else null,
+            disruptedAtMs = firstSlowAt.takeIf { it >= 0 }, recoveredAtMs = recoveredAt.takeIf { it >= 0 }, notes = slow.take(20),
+        )
     }
 
     private fun failed(fromId: String, fromName: String, toId: String, toName: String, ip: String, link: String, mb: Int, err: String) =

@@ -109,6 +109,7 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
     val results by LinkRuntime.results.collectAsStateWithLifecycle()
     val internet by InternetState.validated.collectAsStateWithLifecycle()
     val message by LinkRuntime.message.collectAsStateWithLifecycle()
+    val serverError by LinkRuntime.serverError.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var ip by remember { mutableStateOf("") }
 
@@ -118,6 +119,8 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
     PageColumn {
         Text("Swarm", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text("${online + 1} phones online, ${peers.count { it.state == LinkState.ONLINE }} links", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        serverError?.let { Text(it, color = BadColor) }
+        KeptAwakeLine()
 
         Column {
             MetricRow("This phone", "${self.name}  ${self.ip}:${com.swarmos.app.core.Ports.NODE}")
@@ -129,11 +132,15 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
 
         Text("Peers", style = MaterialTheme.typography.titleMedium)
         if (peers.isEmpty()) Text("No peers yet. Phones on the same Wi-Fi appear here on their own.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        peers.forEach { PeerRow(it) { onLink(it.key) } }
+        peers.groupBy { it.nodeId }.values.forEach { PeerCard(it) { key -> onLink(key) } }
+        capacityLine(peers, results)?.let { Text(it, style = MonoStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         rejected.forEach {
-            Text("${it.name ?: it.ip} at ${it.ip} rejected our signature (different pairing secret)", color = WarnColor)
+            Text("${it.name ?: it.ip} at ${it.ip}: ${it.reason ?: "rejected our signature"}", color = WarnColor)
         }
         message?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+
+        // the scheduler's load panel (tokens per second across the phones); it scrolls inside its own box
+        com.swarmos.app.sched.ThroughputPanel(Modifier.height(340.dp))
 
         PrimaryBtn("Host a swarm", onClick = onHost)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -230,6 +237,107 @@ private fun Topology(selfName: String, peers: List<PeerStatus>, results: List<Tp
     }
 }
 
+// ------------------------------------------------------------------ paths, awake, pairing
+
+/** One phone with every path to it as a small chip: live round trip and the last measured Mbps. */
+@Composable
+private fun PeerCard(paths: List<PeerStatus>, onClick: (String) -> Unit) {
+    val ordered = paths.sortedBy { it.link }
+    val head = ordered.firstOrNull { it.state == LinkState.ONLINE } ?: ordered.first()
+    val anyOnline = ordered.any { it.state == LinkState.ONLINE }
+    val best = ordered.filter { it.state == LinkState.ONLINE }.let { MeasuredPolicy().order(it, Use.SMALL).firstOrNull() } ?: head
+    Column(Modifier.fillMaxWidth().clickable { onClick(best.key) }.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Token(head.name)
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(head.name, color = peerAccent(head.name), fontWeight = FontWeight.Bold)
+                    Text(if (anyOnline) "online" else "away", color = stateColor(if (anyOnline) LinkState.ONLINE else LinkState.AWAY), fontSize = 12.sp)
+                }
+                Text(best.ip, style = MonoStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                val bat = head.health?.batteryPct?.takeIf { it >= 0 }?.let { "$it%" } ?: "-"
+                Text(if (anyOnline) "${fmt1(best.rttMs)} ms" else "-", style = MonoStyle)
+                Text("${thermalLabel(head.health?.thermalStatus)}  $bat", style = MonoStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ordered.forEach { PathChip(it) }
+        }
+        // why a path is away, when the phone says so: a backgrounded app is frozen by the OS and returns on its own
+        ordered.firstOrNull { it.state == LinkState.AWAY && it.awayReason != null }?.let {
+            val text = if (it.awayReason == "left the foreground") "${it.name} left the foreground; it rejoins by itself when the app is back in front"
+            else "${it.name}: ${it.awayReason}"
+            Text(text, color = WarnColor, fontSize = 12.sp)
+        }
+        if (anyOnline && head.peerForeground == false) Text("${head.name} is in the background and may be frozen soon", color = WarnColor, fontSize = 12.sp)
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+}
+
+@Composable
+private fun PathChip(p: PeerStatus) {
+    val up = p.state == LinkState.ONLINE
+    val text = buildString {
+        append(p.link.name)
+        if (up) {
+            p.ewmaRttMs?.let { append("  ${"%.0f".format(it)} ms") }
+            p.lastMbps?.let { append("  ${"%.0f".format(it)} Mbps") }
+        } else append("  away")
+    }
+    Text(
+        text, style = MonoStyle.copy(fontSize = 11.sp),
+        color = if (up) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.border(1.dp, if (up) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+/** One line of capacity from measured values only: the best single path and, if one was measured, the multipath total. */
+private fun capacityLine(peers: List<PeerStatus>, results: List<TputResult>): String? {
+    val online = peers.filter { it.state == LinkState.ONLINE && it.lastMbps != null }
+    val best = online.maxByOrNull { it.lastMbps!! } ?: return null
+    val multi = results.firstOrNull { it.toNodeId == best.nodeId && it.link.contains('+') && it.mbpsReceiver != null }
+    return "Capacity to ${best.name}: ${"%.0f".format(best.lastMbps)} Mbps over ${best.link.name}" +
+        (multi?.let { "; ${"%.0f".format(it.mbpsReceiver)} Mbps over ${it.link} together" } ?: "")
+}
+
+/** Says whether the screen is held on, from the window flag the activity really set, and which Wi-Fi lock is held. */
+@Composable
+private fun KeptAwakeLine() {
+    val ctx = LocalContext.current
+    val fg by AppForeground.foreground.collectAsStateWithLifecycle()
+    val lock by WifiLocks.held.collectAsStateWithLifecycle()
+    var act = ctx
+    while (act is android.content.ContextWrapper && act !is android.app.Activity) act = act.baseContext
+    val flag = ((act as? android.app.Activity)?.window?.attributes?.flags ?: 0) and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+    val awake = flag && fg
+    Text(
+        if (awake) "Kept awake: the screen stays on while this app is in front. Wi-Fi lock ${lock.name.lowercase()}."
+        else "Not kept awake: the app is in the background, so the system may freeze it and peers will lose this phone.",
+        color = if (awake) MaterialTheme.colorScheme.onSurfaceVariant else WarnColor, fontSize = 12.sp,
+    )
+}
+
+/** Asks before a scanned or opened pairing code replaces this phone's secret (the debug extra `confirm` skips it). */
+@Composable
+fun PairingConfirmDialog() {
+    val pending by LinkRuntime.pendingPairing.collectAsStateWithLifecycle()
+    val p = pending ?: return
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { LinkRuntime.cancelPairing() },
+        title = { Text("Pair with ${p.name}?") },
+        text = {
+            Text(
+                "This phone will take that swarm's pairing secret and join it${if (p.p2p != null) ", including its Wi-Fi Direct group" else ""}. " +
+                    "Check that ${p.name} shows the code ${Pairing.fingerprint(p.secret)}.",
+            )
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { LinkRuntime.confirmPairing() }) { Text("Pair") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { LinkRuntime.cancelPairing() }) { Text("Cancel") } },
+    )
+}
+
 // ------------------------------------------------------------------ host
 
 @Composable
@@ -267,7 +375,7 @@ private fun HostPage(onBack: () -> Unit) {
             Image(bmp, "Pairing QR", Modifier.fillMaxWidth().aspectRatio(1f).background(androidx.compose.ui.graphics.Color.White))
             Column {
                 MetricRow("network", h.payload.p2p?.ssid ?: "current Wi-Fi")
-                MetricRow("band", if (h.payload.p2p != null) (direct.band ?: "5 GHz") + (direct.frequencyMhz?.let { "  $it MHz" } ?: "") else "-")
+                MetricRow("band", if (h.payload.p2p != null) listOfNotNull(direct.band, direct.frequencyMhz?.let { "$it MHz" }).joinToString("  ").ifEmpty { "-" } else "-")
                 MetricRow("address", h.payload.ips.joinToString("  ") + ":" + h.payload.port)
                 direct.formationMs?.let { MetricRow("group formed in", "$it ms") }
                 MetricRow("secret", Pairing.fingerprint(h.payload.secret))
@@ -282,7 +390,7 @@ private fun HostPage(onBack: () -> Unit) {
                 "A fresh pairing secret is made when hosting starts. Phones that scan the code adopt it; phones still on the old secret drop out of the list.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            PrimaryBtn(if (busy) "Starting..." else "Host over Wi-Fi Direct (5 GHz)", enabled = !busy) { start(true) }
+            PrimaryBtn(if (busy) "Starting..." else "Host over Wi-Fi Direct", enabled = !busy) { start(true) }
             SecondaryBtn("Use current Wi-Fi instead", Modifier.fillMaxWidth(), enabled = !busy) { start(false) }
         }
         (error ?: direct.error)?.let { Text(it, color = BadColor) }

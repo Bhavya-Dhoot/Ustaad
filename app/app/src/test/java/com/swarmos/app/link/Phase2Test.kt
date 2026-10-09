@@ -19,6 +19,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicInteger
 
+private const val SECRET = "test-secret"
+
 /** A server that runs a handler at most once per request id, the way NodeServer does with [RequestDedup]. */
 private class FakeServer {
     val dedup = RequestDedup()
@@ -135,12 +137,10 @@ class FailoverTest {
 
     @Test fun aPathDeclaredAwayMidRequestMovesTheRequestToTheNextPath() = runBlocking {
         val server = FakeServer()
-        val gate = CompletableDeferred<Unit>()
         val r = sendWithFailover("req-5", listOf(
-            PathAttempt("DIRECT") { gate.await(); throw PathLostCancellation("x/DIRECT") },
+            PathAttempt("DIRECT") { delay(5); throw PathLostCancellation("x/DIRECT") }, // the path was declared away while the request was in flight
             PathAttempt("LAN") { id -> server.handle(id) },
         ))
-        gate.complete(Unit)
         assertEquals("result-of-run-1", r)
     }
 }
@@ -223,11 +223,11 @@ class BulkTest {
     }
 
     @Test fun stripedTransferOverFourStreamsArrivesCompleteAndChecked() {
-        val server = TputServer(0)
+        val server = TputServer(0, { SECRET })
         val port = loopback(server)
         try {
             var progressed = 0L
-            val sender = StripedSender(listOf({ Socket("127.0.0.1", port) }), listOf("LAN"))
+            val sender = StripedSender({ SECRET }, listOf({ Socket("127.0.0.1", port) }), listOf("LAN"))
             val r = sender.send(megabytes = 16, streams = 4) { progressed = maxOf(progressed, it) }
             assertEquals(16L * 1024 * 1024, r.bytes)
             assertEquals("no CRC failures", 0, r.badChunks)
@@ -240,10 +240,11 @@ class BulkTest {
     }
 
     @Test fun twoPathsShareOneTransferAndTheShareIsReported() {
-        val server = TputServer(0)
+        val server = TputServer(0, { SECRET })
         val port = loopback(server)
         try {
             val sender = StripedSender(
+                { SECRET },
                 listOf({ Socket("127.0.0.1", port) }, { Socket("127.0.0.1", port) }), listOf("LAN", "DIRECT"),
             )
             val r = sender.send(megabytes = 8, streams = 4)
@@ -255,12 +256,12 @@ class BulkTest {
     }
 
     @Test fun aCorruptedChunkIsCounted() {
-        val server = TputServer(0)
+        val server = TputServer(0, { SECRET })
         val port = loopback(server)
         try {
             Socket("127.0.0.1", port).use { s ->
                 val out = DataOutputStream(s.getOutputStream())
-                out.writeByte(Striped.MODE)
+                out.write(TputAuth.token(SECRET, Striped.MODE))
                 Striped.writeHeader(out, Striped.Header(java.util.UUID.randomUUID(), 1, 0, 1, 1024, 1024))
                 out.writeInt(0); out.writeInt(1024); out.writeInt(0x12345678) // wrong CRC
                 out.write(ByteArray(1024))

@@ -39,11 +39,11 @@ class PeerSession(initial: PeerStatus) {
 
 sealed interface ConnectResult {
     data class Ok(val status: PeerStatus) : ConnectResult
-    data class Untrusted(val nodeId: String?, val name: String?) : ConnectResult
+    data class Untrusted(val nodeId: String?, val name: String?, val reason: String? = null) : ConnectResult
     data class Failed(val reason: String) : ConnectResult
 }
 
-data class Rejected(val ip: String, val port: Int, val nodeId: String?, val name: String?, val atMs: Long)
+data class Rejected(val ip: String, val port: Int, val nodeId: String?, val name: String?, val atMs: Long, val reason: String? = null)
 
 /**
  * Trust handshake, 1 Hz heartbeat and the bridge into [AppGraph.registry].
@@ -150,8 +150,20 @@ object PeerLinks {
         scope.coroutineContext[Job]?.cancel()
     }
 
-    /** Remember an endpoint (from NSD, a QR or "add by IP"); the retry loop connects it until it succeeds. */
+    private fun recordRejected(host: String, port: Int, nodeId: String?, name: String?, reason: String) {
+        _rejected.update { (it.filterNot { r -> r.ip == host && r.port == port } + Rejected(host, port, nodeId, name, System.currentTimeMillis(), reason)).takeLast(8) }
+        AppGraph.audit.append("peer.rejected", JsonObject(mapOf("node" to JsonPrimitive(nodeId ?: "?"), "ip" to JsonPrimitive(host), "reason" to JsonPrimitive(reason))))
+    }
+
+    /** 401 from a peer: a clock more than 30 s off gives the same status as a wrong secret, so say which one it is. */
+    internal fun reasonOf401(e: NodeHttpException, nowMs: Long = System.currentTimeMillis()): String {
+        val skew = runCatching { com.swarmos.app.core.SwarmJson.decodeFromString<SkewBody>(e.body) }.getOrNull()
+        return if (skew != null && skew.error == "clock skew") "clock off by ${kotlin.math.abs(skew.serverTimeMs - nowMs) / 1000} s" else "different pairing secret"
+    }
+
+    /** Remember an endpoint (from NSD, a QR or "add by IP"); the retry loop connects it until it succeeds. Only local addresses are accepted. */
     fun remember(host: String, port: Int) {
+        if (!LinkRoute.isLocalAddress(host) || port !in 1..65535) return
         val k = "$host:$port"
         endpoints.compute(k) { _, old -> old?.also { it.failures = 0; it.lastTryMs = 0 } ?: Endpoint(host, port) }
     }
@@ -173,10 +185,15 @@ object PeerLinks {
 
     /** Hello, signed health, then a heartbeat session. [announce] asks the peer to add us back (reverse registration). */
     suspend fun connect(host: String, port: Int, announce: Boolean = true): ConnectResult {
+        if (!LinkRoute.isLocalAddress(host) || port !in 1..65535) return ConnectResult.Failed("$host:$port is not a local network address")
         val hostPort = "$host:$port"
         val client = AppGraph.nodeClient
         val info = try {
             client.getPinned<NodeInfo>(hostPort, "/hello", HELLO_TIMEOUT_MS)
+        } catch (u: UntrustedResponse) {
+            val why = "answered but did not prove the pairing secret"
+            recordRejected(host, port, null, null, why)
+            return ConnectResult.Untrusted(null, null, why)
         } catch (t: Throwable) {
             currentCoroutineContext().ensureActive()
             return ConnectResult.Failed("hello: ${t.message ?: t::class.simpleName}")
@@ -186,11 +203,14 @@ object PeerLinks {
             client.getPinned<NodeHealth>(hostPort, "/health", HELLO_TIMEOUT_MS)
         } catch (e: NodeHttpException) {
             if (e.status == 401) {
-                _rejected.update { (it.filterNot { r -> r.ip == host && r.port == port } + Rejected(host, port, info.nodeId, info.name, System.currentTimeMillis())).takeLast(8) }
-                AppGraph.audit.append("peer.rejected", JsonObject(mapOf("node" to JsonPrimitive(info.nodeId), "ip" to JsonPrimitive(host))))
-                return ConnectResult.Untrusted(info.nodeId, info.name)
+                val why = reasonOf401(e)
+                recordRejected(host, port, info.nodeId, info.name, why)
+                return ConnectResult.Untrusted(info.nodeId, info.name, why)
             }
             return ConnectResult.Failed("health: $e")
+        } catch (u: UntrustedResponse) {
+            recordRejected(host, port, info.nodeId, info.name, "answer not authenticated")
+            return ConnectResult.Untrusted(info.nodeId, info.name, "answer not authenticated")
         } catch (t: Throwable) {
             currentCoroutineContext().ensureActive()
             return ConnectResult.Failed("health: ${t.message ?: t::class.simpleName}")
@@ -280,9 +300,16 @@ object PeerLinks {
     private suspend fun beat(s: PeerSession, n: Int) {
         val st = s.status.value
         val t0 = System.nanoTime()
+        var failReason: String? = null
         val h: NodeHealth? = try {
             if (st.link == LinkType.BT) BleLink.health(st.nodeId, HEARTBEAT_TIMEOUT_MS * 3)
             else AppGraph.nodeClient.getPinned<NodeHealth>(st.hostPort, "/health", HEARTBEAT_TIMEOUT_MS)
+        } catch (e: NodeHttpException) {
+            if (e.status == 401) failReason = reasonOf401(e)
+            null
+        } catch (e: UntrustedResponse) {
+            failReason = "answer not authenticated (different pairing secret?)"
+            null
         } catch (t: Throwable) {
             currentCoroutineContext().ensureActive()
             null
@@ -296,6 +323,7 @@ object PeerLinks {
                 lastSeenMs = if (h != null) now else it.lastSeenMs, health = h ?: it.health,
                 beats = s.tracker.beats, missesTotal = s.tracker.missesTotal, awayCount = s.tracker.awayCount, maxGapMs = s.tracker.maxGapMs,
                 ewmaRttMs = if (h != null) ewma(it.ewmaRttMs, rtt) else it.ewmaRttMs,
+                awayReason = if (h != null) null else failReason ?: it.awayReason,
             )
         }
         if (changed && s.tracker.state == LinkState.AWAY && pathsOf(st.nodeId).any { it.key != st.key && it.state == LinkState.ONLINE }) {
@@ -303,7 +331,7 @@ object PeerLinks {
             inflight[st.key]?.toList()?.forEach { it.cancel(PathLostCancellation(st.key)) }
         }
         if (changed) {
-            val reason = if (s.tracker.state == LinkState.AWAY && peerFg[st.nodeId] == false) "left the foreground" else null
+            val reason = failReason ?: if (s.tracker.state == LinkState.AWAY && peerFg[st.nodeId] == false) "left the foreground" else null
             s.update { it.copy(awayReason = reason) }
         }
         publish()

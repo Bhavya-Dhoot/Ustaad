@@ -101,20 +101,23 @@ object NodeDedup {
  */
 val RequestDedupPlugin = createApplicationPlugin("SwarmRequestDedup") {
     on(ResponseBodyReadyForSend) { call, content ->
-        val id = call.attributes.getOrNull(NodeDedup.ID) ?: return@on
-        call.attributes.remove(NodeDedup.ID)
         val bytes: ByteArray? = when (content) {
             is TextContent -> content.text.toByteArray(Charsets.UTF_8)
             is OutgoingContent.ByteArrayContent -> content.bytes()
             is OutgoingContent.NoContent -> ByteArray(0)
             else -> null
         }
-        if (bytes == null) {
-            NodeDedup.cache.abandon(id)
-        } else {
-            val status = (content.status ?: call.response.status() ?: HttpStatusCode.OK).value
-            NodeDedup.cache.complete(id, StoredResponse(status, content.contentType?.toString(), bytes))
+        val status = (content.status ?: call.response.status() ?: HttpStatusCode.OK).value
+        // authenticate the answer: HMAC over status, the request's id and the body (see ResponseAuth)
+        if (bytes != null) {
+            call.response.headers.append(
+                HEADER_RSP_SIG, ResponseAuth.sign(com.swarmos.app.AppGraph.pairingSecret, status, call.request.headers[HEADER_REQ] ?: "", String(bytes, Charsets.UTF_8)),
+            )
         }
+        val id = call.attributes.getOrNull(NodeDedup.ID) ?: return@on
+        call.attributes.remove(NodeDedup.ID)
+        if (bytes == null) NodeDedup.cache.abandon(id)
+        else NodeDedup.cache.complete(id, StoredResponse(status, content.contentType?.toString(), bytes))
     }
     on(ResponseSent) { call -> call.attributes.getOrNull(NodeDedup.ID)?.let { NodeDedup.cache.abandon(it) } }
     on(CallFailed) { call, _ -> call.attributes.getOrNull(NodeDedup.ID)?.let { NodeDedup.cache.abandon(it) } }
