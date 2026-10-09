@@ -70,6 +70,7 @@ data class PeersResponse(val self: SelfView, val peers: List<PeerView>, val reje
     val paths: List<String>? = null,
 )
 @Serializable data class HostRequest(val direct: Boolean = false, val rotate: Boolean = true, val freqMhz: Int? = null)
+@Serializable data class SleepResult(val slept: Long, val executions: Int)
 @Serializable data class FailoverRequest(val peerNodeId: String, val n: Int = 200, val intervalMs: Long = 100, val timeoutMs: Long = 10_000)
 @Serializable data class BleBenchRequest(val peerNodeId: String, val n: Int = 50, val bodyBytes: Int = 900)
 @Serializable data class AddPeerRequest(val ip: String, val port: Int? = null)
@@ -292,7 +293,7 @@ fun Route.linkRoutes() {
         post("/sleep") {
             val r = body<SleepRequest>() ?: return@post bad("body must be {\"ms\":120000}")
             kotlinx.coroutines.delay(r.ms.coerceIn(0, 600_000))
-            call.respond(mapOf("slept" to r.ms, "executions" to SleepCounter.next()))
+            call.respond(SleepResult(r.ms, SleepCounter.next()))
         }
 
         get("/sleep-count") { call.respond(mapOf("executions" to SleepCounter.value())) }

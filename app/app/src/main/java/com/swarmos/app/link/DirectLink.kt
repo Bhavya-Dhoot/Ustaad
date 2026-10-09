@@ -114,6 +114,11 @@ object DirectLink {
         return wi != null && (wi.frequency > 0 || wi.linkSpeed > 0) // networkId is redacted (-1) without foreground location access
     }
 
+    /** The channel the Wi-Fi station is on, when it is a 5 GHz one (else null). */
+    @Suppress("DEPRECATION")
+    private fun stationFrequency5g(ctx: Context): Int? =
+        ctx.getSystemService(WifiManager::class.java)?.connectionInfo?.frequency?.takeIf { it in 5000..5900 }
+
     private suspend fun clearExisting(mgr: WifiP2pManager, ch: WifiP2pManager.Channel) {
         if (groupInfo(mgr, ch) == null) return
         runCatching { action("removeGroup") { mgr.removeGroup(ch, it) } }
@@ -135,6 +140,14 @@ object DirectLink {
         val ch = channel(ctx, mgr)
         val nodeId = AppGraph.registry.self.value.nodeId
         val c = creds ?: P2pCreds(Pairing.directSsid(nodeId), Pairing.randomPassphrase())
+        // These phones time-slice the radio when the group is on another channel than the Wi-Fi station (multi-channel
+        // concurrency: round trips of 100 ms and more, measured), so by default the group asks for the station's own
+        // 5 GHz channel. freqMhz <= 0 asks for the plain 5 GHz band and lets the framework choose.
+        val freqMhz: Int? = when {
+            freqMhz == null -> stationFrequency5g(ctx)
+            freqMhz <= 0 -> null
+            else -> freqMhz
+        }
         _state.value = DirectState(role = "host", phase = "starting", ssid = c.ssid, requestedMhz = freqMhz)
         val t0 = System.nanoTime()
         try {
@@ -254,6 +267,7 @@ object DirectLink {
         )
         val creds = if (g.isGroupOwner && !g.passphrase.isNullOrEmpty()) P2pCreds(g.networkName, g.passphrase) else null
         hostCreds = creds
+        if (creds != null && stored()?.role != "host") store(StoredDirect("host", creds.ssid, creds.pass)) // so a lost group can be re-created
         creds
     }
 
