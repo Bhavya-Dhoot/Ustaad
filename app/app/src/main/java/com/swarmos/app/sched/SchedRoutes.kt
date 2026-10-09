@@ -77,6 +77,15 @@ fun Route.schedBatchRoutes(batches: BatchStore) {
     }
 }
 
+/** GET /phones: how this phone currently sees every phone in the swarm (reachable, slots, own jobs in flight). */
+fun Route.schedPhonesRoute(swarm: () -> SwarmLlm) {
+    get("/phones") {
+        call.answer {
+            swarm().also { it.refreshCaps() }.phoneViews()
+        }
+    }
+}
+
 /** POST /debug/peers {ips}: registers phones by address until the discovery module does it. */
 fun Route.schedPeersRoute(register: suspend (List<String>) -> PeersResponse) {
     post("/debug/peers") {

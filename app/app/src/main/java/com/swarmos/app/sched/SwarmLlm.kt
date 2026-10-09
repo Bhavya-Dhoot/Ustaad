@@ -5,12 +5,16 @@ import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatResult
 import com.swarmos.app.llm.LlmClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.channels.BufferOverflow
@@ -20,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
@@ -29,7 +34,11 @@ class NoPhoneAvailableException(pinned: String?) :
 class PhoneTimeoutException(val nodeId: String, val afterMs: Long) :
     RuntimeException("phone $nodeId gave no answer within $afterMs ms")
 
-/** What the UI shows for one phone. */
+/** The phone stopped answering its pings while our job ran on it. */
+class PhoneAbortedException(val nodeId: String) : IOException("phone $nodeId stopped answering")
+
+/** What the UI shows for one phone; also the body of GET /v1/sched/phones. */
+@Serializable
 data class PhoneView(
     val nodeId: String,
     val isLocal: Boolean,
@@ -62,6 +71,8 @@ class SwarmLlm(
     private val busyBackoffMs: Long = 200,
     /** How often a phone marked down is probed again. */
     private val probeEveryMs: Long = 3_000,
+    /** While jobs run on a remote phone it is pinged this often; two missed pings abort its jobs so they move on. */
+    private val heartbeatMs: Long = 1_000,
 ) : LlmClient {
     private class State {
         var caps: Caps? = null
@@ -73,8 +84,12 @@ class SwarmLlm(
         var nextProbeAt = 0L
         var probing = false
         var busyUntil = 0L
+        var misses = 0
+        /** Completed when the phone is declared down; attempts running on it stop waiting. Replaced when it answers again. */
+        var abort = CompletableDeferred<Unit>()
     }
 
+    private var heartbeat: Job? = null   // guarded by lock
     private val lock = Any()
     private val states = ConcurrentHashMap<String, State>()
     private val refreshMutex = Mutex()
@@ -151,12 +166,18 @@ class SwarmLlm(
         return r
     }
 
-    /** Sum of the slots of every reachable phone that can take chat jobs; at least 1. */
+    /**
+     * Sum of the slots of every registered phone that can take chat jobs, including a phone that is down right now
+     * (it may come back mid-batch and should find a worker waiting); at least 1.
+     */
     suspend fun slotCount(pinModel: String? = pinnedModel): Int {
         refreshCaps()
+        val eps = endpoints()
         return synchronized(lock) {
-            states.values.filter { !it.down }.mapNotNull { it.caps }
-                .filter { Scheduler.eligible(it, pinModel) }.sumOf { it.capacity }
+            eps.sumOf { ep ->
+                val c = states[ep.nodeId]?.caps
+                if (c == null) 1 else if (Scheduler.eligible(c, pinModel)) c.capacity else 0
+            }
         }.coerceAtLeast(1)
     }
 
@@ -200,12 +221,43 @@ class SwarmLlm(
                 st.caps = caps
                 st.mineAtSample = st.inflight
                 st.down = false
+                st.misses = 0
+                if (st.abort.isCompleted) st.abort = CompletableDeferred()
             } else {
-                st.down = true
-                st.nextProbeAt = clock() + probeEveryMs
+                st.misses++
+                // a phone that is busy with our jobs gets one more chance: it may just be slow to answer
+                if (st.down || st.misses >= (if (st.inflight > 0) MISS_LIMIT else 1)) markDownLocked(st)
             }
         }
         changes.tryEmit(Unit)
+    }
+
+    private fun markDownLocked(st: State) {
+        st.down = true
+        st.nextProbeAt = clock() + probeEveryMs
+        st.abort.complete(Unit)
+    }
+
+    /** While any job runs on a remote phone, ping that phone; a phone that stops answering has its jobs aborted at once. */
+    private fun ensureHeartbeat() {
+        synchronized(lock) {
+            if (heartbeat?.isActive == true) return
+            heartbeat = scope.launch {
+                while (true) {
+                    delay(heartbeatMs)
+                    val eps = endpoints()
+                    val busy = synchronized(lock) {
+                        val remote = eps.filter { !it.isLocal && (states[it.nodeId]?.inflight ?: 0) > 0 }
+                        if (remote.isEmpty() && states.values.none { it.inflight > 0 }) {
+                            heartbeat = null
+                            return@launch
+                        }
+                        remote
+                    }
+                    coroutineScope { busy.map { async { fetch(it) } }.awaitAll() }
+                }
+            }
+        }
     }
 
     /** Snapshot for the UI, local phone first. */
@@ -234,9 +286,10 @@ class SwarmLlm(
                 waitForChange()
                 continue
             }
+            val abort = synchronized(lock) { states[ep.nodeId]!!.abort }
+            if (!ep.isLocal) ensureHeartbeat()
             try {
-                val r = withTimeoutOrNull(attemptTimeoutMs) { call(ep) } ?: throw PhoneTimeoutException(ep.nodeId, attemptTimeoutMs)
-                return r
+                return attempt(ep, abort, call)
             } catch (e: BusyException) {
                 synchronized(lock) {
                     states[ep.nodeId]?.let { it.busyUntil = clock() + busyBackoffMs; it.capsAt = 0 }
@@ -251,8 +304,7 @@ class SwarmLlm(
                     if (st != null) {
                         // only a lost connection or silence says the phone is gone; an error answer says the job (or its model) failed
                         if (e is PhoneTimeoutException || e is IOException) {
-                            st.down = true
-                            st.nextProbeAt = clock() + probeEveryMs
+                            markDownLocked(st)
                         } else {
                             st.capsAt = 0
                         }
@@ -263,6 +315,27 @@ class SwarmLlm(
                 changes.tryEmit(Unit)
             }
         }
+    }
+
+    /** One try on one phone. Gives up when the phone is declared down meanwhile or [attemptTimeoutMs] passes. */
+    private suspend fun <T : Any> attempt(ep: PhoneEndpoint, abort: CompletableDeferred<Unit>, call: suspend (PhoneEndpoint) -> T): T {
+        val r = withTimeoutOrNull(attemptTimeoutMs) {
+            if (ep.isLocal) {
+                call(ep)
+            } else {
+                coroutineScope {
+                    val work = async { call(ep) }
+                    select<T> {
+                        work.onAwait { it }
+                        abort.onAwait {
+                            work.cancel()
+                            throw PhoneAbortedException(ep.nodeId)
+                        }
+                    }
+                }
+            }
+        }
+        return r ?: throw PhoneTimeoutException(ep.nodeId, attemptTimeoutMs)
     }
 
     private suspend fun waitForChange() {
@@ -311,5 +384,6 @@ class SwarmLlm(
 
     private companion object {
         const val POLL_MS = 100L
+        const val MISS_LIMIT = 2
     }
 }

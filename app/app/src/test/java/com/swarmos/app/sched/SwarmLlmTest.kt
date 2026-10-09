@@ -126,6 +126,31 @@ class SwarmLlmTest {
         assertEquals("T:hello", r.text)
     }
 
+    @Test fun aPhoneThatFreezesMidJobIsDetectedByPingsLongBeforeTheAttemptTimeout() = runBlocking {
+        val frozen = phone("frozen", tps = 99.0).also { it.hang = true }
+        val ok = phone("ok", tps = 1.0)
+        val llm = SwarmLlm({ listOf(frozen, ok) }, scope, attemptTimeoutMs = 30_000, capsMaxAgeMs = 50, probeEveryMs = 100, heartbeatMs = 80, capsTimeoutMs = 100)
+        val started = System.nanoTime()
+        val job = async { llm.chatJob("job-1", req("hello")) }
+        while (frozen.jobIds.isEmpty()) kotlinx.coroutines.delay(5)
+        frozen.capsDown = true                      // from now on the phone does not answer pings
+        val r = job.await()
+        val tookMs = (System.nanoTime() - started) / 1_000_000
+        assertEquals("ok", r.nodeId)
+        assertTrue("moved on after about two missed pings, took $tookMs ms", tookMs < 5_000)
+    }
+
+    @Test fun slotCountIncludesAPhoneThatIsDownSoItCanRejoinMidBatch() = runBlocking {
+        val a = phone("a")
+        val b = phone("b", capacity = 3)
+        val llm = swarm(listOf(a, b))
+        assertEquals(4, llm.slotCount())
+        b.dead = true
+        llm.refreshCaps(force = true)
+        assertTrue("b is down", llm.phoneViews().none { it.nodeId == "b" && it.up })
+        assertEquals("a down phone keeps its last known slots", 4, llm.slotCount())
+    }
+
     @Test fun whenEveryPhoneFailsTheErrorIsReportedPerItemNotForTheWholeBatch() = runBlocking {
         val a = phone("a").also { it.dead = true }
         val report = BatchRunner(swarm(listOf(a))).run("t", "swarm", batch(3))

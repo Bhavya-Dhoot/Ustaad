@@ -87,6 +87,7 @@ object SchedModule : SwarmModule {
     override fun Route.routes() {
         schedNodeRoutes(Sched.node)
         schedBatchRoutes(Sched.batches)
+        schedPhonesRoute { Sched.swarm }
         schedPeersRoute(Sched::registerPeers)
     }
 

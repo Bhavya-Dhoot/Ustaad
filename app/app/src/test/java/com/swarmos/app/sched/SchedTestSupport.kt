@@ -72,12 +72,14 @@ class FakePhone(
 
     @Volatile var dead = false
     @Volatile var hang = false
+    /** Pings fail while chat calls (if any) keep hanging: a phone that froze mid-job. */
+    @Volatile var capsDown = false
     @Volatile var dieAfter = Int.MAX_VALUE
     val calls = AtomicInteger()
     val jobIds = ConcurrentLinkedQueue<String>()
 
     override suspend fun caps(): Caps {
-        if (dead) throw IOException("$nodeId is down")
+        if (dead || capsDown) throw IOException("$nodeId is down")
         return node.caps().copy(lastDecodeTokPerSec = tokPerSec ?: node.caps().lastDecodeTokPerSec, thermalStatus = thermal)
     }
 
