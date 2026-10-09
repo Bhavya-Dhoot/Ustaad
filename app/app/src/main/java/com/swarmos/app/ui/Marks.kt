@@ -318,8 +318,23 @@ fun InkCircle(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
  */
 @Composable
 fun StreamingText(text: String, streaming: Boolean, modifier: Modifier = Modifier, style: TextStyle = SwarmType.body) {
+    val blink = rememberCaretBlink(streaming)
+    Text(
+        buildAnnotatedString {
+            append(text)
+            if (streaming) appendInlineContent("caret", "|")
+        },
+        modifier,
+        style = style,
+        inlineContent = mapOf("caret" to caretContent(style, blink)),
+    )
+}
+
+/** 1 -> 0 -> 1 blink phase of the stream caret; solid (1) when not streaming or when animations are removed. */
+@Composable
+internal fun rememberCaretBlink(streaming: Boolean): Float {
     val animate = rememberAnimationsEnabled()
-    val blink = if (streaming && animate) {
+    return if (streaming && animate) {
         rememberInfiniteTransition(label = "caret").animateFloat(
             initialValue = 1f,
             targetValue = 0f,
@@ -329,22 +344,17 @@ fun StreamingText(text: String, streaming: Boolean, modifier: Modifier = Modifie
             label = "caret",
         ).value
     } else 1f
+}
+
+/** The 2 dp Ink caret as inline text content (append it with appendInlineContent("caret", "|")). */
+@Composable
+internal fun caretContent(style: TextStyle, blink: Float): InlineTextContent {
     val caretHeight = with(LocalDensity.current) { (style.fontSize.toPx() * 0.95f).toSp() }
-    Text(
-        buildAnnotatedString {
-            append(text)
-            if (streaming) appendInlineContent("caret", "|")
-        },
-        modifier,
-        style = style,
-        inlineContent = mapOf(
-            "caret" to InlineTextContent(
-                Placeholder(width = 6.sp, height = caretHeight, placeholderVerticalAlign = PlaceholderVerticalAlign.Center),
-            ) {
-                Box(Modifier.fillMaxHeight().padding(start = 4.dp).width(2.dp).alpha(blink).background(SwarmColors.ink))
-            },
-        ),
-    )
+    return InlineTextContent(
+        Placeholder(width = 6.sp, height = caretHeight, placeholderVerticalAlign = PlaceholderVerticalAlign.Center),
+    ) {
+        Box(Modifier.fillMaxHeight().padding(start = 4.dp).width(2.dp).alpha(blink).background(SwarmColors.ink))
+    }
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFFF6F7F5)
