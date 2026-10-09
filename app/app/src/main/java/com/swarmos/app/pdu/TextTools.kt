@@ -69,6 +69,8 @@ object QueryTerms {
         "this", "that", "these", "those", "there", "here", "what", "which", "who", "whom", "whose",
         "where", "when", "why", "how", "can", "could", "should", "would", "will", "shall", "may", "might",
         "not", "no", "so", "if", "than", "then", "any", "all", "some", "please", "tell", "show", "find", "get",
+        // the commonest Hindi function words, so a Hindi question matches on its content words
+        "का", "की", "के", "को", "से", "में", "पर", "है", "हैं", "था", "थी", "थे", "और", "यह", "वह", "कि", "ने", "भी", "तो", "क्या", "कब", "कहाँ", "कहां",
     )
     private val TOKEN = Regex("[\\p{L}\\p{N}\\p{M}]+")
 
@@ -80,6 +82,33 @@ object QueryTerms {
     /** FTS5 MATCH expression, every term quoted so punctuation cannot break it. Null if there is nothing to match. */
     fun ftsMatch(terms: List<String>): String? =
         if (terms.isEmpty()) null else terms.joinToString(" OR ") { "\"" + it.replace("\"", "") + "\"" }
+}
+
+/** Combines the Latin and Devanagari recognisers' texts. */
+object OcrMerge {
+    /** A Latin result with fewer letters and digits than this is suspect: the Latin model skips Devanagari lines silently. */
+    const val SHORT_LATIN_CHARS = 150
+
+    fun needsDevanagari(latin: String): Boolean = latin.count { it.isLetterOrDigit() } < SHORT_LATIN_CHARS
+
+    /**
+     * The Latin text, then the Devanagari recogniser's lines that contain Devanagari script and that the Latin text
+     * does not already have. Both texts are kept; the second pass re-reads Latin lines slightly differently, and those
+     * variants add nothing, so they are not appended.
+     */
+    fun merge(latin: String, devanagari: String?): String {
+        if (devanagari.isNullOrBlank()) return latin
+        val known = latin.lineSequence().map(::key).filter { it.isNotEmpty() }.toList()
+        val extra = devanagari.lineSequence().map { it.trim() }.filter { line ->
+            val k = key(line)
+            hasDevanagari(line) && k.isNotEmpty() && known.none { it == k || it.contains(k) || k.contains(it) }
+        }.toList()
+        return if (extra.isEmpty()) latin else latin.trimEnd() + "\n" + extra.joinToString("\n")
+    }
+
+    private fun hasDevanagari(line: String): Boolean = line.any { it.code in 0x0900..0x097F }
+
+    private fun key(line: String): String = line.lowercase().filter { it.isLetterOrDigit() }
 }
 
 /** Picks the 400-character window of a chunk that mentions the most query terms. */

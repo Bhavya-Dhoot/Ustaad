@@ -7,6 +7,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
@@ -17,6 +18,9 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+
+/** Unique id per logical request (a retry on another path reuses it) so a receiver can drop duplicates. */
+const val HEADER_REQ = "X-Swarm-Req"
 
 class NodeHttpException(val status: Int, val body: String) : RuntimeException("HTTP $status: $body")
 
@@ -36,16 +40,26 @@ class NodeClient(private val secret: () -> String, private val selfId: () -> Str
     }
 
     @PublishedApi
-    internal suspend fun call(method: HttpMethod, host: String, path: String, body: String): String {
+    internal suspend fun call(
+        method: HttpMethod, host: String, path: String, body: String, timeoutMs: Long? = null, reqId: String? = null,
+    ): String {
         val fullPath = "/v1$path"
         val ts = System.currentTimeMillis()
         val hostPort = if (host.contains(':')) host else "$host:${Ports.NODE}"
         val resp = http.request {
             this.method = method
             url("http://$hostPort$fullPath")
+            if (timeoutMs != null) {
+                timeout {
+                    connectTimeoutMillis = timeoutMs
+                    requestTimeoutMillis = timeoutMs
+                    socketTimeoutMillis = timeoutMs
+                }
+            }
             header(Signer.HEADER_NODE, selfId())
             header(Signer.HEADER_TS, ts.toString())
             header(Signer.HEADER_SIG, Signer.sign(secret(), method.value, fullPath, ts, body))
+            header(HEADER_REQ, reqId ?: java.util.UUID.randomUUID().toString())
             if (body.isNotEmpty()) {
                 contentType(ContentType.Application.Json)
                 setBody(body)
@@ -58,6 +72,14 @@ class NodeClient(private val secret: () -> String, private val selfId: () -> Str
 
     suspend inline fun <reified T> get(host: String, path: String): T =
         json.decodeFromString<T>(call(HttpMethod.Get, host, path, ""))
+
+    /** Same as [get] with a hard per-request timeout (used by the 1 Hz heartbeat). */
+    suspend inline fun <reified T> get(host: String, path: String, timeoutMs: Long): T =
+        json.decodeFromString<T>(call(HttpMethod.Get, host, path, "", timeoutMs))
+
+    /** Signed request with a raw JSON body; returns the response body text. Used by link routes. */
+    suspend fun raw(method: HttpMethod, host: String, path: String, body: String = "", timeoutMs: Long? = null, reqId: String? = null): String =
+        call(method, host, path, body, timeoutMs, reqId)
 
     suspend inline fun <reified T> post(host: String, path: String): T =
         json.decodeFromString<T>(call(HttpMethod.Post, host, path, ""))

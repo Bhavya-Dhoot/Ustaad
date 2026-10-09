@@ -85,6 +85,7 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.mlkit.barcode)
     implementation(libs.mlkit.text)
+    implementation(libs.mlkit.text.devanagari)
     implementation(libs.pdfbox.android)
     implementation(libs.androidx.sqlite)
     implementation(libs.androidx.sqlite.bundled)

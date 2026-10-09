@@ -6,6 +6,11 @@ import com.swarmos.app.BuildConfig
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
+import com.swarmos.app.llm.ChatChunk
+import com.swarmos.app.llm.ChatRequest
+import com.swarmos.app.llm.ChatStats
+import com.swarmos.app.llm.FakeLlmClient
+import com.swarmos.app.llm.LlmClient
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.header
 import io.ktor.server.request.receiveText
@@ -14,6 +19,9 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import java.io.File
@@ -21,6 +29,21 @@ import kotlinx.serialization.decodeFromString
 
 @Serializable
 data class DebugScanRequest(val path: String, val title: String, val keepPrivate: Boolean = false)
+
+@Serializable
+data class DebugCannedRequest(val text: String)
+
+/** Debug builds only: streams a fixed answer, so the answer card and its citation chips can be checked. */
+private class CannedLlm(private val text: String) : LlmClient by FakeLlmClient() {
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+        val words = text.split(' ')
+        for ((i, w) in words.withIndex()) {
+            delay(25)
+            emit(ChatChunk(if (i == 0) w else " $w"))
+        }
+        emit(ChatChunk("", done = true, stats = ChatStats(0, words.size, 0.0, words.size * 25.0)))
+    }
+}
 
 @Serializable
 data class DebugPeersRequest(val ips: List<String>)
@@ -52,7 +75,7 @@ data class FolderReport(val folder: String, val isPrivate: Boolean, val docs: In
 @Serializable
 data class StatusReport(
     val photos: Int, val documents: Int, val scans: Int, val noText: Int, val chunks: Int, val lastRunMs: Long,
-    val embedModel: String?, val running: Boolean, val folders: List<FolderReport>, val lastIndex: IndexReport?,
+    val embedModel: String?, val running: Boolean, val folders: List<FolderReport>, val lastIndex: IndexReport?, val speech: String,
 )
 
 /** Everything a caller of the signed debug routes may see about this phone's own private items is a count, never text. */
@@ -118,11 +141,36 @@ fun Route.pduRoutes() {
                 val ctx = AppGraph.appContext
                 val f = File(r.path)
                 val bmp = Ocr.decode(ctx, Uri.fromFile(f).toString())
-                val text = Ocr.recognize(bmp).also { bmp.recycle() }
+                val text = Ocr.recognizeAll(bmp).text.also { bmp.recycle() }
                 val (uri, modified) = PduIndexer.saveScan(ctx, f, r.keepPrivate)
                 PduEngine.indexScan(uri, modified, r.title, r.keepPrivate, text)
             }
             call.respond(rep)
+        }
+
+        // opens the Scan screen's review sheet on a copy of this image the next time the Scan screen is shown
+        post("/debug/scan-review") {
+            val r = SwarmJson.decodeFromString<DebugScanRequest>(call.receiveText())
+            val copy = File(AppGraph.appContext.cacheDir, "scan-debug-${System.currentTimeMillis()}.jpg")
+            File(r.path).copyTo(copy, overwrite = true)
+            PduEngine.debugScanFile = copy
+            call.respond(mapOf("queued" to copy.name))
+        }
+
+        // lets the citation chips be seen before a real model exists: the chat client answers with this text (still labelled FAKE)
+        post("/debug/canned-answer") {
+            val r = SwarmJson.decodeFromString<DebugCannedRequest>(call.receiveText())
+            AppGraph.llm = if (r.text.isBlank()) FakeLlmClient() else CannedLlm(r.text)
+            call.respond(mapOf("llm" to AppGraph.llm.modelName, "canned" to r.text.isNotBlank().toString()))
+        }
+
+        post("/debug/prefixes") {
+            call.respond(PduEngine.setPrefixes(SwarmJson.decodeFromString<PrefixRequest>(call.receiveText())))
+        }
+
+        post("/debug/scores") {
+            val req = SwarmJson.decodeFromString<AskRequest>(call.receiveText())
+            call.respond(PduEngine.explain(req.text, req.k))
         }
 
         post("/debug/peers") {
@@ -137,6 +185,7 @@ fun Route.pduRoutes() {
                     c.photos, c.documents, c.scans, c.skipped, c.chunks, c.lastRunMs,
                     PduEngine.store.meta("embedModel"), PduEngine.progress.value.running,
                     PduEngine.store.folders().map { FolderReport(it.folder, it.isPrivate, it.docs) }, PduEngine.progress.value.last,
+                    VoiceInput.mode(AppGraph.appContext).name,
                 ),
             )
         }

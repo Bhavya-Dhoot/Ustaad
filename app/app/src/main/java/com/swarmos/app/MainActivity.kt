@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     /** `adb shell am start -n com.swarmos.app/.MainActivity --es name "Phone A"` names the node. */
     private fun applyIntent(i: Intent?) {
         i?.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() }?.let { AppGraph.setNodeName(it) }
+        i?.data?.takeIf { it.scheme == "swarmos" }?.let { com.swarmos.app.link.LinkModule.handleDeepLink(it.toString()) }
         // `--ez setupDone true` marks the first-run setup done (false shows it again), so phones can be driven over adb
         if (i?.hasExtra(EXTRA_SETUP_DONE) == true) AppGraph.markSetupDone(i.getBooleanExtra(EXTRA_SETUP_DONE, false))
         // `--ez gallery true [--ei galleryPage 3]` opens the UI kit gallery, `--ez gallery false` closes it (debug builds only)

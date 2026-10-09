@@ -40,7 +40,12 @@ import com.swarmos.app.core.HealthMonitor
  * yet, so callers pass 0.) From thermal status 3 up ([hot]) a hatched HOT stamp replaces it.
  */
 @Composable
-fun StatsBar(onEditName: () -> Unit, modifier: Modifier = Modifier, wanBytes: Long = 0L) {
+fun StatsBar(
+    onEditName: () -> Unit,
+    modifier: Modifier = Modifier,
+    // model downloads (llm/ModelStore); 0 unless a model was downloaded in this session
+    wanBytes: Long = com.swarmos.app.llm.ModelStore.wanBytes.collectAsStateWithLifecycle().value,
+) {
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val h by AppGraph.health.state.collectAsStateWithLifecycle()
     val thermal = HealthMonitor.thermalWord(h.thermalStatus)

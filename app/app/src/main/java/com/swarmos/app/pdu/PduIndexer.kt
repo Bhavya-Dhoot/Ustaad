@@ -37,11 +37,12 @@ data class IndexReport(
     val files: List<String> = emptyList(),
     val errors: List<String> = emptyList(),
     val error: String? = null,
+    val devanagariRuns: Int = 0,
 )
 
 /** Mutable counters for one run. */
 class IndexStats(val label: String) {
-    var seen = 0; var indexed = 0; var unchanged = 0; var noText = 0; var failed = 0; var chunks = 0
+    var seen = 0; var indexed = 0; var unchanged = 0; var noText = 0; var failed = 0; var chunks = 0; var devanagariRuns = 0
     var embedMs = 0L; var totalMs = 0L
     val ocrMs = ArrayList<Long>()
     val files = ArrayList<String>()
@@ -50,6 +51,7 @@ class IndexStats(val label: String) {
     fun report() = IndexReport(
         label, seen, indexed, unchanged, noText, failed, chunks, ocrMs.size,
         if (ocrMs.isEmpty()) 0 else ocrMs.sum() / ocrMs.size, ocrMs.toList(), embedMs, totalMs, files.toList(), errors.toList(),
+        devanagariRuns = devanagariRuns,
     )
 }
 
@@ -176,7 +178,9 @@ object PduIndexer {
                 else -> if (preText != null) preText else { // photo, scan
                     val bmp = Ocr.decode(ctx, ref.uri)
                     val t0 = System.nanoTime()
-                    val t = Ocr.recognize(bmp)
+                    val r = Ocr.recognizeAll(bmp)
+                    if (r.devanagari != null) stats.devanagariRuns++
+                    val t = r.text
                     ocrMsHere = (System.nanoTime() - t0) / 1_000_000
                     stats.ocrMs += ocrMsHere
                     bmp.recycle()
@@ -185,7 +189,7 @@ object PduIndexer {
             }
             val isImage = ref.kind == "photo" || ref.kind == "scan"
             val bodies = if (isImage && text.trim().length < MIN_OCR_CHARS) emptyList() else Chunker.split(text)
-            val rows = embed(bodies.map { Chunker.withTitle(ref.title, it) }, stats).mapIndexed { i, e -> ChunkRow(bodies[i], e) }
+            val rows = embed(bodies.map { PduEmbedConfig.document(ref.title, it) }, stats).mapIndexed { i, e -> ChunkRow(bodies[i], e) }
             store.putDoc(doc, rows)
             if (rows.isEmpty()) stats.noText++ else { stats.indexed++; stats.chunks += rows.size }
             val shown = if (store.doc(docId)?.isPrivate == true) "(private file)" else ref.title
