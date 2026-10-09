@@ -182,8 +182,7 @@ class ChoirNodeTest {
     }
 
     @Test fun theFakeModelTellsProblemsWithTheSameOpeningLineApart() = runBlocking {
-        val head = "What does this Python program print? Give the exact output.
-"
+        val head = "What does this Python program print? Give the exact output.\n"
         val p1 = Problem(id = "c1", kind = Kind.CODE, text = head + "print(37)", answer = "37", expected = listOf("37"))
         val p2 = Problem(id = "c2", kind = Kind.CODE, text = head + "print(4, 13)", answer = "4 13", expected = listOf("4 13"))
         val n = node(FakeLlmClient(), listOf(p1, p2))

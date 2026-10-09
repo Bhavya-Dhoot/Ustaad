@@ -109,7 +109,7 @@ object FakePlanner {
             val others = p.optionLetters().sorted().filter { it.toString() != p.answer.trim().take(1).uppercase() }
             others.getOrNull(hv % maxOf(others.size, 1))?.toString() ?: "A"
         }
-        Kind.CODE -> Normalizer.parseNumber(p.answer)?.let { plain(it + 1) } ?: (p.answer + "0")
+        Kind.CODE -> p.answer.trim().toDoubleOrNull()?.let { plain(it + 1) } ?: (p.answer + "0")
         Kind.TEXT -> "unknown"
     }
 
