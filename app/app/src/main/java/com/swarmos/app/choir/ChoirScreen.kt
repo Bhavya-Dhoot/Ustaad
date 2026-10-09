@@ -219,22 +219,21 @@ fun ChoirScreen() {
     val peersOnline = peers.filter { !it.away }.sortedBy { it.info.name }
 
     Column(Modifier.fillMaxWidth().background(SwarmColors.whiteboard)) {
+        // title and round dots stay in view whatever is scrolled
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Agent Choir", Modifier.weight(1f), style = SwarmType.display)
+            val r = run
+            if (r != null) RoundDots(current = if (r.phase == "DONE") r.totals.rounds else r.round)
+            else if (fakeModel) Stamp("Fake", caution = true)
+        }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
             state = listState,
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item(key = "header") {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Agent Choir", Modifier.weight(1f), style = SwarmType.display)
-                        val r = run
-                        if (r != null) RoundDots(current = if (r.phase == "DONE") r.totals.rounds else r.round)
-                        else if (fakeModel) Stamp("Fake", caution = true)
-                    }
-                    Text("Each phone answers alone, then they compare.", style = SwarmType.body.copy(color = SwarmColors.graphite))
-                }
+                Text("Each phone answers alone, then they compare.", style = SwarmType.body.copy(color = SwarmColors.graphite))
             }
             item(key = "input") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
