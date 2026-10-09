@@ -1,4 +1,6 @@
-# Design System: SwarmOS ("Whiteboard")
+# Design System: Ustaad ("Whiteboard")
+
+Product name in every visible string: Ustaad (the working name SwarmOS must not appear in the UI).
 
 Platform: native Android phone app (Jetpack Compose). Light theme only. This file is the single source of truth for Google Stitch screens and for the app's Compose theme.
 

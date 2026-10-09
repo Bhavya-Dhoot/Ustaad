@@ -25,7 +25,7 @@
 
     <application
         android:name=".SwarmApp"
-        android:label="SwarmOS"
+        android:label="Ustaad"
         android:largeHeap="true"
         android:extractNativeLibs="true"
         android:usesCleartextTraffic="true"

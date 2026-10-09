@@ -1,4 +1,6 @@
-# SwarmOS — Product Requirements Document
+# Ustaad — Product Requirements Document
+
+Naming note (2026-10-10): the product is called Ustaad. This document was written under the working name SwarmOS; read "SwarmOS" below as "Ustaad" for the product and as the coordination layer where it names the layer.
 
 Version 1.0, 2026-10-09. Author: orchestrator session (Fable). Owner going forward: Opus build session.
 Status: G0 closed. Build has not started.
