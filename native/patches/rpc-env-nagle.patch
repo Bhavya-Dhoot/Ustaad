@@ -1,0 +1,12 @@
+diff --git a/ggml/src/ggml-rpc/transport.cpp b/ggml/src/ggml-rpc/transport.cpp
+index b28d166..0b4f8af 100644
+--- a/ggml/src/ggml-rpc/transport.cpp
++++ b/ggml/src/ggml-rpc/transport.cpp
+@@ -688,6 +688,7 @@ static bool is_valid_fd(sockfd_t sockfd) {
+ }
+ 
+ static bool set_no_delay(sockfd_t sockfd) {
++    if (std::getenv("GGML_RPC_NAGLE")) { return true; } // benchmark patch: leave Nagle's algorithm on
+     int flag = 1;
+     // set TCP_NODELAY to disable Nagle's algorithm
+     int ret = setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
