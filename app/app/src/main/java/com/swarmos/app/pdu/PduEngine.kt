@@ -120,6 +120,9 @@ object PduEngine {
     @Volatile var lastSearchMs: Long = -1
         private set
 
+    /** Debug builds only: a page the Scan screen should open straight into its review sheet, standing in for the shutter. */
+    @Volatile var debugScanFile: File? = null
+
     private val indexLock = Mutex()
     private fun now() = SystemClock.elapsedRealtime()
 

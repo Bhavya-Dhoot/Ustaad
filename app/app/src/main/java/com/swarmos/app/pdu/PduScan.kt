@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.swarmos.app.BuildConfig
 import com.swarmos.app.ui.Note
 import com.swarmos.app.ui.PrimaryButton
 import com.swarmos.app.ui.SecondaryButton
@@ -85,6 +86,25 @@ internal fun ScanPage(onBack: () -> Unit) {
     var title by remember { mutableStateOf("") }
     var keepPrivate by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
+
+    /** Both the shutter and the debug hook land here: read the page, propose a title. */
+    fun review(f: File) {
+        shot = f
+        status = "reading text"
+        scope.launch {
+            val text = withContext(Dispatchers.Default) {
+                val bmp = Ocr.decode(ctx, Uri.fromFile(f).toString())
+                Ocr.recognizeAll(bmp).text.also { bmp.recycle() }
+            }
+            recognised = text
+            title = text.lineSequence().map { it.trim() }.firstOrNull { it.length >= 3 }?.take(40)
+                ?: ("Scan " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()))
+            status = null
+        }
+    }
+    LaunchedEffect(Unit) {
+        if (BuildConfig.DEBUG) PduEngine.debugScanFile?.let { PduEngine.debugScanFile = null; review(it) }
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         PageHeader("Scan document", onBack)
@@ -127,20 +147,7 @@ internal fun ScanPage(onBack: () -> Unit) {
                     imageCapture.takePicture(
                         ImageCapture.OutputFileOptions.Builder(f).build(), ContextCompat.getMainExecutor(ctx),
                         object : ImageCapture.OnImageSavedCallback {
-                            override fun onImageSaved(r: ImageCapture.OutputFileResults) {
-                                shot = f
-                                status = "reading text"
-                                scope.launch {
-                                    val text = withContext(Dispatchers.Default) {
-                                        val bmp = Ocr.decode(ctx, Uri.fromFile(f).toString())
-                                        Ocr.recognizeAll(bmp).text.also { bmp.recycle() }
-                                    }
-                                    recognised = text
-                                    title = text.lineSequence().map { it.trim() }.firstOrNull { it.length >= 3 }?.take(40)
-                                        ?: ("Scan " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()))
-                                    status = null
-                                }
-                            }
+                            override fun onImageSaved(r: ImageCapture.OutputFileResults) = review(f)
 
                             override fun onError(e: ImageCaptureException) { status = "capture failed: ${e.message}" }
                         },

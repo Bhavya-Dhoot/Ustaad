@@ -125,6 +125,15 @@ fun Route.pduRoutes() {
             call.respond(rep)
         }
 
+        // opens the Scan screen's review sheet on a copy of this image the next time the Scan screen is shown
+        post("/debug/scan-review") {
+            val r = SwarmJson.decodeFromString<DebugScanRequest>(call.receiveText())
+            val copy = File(AppGraph.appContext.cacheDir, "scan-debug-${System.currentTimeMillis()}.jpg")
+            File(r.path).copyTo(copy, overwrite = true)
+            PduEngine.debugScanFile = copy
+            call.respond(mapOf("queued" to copy.name))
+        }
+
         post("/debug/prefixes") {
             call.respond(PduEngine.setPrefixes(SwarmJson.decodeFromString<PrefixRequest>(call.receiveText())))
         }
