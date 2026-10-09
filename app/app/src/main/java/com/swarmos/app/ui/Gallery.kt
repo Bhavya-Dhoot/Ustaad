@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,10 +38,11 @@ import androidx.compose.ui.unit.sp
 /*
  * Debug-only gallery (adb shell am start -n <pkg>/com.swarmos.app.MainActivity --ez gallery true --ei galleryPage N).
  * Pages 1 and 2 show every kit composable with sample content; 3 and 4 rebuild the Stitch "Swarm home"
- * and "Agent Choir live run" screens with the kit, as static mocks. Every value here is sample data.
+ * and "Agent Choir live run" screens with the kit, as static mocks; 5 and 6 show the second round of
+ * kit pieces (icons, fields, chips, tables). Every value here is sample data.
  */
 
-const val GALLERY_PAGES = 4
+const val GALLERY_PAGES = 6
 
 /** Bottom bar index the gallery page pretends to be on (0 Swarm ... 2 Choir). */
 fun galleryTab(page: Int): Int = if (page == 4) 2 else 0
@@ -58,7 +61,9 @@ fun GalleryPage(page: Int, modifier: Modifier = Modifier) = key(page) { // a new
             1 -> KitSheetOne()
             2 -> KitSheetTwo()
             3 -> SwarmHomeMock()
-            else -> ChoirLiveRunMock()
+            4 -> ChoirLiveRunMock()
+            5 -> KitSheetThree()
+            else -> KitSheetFour()
         }
         Text("Gallery page $page of $GALLERY_PAGES, sample values", style = SwarmType.mono.copy(fontSize = 10.sp, color = SwarmColors.graphite))
     }
@@ -185,6 +190,93 @@ private fun LaneMetrics(a: String, b: String) {
     Text(a, style = s)
     Spacer(Modifier.width(10.dp))
     Text(b, style = s)
+}
+
+// ---------------------------------------------------------------- page 5: icons, fields, chips
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KitSheetThree() {
+    BackLink({})
+    ScreenHeader("Data Union", "ask a question, get cited sources") { Stamp("Fake model", caution = true, small = true) }
+
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SwarmIcon.entries.forEach { icon ->
+            Column(Modifier.width(52.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                LineIcon(icon, size = 26.dp)
+                Text(icon.name, style = SwarmType.mono.copy(fontSize = 8.sp, lineHeight = 10.sp, color = SwarmColors.graphite), maxLines = 1)
+            }
+        }
+    }
+
+    Hairline()
+    var problem by remember { mutableStateOf("A shop sells a laptop for Rs 62,400 after a 22% discount. What was the list price?") }
+    SwarmTextField(
+        problem, { problem = it }, "Problem", minLines = 3,
+        helper = "speech runs on this phone",
+        trailing = { Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { LineIcon(SwarmIcon.Mic) } },
+    )
+    var question by remember { mutableStateOf("Where is the warranty bill?") }
+    SwarmTextField(question, { question = it }, "Question", trailing = { Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { LineIcon(SwarmIcon.Mic) } })
+
+    var kind by remember { mutableStateOf(0) }
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("Arithmetic", "Logic", "Units", "Dates").forEachIndexed { i, k -> SelectChip(k, kind == i, { kind = i }) }
+    }
+    PrimaryButton("Run all 20", {}, Modifier.fillMaxWidth(), icon = SwarmIcon.Play)
+    SecondaryButton("Download 2.4 GB", {}, Modifier.fillMaxWidth(), icon = SwarmIcon.Download)
+    MonoText("The list price was Rs 80,000 after 22% off, checked in 8.4 s.")
+    var sw by remember { mutableStateOf(true) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Use each problem's own test", style = SwarmType.body, modifier = Modifier.weight(1f))
+        InkSwitch(sw, { sw = it })
+    }
+
+    SwarmCard {
+        CitedText(
+            "Your laptop is covered until 14 Mar 2028 under the standard 36 month warranty [1], with the extended policy active through 13 Mar 2029 [2].",
+            streaming = true, onCite = {}, cites = 1..3,
+        )
+        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { CiteChip(1, {}); CiteChip(2, {}) }
+    }
+}
+
+// ---------------------------------------------------------------- page 6: tables
+
+@Composable
+private fun KitSheetFour() {
+    ScreenHeader("Scoreboard", "20 problems, same token caps") { RoundDots(current = 3) }
+    TimingStrip(listOf("embed" to "31 ms", "search" to "18 ms", "Phone B" to "64 ms", "first word" to "0.9 s", "total" to "2.4 s"))
+    SwarmCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ScoreBar("One phone alone", 12, 20, note = "mean 8.1 s")
+            ScoreBar("One phone, three samples", 14, 20, note = "mean 24.0 s")
+            ScoreBar("Choir", 16, 20, note = "mean 21.4 s")
+            ScoreBar("Choir with tool check", 19, 20, emphasised = true, note = "mean 21.4 s")
+        }
+    }
+    SwarmCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Agreement matrix", style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite), modifier = Modifier.weight(1f))
+            Text("2 of 3 agree", style = SwarmType.mono.copy(fontSize = 11.sp))
+        }
+        Spacer(Modifier.height(8.dp))
+        AgreementMatrix(
+            listOf("Phone A", "Phone B", "Phone C"),
+            listOf(listOf(true, false, true), listOf(false, true, false), listOf(true, false, true)),
+        )
+    }
+    SwarmCard {
+        listOf("P01" to true, "P02" to false, "P03" to true).forEachIndexed { i, (id, ok) ->
+            if (i > 0) Hairline(Modifier.padding(vertical = 6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(id, style = SwarmType.mono.copy(fontWeight = FontWeight.W700), modifier = Modifier.weight(1f))
+                TickMark(ok)
+                Spacer(Modifier.width(16.dp))
+                TickMark(!ok)
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------- page 3: Swarm home, static mock

@@ -17,8 +17,16 @@ snap() {
   st=$(dumpsys thermalservice | grep "Thermal Status" | head -1 | tr -d ' \r' | cut -d: -f2)
   echo "skin_mC=$skin status=$st cool0=$cl0 cool1=$cl1 max0=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq) max6=$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_max_freq)"
 }
-# COOL_MC=<milli-C> waits (max COOL_MAX s, default 900) until the skin sensor is at or below that temperature.
+# COOL_MC=<milli-C> waits (max COOL_MAX s) until the skin sensor is at or below that temperature.
 w=0
+# Thermal guard: COOL_STATUS_MAX=1 waits (polling every 60 s, max COOL_MAX s) until Thermal Status <= 1.
+if [ -n "$COOL_STATUS_MAX" ]; then
+  while [ $w -lt ${COOL_MAX:-3600} ]; do
+    st=$(dumpsys thermalservice | grep "Thermal Status" | head -1 | tr -d ' \r' | cut -d: -f2)
+    [ -n "$st" ] && [ "$st" -le "$COOL_STATUS_MAX" ] && break
+    sleep 60; w=$((w+60))
+  done
+fi
 if [ -n "$COOL_MC" ]; then
   while [ $w -lt ${COOL_MAX:-900} ]; do
     sk=""; for z in $Z/thermal_zone*; do [ "$(cat $z/type)" = quiet_therm ] && sk=$(cat $z/temp); done
