@@ -213,7 +213,15 @@ object ChoirController {
             if (key.equals("self", true) || key == me.nodeId || key.equals(me.name, true)) {
                 node.script = sc.takeUnless { it.isEmpty() }
             } else {
-                peers.firstOrNull { it.nodeId == key || it.name.equals(key, true) }?.setScript(sc)
+                // an away phone is not asked, so it gets no script either; a peer that cannot be reached is simply skipped
+                peers.firstOrNull { (it.nodeId == key || it.name.equals(key, true)) && !it.away }?.let { p ->
+                    try {
+                        p.setScript(sc)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Throwable) {
+                    }
+                }
             }
         }
     }
