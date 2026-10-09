@@ -29,7 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Switch
+import com.swarmos.app.ui.InkSwitch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -188,7 +188,7 @@ internal fun ScanPage(onBack: () -> Unit) {
                             Text("Share with the swarm", style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp))
                             Text(if (share) "Other phones may be answered from this page" else "Off: this page stays on this phone", style = SwarmType.label.copy(color = SwarmColors.graphite))
                         }
-                        Switch(checked = share, onCheckedChange = { share = it })
+                        InkSwitch(checked = share, onCheckedChange = { share = it })
                     }
                     if (!emb.ready) Text("Embedder not loaded: load the embedding model in Models before adding pages.", style = SwarmType.label)
                     else if (reindexNeeded) Text("Re-index needed: rebuild the index in the library before adding pages.", style = SwarmType.label)

@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -42,6 +43,8 @@ import com.swarmos.app.AppGraph
 import com.swarmos.app.ui.Hairline
 import com.swarmos.app.ui.HeroMetric
 import com.swarmos.app.ui.InkProgress
+import com.swarmos.app.ui.InkSwitch
+import com.swarmos.app.ui.LineIcon
 import com.swarmos.app.ui.MetricRow
 import com.swarmos.app.ui.Note
 import com.swarmos.app.ui.PrimaryButton
@@ -51,6 +54,7 @@ import com.swarmos.app.ui.Stamp
 import com.swarmos.app.ui.SwarmCard
 import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.SwarmIcon
+import com.swarmos.app.ui.SwarmShape
 import com.swarmos.app.ui.SwarmType
 import com.swarmos.app.ui.Tag
 import kotlinx.coroutines.launch
@@ -152,18 +156,18 @@ private fun LibraryPage(go: (String) -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionTitle("Sources")
             if (counts.chunks == 0 && !progress.running) Note("nothing indexed yet, tap Index on Photos", rotation = -1.5f)
-            SourceRow(PduIcon.Photo, "Photos", "${counts.photos} with text" + if (counts.skipped > 0) ", ${counts.skipped} skipped" else "", "Index", canIndex) {
+            SourceRow(SwarmIcon.Photo, "Photos", "${counts.photos} with text" + if (counts.skipped > 0) ", ${counts.skipped} skipped" else "", "Index", canIndex) {
                 if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED) {
                     PduEngine.scope.launch { PduEngine.indexPhotos() }
                 } else photoPermission.launch(Manifest.permission.READ_MEDIA_IMAGES)
             }
-            SourceRow(PduIcon.Folder, "Documents", "${counts.documents} files", "Pick folder", canIndex) { pickTree.launch(null) }
+            SourceRow(SwarmIcon.Folder, "Documents", "${counts.documents} files", "Pick folder", canIndex) { pickTree.launch(null) }
             for (t in trees) {
-                SourceRow(PduIcon.Folder, Uri.decode(t.lastPathSegment ?: t.toString()), "folder you picked", "Index", canIndex) {
+                SourceRow(SwarmIcon.Folder, Uri.decode(t.lastPathSegment ?: t.toString()), "folder you picked", "Index", canIndex) {
                     PduEngine.scope.launch { PduEngine.indexTree(t) }
                 }
             }
-            SourceRow(PduIcon.Scan, "Scanned", "${counts.scans} items", "Scan", true) { go("scan") }
+            SourceRow(SwarmIcon.Scan, "Scanned", "${counts.scans} items", "Scan", true) { go("scan") }
             note?.let { Text(it, style = SwarmType.label.copy(color = SwarmColors.graphite)) }
         }
 
@@ -181,10 +185,10 @@ private fun LibraryPage(go: (String) -> Unit) {
 }
 
 @Composable
-private fun SourceRow(icon: PduIcon, title: String, sub: String, action: String, enabled: Boolean, onClick: () -> Unit) {
+private fun SourceRow(icon: SwarmIcon, title: String, sub: String, action: String, enabled: Boolean, onClick: () -> Unit) {
     SwarmCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PduIconBox(icon)
+            IconBox(icon)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = SwarmType.title.copy(fontSize = 17.sp, lineHeight = 22.sp), maxLines = 1)
@@ -202,7 +206,7 @@ private fun FolderRow(f: FolderInfo) {
     val shared = !f.isPrivate && !locked
     SwarmCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PduIconBox(if (shared) PduIcon.Folder else PduIcon.Lock)
+            IconBox(if (shared) SwarmIcon.Folder else SwarmIcon.Lock)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(f.folder, style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp), maxLines = 2)
@@ -214,11 +218,17 @@ private fun FolderRow(f: FolderInfo) {
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
                 Text("Share with the swarm", style = SwarmType.label.copy(fontSize = 11.sp, color = SwarmColors.graphite))
-                Switch(checked = shared, enabled = !locked, onCheckedChange = { PduEngine.setFolderPrivate(f.folder, !it) })
+                InkSwitch(checked = shared, onCheckedChange = if (locked) null else ({ PduEngine.setFolderPrivate(f.folder, !it) }))
             }
         }
         if (locked) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Stamp("Never shared", caution = true, small = true) }
         }
     }
+}
+
+/** A line icon in a 40 dp outlined square, the leading element of a source or folder row. */
+@Composable
+private fun IconBox(icon: SwarmIcon) {
+    Box(Modifier.size(40.dp).border(1.5.dp, SwarmColors.ink, SwarmShape), contentAlignment = Alignment.Center) { LineIcon(icon) }
 }
