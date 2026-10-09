@@ -129,11 +129,29 @@ class SharePolicyTest {
     private val secret = "Net pay 91,250 salary slip SECRET-PAYROLL-4471"
 
     @Test fun privateFolderNamesAreDetected() {
-        assertTrue(SharePolicy.isPrivateByDefault("Documents/SwarmDemo/Private"))
-        assertTrue(SharePolicy.isPrivateByDefault("Pictures/private"))
-        assertTrue(SharePolicy.isPrivateByDefault("PRIVATE/Taxes"))
-        assertFalse(SharePolicy.isPrivateByDefault("Documents/SwarmDemo"))
-        assertFalse(SharePolicy.isPrivateByDefault("Documents/Privately"))
+        assertTrue(SharePolicy.mustStayPrivate("Documents/UstaadDemo/Private"))
+        assertTrue(SharePolicy.mustStayPrivate("Pictures/private"))
+        assertTrue(SharePolicy.mustStayPrivate("PRIVATE/Taxes"))
+        assertFalse(SharePolicy.mustStayPrivate("Documents/UstaadDemo"))
+        assertFalse(SharePolicy.mustStayPrivate("Documents/Privately"))
+    }
+
+    @Test fun everyNewFolderStartsPrivate() {
+        for (f in listOf("Documents/UstaadDemo", "Pictures/UstaadScans", "Downloads", "Pictures/Camera")) assertTrue(f, SharePolicy.startsPrivate(f))
+    }
+
+    @Test fun aFolderNamedPrivateStaysPrivateEvenIfTheSwitchSaysShared() {
+        assertTrue(SharePolicy.effectivePrivate("Documents/Private", stored = false))
+        assertFalse(SharePolicy.effectivePrivate("Documents/Taxes", stored = false))
+        assertTrue(SharePolicy.effectivePrivate("Documents/Taxes", stored = true))
+    }
+
+    @Test fun aChunkInAPrivateNamedFolderIsWithheldEvenWhenFlaggedShared() {
+        val shared = cand(1, "a", false).copy(folder = "Documents/Private")
+        val open = cand(2, "b", false)
+        val resp = PeerResponder.respond("q", listOf(shared, open), emptyList(), 5, 2, 1)
+        assertEquals(listOf("b.txt"), resp.hits.map { it.title })
+        assertEquals(1, resp.withheldPrivate)
     }
 
     @Test fun privateChunkNeverAppearsInAPeerResponse() {

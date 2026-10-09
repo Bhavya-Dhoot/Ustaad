@@ -2,6 +2,7 @@ package com.swarmos.app.memcloud
 
 import android.content.Context
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.core.Ports
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.PeerLinks
@@ -84,6 +85,13 @@ object MemCloud {
 
     init {
         recoverAfterKill()
+        // the whole phone says what it is doing (banner and notification); the banner's stop button stops the split
+        scope.launch {
+            _state.collect { s ->
+                val text = MemCloudLogic.activityText(s)
+                if (text == null) PhoneActivity.clear("memcloud") else PhoneActivity.set("memcloud", text) { stop() }
+            }
+        }
     }
 
     // ---------- planning (also used by the screen before anything is started) ----------
@@ -182,11 +190,15 @@ object MemCloud {
 
     fun stop() {
         scope.launch {
-            val old = synchronized(lock) { opJob }
-            old?.cancel()
-            teardownSplit()
-            restoreAll()
-            _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, steps = it.steps.takeLast(30) + "Stopped; chat and embedding servers restored", updatedAtMs = now()) }
+            try {
+                val old = synchronized(lock) { opJob }
+                old?.cancel()
+                teardownSplit()
+                restoreAll()
+                _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, steps = it.steps.takeLast(30) + "Stopped; chat and embedding servers restored", updatedAtMs = now()) }
+            } finally {
+                PhoneActivity.clear("memcloud")
+            }
         }
     }
 

@@ -40,7 +40,10 @@ class TestLlm(
         }
     }
 
+    val streamCalls = AtomicInteger()
+
     override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+        streamCalls.incrementAndGet()
         emit(ChatChunk("stream:"))
         emit(ChatChunk(req.messages.last().content))
         emit(ChatChunk("", done = true, stats = ChatStats(5, tokens, 1.0, delayMs.toDouble())))

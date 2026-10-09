@@ -2,6 +2,7 @@ package com.swarmos.app.sched
 
 import com.swarmos.app.core.NodeInfo
 import com.swarmos.app.core.SwarmJson
+import com.swarmos.app.link.ErrorBody
 import com.swarmos.app.link.NodeClient
 import com.swarmos.app.link.NodeHttpException
 import com.swarmos.app.llm.ChatChunk
@@ -9,7 +10,10 @@ import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatResult
 import com.swarmos.app.llm.LlmClient
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import java.io.IOException
 import java.util.UUID
 
 fun newJobId(): String = UUID.randomUUID().toString().replace("-", "").take(16)
@@ -17,9 +21,16 @@ fun newJobId(): String = UUID.randomUUID().toString().replace("-", "").take(16)
 /**
  * A model on another phone, behind the same [LlmClient] as the local one. Calls the peer's signed
  * /v1/sched routes, so the peer's slot limit and its 10-minute result memory apply.
- * [chatStream] is not streamed: the whole reply arrives as one chunk followed by the done chunk.
+ *
+ * [chatStream] streams tokens from the peer over server-sent events (POST /v1/sched/chat-stream) when a [streams]
+ * client is given; cancelling the collector closes the stream and frees the peer's slot. Without [streams] the whole reply
+ * arrives as one chunk followed by the done chunk. A full peer fails the stream with [BusyException] before any chunk.
  */
-class RemoteLlmClient(val peer: NodeInfo, private val client: NodeClient) : LlmClient, PhoneEndpoint {
+class RemoteLlmClient(
+    val peer: NodeInfo,
+    private val client: NodeClient,
+    private val streams: StreamClient? = null,
+) : LlmClient, PhoneEndpoint {
     private val host get() = peer.ip
 
     @Volatile
@@ -48,25 +59,52 @@ class RemoteLlmClient(val peer: NodeInfo, private val client: NodeClient) : LlmC
         return ChatResult(r.text, r.stats.toStats())
     }
 
-    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = streams?.let { remoteStream(it, req, null) } ?: flow {
         val r = runChat(newJobId(), req, null)
         if (r.text.isNotEmpty()) emit(ChatChunk(r.text))
         emit(ChatChunk("", done = true, stats = r.stats.toStats()))
     }
 
+    /** Streams when this client can; false (nothing emitted) otherwise so the caller falls back to a whole-reply job. */
+    override suspend fun streamIfFree(req: ChatRequest, pinModel: String?, out: FlowCollector<ChatChunk>): Boolean {
+        val sc = streams ?: return false
+        remoteStream(sc, req, pinModel).collect { out.emit(it) }
+        return true
+    }
+
     override suspend fun embed(texts: List<String>): List<FloatArray> =
         runEmbed(newJobId(), texts).vectors.map { it.toFloatArray() }
+
+    private fun remoteStream(sc: StreamClient, req: ChatRequest, pinModel: String?): Flow<ChatChunk> = flow {
+        var finished = false
+        val body = SwarmJson.encodeToString(ChatJobRequest(newJobId(), req.toDto(), pinModel))
+        sc.post(host, "/sched/chat-stream", body).collect { ev ->
+            when (ev.event) {
+                "chunk" -> emit(ChatChunk(SwarmJson.decodeFromString<ChunkDto>(ev.data).delta))
+                "done" -> {
+                    val d = SwarmJson.decodeFromString<StreamDone>(ev.data)
+                    seenModel = d.modelName
+                    finished = true
+                    emit(ChatChunk("", done = true, stats = d.stats?.toStats()))
+                }
+                "error" -> throw IOException("${peer.name} failed the stream: ${SwarmJson.decodeFromString<ErrorBody>(ev.data).error}")
+            }
+        }
+        if (!finished) throw IOException("the stream from ${peer.name} ended before it finished")
+    }.catch { e -> throw if (e is NodeHttpException) e.asSchedError() else e }
 
     /** 429 becomes [BusyException], 409 becomes [ModelMismatchException]; anything else passes through. */
     private inline fun <T> mapErrors(block: () -> T): T = try {
         block()
     } catch (e: NodeHttpException) {
-        throw when (e.status) {
-            429 -> runCatching { SwarmJson.decodeFromString<BusyBody>(e.body) }
-                .map { BusyException(it.running, it.capacity, it.queued) }
-                .getOrElse { BusyException(0, 0, 0) }
-            409 -> ModelMismatchException(runCatching { SwarmJson.decodeFromString<MismatchBody>(e.body).model }.getOrDefault("?"))
-            else -> e
-        }
+        throw e.asSchedError()
+    }
+
+    private fun NodeHttpException.asSchedError(): Exception = when (status) {
+        429 -> runCatching { SwarmJson.decodeFromString<BusyBody>(body) }
+            .map { BusyException(it.running, it.capacity, it.queued) }
+            .getOrElse { BusyException(0, 0, 0) }
+        409 -> ModelMismatchException(runCatching { SwarmJson.decodeFromString<MismatchBody>(body).model }.getOrDefault("?"))
+        else -> this
     }
 }

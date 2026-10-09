@@ -65,7 +65,7 @@ class Downloader(
             conn.connectTimeout = 15_000
             conn.readTimeout = 30_000
             conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "SwarmOS-model-download")
+            conn.setRequestProperty("User-Agent", "Ustaad-model-download")
             if (offset > 0) conn.setRequestProperty("Range", "bytes=$offset-")
             val code = conn.responseCode
             val total: Long

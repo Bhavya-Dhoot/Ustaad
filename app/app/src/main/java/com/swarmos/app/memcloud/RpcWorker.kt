@@ -2,6 +2,7 @@ package com.swarmos.app.memcloud
 
 import android.util.Log
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.link.LinkRoute
 import com.swarmos.app.link.LinkType
 import com.swarmos.app.llm.LlamaRuntime
@@ -92,6 +93,7 @@ object RpcWorker {
         val sameBind = bindOf(cur.args) == bind
         if (cur.state == ServerState.READY && cur.port == req.port && sameBind) {
             _lending.value = Lending(fromNode, driverName, bind, where, _lending.value?.sinceMs ?: System.currentTimeMillis())
+            announce(driverName)
             return StartResult.Ok(state())
         }
         val extra = buildList {
@@ -102,6 +104,7 @@ object RpcWorker {
         LlamaRuntime.start(Role.RPC, null, extra, req.port)
         if (LlamaRuntime.statusOf(Role.RPC).state == ServerState.READY) {
             _lending.value = Lending(fromNode, driverName, bind, where, System.currentTimeMillis())
+            announce(driverName)
             audit("memcloud.rpc.start", "driver" to (fromNode ?: "?"), "bind" to bind, "link" to where)
             startWatch(fromNode)
         }
@@ -115,6 +118,7 @@ object RpcWorker {
         val had = _lending.value
         LlamaRuntime.stop(Role.RPC)
         _lending.value = null
+        PhoneActivity.clear("memcloud")
         val items = restoreItems
         restoreItems = emptyList()
         for (i in items) {
@@ -123,6 +127,11 @@ object RpcWorker {
         }
         if (had != null) audit("memcloud.rpc.stop", "reason" to reason, "restored" to items.size.toString())
         return state()
+    }
+
+    /** The phone-wide activity line while rpc-server listens; its stop button ends the loan like the Memory tab's button. */
+    private fun announce(driverName: String) {
+        PhoneActivity.set("memcloud", "Lending memory to $driverName.") { stop("stopped from the banner") }
     }
 
     /** The driver's heartbeat must keep arriving: three misses mark it away (about 3 s), and 10 s away ends the loan. */
@@ -135,6 +144,7 @@ object RpcWorker {
                 val st = LlamaRuntime.statusOf(Role.RPC).state
                 if (st != ServerState.READY && st != ServerState.STARTING) {
                     _lending.value = null
+                    PhoneActivity.clear("memcloud")
                     return@launch
                 }
                 val driverOnline = driverId == null || AppGraph.registry.peers.value.any { it.info.nodeId == driverId && !it.away }

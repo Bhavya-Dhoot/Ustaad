@@ -72,6 +72,20 @@ object MemCloudLogic {
         )
     }
 
+    /** The line the whole phone shows while a split runs (PhoneActivity, notification, banner); null when nothing is going on. */
+    fun activityText(s: MemCloudState): String? {
+        val phones = s.shares.size
+        val peers = s.phones.filter { !it.isDriver }.joinToString(" and ") { it.name }
+        return when (s.phase) {
+            Phase.PLANNING, Phase.STARTING_PEERS -> if (phones >= 2) "Preparing a large model across $phones phones." else "Preparing a large model across phones."
+            Phase.LOADING -> "Loading a large model across $phones phones (${overallPercent(s.shares, s.phones)} percent)."
+            Phase.READY -> "Running a large model with $peers."
+            Phase.DEGRADED -> "A large model is paused: ${s.lostPhone ?: "a phone"} stopped answering."
+            Phase.BASELINE -> "Trying a large model on this phone alone."
+            Phase.IDLE, Phase.FAILED -> null
+        }
+    }
+
     /** Whether a new load may start from [phase] (the caller has already checked that no operation is running). */
     fun canStart(phase: Phase): Boolean = phase != Phase.READY && phase != Phase.DEGRADED
 

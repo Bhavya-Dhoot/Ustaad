@@ -3,13 +3,17 @@ package com.swarmos.app.pdu
 import android.os.Environment
 import android.os.SystemClock
 import com.swarmos.app.AppGraph
-import com.swarmos.app.core.NodeInfo
+import com.swarmos.app.core.Ports
+import com.swarmos.app.link.ConnectResult
+import com.swarmos.app.link.PeerLinks
+import com.swarmos.app.llm.FakeLlmClient
 import com.swarmos.app.core.SwarmJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,7 +76,12 @@ data class QueryUi(
     val model: String = "",
     val timings: Timings = Timings(),
     val auditHash: String? = null,
+    /** True when this phone answered by keywords only, because no usable embedder was available. */
+    val lexicalOnly: Boolean = false,
 )
+
+/** Whether a real embedding model is loaded and answering. A fake or stopped one is never "ready". */
+data class EmbedderStatus(val name: String, val ready: Boolean)
 
 /** What this phone handed to a peer, kept in memory for the audit view (the audit log has the counts). */
 data class ServedRecord(
@@ -97,7 +106,7 @@ data class IndexRequest(
 @Serializable
 data class AskRequest(val text: String, val k: Int = 5, val deadlineMs: Int = 1500)
 
-class LocalSearch(val candidates: List<Candidate>, val terms: List<String>, val embedMs: Long, val searchMs: Long)
+class LocalSearch(val candidates: List<Candidate>, val terms: List<String>, val embedMs: Long, val searchMs: Long, val dense: Boolean = true)
 
 /** Owns the store and every flow of this module: indexing, local search, the federated ask, serving peers. */
 object PduEngine {
@@ -117,6 +126,14 @@ object PduEngine {
     private val _served = MutableStateFlow<List<ServedRecord>>(emptyList())
     val served: StateFlow<List<ServedRecord>> = _served.asStateFlow()
 
+    private val _embedder = MutableStateFlow(EmbedderStatus(IndexGuard.FAKE, false))
+    val embedder: StateFlow<EmbedderStatus> = _embedder.asStateFlow()
+    private val _reindexNeeded = MutableStateFlow(false)
+    /** Stored vectors were made by another embedder or document prefix: the owner has to re-index. */
+    val reindexNeeded: StateFlow<Boolean> = _reindexNeeded.asStateFlow()
+
+    private val openLimiter = RateLimiter(max = 3, windowMs = 60_000)
+
     @Volatile var lastSearchMs: Long = -1
         private set
 
@@ -127,13 +144,36 @@ object PduEngine {
     private fun now() = SystemClock.elapsedRealtime()
 
     /** Open the store and load the in-memory matrix off the main thread. Safe to call repeatedly. */
+    private var started = false
+
+    @Synchronized
     fun start() {
-        scope.launch(Dispatchers.IO) { PduEmbedConfig.load(store); refresh() }
+        if (started) return
+        started = true
+        scope.launch(Dispatchers.IO) {
+            PduEmbedConfig.load(store)
+            refresh()
+            while (true) {
+                embedderStatus()
+                refresh()
+                delay(4_000)
+            }
+        }
     }
 
     fun refresh() {
         _counts.value = store.counts()
         _folders.value = store.folders()
+        val e = _embedder.value
+        _reindexNeeded.value = e.ready && IndexGuard.reindexNeeded(store, e.name, PduEmbedConfig.documentPrefix)
+    }
+
+    /** The embedder this phone has right now. Never ready for the fake client or a server that does not answer. */
+    suspend fun embedderStatus(): EmbedderStatus {
+        val e = AppGraph.embedder
+        val real = e !is FakeLlmClient && IndexGuard.isReal(e.modelName)
+        val ok = real && runCatching { e.ready() }.getOrDefault(false)
+        return EmbedderStatus(e.modelName, ok).also { _embedder.value = it }
     }
 
     fun setFolderPrivate(folder: String, isPrivate: Boolean) {
@@ -150,14 +190,16 @@ object PduEngine {
     // ---- indexing -----------------------------------------------------------------------------------------
 
     /** One run at a time. [list] runs on the IO dispatcher; each file is committed as soon as it is embedded, so a killed run resumes. */
-    suspend fun runIndex(label: String, force: Boolean, list: () -> List<DocRef>): IndexReport {
+    suspend fun runIndex(label: String, ownerForce: Boolean, list: () -> List<DocRef>): IndexReport {
         if (!indexLock.tryLock()) return IndexReport(label, error = "an index run is already in progress")
         return try {
             withContext(Dispatchers.IO) {
+                val st = embedderStatus()
+                val g = IndexGuard.prepare(store, st.name, st.ready, PduEmbedConfig.documentPrefix, ownerForce)
+                if (g is IndexGuard.Outcome.Refused) return@withContext refuse(label, g.reason)
                 val stats = IndexStats(label)
                 val t0 = now()
                 _progress.value = IndexProgress(true, label, current = "listing files")
-                prepare(force)
                 val refs = list()
                 refs.forEachIndexed { i, ref ->
                     _progress.value = IndexProgress(true, label, i, refs.size, ref.title)
@@ -188,29 +230,35 @@ object PduEngine {
         }
     }
 
-    /** Vectors from another embedder are not comparable, so a changed embedder (or force) re-reads everything. */
-    private fun prepare(force: Boolean) {
-        val name = AppGraph.embedder.modelName
-        val key = PduEmbedConfig.indexKey(name)
-        if (force || store.meta("embedKey") != key) {
-            store.wipe()
-            store.setMeta("embedModel", name)
-            store.setMeta("embedKey", key)
-        }
+    /** The run did not start: nothing was read, written or wiped. The reason is shown in the library. */
+    private fun refuse(label: String, reason: String): IndexReport {
+        val r = IndexReport(label, error = reason)
+        _progress.value = IndexProgress(false, label, last = r)
+        refresh()
+        AppGraph.audit.append("pdu.index_refused", JsonObject(mapOf("label" to JsonPrimitive(label), "reason" to JsonPrimitive(reason))))
+        return r
+    }
+
+    /** The owner's explicit "Re-index everything": read every known file again with the current embedder. */
+    suspend fun reindexAll(): IndexReport {
+        val refs = store.allDocRefs()
+        return runIndex("re-index", true) { refs }
     }
 
     /** True when the stored vectors were made under a different embedder or document prefix than the current ones. */
-    fun reindexNeeded(): Boolean = store.chunkCount > 0 && store.meta("embedKey") != PduEmbedConfig.indexKey(AppGraph.embedder.modelName)
+    fun reindexNeeded(): Boolean = _reindexNeeded.value
 
     fun setPrefixes(req: PrefixRequest): PrefixReport {
         req.query?.let { PduEmbedConfig.queryPrefix = it }
         req.document?.let { PduEmbedConfig.documentPrefix = it }
         PduEmbedConfig.save(store)
+        refresh() // so the answer below is about the new prefix, not the last 4 s poll
         return PrefixReport(PduEmbedConfig.queryPrefix, PduEmbedConfig.documentPrefix, reindexNeeded())
     }
 
     /** Debug calibration: dense cosine and BM25 score of the strongest chunks for [text]. */
     suspend fun explain(text: String, top: Int = 10): ScoreReport {
+        check(denseUsable()) { IndexGuard.NOT_LOADED }
         val terms = QueryTerms.terms(text)
         val vec = PduStore.fit(AppGraph.embedder.embed(listOf(PduEmbedConfig.query(text))).first())
         val (spread, rows) = withContext(Dispatchers.Default) { store.explain(vec, terms, top.coerceIn(1, 30)) }
@@ -243,17 +291,24 @@ object PduEngine {
     suspend fun indexTree(tree: android.net.Uri): IndexReport =
         runIndex("folder", false) { PduIndexer.listTree(AppGraph.appContext, tree) }
 
-    /** A scanned page that was already recognised: index it under the user's title. Private scans go in Pictures/SwarmScans/Private. */
-    suspend fun indexScan(imageUri: String, modifiedMs: Long, title: String, keepPrivate: Boolean, text: String): IndexReport {
+    /**
+     * A scanned page that was already recognised: index it under the user's title. It stays on this phone (Pictures/UstaadScans)
+     * unless [share] is on, which is the owner's explicit choice and marks Pictures/UstaadScans/Shared as shared.
+     */
+    suspend fun indexScan(imageUri: String, modifiedMs: Long, title: String, share: Boolean, text: String): IndexReport {
         if (!indexLock.tryLock()) return IndexReport("scan", error = "an index run is already in progress")
         return try {
             withContext(Dispatchers.IO) {
+                val st = embedderStatus()
+                val g = IndexGuard.prepare(store, st.name, st.ready, PduEmbedConfig.documentPrefix, false)
+                if (g is IndexGuard.Outcome.Refused) return@withContext refuse("scan", g.reason)
                 val stats = IndexStats("scan")
                 val t0 = now()
-                prepare(false)
                 val nowMs = System.currentTimeMillis()
                 // folder and lastModified match what a later "Index photos" run sees, so it skips this scan instead of rewriting it
-                val ref = DocRef(imageUri, title, "scan", PduIndexer.scanFolder(keepPrivate), modifiedMs, nowMs)
+                val folder = PduIndexer.scanFolder(share)
+                if (share) store.setFolderPrivate(folder, false)
+                val ref = DocRef(imageUri, title, "scan", folder, modifiedMs, nowMs)
                 PduIndexer.ingest(AppGraph.appContext, store, ref, stats, preText = text)
                 stats.totalMs = now() - t0
                 store.setMeta("lastRunMs", nowMs.toString())
@@ -273,13 +328,20 @@ object PduEngine {
     suspend fun searchLocal(text: String): LocalSearch {
         val terms = QueryTerms.terms(text)
         if (store.chunkCount == 0) return LocalSearch(emptyList(), terms, 0, 0)
+        val dense = denseUsable()
         val t0 = now()
-        val vec = PduStore.fit(AppGraph.embedder.embed(listOf(PduEmbedConfig.query(text))).first())
+        val vec = if (dense) PduStore.fit(AppGraph.embedder.embed(listOf(PduEmbedConfig.query(text))).first()) else null
         val t1 = now()
         val cands = withContext(Dispatchers.Default) { store.search(vec, terms) }
         val t2 = now()
         lastSearchMs = t2 - t1
-        return LocalSearch(cands, terms, t1 - t0, t2 - t1)
+        return LocalSearch(cands, terms, t1 - t0, t2 - t1, dense)
+    }
+
+    /** Dense search needs a real, answering embedder and vectors made by that same embedder; otherwise keywords only. */
+    private suspend fun denseUsable(): Boolean {
+        val st = embedderStatus()
+        return st.ready && !IndexGuard.reindexNeeded(store, st.name, PduEmbedConfig.documentPrefix)
     }
 
     /** Serve a peer: search, apply the share policy, return only what policy allows. Logs one audit line, keeps nothing else. */
@@ -357,6 +419,7 @@ object PduEngine {
                             indexedChunks = store.chunkCount, titles = local.map { it.title },
                         )
                     }
+                    update { it.copy(lexicalOnly = !ls.dense) }
                     publish { it.copy(embedMs = ls.embedMs, localSearchMs = ls.searchMs) }
                 } catch (t: Throwable) {
                     if (t is CancellationException) throw t
@@ -415,7 +478,7 @@ object PduEngine {
         } else {
             try {
                 val merged = sources.map { MergedHit(it.deviceId, it.deviceName, it.local, it.hit, 0.0) }
-                AppGraph.llm.chatStream(PromptBuilder.build(text, merged)).collect { c ->
+                AppGraph.gatedLlm.chatStream(PromptBuilder.build(text, merged)).collect { c ->
                     if (ttft < 0 && c.delta.isNotEmpty()) ttft = now() - t0
                     sb.append(c.delta)
                     val snapshot = sb.toString()
@@ -438,11 +501,16 @@ object PduEngine {
         return FileOpener.open(AppGraph.appContext, doc)
     }
 
-    /** A peer asked for this file to open on this phone's screen. Private files are refused. */
-    suspend fun openForPeer(uriHash: String): PduOpenResult {
+    /**
+     * A peer asked for this file to be shown on this phone. Nothing opens by itself: the owner gets a notification and taps it.
+     * Private files are refused, and each peer may ask three times a minute.
+     */
+    suspend fun openForPeer(uriHash: String, fromNode: String): PduOpenResult {
+        if (!openLimiter.tryAcquire(fromNode)) return PduOpenResult(false, "none", error = "too many requests, try again in a minute")
         val doc = store.doc(uriHash) ?: return PduOpenResult(false, "none", error = "unknown file")
         if (doc.isPrivate) return PduOpenResult(false, "none", error = "not shared")
-        return FileOpener.open(AppGraph.appContext, doc)
+        val who = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == fromNode }?.info?.name ?: "Another phone"
+        return FileOpener.askOwner(AppGraph.appContext, doc, who)
     }
 
     /** Local citation: open here. Remote citation: ask the owning phone to open it on its own screen. */
@@ -458,19 +526,18 @@ object PduEngine {
         }
     }
 
-    // ---- debug: register peers by IP until discovery lands ------------------------------------------------
+    // ---- debug: connect peers by IP through the link module (heartbeat included) --------------------------
 
     @Serializable
     data class DebugPeerResult(val ip: String, val ok: Boolean, val name: String? = null, val nodeId: String? = null, val error: String? = null)
 
     suspend fun addPeersByIp(ips: List<String>): List<DebugPeerResult> = ips.map { ip ->
-        try {
-            val info = AppGraph.nodeClient.get<NodeInfo>(ip, "/hello")
-            AppGraph.registry.add(info.copy(ip = ip.substringBefore(':')))
-            DebugPeerResult(ip, true, info.name, info.nodeId)
-        } catch (t: Throwable) {
-            if (t is CancellationException) throw t
-            DebugPeerResult(ip, false, error = "${t.javaClass.simpleName}: ${t.message}".take(120))
+        val host = ip.substringBefore(':')
+        val port = ip.substringAfter(':', "").toIntOrNull() ?: Ports.NODE
+        when (val r = PeerLinks.connect(host, port)) {
+            is ConnectResult.Ok -> DebugPeerResult(ip, true, r.status.name, r.status.nodeId)
+            is ConnectResult.Untrusted -> DebugPeerResult(ip, false, r.name, r.nodeId, "different pairing secret")
+            is ConnectResult.Failed -> DebugPeerResult(ip, false, error = r.reason.take(120))
         }
     }
 }

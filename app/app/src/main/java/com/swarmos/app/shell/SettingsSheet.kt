@@ -1,8 +1,5 @@
 package com.swarmos.app.shell
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,7 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +36,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
@@ -54,10 +50,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
 import com.swarmos.app.core.AuditVerify
+import com.swarmos.app.core.SwarmService
+import com.swarmos.app.llm.ModelStore
 import com.swarmos.app.ui.ErrorNote
 import com.swarmos.app.ui.Hairline
+import com.swarmos.app.ui.InkSwitch
 import com.swarmos.app.ui.PhoneToken
 import com.swarmos.app.ui.PrimaryButton
+import com.swarmos.app.ui.ScreenHeader
 import com.swarmos.app.ui.SecondaryButton
 import com.swarmos.app.ui.Stamp
 import com.swarmos.app.ui.SwarmColors
@@ -65,7 +65,6 @@ import com.swarmos.app.ui.SwarmShape
 import com.swarmos.app.ui.SwarmTextField
 import com.swarmos.app.ui.SwarmType
 import com.swarmos.app.ui.phoneLetter
-import com.swarmos.app.ui.rememberAnimationsEnabled
 import com.swarmos.app.ui.underlinePath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -112,10 +111,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                     .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                    Text("Settings", style = SwarmType.display)
-                    Wordmark(Modifier.padding(bottom = 4.dp))
-                }
+                ScreenHeader("Settings") { Wordmark(Modifier.padding(bottom = 4.dp)) }
                 Hairline()
                 SwarmTextField(
                     value = name,
@@ -126,8 +122,17 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                 IdentityPicker(selected = phoneLetter(name), onPick = { name = it })
                 Hairline()
                 PairingSecretRow()
-                RemoveAnimationsRow()
+                SwitchRow(
+                    "Remove animations", "Stamps and lines show only their final state.",
+                    checked = AppGraph.removeAnimations, onChange = { AppGraph.markAnimationsRemoved(it) },
+                )
+                val autoload by ModelStore.autoload.collectAsStateWithLifecycle()
+                SwitchRow(
+                    "Load models at start", "The default chat and embedding models load when Ustaad starts.",
+                    checked = autoload, onChange = { ModelStore.setAutoload(it) },
+                )
                 AuditLogCard()
+                StopStartRow()
                 Text("Ustaad ${BuildConfig.VERSION_NAME}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
                 PrimaryButton(
                     "Save changes",
@@ -215,45 +220,44 @@ private fun PairingSecretRow() {
 }
 
 @Composable
-private fun RemoveAnimationsRow() {
-    val removed = AppGraph.removeAnimations
+private fun SwitchRow(title: String, helper: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .toggleable(value = removed, role = Role.Switch, onValueChange = { AppGraph.markAnimationsRemoved(it) }),
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text("Remove animations", style = SwarmType.body.copy(fontWeight = FontWeight.W500))
-            Text("Stamps and lines show only their final state.", style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite))
+            Text(title, style = SwarmType.body.copy(fontWeight = FontWeight.W500))
+            Text(helper, style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite))
         }
-        InkSwitch(removed)
+        InkSwitch(checked, onCheckedChange = null) // the whole row is the toggle
     }
 }
 
-/** Flat switch: Smudge track when off, Ink when on, round Sheet knob with an Ink outline. */
+/** Stops the service (node server, models, wake and Wi-Fi locks) in one tap; the same button starts it again. */
 @Composable
-private fun InkSwitch(checked: Boolean) {
-    val animate = rememberAnimationsEnabled()
-    val knobX by animateDpAsState(if (checked) 20.dp else 0.dp, if (animate) tween(120) else snap(), label = "knob")
-    Box(Modifier.size(width = 52.dp, height = 48.dp), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .size(width = 44.dp, height = 26.dp)
-                .background(if (checked) SwarmColors.ink else SwarmColors.smudge, CircleShape)
-                .border(1.5.dp, SwarmColors.ink, CircleShape)
-                .padding(2.5.dp),
-        ) {
-            Box(Modifier.offset(x = knobX).size(18.dp).background(SwarmColors.sheet, CircleShape).border(1.5.dp, SwarmColors.ink, CircleShape))
-        }
+private fun StopStartRow() {
+    val ctx = LocalContext.current
+    val running by SwarmService.running.collectAsStateWithLifecycle()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SecondaryButton(
+            if (running) "Stop Ustaad" else "Start Ustaad",
+            onClick = { if (running) SwarmService.stop(ctx) else SwarmService.start(ctx) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            if (running) "Stops this phone's node server, the models and the wake locks."
+            else "Ustaad is stopped. Starts the node server and the models again.",
+            style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite),
+        )
     }
 }
 
 @Composable
 private fun AuditLogCard() {
     val scope = rememberCoroutineScope()
-    var count by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(Unit) { count = withContext(Dispatchers.IO) { AppGraph.audit.entries().size } }
+    var count by remember { mutableStateOf(AppGraph.audit.count) } // kept in memory by the log, no parsing
     var result by remember { mutableStateOf<AuditVerify?>(null) }
     Column(
         Modifier
@@ -267,7 +271,7 @@ private fun AuditLogCard() {
                 Text("Audit log", style = SwarmType.label.copy(color = SwarmColors.graphite))
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    count?.let { String.format(Locale.US, "%,d %s", it, if (it == 1) "entry" else "entries") } ?: " ",
+                    String.format(Locale.US, "%,d %s", count, if (count == 1) "entry" else "entries"),
                     Modifier
                         .drawWithCache {
                             val path = underlinePath(-2.dp.toPx(), size.width + 4.dp.toPx(), size.height - 1.dp.toPx(), 2.dp.toPx(), seed = 21)
@@ -280,10 +284,8 @@ private fun AuditLogCard() {
             }
             SecondaryButton("Verify", onClick = {
                 scope.launch {
-                    withContext(Dispatchers.IO) { AppGraph.audit.entries().size to AppGraph.audit.verify() }.let { (n, r) ->
-                        count = n
-                        result = r
-                    }
+                    result = withContext(Dispatchers.IO) { AppGraph.audit.verify() }
+                    count = AppGraph.audit.count
                 }
             })
         }

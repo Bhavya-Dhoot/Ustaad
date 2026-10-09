@@ -1,8 +1,11 @@
 package com.swarmos.app.choir
 
 import com.swarmos.app.AppGraph
-import com.swarmos.app.core.NodeInfo
+import com.swarmos.app.BuildConfig
+import com.swarmos.app.core.Ports
+import com.swarmos.app.link.ConnectResult
 import com.swarmos.app.link.NodeClient
+import com.swarmos.app.link.PeerLinks
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,12 +27,16 @@ class RemoteParticipant(
     override val name: String,
     private val host: String,
     private val client: NodeClient,
+    override val away: Boolean = false,
 ) : ChoirParticipant {
     override suspend fun solve(req: SolveRequest): NodeAnswer = client.post<NodeAnswer, SolveRequest>(host, "/choir/solve", req)
     override suspend fun revise(req: ReviseRequest): NodeAnswer = client.post<NodeAnswer, ReviseRequest>(host, "/choir/revise", req)
     override suspend fun judge(req: JudgeRequest): JudgeAnswer = client.post<JudgeAnswer, JudgeRequest>(host, "/choir/judge", req)
     suspend fun setScript(script: FakeScript) { client.post<JsonObject, FakeScript>(host, "/choir/debug/script", script) }
 }
+
+/** The eval was refused before it started (for example the phone is too hot). */
+class EvalRefused(message: String) : IllegalStateException(message)
 
 @Serializable data class DebugPeers(val ips: List<String>)
 @Serializable data class PeerAdded(val nodeId: String, val name: String, val ip: String)
@@ -53,7 +60,7 @@ object ChoirController {
 
     val node: ChoirNode by lazy {
         ChoirNode(
-            llm = { AppGraph.llm },
+            llm = { AppGraph.gatedLlm },
             identity = { AppGraph.registry.self.value.let { NodeIdentity(it.nodeId, it.name) } },
             problems = { problems },
         )
@@ -76,8 +83,9 @@ object ChoirController {
     }
 
     private fun remotePeers(): List<RemoteParticipant> =
-        AppGraph.registry.peers.value.filter { !it.away }.map {
-            RemoteParticipant(it.info.nodeId, it.info.name, it.info.ip, AppGraph.nodeClient)
+        // phones whose link heartbeat says away stay in the list so the run shows them as away lanes; they are never asked
+        AppGraph.registry.peers.value.map {
+            RemoteParticipant(it.info.nodeId, it.info.name, it.info.ip, AppGraph.nodeClient, away = it.away)
         }
 
     fun newTaskId(): String = "t-" + UUID.randomUUID().toString().take(8)
@@ -97,6 +105,8 @@ object ChoirController {
     ): RunTrace = gate.withLock {
         _busy.value = true
         val peers = remotePeers()
+        // fake per-node answers exist in debug builds only
+        val scripts = if (BuildConfig.DEBUG) scripts else emptyMap()
         try {
             if (scripts.isNotEmpty()) applyScripts(scripts, peers)
             coordinator.run(problem, newTaskId(), selfParticipant(), peers, options) { _run.value = it }.also { _run.value = it }
@@ -112,6 +122,10 @@ object ChoirController {
 
     /** Runs the built-in set (or the given ids) one after another; stores filesDir/choir-eval-<ts>.json. */
     suspend fun runEval(ids: List<String>?, options: RunOptions = RunOptions(), withSamples: Boolean = true): EvalReport = gate.withLock {
+        ChoirEval.refuseWhenHot(AppGraph.health.state.value.thermalStatus)?.let { reason ->
+            _eval.value = EvalProgress(error = reason)
+            throw EvalRefused(reason)
+        }
         val list = if (ids == null) problems else ids.mapNotNull { id -> problems.firstOrNull { it.id == id } }
         _busy.value = true
         var fake = false
@@ -168,15 +182,22 @@ object ChoirController {
         scope.launch { runCatching { runEval(null, options, withSamples) } }
     }
 
-    /** Debug: register peers by IP ("ip" or "ip:port"): GET /v1/hello on each, add it to the registry. */
+    /**
+     * Debug builds only: connect to peers by IP ("ip" or "ip:port") through the link module, so each one gets the
+     * trust handshake and a heartbeat like any discovered peer (and shows up as away when the heartbeat stops).
+     */
     suspend fun registerPeers(ips: List<String>): DebugPeersResult {
         val added = mutableListOf<PeerAdded>()
         val failed = mutableListOf<PeerFailed>()
         for (raw in ips.map { it.trim() }.filter { it.isNotEmpty() }) {
+            val host = raw.substringBefore(':')
+            val port = raw.substringAfter(':', "").toIntOrNull() ?: Ports.NODE
             try {
-                val info = AppGraph.nodeClient.get<NodeInfo>(raw, "/hello")
-                AppGraph.registry.add(info.copy(ip = raw))
-                added.add(PeerAdded(info.nodeId, info.name, raw))
+                when (val r = PeerLinks.connect(host, port)) {
+                    is ConnectResult.Ok -> added.add(PeerAdded(r.status.nodeId, r.status.name, raw))
+                    is ConnectResult.Untrusted -> failed.add(PeerFailed(raw, "different pairing secret"))
+                    is ConnectResult.Failed -> failed.add(PeerFailed(raw, r.reason))
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
@@ -192,7 +213,15 @@ object ChoirController {
             if (key.equals("self", true) || key == me.nodeId || key.equals(me.name, true)) {
                 node.script = sc.takeUnless { it.isEmpty() }
             } else {
-                peers.firstOrNull { it.nodeId == key || it.name.equals(key, true) }?.setScript(sc)
+                // an away phone is not asked, so it gets no script either; a peer that cannot be reached is simply skipped
+                peers.firstOrNull { (it.nodeId == key || it.name.equals(key, true)) && !it.away }?.let { p ->
+                    try {
+                        p.setScript(sc)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Throwable) {
+                    }
+                }
             }
         }
     }

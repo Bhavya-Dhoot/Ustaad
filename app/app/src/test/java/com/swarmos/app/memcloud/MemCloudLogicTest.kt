@@ -116,6 +116,23 @@ class MemCloudLogicTest {
         assertTrue(MemCloudLogic.loadedLayers(threeShares, phones, ready = true, nLayers = 48).all { it })
     }
 
+    @Test fun theActivityLineFollowsThePhaseForTwoAndThreePhones() {
+        val two = listOf(share("c", "Phone C", true, 0, 18, 1500), share("a", "Phone A", false, 18, 18, 1500))
+        val phonesTwo = listOf(phone("c", "Phone C", true), phone("a", "Phone A", false, 0.41f))
+        val loading = MemCloudState(phase = Phase.LOADING, shares = two, phones = phonesTwo)
+        assertEquals("Loading a large model across 2 phones (41 percent).", MemCloudLogic.activityText(loading))
+        assertEquals("Running a large model with Phone A.", MemCloudLogic.activityText(loading.copy(phase = Phase.READY)))
+        val three = MemCloudState(
+            phase = Phase.READY, shares = threeShares,
+            phones = listOf(phone("a", "Phone A", true), phone("b", "Phone B", false), phone("c", "Phone C", false)),
+        )
+        assertEquals("Running a large model with Phone B and Phone C.", MemCloudLogic.activityText(three))
+        assertEquals("A large model is paused: Phone B stopped answering.", MemCloudLogic.activityText(three.copy(phase = Phase.DEGRADED, lostPhone = "Phone B")))
+        assertEquals("Preparing a large model across phones.", MemCloudLogic.activityText(MemCloudState(phase = Phase.PLANNING)))
+        assertNull(MemCloudLogic.activityText(MemCloudState(phase = Phase.IDLE)))
+        assertNull(MemCloudLogic.activityText(MemCloudState(phase = Phase.FAILED)))
+    }
+
     @Test fun aNewLoadIsRefusedWhileASplitIsServingOrDegraded() {
         assertFalse(MemCloudLogic.canStart(Phase.READY))
         assertFalse(MemCloudLogic.canStart(Phase.DEGRADED))
