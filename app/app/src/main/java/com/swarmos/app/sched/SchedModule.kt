@@ -98,5 +98,5 @@ object SchedModule : SwarmModule {
     }
 
     @Composable
-    override fun Screen() = ThroughputPanel()
+    override fun Screen() = ThroughputScreen()
 }
