@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalTextApi::class)
+
 package com.swarmos.app.ui
 
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation

@@ -29,9 +29,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private val PillShape = RoundedCornerShape(4.dp)
@@ -57,8 +59,9 @@ fun TopologyPanel(modifier: Modifier = Modifier, content: @Composable BoxScope.(
 /**
  * Wobbly 2 dp Ink line with a hand-drawn arrowhead from [from] to [to] (coordinates inside the
  * box this composable fills, in dp). Pass the two token centres and set [gap] to the token radius
- * plus a little so the line stops short of the tokens. [label] is a handwritten pill at the
- * middle of the line (throughput and round trip time). [dashed] when the far phone is away.
+ * plus a little so the line stops short of the tokens ([startGap] overrides it at the [from] end,
+ * for a token with a name under it). [label] is a handwritten pill [labelAt] (0..1) along the line
+ * (throughput and round trip time). [dashed] when the far phone is away.
  * Changing [heartbeat] thickens the line for 150 ms (skipped when system animations are removed).
  * The wobble is seeded by [seed], so the line never shimmers.
  */
@@ -71,6 +74,8 @@ fun DoodleConnector(
     dashed: Boolean = false,
     heartbeat: Int = 0,
     gap: Dp = 0.dp,
+    startGap: Dp = gap,
+    labelAt: Float = 0.5f,
     seed: Int = 7,
 ) {
     val animate = rememberAnimationsEnabled()
@@ -89,9 +94,10 @@ fun DoodleConnector(
             if (len < 1f) return@Canvas
             val ux = (b.x - a.x) / len
             val uy = (b.y - a.y) / len
-            val g = gap.toPx().coerceAtMost(len / 3f)
-            val start = Offset(a.x + ux * g, a.y + uy * g)
-            val end = Offset(b.x - ux * g, b.y - uy * g)
+            val g0 = startGap.toPx().coerceAtMost(len / 3f)
+            val g1 = gap.toPx().coerceAtMost(len / 3f)
+            val start = Offset(a.x + ux * g0, a.y + uy * g0)
+            val end = Offset(b.x - ux * g1, b.y - uy * g1)
             val jitter = Jitter(seed.toLong())
             val line = smoothPath(wobblePoints(start, end, amp = 1.6.dp.toPx(), step = 34.dp.toPx(), jitter = jitter))
             val widthPx = thickness.value.dp.toPx()
@@ -100,23 +106,25 @@ fun DoodleConnector(
             drawPath(arrowheadPath(end, dir, 10.dp.toPx(), jitter), SwarmColors.ink, style = inkStroke(2.dp.toPx()))
         }
         if (label != null) {
-            val mx = (from.x + to.x) / 2
-            val my = (from.y + to.y) / 2
             val dx = (to.x - from.x).value
             val dy = (to.y - from.y).value
             val len = hypot(dx, dy).coerceAtLeast(1f)
             var nx = -dy / len
             var ny = dx / len
-            if (ny > 0f) { nx = -nx; ny = -ny }          // pill sits above the line
+            if (ny > 0f) { nx = -nx; ny = -ny }          // the pill sits on the upper side of the line
             val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
             val tilt = (angle * 0.35f).coerceIn(-9f, 9f)
-            val lift = 16f
             Box(
                 Modifier
-                    .offset(mx + (nx * lift).dp, my + (ny * lift).dp)
                     .layout { measurable, constraints ->
                         val p = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
-                        layout(0, 0) { p.place(-p.width / 2, -p.height / 2) } // centred on the anchor point
+                        // anchor on the line, then step out along its normal until the pill clears the line
+                        val ax = (from.x + (to.x - from.x) * labelAt).roundToPx()
+                        val ay = (from.y + (to.y - from.y) * labelAt).roundToPx()
+                        val clear = abs(nx) * p.width / 2f + abs(ny) * p.height / 2f + 4.dp.roundToPx()
+                        layout(0, 0) {
+                            p.place((ax + nx * clear - p.width / 2f).roundToInt(), (ay + ny * clear - p.height / 2f).roundToInt())
+                        }
                     }
                     .graphicsLayer { rotationZ = tilt }
                     .background(SwarmColors.sheet, PillShape)

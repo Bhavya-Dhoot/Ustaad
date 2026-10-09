@@ -18,6 +18,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,7 +45,7 @@ const val GALLERY_PAGES = 4
 fun galleryTab(page: Int): Int = if (page == 4) 2 else 0
 
 @Composable
-fun GalleryPage(page: Int, modifier: Modifier = Modifier) {
+fun GalleryPage(page: Int, modifier: Modifier = Modifier) = key(page) { // a new page starts at the top
     Column(
         modifier
             .fillMaxSize()
@@ -166,6 +171,9 @@ private fun KitSheetTwo() {
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         InkCircle { Text("Rs 80,000", style = SwarmType.monoHero.copy(fontSize = 32.sp)) }
     }
+    var question by remember { mutableStateOf("Where is the warranty bill for my laptop?") }
+    SwarmTextField(question, { question = it }, "Question", helper = "Searches the index on every phone")
+    SwarmTextField("192.168.242.7", {}, "Peer address", error = "Not a valid address", mono = true)
 }
 
 private val laneBody
@@ -189,11 +197,11 @@ private fun SwarmHomeMock() {
     }
     TopologyPanel(Modifier.height(220.dp)) {
         // token centres in dp inside the panel; the panel is about 352 dp wide on a 384 dp phone
-        val a = DpOffset(100.dp, 66.dp)
-        val b = DpOffset(210.dp, 146.dp)
-        val c = DpOffset(296.dp, 146.dp)
-        DoodleConnector(a, b, Modifier.fillMaxSize(), label = "56 Mbps, 11 ms", gap = 26.dp, seed = 7)
-        DoodleConnector(b, c, Modifier.fillMaxSize(), dashed = true, gap = 26.dp, seed = 3)
+        val a = DpOffset(92.dp, 64.dp)
+        val b = DpOffset(215.dp, 150.dp)
+        val c = DpOffset(300.dp, 150.dp)
+        DoodleConnector(a, b, Modifier.fillMaxSize(), label = "56 Mbps\n11 ms", gap = 24.dp, startGap = 32.dp, labelAt = 0.55f, seed = 7)
+        DoodleConnector(b, c, Modifier.fillMaxSize(), dashed = true, gap = 24.dp, startGap = 24.dp, seed = 3)
         DoodleConnector(DpOffset(34.dp, 30.dp), DpOffset(72.dp, 56.dp), Modifier.fillMaxSize(), seed = 11)
         Note("host", Modifier.offset(12.dp, 10.dp), rotation = -5f)
         PhoneNode("Phone A", modifier = Modifier.offset(a.x - 23.dp, a.y - 17.dp))
