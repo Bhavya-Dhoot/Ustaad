@@ -176,7 +176,8 @@ class ChoirNode(
 
         private fun conf(v: Double?): Double = when {
             v == null || v.isNaN() -> 0.5
-            v > 1.0 && v <= 100.0 -> v / 100.0
+            v > 1.0 && v < 2.0 -> 1.0
+            v >= 2.0 && v <= 100.0 -> v / 100.0
             else -> v.coerceIn(0.0, 1.0)
         }
 
