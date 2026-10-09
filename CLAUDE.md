@@ -1,4 +1,6 @@
-# SwarmOS — project doctrine (read first, every session)
+# Ustaad (working name: SwarmOS) — project doctrine (read first, every session)
+
+Naming: the product and the app are called **Ustaad** (founder decision, 2026-10-10). Every user-visible string says Ustaad. Code identifiers keep the old name for now (package `com.swarmos.app`, `SwarmService`, `SwarmLink`, scripts, routes); the applicationId switches to `com.ustaad.app` only in the final integration step. Feature names stay: Swarm, Agent Choir, Data Union, MemoryCloud, ExpertMesh.
 
 Hackathon: iQOO Hackathon 2026 Grand Finale, Bengaluru, 2026-10-09 to 2026-10-11 (48 h). Demo must run on the iQOO phones.
 Scope is locked to the diagram in docs/PRD.md: SwarmOS (coordination layer) + Agent Choir + MemoryCloud + Private Data Union + ExpertMesh, all on SwarmLink (local Wi-Fi). Nothing else. Blackout Cloud is a one-line "emergency node" footnote, not a feature. Do not reopen scope.
