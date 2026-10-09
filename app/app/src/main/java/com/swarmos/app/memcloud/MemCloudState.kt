@@ -71,6 +71,10 @@ data class BaselineView(
     val tokPerSec: Double? = null,
 )
 
+/** The small chat model that was serving on this phone before MemoryCloud stopped it, with a fresh decode measurement (for scale). */
+@Serializable
+data class SmallModelView(val name: String, val tokPerSec: Double, val tokens: Int)
+
 @Serializable
 data class LogView(
     val offloaded: Int?,
@@ -108,6 +112,7 @@ data class MemCloudState(
     val steps: List<String> = emptyList(),
     val generation: GenerationView? = null,
     val baseline: BaselineView? = null,
+    val smallModel: SmallModelView? = null,
     /** Mean heartbeat round trip over the peers in the split. */
     val rttMs: Double? = null,
     val updatedAtMs: Long = 0,

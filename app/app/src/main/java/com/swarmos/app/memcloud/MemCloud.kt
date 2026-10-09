@@ -184,7 +184,7 @@ object MemCloud {
             old?.cancel()
             teardownSplit()
             restoreAll()
-            _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, steps = it.steps.takeLast(30) + "Stopped; chat and embedding servers restored", updatedAtMs = now()) }
+            _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, steps = it.steps.takeLast(30) + "Stopped; chat and embedding servers restored", updatedAtMs = now()) }
         }
     }
 
@@ -192,8 +192,8 @@ object MemCloud {
         val t0 = now()
         stopWatch()
         cancelGeneration()
-        val prevBaseline = _state.value.baseline
-        _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prevBaseline, steps = listOf("Reading the model header"), updatedAtMs = t0)
+        val prev = _state.value
+        _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
             val peers = selectPeers(sel)
@@ -223,6 +223,7 @@ object MemCloud {
             // memory hygiene: peers first, in parallel, then this phone
             val prepared = coroutineScope { peers.map { p -> async { p to runCatching { prepPeer(p, snaps.first { it.first === p }.second.getOrThrow()) } } }.awaitAll() }
             prepared.firstOrNull { it.second.isFailure }?.let { (p, r) -> return fail("${p.name}: ${r.exceptionOrNull()?.message}") }
+            measureSmallModel()
             prepSelf(file)
 
             // is every rpc-server reachable from this phone?
@@ -288,6 +289,19 @@ object MemCloud {
         val st = SwarmJson.decodeFromString<RpcStateDto>(AppGraph.nodeClient.raw(HttpMethod.Post, p.addr, "/memcloud/rpc/start", body, 60_000))
         if (st.state != "READY") throw IllegalStateException("rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}")
         setPhone(p.nodeId) { it.copy(step = "rpc-server listening, waiting for weights") }
+    }
+
+    /** A 48-token answer from the small chat model that is about to be stopped: its tok/s is the scale for the split's number. */
+    private suspend fun measureSmallModel() {
+        if (ownsChat || LlamaRuntime.statusOf(Role.CHAT).state != ServerState.READY) return
+        val llm = AppGraph.llm
+        if (llm.modelName == "FAKE") return
+        step("Measuring ${llm.modelName} on this phone alone, for scale")
+        val r = withTimeoutOrNull(60_000) {
+            runCatching { llm.chat(ChatRequest(listOf(ChatMessage("user", "Explain how a heat pump works.")), maxTokens = 48, temperature = 0.0)) }.getOrNull()
+        } ?: return
+        val tps = r.stats.decodeTokPerSec
+        if (tps > 0) _state.update { it.copy(smallModel = SmallModelView(llm.modelName, tps, r.stats.completionTokens)) }
     }
 
     private fun prepSelf(splitFile: String) {

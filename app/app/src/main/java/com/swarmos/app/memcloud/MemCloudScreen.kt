@@ -389,6 +389,7 @@ private fun BaselinePanel(st: MemCloudState, enabled: Boolean) {
             if (b != null && !b.running) Stamp(if (b.outcome == "OK") "Loaded" else b.outcome, caution = b.outcome != "OK", small = true)
         }
         Text("Same model, no other phone, no RPC.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+        st.smallModel?.let { MetricRow("For scale: ${it.name}", "%.1f".format(it.tokPerSec), "tok/s") }
         if (b != null) {
             Spacer(Modifier.height(6.dp))
             Text(b.detail, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp))
