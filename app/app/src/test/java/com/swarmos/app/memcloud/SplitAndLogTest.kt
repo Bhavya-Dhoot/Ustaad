@@ -145,6 +145,23 @@ class GgufMetaTest {
     }
 }
 
+class CpuSetTest {
+    @Test fun countsCoresInACpuList() {
+        assertEquals(6, CpuSet.count("0-5"))
+        assertEquals(8, CpuSet.count("0-7"))
+        assertEquals(6, CpuSet.count("0-3,6-7"))
+        assertEquals(1, CpuSet.count("4"))
+        assertNull(CpuSet.count(""))
+        assertNull(CpuSet.count("a-b"))
+        assertNull(CpuSet.count("5-2"))
+    }
+
+    @Test fun threadsStayBetweenTwoAndEight() {
+        val t = CpuSet.threads()
+        assertTrue(t in 2..8)
+    }
+}
+
 class SplitPlannerTest {
     private fun info(layers: Int = 48, perLayer: Long = 380_000_000L) = GgufInfo(
         "m.gguf", layers * perLayer + 500_000_000, "qwen3moe", "M", layers, 2048, 4096, 128, 8, 0,
@@ -172,7 +189,8 @@ class SplitPlannerTest {
         assertEquals(List(16) { "Phone A" } + List(16) { "Phone B" } + List(16) { "Phone C" }, p.assignments())
         // driver carries the embedding table, the last phone the output head
         assertEquals(16 * 380_000_000L + 300_000_000L, p.shares[0].weightBytes)
-        assertEquals(16 * 380_000_000L + 200_000_000L, p.shares[2].weightBytes)
+        // tied head: the last phone also receives a copy of the embedding table for the output layer
+        assertEquals(16 * 380_000_000L + 200_000_000L + 300_000_000L, p.shares[2].weightBytes)
     }
 
     @Test fun ramModeGivesTheBiggerPhoneMoreLayers() {
@@ -229,6 +247,12 @@ class SplitPlannerTest {
             val args = SplitPlanner.serverArgs(p, 50052)
             assertTrue("n=$n counts=$counts args=$args", SplitPlanner.argsMatchPlan(p, args))
         }
+    }
+
+    @Test fun theThreadCountIsAParameter() {
+        val p = SplitPlanner.plan(info(layers = 36), devs(9000, 9000))
+        val args = SplitPlanner.serverArgs(p, 50052, threads = 6)
+        assertEquals("6", args[args.indexOf("-t") + 1])
     }
 
     @Test fun twoPhoneSplitUsesNoTensorSplitFlag() {

@@ -143,7 +143,8 @@ data class MemCloudState(
     val cache: Boolean = true,
     /** Link address to listen on; must belong to this phone's Wi-Fi or Direct interface. Never 0.0.0.0. Default: the address this request arrived on. */
     val bind: String? = null,
-    val threads: Int = 8,
+    /** Compute threads; null = one per core the app may use right now (see [CpuSet]). */
+    val threads: Int? = null,
     /** Model servers the driver stopped on this phone; they are restarted when rpc-server stops, whoever stops it. */
     val restore: List<RestoreItem> = emptyList(),
 )

@@ -131,7 +131,10 @@ object SplitPlanner {
             if (output) bytes += info.outputBytes
             // the lm_head follows the output layer unless it is pinned to the driver (spike: -ot ^output\.weight=CPU)
             val headHere = if (headOnDriver && lastRemote != null) i == 0 else output
-            if (headHere) bytes += info.outputHeadBytes
+            if (headHere) {
+                if (info.hasUntiedHead) bytes += info.outputHeadBytes
+                else if (i != 0) bytes += info.inputBytes // tied head: the output layer on another phone needs its own copy of the embedding table (measured: 1.6 GB received for 1.05 GB of layers)
+            }
             Share(d, first, counts[i], bytes, input, output)
         }
         return SplitPlan(info, shares, headOnDriver && lastRemote != null)
@@ -143,7 +146,7 @@ object SplitPlanner {
      * devices in `--rpc` order, cut at the fractions of `-ts`; the first n+1-ngl layers stay on this phone's CPU.
      * Cut points sit half a layer before each boundary so float rounding cannot move a layer.
      */
-    fun serverArgs(plan: SplitPlan, rpcPort: Int, ctx: Int = 4096): List<String> {
+    fun serverArgs(plan: SplitPlan, rpcPort: Int, ctx: Int = 4096, threads: Int = 8): List<String> {
         val remote = plan.remote
         val n = plan.nLayers
         val args = ArrayList<String>()
@@ -155,7 +158,7 @@ object SplitPlanner {
             args += listOf("-ngl", "0")
         }
         if (plan.headOnDriver) args += listOf("-ot", "^output\\.weight=CPU")
-        args += listOf("-t", "8", "-c", ctx.toString(), "-np", "1", "-fit", "off")
+        args += listOf("-t", threads.toString(), "-c", ctx.toString(), "-np", "1", "-fit", "off")
         return args
     }
 

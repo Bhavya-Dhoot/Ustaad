@@ -69,6 +69,9 @@ object MemCloud {
     private var plan: SplitPlan? = null
     private var participants: List<Peer> = emptyList()
 
+    /** Accumulates the start-up log of the split server across watch ticks (the log ring only keeps the last 400 lines). */
+    @Volatile private var loadParser = LoadLogParser()
+
     /** True while the CHAT server on this phone is the one this coordinator started (split or baseline). */
     @Volatile private var ownsChat = false
 
@@ -207,6 +210,7 @@ object MemCloud {
         stopWatch()
         cancelGeneration()
         val prev = _state.value
+        loadParser = LoadLogParser()
         _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
@@ -218,7 +222,7 @@ object MemCloud {
             for ((p, r) in snaps) freeableMb[p.nodeId] = r.getOrThrow().roles.filterKeys { it == "chat" || it == "embed" }.values.sumOf { if (it.state == "STOPPED") 0L else it.rssMb ?: 0L }
 
             val sp = SplitPlanner.plan(info, devicesFor(peers), mode, manual)
-            val args = SplitPlanner.serverArgs(sp, Ports.RPC, SPLIT_CTX)
+            val args = SplitPlanner.serverArgs(sp, Ports.RPC, SPLIT_CTX, CpuSet.threads())
             if (!SplitPlanner.argsMatchPlan(sp, args)) return fail("Internal error: the llama-server flags do not place the layers as planned: $args")
             plan = sp
             participants = peers
@@ -430,8 +434,7 @@ object MemCloud {
     /** Refreshes the per-phone numbers (and the log view) in [state]. */
     private suspend fun refreshLive(final: Boolean, rpcEvery: Int = 1, tick: Int = 0) {
         val sp = plan ?: return
-        val parser = LoadLogParser().also { it.feed(LlamaRuntime.logTail(Role.CHAT, 400)) }
-        val log = parser.snapshot()
+        val log = loadParser.also { it.feed(LlamaRuntime.logTail(Role.CHAT, 400)) }.snapshot()
         val rpc: Map<String, RpcStateDto?> =
             if (final || tick % rpcEvery == 0) coroutineScope {
                 participants.map { p -> async { p.nodeId to runCatching { rpcState(p) }.getOrNull() } }.awaitAll().toMap()

@@ -98,7 +98,7 @@ object RpcWorker {
         }
         val extra = buildList {
             add("-H"); add(bind)
-            add("-t"); add(req.threads.toString())
+            add("-t"); add((req.threads ?: CpuSet.threads()).toString())
             if (req.cache) add("-c")
         }
         LlamaRuntime.start(Role.RPC, null, extra, req.port)
