@@ -39,6 +39,13 @@ The sweep ended with Thermal Status 3, so the later rows ran hotter than the fir
 
 Decode saturates at 6-8 threads: 12.4 tok/s x 2.74 GB of weights is 34 GB/s. All 8 threads is best for prefill (+26% over 6); decode is within 6%. Pinning to the prime cores helps only at 2 threads (+23%) and loses at 6 (pinned `3f` 10.2 vs unpinned 11.7). Recommendation: 8 threads for a dedicated worker, 6 if the app UI must stay smooth. The cool-start re-take is in the next section.
 
+## Cool-start headline (phone C, Thermal Status 0, skin 36.8 C, pp256 / tg64, 2 reps)
+
+| Test | prefill tok/s | decode tok/s | VmHWM | end state |
+|---|---:|---:|---:|---|
+| **CPU i8mm, 8 threads** | **32.5 +- 0.8** | **13.58 +- 0.71** | 5,385 MB (anon 2,776) | S0, 39.7 C |
+| OpenCL (Adreno 840) `-ngl 99` | 127.9 +- 2.3 | 13.55 +- 0.12 | 1,177 MB | S1, 40.0 C |
+
 ## Cool-start re-take (phone A, started at Thermal Status 0, skin 38.9 C, screen off)
 
 | Test | prefill tok/s | decode tok/s | thermal at end |
@@ -56,13 +63,21 @@ VmHWM **5.4 GB**, anonymous (RssAnon) **2.8 GB**. The i8mm build repacks Q4_K we
 
 12.8-13.0 tok/s decode, 17-36 tok/s prefill on 20-token prompts (first request after load: 3 s page-in penalty). With thinking on Qwen3.5 spends 217 tokens (17 s) to answer a 5-token question; use `--reasoning off`.
 
-## Sustained 10-minute run
+## Sustained 10-minute run (phone C, GPU build, the single permitted run)
 
-Not run yet: the thermal guard limits sustained testing to one 10-minute run on phone C once the phone is back to Thermal Status 0-1. The runs above already show the answer qualitatively (Thermal Status 3-4 within a few minutes; decode 14.9 tok/s cool vs 10.7 tok/s at status 3 on phone A). Script ready: `native/bench/sustain.sh`.
+`llama-server` OpenCL build `-ngl 99 -t 4 -c 2048 -np 1 --reasoning off`, 128-token generations back to back through `/completion` (`ignore_eos`, fresh slot each time) for 10 minutes, phone idle otherwise, started at **Thermal Status 1, skin 40.7 C**, thermal sampled every 30 s (`native/bench/sustain.sh`, raw log kept in `third_party/logs/sustain-c-gpu.log`):
 
-## Gemma 4 E4B (second family)
+| Minute | decode tok/s (mean of requests) | Thermal Status | skin |
+|---|---:|---|---|
+| 1 | **12.3** (6 requests, 10.5-13.0) | S1 -> S2 at 63 s | 40.7 -> 43.3 C |
+| 5 | **10.6** (4 requests, 10.58-10.62) | S3 from 220 s | about 45.7 C |
+| 10 | **6.8** (3 requests, 4.1-8.2) | S3 -> S4 at 590 s | 48.9 C |
 
-File is on the PC and on phone C, but no number was taken: the thermal guard and the other worker's use of phone C blocked a clean run. Open item.
+Decode fell 45% over ten minutes while the SoC clock cap dropped (cpu0 cap 1.8 GHz, prime cores 0.88 GHz sampled). The run reached Thermal Status 4 (critical) at the end; the script aborts at S4, and the phone was left idle afterwards. **Plan demos for 3-4 minutes of continuous generation per phone, or rotate which phone is generating.** The GPU path is not exempt: it heats about as fast as the CPU path in this chassis (the 60-second single bench looked flat; ten minutes did not).
+
+## Gemma 4 E4B QAT Q4_0 (second family), phone C
+
+Cool start (S0, 38.9 C), `llama-bench -p 256 -n 64 -r 2`: **OpenCL `-ngl 99`: prefill 164.6 +- 2.7 tok/s, decode 12.82 +- 0.05 tok/s**, VmHWM 1.78 GB, ended S0 39.9 C. The CPU i8mm run of the same file started at S1 (40.2 C) and ended S2 (43.2 C) and was noisy (prefill 82 +- 17, decode 6.3 +- 7.1); not usable. Gemma 4 E4B (4.8 GiB, larger than Qwen3.5-4B) decodes about as fast as the 4B Qwen on the GPU and prefills 29% faster.
 
 ## Commands
 

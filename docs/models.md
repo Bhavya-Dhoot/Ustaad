@@ -32,7 +32,7 @@ SHA256 below is of the file as downloaded, verified equal to the Hugging Face LF
 
 ## Large model status
 
-Download complete and verified on the PC (size 18,556,686,752 and sha256 equal to the Hugging Face LFS oid; a PC crash at 00:49 zero-filled the tail, so the file was truncated and resumed with `curl -C -`, then re-hashed). Still to be pushed to phone C (needs the USB cable, wireless ADB is about 3 MB/s, so 18.6 GB would take over an hour). See `docs/benchmarks/2026-10-10-rpc-split-spike.md` for the split test.
+Download complete and verified on the PC (size 18,556,686,752 and sha256 equal to the Hugging Face LFS oid; a PC crash at 00:49 zero-filled the tail, so the file was truncated and resumed with `curl -C -`, then re-hashed). Pushed to phone C over wireless ADB (49 minutes, 6.0 MB/s), `/data/local/tmp/llama/models/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf`, size verified (18,556,686,752 B). It cannot run on one phone and did not load split over two (see `docs/benchmarks/2026-10-10-rpc-split-spike.md` for the measurements).
 
 Re-fetch command if it is ever lost:
 
