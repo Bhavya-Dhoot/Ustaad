@@ -158,11 +158,15 @@ class BatchStore(
                     // updates come from several workers; never let an older snapshot overwrite a newer one
                     flow.update { cur -> if (r.done + r.failed >= cur.done + cur.failed) r else cur }
                     publish(flow.value)
+                    val cur = flow.value
+                    SchedActivity.set(SchedActivity.batch(requests.size, cur.done + cur.failed, client.phoneViews().count { it.up }))
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 flow.value.copy(state = "done", failed = requests.size - flow.value.done)
+            } finally {
+                SchedActivity.clear()
             }
             flow.value = report
             publish(report)
