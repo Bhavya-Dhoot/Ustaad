@@ -4,7 +4,7 @@ Model unless stated: `Qwen3.5-4B-Q4_K_M.gguf`. llama.cpp v0.6.0 (`d812350`). CPU
 
 ## Decisions (read these)
 
-1. **Use the GPU (OpenCL) build for the chat model: `-ngl 99`.** Same decode speed as the CPU, 4x the prefill, a quarter of the process RSS, and it barely warms the phone while leaving all CPU cores free for the app. Keep the CPU `i8mm` binaries as the fallback if OpenCL initialisation fails.
+1. **Use the GPU (OpenCL) build for the chat model: `-ngl 99`.** Same decode speed as the CPU, 4x the prefill, a quarter of the process RSS, and all CPU cores stay free for the app (it heats the phone about as fast as the CPU path over ten minutes). Keep the CPU `i8mm` binaries as the fallback if OpenCL initialisation fails.
 2. **Partial GPU offload is worse than either extreme.** `-ngl 16` of 33 gave 82 prefill / 7.5 decode tok/s.
 3. **Parallel slots do not add throughput.** Aggregate decode stayed at the single-stream rate (about 12 tok/s) with `-np 2` and `-np 4`, on both CPU and GPU. Use `-np 2` only so two clients can queue without blocking the slot; do not expect more tokens per second.
 4. **Thread count (CPU path): 8 threads for prefill, 6-8 for decode; do not pin.** On the GPU path threads are irrelevant (`-t 4` equals `-t 8`).
@@ -66,7 +66,7 @@ Best aggregate: **a single stream** (`-np 1`), equal to `-np 2` with one client.
 
 ## Sustained load
 
-See the baseline note. Heat is the real limit: CPU inference on any phone reached S3 within 2-4 minutes from a 38-41 C start (skin 46-51 C), cutting decode from 14.9 to about 10.7 tok/s. On the GPU path the skin sensor stayed flat for a 60-second run (S1 40.4 -> 40.0 C), which is the main reason to prefer it for long agent sessions.
+Heat is the real limit, on both engines. CPU inference reached S3 within 2-4 minutes from a 38-41 C start (skin 46-51 C), decode 14.9 -> 10.7 tok/s. The single 10-minute GPU run on phone C (S1 40.7 C start) went S2 at 1 min, S3 at about 4 min, S4 at 10 min (skin 48.9 C) with decode **12.3 / 10.6 / 6.8 tok/s at minutes 1 / 5 / 10** (`2026-10-10-llama-cpu-baseline.md`). The GPU is faster at prefill and leaves the cores free, but it does not solve thermals.
 
 ## RPC knobs
 

@@ -18,14 +18,14 @@ CPU fallback (same model):
 libllama-server.so -m <dir>/Qwen3.5-4B-Q4_K_M.gguf --host 127.0.0.1 --port 8080     -t 6 -c 8192 -np 2 --reasoning off
 ```
 
-- GPU vs CPU (cool start, phone C): prefill **128 vs 32 tok/s**, decode 13.6 vs 13.6 tok/s, process RSS 1.2 vs 5.4 GB, skin temperature flat vs +3 C per 90 s of load. `-ngl` between 1 and 32 is slower than 99.
+- GPU vs CPU (cool start, phone C): prefill **128 vs 32 tok/s**, decode 13.6 vs 13.6 tok/s, process RSS 1.2 vs 5.4 GB, both heat the phone (sustained GPU run: Thermal Status 4 after 10 min). `-ngl` between 1 and 32 is slower than 99.
 - `-t`: irrelevant on the GPU path (4 = 8). On the CPU path 8 threads gave the best prefill and 6 loses about 6% decode; 6 leaves two cores for the UI.
 - `-np`/`-c`: parallel slots add **no** aggregate throughput (11.7-12.4 tok/s aggregate at np 1, 2, 4); `-np 2` only keeps a second client from blocking. `-c` is the total context, each slot gets `c/np`.
 - `--reasoning off` switches Qwen3.5 thinking off for all requests (a default request spent 217 tokens thinking vs 5 with it off). Per-request alternative: `"chat_template_kwargs":{"enable_thinking":false}`.
 - Do not use `--mlock`. CPU path: Q4_K weights are repacked into a 2.8 GB anonymous copy while the 2.7 GB file pages stay resident until evicted (VmHWM 5.4 GB). GPU path: process RSS 0.7-1.2 GB but system `MemAvailable` fell by 4.0 GB (weights in GPU buffers plus page cache).
 - First request after start pays about 3 s of page-in: send one throwaway request after `/health` is ok.
 - GPU build in an app: manifest `<uses-native-library android:name="libOpenCL.so" android:required="false"/>` (the library is in `/vendor/etc/public.libraries.txt`). First start compiles kernels for a few seconds.
-- **Heat**: any sustained CPU inference moved the phones to Thermal Status 3-4 (skin 46-51 C) within 2-4 minutes and decode fell 14.9 -> 10.7 tok/s; prefer the GPU build and surface `timings` tokens/s rather than assuming 13.
+- **Heat**: any sustained inference (CPU or GPU) moved the phones to Thermal Status 3-4 (skin 46-51 C) within 2-10 minutes; a 10-minute GPU run measured decode 12.3 / 10.6 / 6.8 tok/s at minutes 1 / 5 / 10. Surface `timings` tokens/s rather than assuming 13, and budget 3-4 minutes of continuous generation per phone.
 
 Embedding model (EmbeddingGemma-300M Q8_0), port 8081 (CPU, tiny):
 
