@@ -26,7 +26,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 /** A model whose stream stays open until [finish] is completed. */
-private class OpenStreamLlm : LlmClient {
+internal class OpenStreamLlm : LlmClient {
     override val modelName = "T"
     val finish = CompletableDeferred<Unit>()
     val started = CompletableDeferred<Unit>()

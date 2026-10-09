@@ -52,7 +52,8 @@ class StreamClient(
             header(Signer.HEADER_TS, ts.toString())
             header(Signer.HEADER_SIG, Signer.sign(secret(), "POST", fullPath, ts, body))
             header(HEADER_REQ, UUID.randomUUID().toString())
-            header(HttpHeaders.Accept, ContentType.Text.EventStream.toString())
+            // JSON stays acceptable so a 429 or 409 body is not turned into a 406 by content negotiation
+            header(HttpHeaders.Accept, "${ContentType.Text.EventStream}, ${ContentType.Application.Json}")
             contentType(ContentType.Application.Json)
             setBody(body)
         }.execute { resp ->
