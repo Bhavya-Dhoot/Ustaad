@@ -23,6 +23,7 @@ import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.llm.ModelsModule
 import com.swarmos.app.memcloud.MemCloudModule
 import com.swarmos.app.pdu.PduModule
+import com.swarmos.app.sched.SchedModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -68,7 +69,7 @@ object AppGraph {
 
     val nodeClient: NodeClient by lazy { NodeClient({ secret }, { registry.self.value.nodeId }) }
 
-    val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, MemCloudModule)
+    val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, MemCloudModule, SchedModule)
 
     fun init(app: Application) {
         appContext = app.applicationContext
