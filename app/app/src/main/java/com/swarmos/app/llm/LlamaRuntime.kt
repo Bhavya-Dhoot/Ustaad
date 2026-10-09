@@ -179,7 +179,8 @@ object LlamaRuntime {
      * Restarts it when already running. [extraArgs] are appended after the defaults of [LlamaArgs] (the last flag wins),
      * [env] is added to the child's environment (LD_LIBRARY_PATH and LLAMA_CACHE are preset).
      * RPC takes no model. Must run while SwarmService is alive. CHAT and EMBED get one throwaway request before READY
-     * (the first request after load pays a page-in penalty).
+     * (the first request after load pays a page-in penalty). A start that is superseded by a newer start of the same role,
+     * or by [stop], gives up and returns the status at that moment (not READY).
      */
     suspend fun start(
         role: Role,
@@ -197,7 +198,8 @@ object LlamaRuntime {
         port: Int = role.defaultPort,
         env: Map<String, String> = emptyMap(),
     ): Deferred<ServerStatus> {
-        val epoch = epochs.getValue(role).get() // a stop() after this point cancels this start
+        // A newer start or a stop() after this point cancels this start; a pending automatic restart is superseded too.
+        val epoch = epochs.getValue(role).incrementAndGet()
         val cfg = StartConfig(modelPath, extraArgs, port, env)
         return scope.async { startInternal(role, cfg, epoch, auto = false) }
     }
@@ -264,6 +266,12 @@ object LlamaRuntime {
         val deadline = System.nanoTime() + READY_TIMEOUT_MS * 1_000_000
         while (System.nanoTime() < deadline) {
             if (!proc.isAlive) break
+            if (epochs.getValue(role).get() != epoch) { // stopped, or superseded by a newer start: stop loading at once
+                run.stopRequested = true
+                running.remove(role, run)
+                killProcess(proc)
+                return@withLock statusOf(role)
+            }
             if (probe(role, port)) {
                 // A health answer only counts if OUR process is still alive a moment later (guards against a foreign server on the port).
                 delay(400)
@@ -360,7 +368,8 @@ object LlamaRuntime {
     private fun fail(role: Role, reason: String, modelPath: String?, port: Int): ServerStatus {
         Log.e(TAG, "${role.tag}: FAILED: $reason")
         setStatus(role) {
-            ServerStatus(role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs, null, it.notice, it.restarts)
+            val note = if (it.restarts > 0) "The automatic restart failed. Tap Load to start it again." else null
+            ServerStatus(role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs, null, note, it.restarts)
         }
         return statusOf(role)
     }
@@ -420,7 +429,8 @@ object LlamaRuntime {
             val role = run.role
             val cfg = run.cfg
             setStatus(role) {
-                ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, null, it.restarts)
+                // a server that never got ready was reported by its start; keep that note, otherwise the decision below sets one
+                ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, if (run.wasReady) null else it.notice, it.restarts)
             }
             val epoch = epochs.getValue(role).get()
             when (val d = RestartPolicy.decide(role, run.wasReady, serviceUp, statusOf(role).restarts, aliveMs, cfg.extraArgs)) {
