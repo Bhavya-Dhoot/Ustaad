@@ -26,8 +26,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -45,7 +43,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -59,7 +56,14 @@ import com.swarmos.app.AppGraph
 import com.swarmos.app.ui.AnswerChip
 import com.swarmos.app.ui.EmptyHint
 import com.swarmos.app.ui.ErrorNote
+import com.swarmos.app.ui.AgreementMatrix
 import com.swarmos.app.ui.Hairline
+import com.swarmos.app.ui.InkSwitch
+import com.swarmos.app.ui.LineIcon
+import com.swarmos.app.ui.ScoreBar
+import com.swarmos.app.ui.SelectChip
+import com.swarmos.app.ui.SwarmTextField
+import com.swarmos.app.ui.TickMark
 import com.swarmos.app.ui.InkCircle
 import com.swarmos.app.ui.InkProgress
 import com.swarmos.app.ui.Lane
@@ -214,7 +218,8 @@ fun ChoirScreen() {
     LaunchedEffect(eval.running) { if (eval.running && showBoard) listState.animateScrollToItem(if (showRun) 3 else 2) }
 
     val fakeModel = AppGraph.llm.modelName == "FAKE"
-    val peersOnline = peers.filter { !it.away }.sortedBy { it.info.name }
+    val peersSorted = peers.sortedBy { it.info.name }
+    val peersOnline = peersSorted.filter { !it.away }
 
     Column(Modifier.fillMaxWidth().background(SwarmColors.whiteboard)) {
         // title and round dots stay in view whatever is scrolled
@@ -235,16 +240,17 @@ fun ChoirScreen() {
             }
             item(key = "input") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProblemField(
+                    SwarmTextField(
                         value = text,
                         onValueChange = { text = it; selectedId = null },
+                        label = "Problem",
+                        singleLine = false,
+                        minLines = 4,
                         helper = voiceMessage ?: if (voice == VoiceState.LISTENING) "Listening, speak the problem" else if (kind == Kind.MCQ) "For multiple choice, put the options in the text as A) ... B) ..." else null,
-                        micListening = voice == VoiceState.LISTENING,
-                        micEnabled = voiceAvailable,
-                        onMic = onMic,
+                        trailing = { MicButton(voice == VoiceState.LISTENING, voiceAvailable, onMic) },
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Kind.entries.forEach { k -> KindChip(kindLabel(k), k == kind) { kindName = k.name } }
+                        Kind.entries.forEach { k -> SelectChip(kindLabel(k), k == kind, onClick = { kindName = k.name }) }
                     }
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { useTest = !useTest },
@@ -257,7 +263,7 @@ fun ChoirScreen() {
                                 style = SwarmType.label.copy(fontSize = 12.sp, color = SwarmColors.graphite),
                             )
                         }
-                        Switch(checked = useTest, onCheckedChange = { useTest = it })
+                        InkSwitch(checked = useTest, onCheckedChange = null)
                     }
                     if (!showRun && !showBoard && text.isBlank()) EmptyHint("pick one below or type your own, then Run", Modifier.fillMaxWidth())
                 }
@@ -269,9 +275,13 @@ fun ChoirScreen() {
             item(key = "phones") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SectionTitle("Phones in this run")
+                    // roles go to the phones that will be asked; an away phone is listed but takes no role
+                    var asked = 0
                     PhonesCard(
                         listOf(Triple(self.name, "Solver (coordinator)", self.chatModel ?: AppGraph.llm.modelName)) +
-                            peersOnline.mapIndexed { i, p -> Triple(p.info.name, roleLabel(ChoirCoordinator.roleForPeer(i)), p.info.chatModel ?: "model unknown") },
+                            peersSorted.map { p ->
+                                Triple(p.info.name, if (p.away) "Away, not asked" else roleLabel(ChoirCoordinator.roleForPeer(asked++)), p.info.chatModel ?: "model unknown")
+                            },
                     )
                     if (peersOnline.isEmpty()) Text("No peers online: the coordinator runs alone.", style = SwarmType.label.copy(fontSize = 12.sp, color = SwarmColors.graphite))
                 }
@@ -330,77 +340,17 @@ fun ChoirScreen() {
 // compose parts
 // ---------------------------------------------------------------------------------------------------
 
-/**
- * The problem box. The kit's text field has no minimum height and no room for a button, so this is a local copy of its
- * look (label above, Sheet fill, 1.5 dp Ink outline, 8 dp corners) with three lines of height and the mic inside.
- */
-@Composable
-private fun ProblemField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    helper: String?,
-    micListening: Boolean,
-    micEnabled: Boolean,
-    onMic: () -> Unit,
-) {
-    Column(Modifier.fillMaxWidth()) {
-        Text("Problem", style = SwarmType.label.copy(color = SwarmColors.graphite))
-        Spacer(Modifier.height(4.dp))
-        Box(
-            Modifier.fillMaxWidth().heightIn(min = 124.dp)
-                .background(SwarmColors.sheet, SwarmShape)
-                .border(1.5.dp, SwarmColors.ink, SwarmShape),
-        ) {
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 60.dp),
-                textStyle = SwarmType.body,
-                cursorBrush = SolidColor(SwarmColors.ink),
-            )
-            MicButton(micListening, micEnabled, onMic, Modifier.align(Alignment.BottomEnd).padding(8.dp))
-        }
-        if (helper != null) Text(helper, Modifier.padding(top = 4.dp), style = SwarmType.label.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SwarmColors.graphite))
-    }
-}
-
-/** Ink outline circle with a drawn microphone; filled Ink while listening; greyed when the phone has no on-device recognizer. */
+/** Mic button for the problem box: the kit's mic icon in a 44 dp circle; filled Ink while listening, greyed when the phone has no on-device recognizer. */
 @Composable
 private fun MicButton(listening: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val ink = if (enabled) SwarmColors.ink else SwarmColors.graphite
-    val fg = if (listening) SwarmColors.sheet else ink
-    Box(
-        modifier.size(44.dp).clickable(onClick = onClick)
-            .background(if (listening) SwarmColors.ink else if (enabled) SwarmColors.sheet else SwarmColors.smudge, CircleShape)
-            .border(1.5.dp, ink, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.size(22.dp)) {
-            val w = size.width
-            val stroke = inkStroke(1.6.dp.toPx())
-            // capsule
-            drawRoundRect(fg, Offset(w * 0.34f, w * 0.06f), androidx.compose.ui.geometry.Size(w * 0.32f, w * 0.5f), androidx.compose.ui.geometry.CornerRadius(w * 0.16f), style = stroke)
-            // cradle
-            drawArc(fg, 0f, 180f, false, Offset(w * 0.2f, w * 0.2f), androidx.compose.ui.geometry.Size(w * 0.6f, w * 0.56f), style = stroke)
-            // stem and foot
-            drawLine(fg, Offset(w * 0.5f, w * 0.76f), Offset(w * 0.5f, w * 0.92f), 1.6.dp.toPx())
-            drawLine(fg, Offset(w * 0.34f, w * 0.94f), Offset(w * 0.66f, w * 0.94f), 1.6.dp.toPx())
-        }
-    }
-}
-
-@Composable
-private fun KindChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Text(
-            label,
-            style = SwarmType.mono.copy(fontSize = 12.sp, lineHeight = 14.sp, color = if (selected) SwarmColors.sheet else SwarmColors.ink),
-            maxLines = 1,
-            modifier = Modifier
-                .background(if (selected) SwarmColors.ink else SwarmColors.sheet, RoundedCornerShape(50))
-                .border(1.5.dp, SwarmColors.ink, RoundedCornerShape(50))
-                .padding(horizontal = 12.dp, vertical = 7.dp),
-        )
+    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+        Box(
+            modifier.size(40.dp).clickable(onClick = onClick)
+                .background(if (listening) SwarmColors.ink else if (enabled) SwarmColors.sheet else SwarmColors.smudge, CircleShape)
+                .border(1.5.dp, ink, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { LineIcon(SwarmIcon.Mic, tint = if (listening) SwarmColors.sheet else ink, size = 22.dp) }
     }
 }
 
@@ -516,13 +466,13 @@ private fun RunSection(r: RunTrace, now: Long) {
 private fun LaneCard(lane: LaneTrace) {
     val tokens = (lane.r1?.tokens ?: 0) + (lane.r2?.tokens ?: 0)
     val wall = lane.latest?.wallMs
-    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR
+    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY
     val streaming = lane.status == LaneStatus.SOLVING || lane.status == LaneStatus.REVISING || lane.status == LaneStatus.JUDGING
     Lane(
         name = lane.name,
         role = roleLabel(lane.role),
         trailing = {
-            if (failed) Stamp(if (lane.status == LaneStatus.TIMED_OUT) "Timed out" else "Error", caution = true, small = true)
+            if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; else -> "Error" }, caution = true, small = true)
             else {
                 Text("$tokens tok", style = Mono11Dim)
                 Spacer(Modifier.width(8.dp))
@@ -593,37 +543,9 @@ private fun MatrixCard(r: RunTrace, m: Matrix) {
             Text(if (best == n) "Unanimous $n/$n" else "$best of $n agree", style = Mono11)
         }
         Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.width(34.dp))
-            m.names.forEach { Box(Modifier.width(36.dp), contentAlignment = Alignment.Center) { PhoneToken(it, 24.dp) } }
-        }
-        m.names.forEachIndexed { i, name ->
-            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(34.dp)) { PhoneToken(name, 24.dp) }
-                m.same[i].forEach { same -> Box(Modifier.width(36.dp), contentAlignment = Alignment.Center) { MatrixCell(same) } }
-            }
-        }
+        AgreementMatrix(m.names, m.same)
     }
 }
-
-@Composable
-private fun MatrixCell(agree: Boolean) {
-    Canvas(Modifier.size(26.dp).border(1.5.dp, SwarmColors.ink, RoundedCornerShape(4.dp)).then(if (agree) Modifier else Modifier.hatched(0.35f))) {
-        val s = size.width
-        val stroke = inkStroke(2.dp.toPx())
-        if (agree) {
-            val p = Path().apply { moveTo(s * 0.24f, s * 0.54f); lineTo(s * 0.43f, s * 0.72f); lineTo(s * 0.77f, s * 0.28f) }
-            drawPath(p, SwarmColors.ink, style = stroke)
-        } else {
-            val p = Path().apply { moveTo(s * 0.3f, s * 0.3f); lineTo(s * 0.7f, s * 0.7f); moveTo(s * 0.7f, s * 0.3f); lineTo(s * 0.3f, s * 0.7f) }
-            drawPath(p, SwarmColors.ink, style = stroke)
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------
-// scoreboard
-// ---------------------------------------------------------------------------------------------------
 
 @Composable
 private fun ScoreboardSection(e: EvalProgress) {
@@ -641,10 +563,10 @@ private fun ScoreboardSection(e: EvalProgress) {
         if (s != null && s.n > 0) {
             SwarmCard {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ScoreBar("One phone alone", s.baselineCorrect, s.n, s.baselineMeanMs)
-                    if (s.samplesN > 0) ScoreBar("One phone, three samples", s.samplesCorrect, s.samplesN, s.samplesMeanMs)
-                    ScoreBar("Choir", s.choirCorrect, s.n, s.choirMeanMs)
-                    ScoreBar("Choir + tool check", s.choirToolCorrect, s.n, s.choirMeanMs, bold = true)
+                    ScoreBar("One phone alone", s.baselineCorrect, s.n, note = "mean ${secs(s.baselineMeanMs.toLong())} s")
+                    if (s.samplesN > 0) ScoreBar("One phone, three samples", s.samplesCorrect, s.samplesN, note = "mean ${secs(s.samplesMeanMs.toLong())} s")
+                    ScoreBar("Choir", s.choirCorrect, s.n, note = "mean ${secs(s.choirMeanMs.toLong())} s")
+                    ScoreBar("Choir + tool check", s.choirToolCorrect, s.n, emphasised = true, note = "mean ${secs(s.choirMeanMs.toLong())} s")
                     Note("n = ${s.n}, same token caps", Modifier.align(Alignment.End), rotation = -2f)
                 }
             }
@@ -666,33 +588,6 @@ private fun ScoreboardSection(e: EvalProgress) {
 }
 
 @Composable
-private fun ScoreBar(label: String, k: Int, n: Int, meanMs: Double, bold: Boolean = false) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = SwarmType.body.copy(fontWeight = if (bold) FontWeight.W700 else FontWeight.W400), modifier = Modifier.weight(1f))
-            Text("$k of $n", style = SwarmType.mono.copy(fontWeight = FontWeight.W700))
-        }
-        Spacer(Modifier.height(4.dp))
-        // solid Ink, no track behind it; the bold row gets a hand-drawn underline
-        Box(
-            Modifier.fillMaxWidth().height(14.dp).drawBehind {
-                val w = size.width * (if (n == 0) 0f else k.toFloat() / n)
-                drawRect(SwarmColors.ink, size = androidx.compose.ui.geometry.Size(w, size.height))
-                if (bold) {
-                    val path = underlinePath(0f, size.width, size.height + 4.dp.toPx(), 2.dp.toPx(), seed = 21)
-                    drawPath(path, SwarmColors.ink, style = Stroke(2.2.dp.toPx()))
-                }
-            },
-        )
-        Spacer(Modifier.height(if (bold) 10.dp else 4.dp))
-        Row {
-            Text(pct(k, n), style = Mono11Dim, modifier = Modifier.weight(1f))
-            Text("mean ${secs(meanMs.toLong())} s", style = Mono11Dim)
-        }
-    }
-}
-
-@Composable
 private fun ScoreTable(rows: List<EvalRow>, withSamples: Boolean) {
     val cols = buildList {
         add("#" to 0.9f); add("Kind" to 1.1f); add("Alone" to 1f)
@@ -708,25 +603,13 @@ private fun ScoreTable(rows: List<EvalRow>, withSamples: Boolean) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(row.problemId, style = Mono11.copy(fontWeight = FontWeight.W700), modifier = Modifier.weight(0.9f))
                 Text(kindLabel(row.kind).take(5), style = SwarmType.label.copy(fontSize = 11.sp, color = SwarmColors.graphite), modifier = Modifier.weight(1.1f))
-                Box(Modifier.weight(1f)) { MarkCell(row.baselineCorrect) }
-                if (withSamples) Box(Modifier.weight(0.8f)) { if (row.samplesAnswered != null) MarkCell(row.samplesCorrect) }
-                Box(Modifier.weight(1f)) { MarkCell(row.choirCorrect) }
-                Box(Modifier.weight(1f)) { MarkCell(row.choirToolCorrect) }
+                Box(Modifier.weight(1f)) { TickMark(row.baselineCorrect) }
+                if (withSamples) Box(Modifier.weight(0.8f)) { if (row.samplesAnswered != null) TickMark(row.samplesCorrect) }
+                Box(Modifier.weight(1f)) { TickMark(row.choirCorrect) }
+                Box(Modifier.weight(1f)) { TickMark(row.choirToolCorrect) }
                 Text("${row.rounds}", style = Mono11, modifier = Modifier.weight(0.6f))
                 Text(secs(row.choirMs), style = Mono11, modifier = Modifier.weight(1f))
             }
-        }
-    }
-}
-
-/** Right is a tick, wrong is a hatched box: no colour. */
-@Composable
-private fun MarkCell(right: Boolean) {
-    Canvas(Modifier.size(18.dp).then(if (right) Modifier else Modifier.border(1.dp, SwarmColors.ink, RoundedCornerShape(3.dp)).drawBehind { drawHatch(alpha = 0.55f, spacing = 3.dp) })) {
-        if (right) {
-            val s = size.width
-            val p = Path().apply { moveTo(s * 0.12f, s * 0.55f); lineTo(s * 0.4f, s * 0.82f); lineTo(s * 0.9f, s * 0.2f) }
-            drawPath(p, SwarmColors.ink, style = inkStroke(2.dp.toPx()))
         }
     }
 }

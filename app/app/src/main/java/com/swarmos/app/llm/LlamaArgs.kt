@@ -72,6 +72,10 @@ object ProcInfo {
             .firstOrNull { it.startsWith("$key:") }
             ?.removePrefix("$key:")?.trim()?.split(Regex("\\s+"))?.firstOrNull()?.toLongOrNull()
 
+    /** True when /proc/<pid>/status says `State: Z (zombie)`: the process is dead and only waits to be reaped. */
+    fun isZombie(statusText: String): Boolean =
+        statusText.lineSequence().firstOrNull { it.startsWith("State:") }?.removePrefix("State:")?.trim()?.startsWith("Z") == true
+
     /** Process exit code as reported by the JVM: 128+N means killed by signal N. */
     fun describeExit(code: Int): String = when {
         code == 0 -> "exited normally"
