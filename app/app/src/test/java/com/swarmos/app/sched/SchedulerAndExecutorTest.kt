@@ -186,16 +186,18 @@ class JobExecutorTest {
     }
 
     @Test fun nodeCapacityOneAnswersBusyToAConcurrentDistinctJob() = runBlocking {
-        val phone = FakePhone("p", TestLlm(delayMs = 2000) /* long enough that the second call always lands while the first is running, even on a loaded machine */, scope)
+        val phone = FakePhone("p", TestLlm(delayMs = 400), scope)
         val first = async { phone.node.chat("a", req("one")) }
         while (phone.node.chatExec.running == 0) delay(2)
         try {
             phone.node.chat("b", req("two"))
             fail("expected BusyException")
         } catch (e: BusyException) {
-            assertEquals(1, phone.llm.maxConcurrent.get())
+            // the slot is taken as soon as the job is accepted, which can be before the model call starts
+            assertTrue(phone.llm.maxConcurrent.get() <= 1)
         }
         assertEquals("T:one", first.await().text)
+        assertEquals("never more than one model call at a time", 1, phone.llm.maxConcurrent.get())
         assertTrue("decode speed of the last job is reported in caps", phone.node.caps().lastDecodeTokPerSec!! > 0)
     }
 }
