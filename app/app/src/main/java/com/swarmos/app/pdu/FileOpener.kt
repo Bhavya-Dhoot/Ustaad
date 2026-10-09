@@ -16,6 +16,7 @@ import kotlin.coroutines.resume
 /** Opens an indexed file with the system viewer (ACTION_VIEW). The file itself never moves. */
 object FileOpener {
     private const val CHANNEL = "pdu_open"
+    private const val PHOTOS = "com.google.android.apps.photos"
     private const val DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
     fun mimeOf(kind: String): String = when (kind) {
@@ -49,7 +50,7 @@ object FileOpener {
         val intent = viewIntent(uri, doc.kind)
         return try {
             if (appVisible()) {
-                ctx.startActivity(intent)
+                startViewer(ctx, intent, doc.kind)
                 PduOpenResult(true, "activity", doc.title)
             } else {
                 notify(ctx, doc, intent)
@@ -60,6 +61,19 @@ object FileOpener {
         } catch (e: SecurityException) {
             PduOpenResult(false, "none", doc.title, "notifications not allowed")
         }
+    }
+
+    /** Several apps can open an image, so Android would ask "Open with" on a screen nobody is touching. Try Google Photos first. */
+    private fun startViewer(ctx: Context, intent: Intent, kind: String) {
+        if (kind == "photo" || kind == "scan") {
+            try {
+                ctx.startActivity(Intent(intent).setPackage(PHOTOS))
+                return
+            } catch (_: ActivityNotFoundException) {
+                // no Photos on this phone: fall through to the system choice
+            }
+        }
+        ctx.startActivity(intent)
     }
 
     private fun notify(ctx: Context, doc: DocInfo, intent: Intent) {

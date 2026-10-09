@@ -1,5 +1,7 @@
 package com.swarmos.app.pdu
 
+import android.net.Uri
+import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
@@ -11,8 +13,14 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import java.io.File
 import kotlinx.serialization.decodeFromString
+
+@Serializable
+data class DebugScanRequest(val path: String, val title: String, val keepPrivate: Boolean = false)
 
 @Serializable
 data class DebugPeersRequest(val ips: List<String>)
@@ -101,6 +109,20 @@ fun Route.pduRoutes() {
             val req = SwarmJson.decodeFromString<AskRequest>(call.receiveText())
             if (req.text.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("empty question"))
             call.respond(PduEngine.ask(req.text, req.k, req.deadlineMs).toReport())
+        }
+
+        // stands in for the camera shutter: same OCR, MediaStore save and indexing as "Scan a document" (needs all-files access for the path)
+        post("/debug/scan") {
+            val r = SwarmJson.decodeFromString<DebugScanRequest>(call.receiveText())
+            val rep = withContext(Dispatchers.IO) {
+                val ctx = AppGraph.appContext
+                val f = File(r.path)
+                val bmp = Ocr.decode(ctx, Uri.fromFile(f).toString())
+                val text = Ocr.recognize(bmp).also { bmp.recycle() }
+                val (uri, modified) = PduIndexer.saveScan(ctx, f, r.keepPrivate)
+                PduEngine.indexScan(uri, modified, r.title, r.keepPrivate, text)
+            }
+            call.respond(rep)
         }
 
         post("/debug/peers") {

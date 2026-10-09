@@ -357,7 +357,9 @@ object PduEngine {
                     }
                 } catch (t: Throwable) {
                     if (t is CancellationException) throw t
-                    result = DeviceResult(p.info.nodeId, p.info.name, false, "error", "${t.javaClass.simpleName}: ${t.message}".take(120), rttMs = now() - r0, sentBytes = qBytes)
+                    // connection refused / reset / timeout all mean "that phone is not answering"
+                    val status = if (t is java.io.IOException) "unreachable" else "error"
+                    result = DeviceResult(p.info.nodeId, p.info.name, false, status, "${t.javaClass.simpleName}: ${t.message}".take(120), rttMs = now() - r0, sentBytes = qBytes)
                 }
                 // the only thing about a peer's answer that is written down: counts, never content
                 AppGraph.audit.append(
