@@ -85,6 +85,17 @@ object ModelsModule : SwarmModule {
             call.respond(stateDto())
         }
 
+        // POST /v1/models/selftest  streamed chat, 10 JSON-schema generations and embeddings through the real clients
+        post("/selftest") {
+            try {
+                call.respond(Selftest.run())
+            } catch (e: IllegalStateException) {
+                call.respond(HttpStatusCode.Conflict, ErrorBody(e.message ?: "selftest failed"))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, ErrorBody(e.message ?: e.toString()))
+            }
+        }
+
         // POST /v1/models/bench            one run (512-token prompt, 128 generated tokens)
         // POST /v1/models/bench?minutes=N  repeated for N minutes, per-minute decode tok/s in "sustained"
         post("/bench") {

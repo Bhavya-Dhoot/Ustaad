@@ -26,7 +26,7 @@ data class CatalogEntry(
     val default: Boolean = false,
 )
 
-/** The pinned list from docs/models.md. File names, sizes and hashes come from files that were verified on the PC. */
+/** The pinned list from docs/models.md (file names, sizes, SHA-256). embeddinggemma-2 is not listed: llama.cpp v0.6.0 cannot load it. */
 object ModelCatalog {
     val entries: List<CatalogEntry> = listOf(
         CatalogEntry(
@@ -35,9 +35,20 @@ object ModelCatalog {
             2_740_937_888L, "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4", default = true,
         ),
         CatalogEntry(
-            Role.EMBED, "embeddinggemma-2-Q8_0.gguf", "EmbeddingGemma 2 Q8_0",
-            "", // reconciled from docs/models.md
-            309_855_456L, "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135", default = true,
+            Role.CHAT, "gemma-4-E4B_q4_0-it.gguf", "Gemma 4 E4B QAT Q4_0",
+            "https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf",
+            5_154_941_280L, "676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee",
+        ),
+        CatalogEntry(
+            Role.EMBED, "embeddinggemma-300M-Q8_0.gguf", "EmbeddingGemma 300M Q8_0",
+            "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf",
+            333_590_944L, "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63", default = true,
+        ),
+        // Too big for one phone (MemoryCloud splits it over three). Hash not pinned in docs/models.md yet: size is checked, hash is not.
+        CatalogEntry(
+            Role.CHAT, "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf", "Qwen3-30B-A3B Instruct 2507 Q4_K_M",
+            "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf",
+            18_556_686_752L, "",
         ),
     )
 

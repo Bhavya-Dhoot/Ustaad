@@ -169,6 +169,9 @@ object LlamaRuntime {
         if (role != Role.RPC && (modelPath == null || !File(modelPath).isFile)) {
             return@withLock fail(role, "model file not found: $modelPath", modelPath, port)
         }
+        if (!waitForPort(role, port, 3_000)) {
+            return@withLock fail(role, "port $port is already in use by another process on this phone", modelPath, port)
+        }
         val args = LlamaArgs.build(role, modelPath, port, extraArgs)
         val cmd = listOf(bin.absolutePath) + args
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
@@ -198,6 +201,9 @@ object LlamaRuntime {
         while (System.nanoTime() < deadline) {
             if (!proc.isAlive) break
             if (probe(role, port)) {
+                // A health answer only counts if OUR process is still alive a moment later (guards against a foreign server on the port).
+                delay(400)
+                if (!proc.isAlive || !probe(role, port)) continue
                 val ms = (System.nanoTime() - run.startedNs) / 1_000_000
                 setStatus(role) { it.copy(state = ServerState.READY, readyAfterMs = ms) }
                 Log.i(TAG, "${role.tag}: READY after $ms ms")
@@ -232,8 +238,37 @@ object LlamaRuntime {
         for (r in Role.entries) stop(r)
     }
 
+    /** Stops [role] and waits until the process is really gone, so its port is free for the next start. */
     private fun stopLocked(role: Role) {
-        if (running.containsKey(role)) stop(role)
+        val run = running[role] ?: return
+        stop(role)
+        if (!waitFor(run.process, 4_000)) {
+            run.process.destroyForcibly()
+            waitFor(run.process, 2_000)
+        }
+    }
+
+    /**
+     * True when [port] can be bound on this phone. Loopback is shared by every app and every adb shell process, so a
+     * foreign server on the same port would otherwise make our /health probe succeed against the wrong process.
+     */
+    private fun portFree(role: Role, port: Int): Boolean = try {
+        java.net.ServerSocket().use { s ->
+            s.reuseAddress = true
+            s.bind(if (role == Role.RPC) InetSocketAddress(port) else InetSocketAddress("127.0.0.1", port))
+        }
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun waitForPort(role: Role, port: Int, ms: Long): Boolean {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) {
+            if (portFree(role, port)) return true
+            Thread.sleep(150)
+        }
+        return portFree(role, port)
     }
 
     private fun fail(role: Role, reason: String, modelPath: String?, port: Int): ServerStatus {
