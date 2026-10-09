@@ -19,11 +19,17 @@ enum class Role(val tag: String, val binary: String, val defaultPort: Int) {
  * argument parser lets the last occurrence of a flag win, so extraArgs override these defaults.
  */
 object LlamaArgs {
-    /** Threads for the chat server. Phones have 8 cores (2 prime + 6 performance). */
+    /**
+     * Flags follow docs/llama-server-api-notes.md ("Recommended production flags"). One deviation: the chat context is
+     * 8192 total (4096 per slot with 2 slots) instead of 4096 total, because Choir and Data Union prompts can exceed 2048 tokens.
+     * Phones have 8 cores (2 prime + 6 performance); 6 chat threads leave two for the app and Android.
+     */
     const val CHAT_THREADS = 6
     const val EMBED_THREADS = 2
     const val CHAT_CTX = 8192
-    const val EMBED_CTX = 2048
+    const val CHAT_SLOTS = 2
+    const val EMBED_CTX = 4096
+    const val EMBED_SLOTS = 2
 
     fun build(role: Role, modelPath: String?, port: Int, extra: List<String> = emptyList()): List<String> {
         val base = when (role) {
@@ -32,18 +38,18 @@ object LlamaArgs {
                 "--host", "127.0.0.1", "--port", port.toString(),
                 "-t", CHAT_THREADS.toString(),
                 "-c", CHAT_CTX.toString(),
-                "-np", "1",
-                "--jinja",
+                "-np", CHAT_SLOTS.toString(),
+                "--reasoning", "off", // Qwen3.5 thinking off for every request (the client also sends enable_thinking=false)
                 "--no-webui",
             )
             Role.EMBED -> listOf(
                 "-m", requireNotNull(modelPath) { "embed needs a model" },
                 "--host", "127.0.0.1", "--port", port.toString(),
+                "--embedding",
                 "-t", EMBED_THREADS.toString(),
                 "-c", EMBED_CTX.toString(),
-                "-b", EMBED_CTX.toString(), "-ub", EMBED_CTX.toString(),
-                "-np", "1",
-                "--embeddings",
+                "-np", EMBED_SLOTS.toString(),
+                "-b", (EMBED_CTX / EMBED_SLOTS).toString(), "-ub", (EMBED_CTX / EMBED_SLOTS).toString(), // longest text one slot can embed
                 "--no-webui",
             )
             Role.RPC -> listOf("-H", "127.0.0.1", "-p", port.toString())

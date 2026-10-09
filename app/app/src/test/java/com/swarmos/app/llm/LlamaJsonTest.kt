@@ -47,6 +47,19 @@ data: [DONE]
         assertEquals(12 * 1000.0 / 690.0, s.decodeTokPerSec, 1e-9)
     }
 
+    @Test fun includeUsageChunkWithEmptyChoicesCarriesTheTimings() {
+        // shape documented in docs/llama-server-api-notes.md (stream_options.include_usage = true)
+        val p = SseChatParser()
+        p.feed("""data: {"choices":[{"finish_reason":"stop","index":0,"delta":{}}],"object":"chat.completion.chunk"}""")
+        p.feed("""data: {"choices":[],"object":"chat.completion.chunk","usage":{"completion_tokens":6,"prompt_tokens":20,"total_tokens":26,"prompt_tokens_details":{"cached_tokens":0}},"timings":{"cache_n":0,"prompt_n":20,"prompt_ms":549.5,"predicted_n":6,"predicted_ms":385.3,"predicted_per_second":12.98}}""")
+        p.feed("data: [DONE]")
+        assertTrue(p.done)
+        val s = p.finalStats(1.0, 1.0)
+        assertEquals(20, s.promptTokens)
+        assertEquals(6, s.completionTokens)
+        assertEquals(385.3, s.genMs, 1e-9)
+    }
+
     @Test fun usageChunkIsUsedWhenThereAreNoTimings() {
         val p = SseChatParser()
         p.feed("""data: {"choices":[],"usage":{"prompt_tokens":21,"completion_tokens":9,"total_tokens":30}}""")
@@ -85,6 +98,7 @@ data: [DONE]
             ),
         ).jsonObject
         assertTrue(body["stream"]!!.jsonPrimitive.boolean)
+        assertTrue(body["stream_options"]!!.jsonObject["include_usage"]!!.jsonPrimitive.boolean)
         assertEquals("64", body["max_tokens"]!!.jsonPrimitive.content)
         assertEquals("7", body["seed"]!!.jsonPrimitive.content)
         assertEquals("END", body["stop"]!!.jsonArray[0].jsonPrimitive.content)

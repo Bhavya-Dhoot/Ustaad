@@ -58,6 +58,8 @@ class MainActivity : ComponentActivity() {
     /** `adb shell am start -n com.swarmos.app/.MainActivity --es name "Phone A"` names the node. */
     private fun applyIntent(i: Intent?) {
         i?.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() }?.let { AppGraph.setNodeName(it) }
+        // `--ez keepon true` keeps the screen on while this activity is shown (app flag, no system setting); used to test OriginOS background kills
+        if (i?.getBooleanExtra("keepon", false) == true) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // `--ez gallery true [--ei galleryPage 3]` opens the UI kit gallery, `--ez gallery false` closes it (debug builds only)
         if (BuildConfig.DEBUG && i?.hasExtra(EXTRA_GALLERY) == true) {
             galleryPage = if (i.getBooleanExtra(EXTRA_GALLERY, false)) i.getIntExtra(EXTRA_GALLERY_PAGE, 1) else 0

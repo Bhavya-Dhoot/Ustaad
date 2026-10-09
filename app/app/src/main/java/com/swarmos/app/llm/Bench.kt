@@ -22,7 +22,9 @@ data class BenchResult(
     val ttftMs: Double,
     val rssMb: Long?,
     val peakRssMb: Long?,
+    /** Thermal status when the run ended / when it started (NONE, LIGHT, MODERATE, SEVERE, CRITICAL, ...). */
     val thermal: String,
+    val thermalStart: String,
     val threads: Int?,
     val atEpochMs: Long,
 )
@@ -69,8 +71,26 @@ object Bench {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    /** One benchmark run on the CHAT server. Throws if the chat server is not READY. */
+    /** Benchmarks (heavy, repeated generation) are refused from this PowerManager thermal status up; chat requests are not affected. */
+    const val BLOCK_FROM_THERMAL = 3
+
+    /** Why a benchmark must not start at [thermalStatus], or null when it may. Pure so it can be unit-tested. */
+    fun blockReasonFor(thermalStatus: Int): String? =
+        if (thermalStatus >= BLOCK_FROM_THERMAL) {
+            "Phone is ${HealthMonitor.thermalName(thermalStatus)} (thermal status $thermalStatus). Benchmark is off until it cools to MODERATE or lower."
+        } else {
+            null
+        }
+
+    /** Live thermal status straight from PowerManager (not the 2 s sample). */
+    fun thermalStatusNow(): Int =
+        AppGraph.appContext.getSystemService(android.os.PowerManager::class.java).currentThermalStatus
+
+    fun blockReason(): String? = blockReasonFor(thermalStatusNow())
+
+    /** One benchmark run on the CHAT server. Throws if the chat server is not READY or the phone is too hot. */
     suspend fun run(): BenchResult = mutex.withLock {
+        blockReason()?.let { throw IllegalStateException(it) }
         _running.value = true
         _error.value = null
         _text.value = ""
@@ -86,6 +106,7 @@ object Bench {
 
     /** Repeats the benchmark for [minutes] minutes and records the mean decode tok/s of every minute. */
     suspend fun runSustained(minutes: Int = 10): List<SustainedPoint> = mutex.withLock {
+        blockReason()?.let { throw IllegalStateException(it) }
         _running.value = true
         _error.value = null
         _sustained.value = emptyList()
@@ -94,6 +115,8 @@ object Bench {
             val perMinute = HashMap<Int, MutableList<Double>>()
             var lastThermal = "?"
             while ((System.nanoTime() - start) < minutes * 60_000_000_000L) {
+                // a loop of generations must never keep a hot phone busy: stop as soon as the guard trips
+                blockReason()?.let { _error.value = "Stopped after ${perMinute.size} min: $it"; return@withLock _sustained.value }
                 val r = runOnce()
                 _last.value = r
                 lastThermal = r.thermal
@@ -120,6 +143,7 @@ object Bench {
             seed = 1,
         )
         val extra = buildJsonObject { put("ignore_eos", JsonPrimitive(true)) }
+        val thermalStart = HealthMonitor.thermalName(thermalStatusNow())
         val t0 = System.nanoTime()
         var firstMs = 0.0
         var stats: ChatStats? = null
@@ -144,7 +168,8 @@ object Bench {
             ttftMs = firstMs,
             rssMb = LlamaRuntime.rssKb(Role.CHAT)?.div(1024),
             peakRssMb = LlamaRuntime.peakRssKb(Role.CHAT)?.div(1024),
-            thermal = HealthMonitor.thermalName(AppGraph.health.state.value.thermalStatus),
+            thermal = HealthMonitor.thermalName(thermalStatusNow()),
+            thermalStart = thermalStart,
             threads = threads,
             atEpochMs = System.currentTimeMillis(),
         )

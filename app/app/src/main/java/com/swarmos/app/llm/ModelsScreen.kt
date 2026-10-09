@@ -180,8 +180,14 @@ private fun FileCard(file: String, label: String, entry: CatalogEntry?, p: Prese
                     OutlinedButton(onClick = { ModelsModule.loadModelAsync(Role.EMBED, file) }) { Text("Load as embedder") }
                     TextButton(onClick = { ModelStore.delete(file) }, enabled = loadedAs == null) { Text("Delete") }
                 } else if (entry != null) {
-                    Button(onClick = { ModelStore.download(entry) }, enabled = entry.url.isNotBlank()) {
-                        Text(if (p != null) "Resume download" else "Download")
+                    // Two taps on purpose: a download is the only thing in the app that uses the internet.
+                    var armed by remember { mutableStateOf(false) }
+                    Button(
+                        onClick = { if (armed) { armed = false; ModelStore.download(entry) } else armed = true },
+                        enabled = entry.url.isNotBlank(),
+                    ) {
+                        val size = if (entry.bytes > 0) " " + fmtBytes(entry.bytes) else ""
+                        Text(if (armed) "Tap again: uses the internet$size" else if (p != null) "Resume download" else "Download$size")
                     }
                 }
             }
@@ -199,6 +205,8 @@ private fun BenchPanel(onBack: () -> Unit) {
     val sustained by Bench.sustained.collectAsStateWithLifecycle()
     val chat by LlamaRuntime.status.collectAsStateWithLifecycle()
     val ready = chat.getValue(Role.CHAT).state == ServerState.READY
+    val health by com.swarmos.app.AppGraph.health.state.collectAsStateWithLifecycle()
+    val blocked = Bench.blockReasonFor(health.thermalStatus) // heavy generation is refused when the phone is SEVERE or hotter
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -220,18 +228,21 @@ private fun BenchPanel(onBack: () -> Unit) {
             BenchRow("Time to first token", r?.let { fmt1(it.ttftMs / 1000.0) + " s" })
             BenchRow("Server memory", r?.rssMb?.let { "$it MB" })
             BenchRow("Server memory peak", r?.peakRssMb?.let { "$it MB" })
-            BenchRow("Thermal", r?.thermal)
+            BenchRow("Thermal at start", r?.thermalStart)
+            BenchRow("Thermal at end", r?.thermal)
+            BenchRow("Thermal now", com.swarmos.app.core.HealthMonitor.thermalName(health.thermalStatus))
             BenchRow("Threads", r?.threads?.toString())
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { scope.launch { runCatching { Bench.run() } } }, enabled = ready && !running) {
+            Button(onClick = { scope.launch { runCatching { Bench.run() } } }, enabled = ready && !running && blocked == null) {
                 Text(if (running) "Running..." else "Run benchmark")
             }
-            OutlinedButton(onClick = { scope.launch { runCatching { Bench.runSustained(10) } } }, enabled = ready && !running) {
+            OutlinedButton(onClick = { scope.launch { runCatching { Bench.runSustained(10) } } }, enabled = ready && !running && blocked == null) {
                 Text("Run 10 minutes")
             }
         }
+        blocked?.let { Text(it, color = SwarmColors.Warn) }
         if (!ready) Text("Load a chat model first (Back).", color = SwarmColors.Warn)
         err?.let { Text(it, color = SwarmColors.Bad, fontSize = 11.sp) }
 

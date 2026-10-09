@@ -44,6 +44,7 @@ object LlamaJson {
         val body = buildJsonObject {
             put("model", model)
             put("stream", stream)
+            if (stream) put("stream_options", buildJsonObject { put("include_usage", true) }) // the last chunk then carries usage and timings
             put("max_tokens", req.maxTokens)
             put("temperature", req.temperature)
             put("cache_prompt", cachePrompt)

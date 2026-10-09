@@ -137,15 +137,18 @@ object LlamaRuntime {
 
     /**
      * Starts [role] and suspends until it is READY or FAILED; returns the final status.
-     * Restarts it when already running. [extraArgs] are appended after the defaults of [LlamaArgs].
-     * RPC takes no model. Must run while SwarmService is alive.
+     * Restarts it when already running. [extraArgs] are appended after the defaults of [LlamaArgs] (the last flag wins),
+     * [env] is added to the child's environment (LD_LIBRARY_PATH and LLAMA_CACHE are preset).
+     * RPC takes no model. Must run while SwarmService is alive. CHAT and EMBED get one throwaway request before READY
+     * (the first request after load pays a page-in penalty).
      */
     suspend fun start(
         role: Role,
         modelPath: String?,
         extraArgs: List<String> = emptyList(),
         port: Int = role.defaultPort,
-    ): ServerStatus = startAsync(role, modelPath, extraArgs, port).await()
+        env: Map<String, String> = emptyMap(),
+    ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env).await()
 
     /** Same as [start] but returns at once; cancelling the caller never leaves a half-started server behind. */
     fun startAsync(
@@ -153,13 +156,15 @@ object LlamaRuntime {
         modelPath: String?,
         extraArgs: List<String> = emptyList(),
         port: Int = role.defaultPort,
-    ): Deferred<ServerStatus> = scope.async { startInternal(role, modelPath, extraArgs, port) }
+        env: Map<String, String> = emptyMap(),
+    ): Deferred<ServerStatus> = scope.async { startInternal(role, modelPath, extraArgs, port, env) }
 
     private suspend fun startInternal(
         role: Role,
         modelPath: String?,
         extraArgs: List<String>,
         port: Int,
+        env: Map<String, String>,
     ): ServerStatus = locks.getValue(role).withLock {
         stopLocked(role)
         val ctx = AppGraph.appContext
@@ -183,7 +188,11 @@ object LlamaRuntime {
             ProcessBuilder(cmd)
                 .directory(ctx.filesDir)
                 .redirectErrorStream(true)
-                .apply { environment()["LD_LIBRARY_PATH"] = ctx.applicationInfo.nativeLibraryDir }
+                .apply {
+                    environment()["LD_LIBRARY_PATH"] = ctx.applicationInfo.nativeLibraryDir
+                    environment()["LLAMA_CACHE"] = File(ctx.filesDir, "llama-cache").apply { mkdirs() }.path // rpc-server -c needs it (no $HOME on Android)
+                    environment().putAll(env)
+                }
                 .start()
         } catch (e: Exception) {
             return@withLock fail(role, "cannot exec ${bin.name}: ${e.message}", modelPath, port)
@@ -204,6 +213,7 @@ object LlamaRuntime {
                 // A health answer only counts if OUR process is still alive a moment later (guards against a foreign server on the port).
                 delay(400)
                 if (!proc.isAlive || !probe(role, port)) continue
+                warmUp(role, port)
                 val ms = (System.nanoTime() - run.startedNs) / 1_000_000
                 setStatus(role) { it.copy(state = ServerState.READY, readyAfterMs = ms) }
                 Log.i(TAG, "${role.tag}: READY after $ms ms")
@@ -326,6 +336,21 @@ object LlamaRuntime {
             Log.e(TAG, "${run.role.tag}: DIED pid=${pidOf(run.process)} $reason")
             if (running[run.role] === run) running.remove(run.role)
             setStatus(run.role) { ServerStatus(run.role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs) }
+        }
+    }
+
+    /** One 1-token request so the weights are paged in before the server is reported READY. Failures are ignored. */
+    private fun warmUp(role: Role, port: Int) {
+        val (path, body) = when (role) {
+            Role.CHAT -> "/v1/chat/completions" to
+                """{"messages":[{"role":"user","content":"Hi"}],"max_tokens":1,"temperature":0,"chat_template_kwargs":{"enable_thinking":false}}"""
+            Role.EMBED -> "/v1/embeddings" to """{"input":["warm up"]}"""
+            Role.RPC -> return
+        }
+        try {
+            val c = LlamaHttp.post("http://127.0.0.1:$port$path", body, 120_000)
+            try { LlamaHttp.readBody(c) } finally { c.disconnect() }
+        } catch (_: Exception) {
         }
     }
 

@@ -27,6 +27,13 @@ class RuntimeHelpersTest {
         assertEquals(3, r.size())
     }
 
+    @Test fun benchIsRefusedFromSevereUpOnly() {
+        assertNull(Bench.blockReasonFor(0))
+        assertNull(Bench.blockReasonFor(2))
+        assertTrue(Bench.blockReasonFor(3)!!.contains("SEVERE"))
+        assertTrue(Bench.blockReasonFor(4)!!.contains("CRITICAL"))
+    }
+
     @Test fun rolesParseByTag() {
         assertEquals(Role.CHAT, Role.parse("chat"))
         assertEquals(Role.EMBED, Role.parse(" EMBED "))
@@ -39,7 +46,7 @@ class RuntimeHelpersTest {
         assertEquals("4", args[args.lastIndexOf("-t") + 1])
         assertTrue(args.indexOf("--rpc") > args.indexOf("--port"))
         val embed = LlamaArgs.build(Role.EMBED, "/m/e.gguf", 8081)
-        assertTrue("--embeddings" in embed)
+        assertTrue("--embedding" in embed)
         assertEquals("8081", embed[embed.indexOf("--port") + 1])
         assertEquals(listOf("-H", "127.0.0.1", "-p", "50052"), LlamaArgs.build(Role.RPC, null, 50052))
     }

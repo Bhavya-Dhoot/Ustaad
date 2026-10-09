@@ -8,7 +8,6 @@ import com.swarmos.app.link.ErrorBody
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
-import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -46,11 +45,15 @@ data class ModelsStateDto(
     val lastPrefillTokPerSec: Double?,
     val bench: BenchResult?,
     val benchRunning: Boolean,
+    /** PowerManager thermal status now (0 NONE .. 6 SHUTDOWN) and its name; benchmarks are refused from 3 (SEVERE) up. */
+    val thermalStatus: Int,
+    val thermal: String,
+    val benchBlockedReason: String?,
     val sustained: List<SustainedPoint>,
 )
 
 @Serializable
-data class LoadRequest(val role: String, val file: String, val wait: Boolean = true)
+data class LoadRequest(val role: String, val file: String = "", val wait: Boolean = true)
 
 @Serializable
 data class StopRequest(val role: String)
@@ -66,8 +69,12 @@ object ModelsModule : SwarmModule {
         post("/load") {
             val req = runCatching { SwarmJson.decodeFromString<LoadRequest>(call.receiveText()) }.getOrNull()
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("body must be {\"role\":\"chat|embed\",\"file\":\"<name>.gguf\"}"))
-            val role = Role.parse(req.role)?.takeIf { it == Role.CHAT || it == Role.EMBED }
-                ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("role must be chat or embed"))
+            val role = Role.parse(req.role)
+                ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("role must be chat, embed or rpc"))
+            if (role == Role.RPC) { // rpc-server takes no model: {"role":"rpc","file":""} starts it on 127.0.0.1:50052
+                val st = LlamaRuntime.start(Role.RPC, null)
+                return@post call.respond(if (st.state == ServerState.READY) HttpStatusCode.OK else HttpStatusCode.Conflict, stateDto())
+            }
             if (req.file != File(req.file).name || !ModelStore.fileOf(req.file).isFile) {
                 return@post call.respond(HttpStatusCode.NotFound, ErrorBody("no such model file: ${req.file}"))
             }
@@ -89,18 +96,6 @@ object ModelsModule : SwarmModule {
             call.respond(stateDto())
         }
 
-        // DEBUG (temporary): thread stacks of the busy dispatcher threads
-        get("/threads") {
-            val sb = StringBuilder()
-            for ((t, st) in Thread.getAllStackTraces()) {
-                if (t.name.startsWith("DefaultDispatch") && st.isNotEmpty()) {
-                    sb.append(t.name).append(' ').append(t.state).append('\n')
-                    st.take(8).forEach { sb.append("    ").append(it).append('\n') }
-                }
-            }
-            call.respondText(sb.toString())
-        }
-
         // POST /v1/models/selftest  streamed chat, 10 JSON-schema generations and embeddings through the real clients
         post("/selftest") {
             try {
@@ -119,6 +114,7 @@ object ModelsModule : SwarmModule {
         post("/bench") {
             val minutes = call.request.queryParameters["minutes"]?.toIntOrNull() ?: 0
             val wait = call.request.queryParameters["wait"] != "false" && minutes == 0
+            Bench.blockReason()?.let { return@post call.respond(HttpStatusCode.Conflict, ErrorBody(it)) }
             if (Bench.running.value) return@post call.respond(HttpStatusCode.Conflict, ErrorBody("a benchmark is already running"))
             if (LlamaRuntime.statusOf(Role.CHAT).state != ServerState.READY) {
                 return@post call.respond(HttpStatusCode.Conflict, ErrorBody("chat server is not READY"))
@@ -154,6 +150,7 @@ object ModelsModule : SwarmModule {
         }
         val stats = LlamaRuntime.lastStats.value
         val bench = Bench.last.value
+        val thermalNow = Bench.thermalStatusNow()
         return ModelsStateDto(
             node = AppGraph.registry.self.value.name,
             roles = roles,
@@ -163,6 +160,9 @@ object ModelsModule : SwarmModule {
             lastPrefillTokPerSec = bench?.prefillTokPerSec?.takeIf { it > 0 },
             bench = bench,
             benchRunning = Bench.running.value,
+            thermalStatus = thermalNow,
+            thermal = com.swarmos.app.core.HealthMonitor.thermalName(thermalNow),
+            benchBlockedReason = Bench.blockReasonFor(thermalNow),
             sustained = Bench.sustained.value,
         )
     }
