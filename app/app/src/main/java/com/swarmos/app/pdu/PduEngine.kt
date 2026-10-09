@@ -120,12 +120,15 @@ object PduEngine {
     @Volatile var lastSearchMs: Long = -1
         private set
 
+    /** Debug builds only: a page the Scan screen should open straight into its review sheet, standing in for the shutter. */
+    @Volatile var debugScanFile: File? = null
+
     private val indexLock = Mutex()
     private fun now() = SystemClock.elapsedRealtime()
 
     /** Open the store and load the in-memory matrix off the main thread. Safe to call repeatedly. */
     fun start() {
-        scope.launch(Dispatchers.IO) { refresh() }
+        scope.launch(Dispatchers.IO) { PduEmbedConfig.load(store); refresh() }
     }
 
     fun refresh() {
@@ -188,10 +191,33 @@ object PduEngine {
     /** Vectors from another embedder are not comparable, so a changed embedder (or force) re-reads everything. */
     private fun prepare(force: Boolean) {
         val name = AppGraph.embedder.modelName
-        if (force || store.meta("embedModel") != name) {
+        val key = PduEmbedConfig.indexKey(name)
+        if (force || store.meta("embedKey") != key) {
             store.wipe()
             store.setMeta("embedModel", name)
+            store.setMeta("embedKey", key)
         }
+    }
+
+    /** True when the stored vectors were made under a different embedder or document prefix than the current ones. */
+    fun reindexNeeded(): Boolean = store.chunkCount > 0 && store.meta("embedKey") != PduEmbedConfig.indexKey(AppGraph.embedder.modelName)
+
+    fun setPrefixes(req: PrefixRequest): PrefixReport {
+        req.query?.let { PduEmbedConfig.queryPrefix = it }
+        req.document?.let { PduEmbedConfig.documentPrefix = it }
+        PduEmbedConfig.save(store)
+        return PrefixReport(PduEmbedConfig.queryPrefix, PduEmbedConfig.documentPrefix, reindexNeeded())
+    }
+
+    /** Debug calibration: dense cosine and BM25 score of the strongest chunks for [text]. */
+    suspend fun explain(text: String, top: Int = 10): ScoreReport {
+        val terms = QueryTerms.terms(text)
+        val vec = PduStore.fit(AppGraph.embedder.embed(listOf(PduEmbedConfig.query(text))).first())
+        val (spread, rows) = withContext(Dispatchers.Default) { store.explain(vec, terms, top.coerceIn(1, 30)) }
+        return ScoreReport(
+            text, AppGraph.embedder.modelName, PduEmbedConfig.queryPrefix, terms, HybridRanker.DENSE_MIN_COSINE.toDouble(),
+            HybridRanker.MIN_COVERAGE, store.chunkCount, spread, rows,
+        )
     }
 
     suspend fun runRequest(req: IndexRequest): IndexReport {
@@ -248,7 +274,7 @@ object PduEngine {
         val terms = QueryTerms.terms(text)
         if (store.chunkCount == 0) return LocalSearch(emptyList(), terms, 0, 0)
         val t0 = now()
-        val vec = PduStore.fit(AppGraph.embedder.embed(listOf(text)).first())
+        val vec = PduStore.fit(AppGraph.embedder.embed(listOf(PduEmbedConfig.query(text))).first())
         val t1 = now()
         val cands = withContext(Dispatchers.Default) { store.search(vec, terms) }
         val t2 = now()

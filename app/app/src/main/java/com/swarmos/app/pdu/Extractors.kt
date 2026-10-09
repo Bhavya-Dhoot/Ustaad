@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -20,14 +21,33 @@ import java.io.InputStream
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** ML Kit Latin text recognition (bundled model, offline). Devanagari and CJK need their own artifacts. */
+/** Both recognisers' output for one image. [devanagari] is null when the second pass was not needed. */
+class OcrResult(val latin: String, val devanagari: String?, val text: String)
+
+/**
+ * ML Kit text recognition, bundled models, offline. The Latin recogniser runs first; it ignores Devanagari, so when its
+ * result is short (see [OcrMerge.needsDevanagari]) the Devanagari recogniser runs too and both texts are kept.
+ */
 object Ocr {
-    private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+    private val latinRecognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+    private val devanagariRecognizer by lazy { TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build()) }
 
     suspend fun recognize(bitmap: Bitmap): String = suspendCancellableCoroutine { cont ->
-        recognizer.process(InputImage.fromBitmap(bitmap, 0))
+        latinRecognizer.process(InputImage.fromBitmap(bitmap, 0))
             .addOnSuccessListener { cont.resume(it.text) }
             .addOnFailureListener { cont.resumeWithException(it) }
+    }
+
+    suspend fun recognizeDevanagari(bitmap: Bitmap): String = suspendCancellableCoroutine { cont ->
+        devanagariRecognizer.process(InputImage.fromBitmap(bitmap, 0))
+            .addOnSuccessListener { cont.resume(it.text) }
+            .addOnFailureListener { cont.resumeWithException(it) }
+    }
+
+    suspend fun recognizeAll(bitmap: Bitmap): OcrResult {
+        val latin = recognize(bitmap)
+        val deva = if (OcrMerge.needsDevanagari(latin)) runCatching { recognizeDevanagari(bitmap) }.getOrNull() else null
+        return OcrResult(latin, deva, OcrMerge.merge(latin, deva))
     }
 
     /** Decode an image (EXIF rotation applied), scaled so the longest side is at most [maxSide]. Software bitmap for ML Kit. */
@@ -89,7 +109,7 @@ object Extractors {
                         bmp.eraseColor(Color.WHITE)
                         page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         val t0 = System.nanoTime()
-                        sb.append(Ocr.recognize(bmp)).append("\n\n")
+                        sb.append(Ocr.recognizeAll(bmp).text).append("\n\n")
                         onOcr((System.nanoTime() - t0) / 1_000_000)
                         bmp.recycle()
                     } finally { page.close() }
