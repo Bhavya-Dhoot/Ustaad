@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun PlaceholderScreen(title: String) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text(title, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+        Text(title, style = androidx.compose.material3.MaterialTheme.typography.titleMedium, color = SwarmColors.Text)
         Text("not built yet", color = SwarmColors.Dim)
     }
 }

@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swarmos.app.core.SwarmService
 import com.swarmos.app.ui.StatsBar
@@ -70,7 +71,7 @@ private fun SwarmRoot() {
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         StatsBar(onEditName = { showSettings = true })
-        PrimaryTabRow(selectedTabIndex = selected, containerColor = SwarmColors.Surface) {
+        PrimaryScrollableTabRow(selectedTabIndex = selected, containerColor = SwarmColors.Surface, edgePadding = 0.dp, minTabWidth = 0.dp) {
             modules.forEachIndexed { i, m ->
                 Tab(selected = i == selected, onClick = { selected = i }, text = { Text(m.title, maxLines = 1, fontSize = 12.sp) })
             }

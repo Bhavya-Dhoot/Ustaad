@@ -61,7 +61,7 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
         val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
 
         val wi = ctx.getSystemService(WifiManager::class.java)?.connectionInfo
-        val connected = wi != null && wi.networkId != -1 && wi.linkSpeed > 0
+        val connected = wi != null && wi.linkSpeed > 0
 
         return NodeHealth(
             nodeId = selfId(),
