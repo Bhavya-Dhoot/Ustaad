@@ -214,6 +214,7 @@ class AgentServerTest {
     @Volatile private var chatReady = true
     @Volatile private var swarmReady = true
     @Volatile private var embedReady = true
+    @Volatile private var filesOn = false
     private val embedder = TestLlm("E")
     @Volatile private var embedderClient: LlmClient = embedder
 
@@ -229,6 +230,7 @@ class AgentServerTest {
         maxWaitMs: Long = 400,
         phones: List<FakePhone> = listOf(FakePhone("b", TestLlm("M"), scope, 1, isLocal = false, tokPerSec = 10.0)),
         writeTimeoutMs: Long = AgentServer.WRITE_TIMEOUT_MS,
+        files: FileSource? = null,
     ) {
         node = SchedNode(scope, { "a" }, { chat }, { embedder }, { null })
         val backend = AgentBackend(
@@ -244,6 +246,7 @@ class AgentServerTest {
         port = freePort()
         server = AgentServer(
             port, { key }, backend,
+            files = files, filesEnabled = { filesOn },
             audit = { kind, payload -> audit += kind to payload },
             onServed = { served.incrementAndGet() },
             onRefused = { refused.incrementAndGet() },
@@ -516,6 +519,191 @@ class AgentServerTest {
         assertEquals("model_busy", r.errorCode)
         assertEquals("server_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
         first.cancel(true)
+    }
+
+    // ---- file search ------------------------------------------------------------------------------------------
+
+    private val billC = FileFakes.candidate(1, "hash-bill", "Electricity bill", "Electricity bill for September 1,240 rupees")
+    private val salaryC = FileFakes.candidate(2, "hash-salary", "Salary slip", "Salary slip net pay 85,000", folder = "Documents/Salary", isPrivate = true, kind = "document")
+    private val taxC = FileFakes.candidate(3, "hash-tax", "Tax return", "Tax return PAN ABCDE1234F", folder = "Documents/Private", kind = "document")
+
+    private fun search(body: String = """{"query":"electricity bill"}""") = post("/v1/files/search", body)
+
+    private fun phonesOf(r: Resp) = r.json.getValue("phones").jsonArray.map { it.jsonObject.getValue("name").jsonPrimitive.content to it.jsonObject.getValue("status").jsonPrimitive.content }
+
+    @Test fun fileSearchIsOffUntilTheOwnerSwitchesItOn() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls))
+        val r = search()
+        assertEquals(r.body, 403, r.status)
+        assertEquals("file_search_off", r.errorCode)
+        assertEquals("invalid_request_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+        assertEquals("the index is not touched", 0, calls.local.get())
+        assertEquals(1, refused.get())
+        assertTrue(audit.none { it.first == "agent.files" })
+        filesOn = true
+        assertEquals(200, search().status)
+        filesOn = false
+        assertEquals("switching it off again takes effect at once", 403, search().status)
+        assertEquals(1, calls.local.get())
+    }
+
+    @Test fun withoutAnyFileSourceTheRouteIs403Too() {
+        start()
+        filesOn = true
+        assertEquals("file_search_off", search().errorCode)
+    }
+
+    @Test fun theFileRouteAsksForTheKeyBeforeAnythingElse() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls))
+        // off or on, a request without the right key is a 401, not a hint about the switch
+        assertEquals(401, post("/v1/files/search", """{"query":"x"}""", key = null).status)
+        assertEquals(401, post("/v1/files/search", """{"query":"x"}""", key = "wrong").status)
+        filesOn = true
+        assertEquals(401, post("/v1/files/search", """{"query":"x"}""", key = null).status)
+        assertEquals(0, calls.local.get())
+        assertEquals(404, call("GET", "/v1/files/search").status)
+    }
+
+    @Test fun privateFilesNeverAppearInTheRawAnswer() {
+        start(files = FileFakes.source(listOf(salaryC, billC, taxC)))
+        filesOn = true
+        val r = search()
+        assertEquals(r.body, 200, r.status)
+        assertEquals(setOf("object", "data", "scope", "incomplete", "phones"), r.json.keys)
+        val data = r.json.getValue("data").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("Electricity bill"), data.map { it.getValue("title").jsonPrimitive.content })
+        assertEquals(setOf("phone", "title", "date", "kind", "score", "snippet"), data.single().keys)
+        assertEquals("Phone A", data.single().getValue("phone").jsonPrimitive.content)
+        // the raw text: nothing of the private files, no hash of any file, no path, no count of what was held back
+        for (secret in listOf("Salary", "85,000", "Tax return", "ABCDE", "hash-", "uriHash", "Documents", "Pictures", "Private", "withheld", "chunk")) {
+            assertFalse("'$secret' must not appear in ${r.body}", r.body.contains(secret, ignoreCase = true))
+        }
+        assertEquals(1, served.get())
+    }
+
+    @Test fun aSearchWithOnlyPrivateMatchesIsAnEmptyListNotAnError() {
+        start(files = FileFakes.source(listOf(salaryC, taxC)))
+        filesOn = true
+        val r = search("""{"query":"salary"}""")
+        assertEquals(r.body, 200, r.status)
+        assertEquals(0, r.json.getValue("data").jsonArray.size)
+        assertFalse(r.body.contains("withheld"))
+    }
+
+    @Test fun scopePhoneDoesNotContactPairedPhonesAndSwarmDoes() {
+        val calls = FileFakes.Calls()
+        val b = FileFakes.peer("Phone B", FileFakes.peerHit("Course certificate", "Certificate of completion"))
+        start(files = FileFakes.source(listOf(billC), calls, peers = listOf(b)))
+        filesOn = true
+        val phone = search("""{"query":"electricity bill"}""")
+        assertEquals(phone.body, 200, phone.status)
+        assertEquals(0, calls.peers.get())
+        assertEquals(listOf("Phone A" to "ok"), phonesOf(phone))
+        assertEquals("phone", phone.json.getValue("scope").jsonPrimitive.content)
+
+        val swarm = search("""{"query":"electricity bill","scope":"swarm","max_results":3}""")
+        assertEquals(swarm.body, 200, swarm.status)
+        assertEquals(1, calls.peers.get())
+        assertEquals(3, calls.queries.single().k)
+        assertEquals("electricity bill", calls.queries.single().text)
+        assertEquals(setOf("Phone A", "Phone B"), swarm.json.getValue("data").jsonArray.map { it.jsonObject.getValue("phone").jsonPrimitive.content }.toSet())
+        assertEquals(listOf("Phone A" to "ok", "Phone B" to "ok"), phonesOf(swarm))
+        assertEquals("false", swarm.json.getValue("incomplete").jsonPrimitive.content)
+    }
+
+    @Test fun aSwarmSearchReportsAnOfflinePhoneAndStaysUsable() {
+        val b = FileFakes.peer("Phone B", FileFakes.peerHit("Course certificate", "Certificate of completion", hash = "b-hash"), withheld = 4)
+        start(files = FileFakes.source(listOf(salaryC, billC), peers = listOf(b, FileFakes.offline("Phone C"))))
+        filesOn = true
+        val r = search("""{"query":"certificate","scope":"swarm"}""")
+        assertEquals(r.body, 200, r.status)
+        assertEquals(listOf("Phone A" to "ok", "Phone B" to "ok", "Phone C" to "offline"), phonesOf(r))
+        assertEquals("true", r.json.getValue("incomplete").jsonPrimitive.content)
+        assertEquals(setOf("Electricity bill", "Course certificate"), r.json.getValue("data").jsonArray.map { it.jsonObject.getValue("title").jsonPrimitive.content }.toSet())
+        for (secret in listOf("Salary", "b-hash", "withheld", "uriHash")) assertFalse(secret, r.body.contains(secret))
+    }
+
+    @Test fun badSearchRequestsAre400AndNeverReachTheIndex() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls))
+        filesOn = true
+        val cases = listOf(
+            "{}" to "query", """{"query":""}""" to "query", """{"query":"${"q".repeat(1001)}"}""" to "query",
+            """{"query":"x","scope":"world"}""" to "scope", """{"query":"x","max_results":0}""" to "max_results",
+            """{"query":"x","max_results":11}""" to "max_results", "nope" to "JSON",
+        )
+        for ((body, mention) in cases) {
+            val r = search(body)
+            assertEquals(body.take(60), 400, r.status)
+            assertTrue("${r.errorMessage} should name $mention", r.errorMessage.contains(mention))
+        }
+        assertEquals(0, calls.local.get())
+        assertEquals(200, search("""{"query":"${"q".repeat(1000)}","max_results":10}""").status)
+        assertEquals(413, search("""{"query":"x","pad":"${"p".repeat(AgentRequests.MAX_BODY_BYTES.toInt())}"}""").status)
+    }
+
+    @Test fun aSearchThatCannotRunIs503IndexUnavailable() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls, unavailable = "No embedding model is loaded on this phone, so files cannot be searched."))
+        filesOn = true
+        val r = search()
+        assertEquals(r.body, 503, r.status)
+        assertEquals("index_unavailable", r.errorCode)
+        assertEquals("server_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+        assertEquals(0, calls.local.get())
+        val entry = audit.single { it.first == "agent.files" }.second
+        assertEquals(503, entry.getValue("status").jsonPrimitive.int)
+        assertFalse(entry.toString().contains("electricity"))
+    }
+
+    @Test fun aFailingIndexIsA500WithoutItsText() {
+        val failing = FileFakes.source(listOf(billC), beforeSearch = { throw IllegalStateException("database at /data/user/0/secret is locked") })
+        start(files = failing)
+        filesOn = true
+        val r = search()
+        assertEquals(500, r.status)
+        assertEquals("internal_error", r.errorCode)
+        assertFalse(r.body.contains("secret"))
+    }
+
+    @Test fun onlyTwoSearchesRunAtOnce() {
+        val calls = FileFakes.Calls()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        start(files = FileFakes.source(listOf(billC), calls, beforeSearch = { release.await() }))
+        filesOn = true
+        val first = java.util.concurrent.CompletableFuture.supplyAsync { search() }
+        val second = java.util.concurrent.CompletableFuture.supplyAsync { search() }
+        waitUntil("two searches inside the index") { calls.local.get() == 2 }
+        val third = search()
+        assertEquals(third.body, 429, third.status)
+        assertEquals("rate_limited", third.errorCode)
+        release.complete(Unit)
+        assertEquals(200, first.get(10, TimeUnit.SECONDS).status)
+        assertEquals(200, second.get(10, TimeUnit.SECONDS).status)
+        assertEquals("a place is free again", 200, search().status)
+    }
+
+    @Test fun theAuditEntryOfASearchCarriesNoQueryTitleOrSnippet() {
+        val b = FileFakes.peer("Phone B", FileFakes.peerHit("Course certificate", "Certificate of completion rupees"))
+        start(files = FileFakes.source(listOf(billC, salaryC), peers = listOf(b, FileFakes.offline("Phone C"))))
+        filesOn = true
+        val r = search("""{"query":"electricity bill","scope":"swarm"}""")
+        assertEquals(r.body, 200, r.status)
+        val entry = audit.single { it.first == "agent.files" }.second
+        assertEquals(setOf("scope", "queryChars", "status", "results", "phones", "ms"), entry.keys)
+        assertEquals("swarm", entry.getValue("scope").jsonPrimitive.content)
+        assertEquals(16, entry.getValue("queryChars").jsonPrimitive.int)
+        assertEquals(2, entry.getValue("results").jsonPrimitive.int)
+        val phones = entry.getValue("phones").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("Phone A", "Phone B", "Phone C"), phones.map { it.getValue("name").jsonPrimitive.content })
+        assertEquals(listOf("ok", "ok", "offline"), phones.map { it.getValue("status").jsonPrimitive.content })
+        assertEquals(listOf(1, 1, 0), phones.map { it.getValue("results").jsonPrimitive.int })
+        val text = entry.toString()
+        for (leak in listOf("electricity", "bill", "Electricity", "rupees", "Certificate", "Salary", "snippet", "title", "hash")) {
+            assertFalse("'$leak' must not be in the audit entry $text", text.contains(leak))
+        }
     }
 
     // ---- refusals over the wire ------------------------------------------------------------------------------

@@ -48,6 +48,7 @@ import kotlinx.io.readByteArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.io.IOException
 import java.util.UUID
 
@@ -57,13 +58,16 @@ import java.util.UUID
  * name, then the key) before anything is read from it. The class only moves bytes: parsing is [AgentRequests], shapes are
  * [AgentWire], models are [AgentBackend].
  *
- * [audit] gets `agent.start`, `agent.stop` and one `agent.chat` or `agent.embed` entry per answered request and per 5xx:
- * sizes, counts and milliseconds, never the text of a prompt or an answer. Refusals (4xx) are only counted, through [onRefused].
+ * [audit] gets `agent.start`, `agent.stop` and one `agent.chat`, `agent.embed` or `agent.files` entry per answered request and per 5xx:
+ * sizes, counts and milliseconds, never the text of a prompt, an answer, a query or a snippet. Refusals (4xx) are only counted, through [onRefused].
+ * `POST /v1/files/search` answers only while [filesEnabled] says the owner has switched file search on; [files] is what it searches.
  */
 class AgentServer(
     private val port: Int,
     private val key: () -> String?,
     private val backend: AgentBackend,
+    private val files: FileSource? = null,
+    private val filesEnabled: () -> Boolean = { false },
     private val audit: (kind: String, payload: JsonObject) -> Unit,
     private val onServed: () -> Unit = {},
     private val onRefused: () -> Unit = {},
@@ -79,6 +83,7 @@ class AgentServer(
     /** Requests reading and parsing their body at once, and embedding calls at once; the rest are told to come back (429). */
     private val parsing = Semaphore(MAX_PARSING)
     private val embedding = Semaphore(MAX_EMBEDDING)
+    private val searching = Semaphore(MAX_SEARCHING)
 
     /** Opens the port. Returns null, or why it could not be opened. Blocks briefly; call off the main thread. */
     @Synchronized
@@ -134,6 +139,7 @@ class AgentServer(
                 }
                 post("/chat/completions") { call.chat() }
                 post("/embeddings") { call.embeddings() }
+                post("/files/search") { call.filesSearch() }
             }
             route("/{path...}") {
                 handle {
@@ -314,6 +320,41 @@ class AgentServer(
         if (status == HttpStatusCode.OK) onServed()
     }
 
+    // ---- file search ------------------------------------------------------------------------------------------
+
+    /**
+     * What this phone would tell a paired phone, plus (scope swarm) what the paired phones tell it; see [AgentFiles]. The owner's switch
+     * is checked before the body is read, and a search that cannot run (no embedder, no index) is a 503, never an empty list.
+     */
+    private suspend fun RoutingCall.filesSearch() {
+        val t0 = clock()
+        var parsed: FileSearchCall? = null
+        var status = HttpStatusCode.OK
+        val body: JsonObject = try {
+            val source = files
+            if (source == null || !filesEnabled()) {
+                throw AgentRefusal(403, "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.", "file_search_off")
+            }
+            val c = limited(parsing) { AgentRequests.parseFileSearch(readBody()) }
+            parsed = c
+            val found = limited(searching) {
+                source.unavailable()?.let { throw AgentRefusal(503, it, "index_unavailable", AgentRefusal.TYPE_SERVER) }
+                AgentFiles.search(c, source, newQid())
+            }
+            auditFiles(c, 200, found, t0)
+            found.body
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val r = refusalOf(e)
+            if (r.status >= 500) auditFiles(parsed, r.status, null, t0) else onRefused()
+            status = HttpStatusCode.fromValue(r.status)
+            AgentWire.error(r)
+        }
+        respondJson(status, body)
+        if (status == HttpStatusCode.OK) onServed()
+    }
+
     // ---- shared -----------------------------------------------------------------------------------------------
 
     /** The whole body as text. A declared length over the limit is refused unread; a body with no length is read only up to the limit. */
@@ -369,6 +410,8 @@ class AgentServer(
 
     private fun newId() = "chatcmpl-" + UUID.randomUUID().toString().replace("-", "").take(24)
 
+    private fun newQid() = UUID.randomUUID().toString().take(8)
+
     private fun auditChat(c: AgentChatCall?, status: Int, completionChars: Int, stats: ChatStats?, t0: Long, aborted: Boolean = false) {
         record("agent.chat", buildJsonObject {
             c?.let {
@@ -399,6 +442,28 @@ class AgentServer(
         })
     }
 
+    /** Scope, how long the query was, how many results and which phone gave how many: no query text, no title, no snippet. */
+    private fun auditFiles(c: FileSearchCall?, status: Int, found: FilesFound?, t0: Long) {
+        record("agent.files", buildJsonObject {
+            c?.let {
+                put("scope", it.scope.id)
+                put("queryChars", it.query.length)
+            }
+            put("status", status)
+            found?.let { f ->
+                put("results", f.results)
+                putJsonArray("phones") {
+                    for (p in f.phones) add(buildJsonObject {
+                        put("name", p.name)
+                        put("status", p.status)
+                        put("results", p.results)
+                    })
+                }
+            }
+            put("ms", clock() - t0)
+        })
+    }
+
     private fun record(kind: String, payload: JsonObject) {
         runCatching { audit(kind, payload) } // a full disk must not turn an answer into an error
     }
@@ -410,5 +475,6 @@ class AgentServer(
         const val IDLE_TIMEOUT_S = 300
         const val MAX_PARSING = 4
         const val MAX_EMBEDDING = 2
+        const val MAX_SEARCHING = 2
     }
 }

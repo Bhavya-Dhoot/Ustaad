@@ -132,6 +132,22 @@ object AgentRequests {
         return AgentEmbedCall(model, texts, base64 = format == "base64")
     }
 
+    fun parseFileSearch(body: String): FileSearchCall {
+        val o = parseObject(body)
+        val query = (o["query"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            ?: throw bad("`query` is required and must be a string.", MISSING)
+        if (query.isBlank()) throw bad("`query` must not be empty.", INVALID)
+        if (query.length > AgentFiles.MAX_QUERY) throw bad("`query` is ${query.length} characters; at most ${AgentFiles.MAX_QUERY} are accepted.", LIMIT)
+        val scope = when (val el = o["scope"]) {
+            null, is JsonNull -> FileScope.PHONE
+            is JsonPrimitive -> FileScope.of(el.content).takeIf { el.isString } ?: throw bad("`scope` must be \"phone\" or \"swarm\".", INVALID)
+            else -> throw bad("`scope` must be \"phone\" or \"swarm\".", INVALID)
+        }
+        val max = o.int("max_results") ?: AgentFiles.DEFAULT_RESULTS.toLong()
+        if (max < 1 || max > AgentFiles.MAX_RESULTS) throw bad("`max_results` must be 1 to ${AgentFiles.MAX_RESULTS}.", LIMIT)
+        return FileSearchCall(query, scope, max.toInt())
+    }
+
     // ---- pieces -------------------------------------------------------------------------------------------
 
     private fun parseObject(body: String): JsonObject {
