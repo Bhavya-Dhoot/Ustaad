@@ -48,6 +48,23 @@ object LinkRoute {
         links.firstOrNull { sameSubnet(it.address, peerIp, it.prefix) }
 
     /**
+     * What pairing says when it adopted the secret and nothing answered: the host is on another network, this phone has
+     * no Wi-Fi address, or the networks match and the host just did not reply. Unusable host addresses are skipped.
+     * [hadDirectCreds] is carried for the caller's sake: a Wi-Fi Direct failure already leaves its own note, so this
+     * text is only used when the code had no Direct credentials, and it does not change the wording.
+     */
+    fun unreachableHostText(hostName: String, hostIps: List<String>, ours: List<LocalLink>, hadDirectCreds: Boolean): String {
+        val mine = ours.firstOrNull { it.type == LinkType.LAN } ?: ours.firstOrNull()
+            ?: return "secret adopted, but this phone has no Wi-Fi address. Connect it to the host's Wi-Fi. Will keep trying."
+        val valid = hostIps.filter { ipv4ToInt(it) != null }
+        if (valid.isEmpty()) return "secret adopted, host not reachable yet (will keep trying)"
+        if (valid.any { ip -> findLocalFor(ip, ours) != null })
+            return "secret adopted, host not reachable yet. Same network: check that Ustaad is open on $hostName. Will keep trying."
+        return "secret adopted, but $hostName is on another network (its address ${valid.first()}, this phone ${mine.address}). " +
+            "Put both phones on the same Wi-Fi. Will keep trying."
+    }
+
+    /**
      * Peers are only ever on the local network: RFC 1918 private ranges (the Wi-Fi Direct group 192.168.49.x is inside
      * 192.168/16) and IPv4 link-local. Anything else, WAN addresses included, is never contacted or remembered.
      */
