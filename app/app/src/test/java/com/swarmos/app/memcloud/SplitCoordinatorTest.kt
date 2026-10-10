@@ -722,7 +722,8 @@ class SplitCoordinatorTest {
         awaitState("READY again") { it.phase == Phase.READY && it.phones.size == 2 }
         runBlocking { delay(timing.degradedRestoreMs + 200) }
         assertEquals(0, env.count("restoreLocal chat small.gguf"))
-        assertTrue(c.state.value.notices.isEmpty())
+        // the only notice is about the phone that was lost, whose record stays until it answers; there is no automatic-restore sentence
+        assertEquals(listOf("Phone C has not got its models back yet"), c.state.value.notices)
     }
 
     @Test fun aReplanAfterTheAutomaticRestoreStopsThePhonesModelsAgain() {
@@ -823,6 +824,45 @@ class SplitCoordinatorTest {
         assertTrue(s.notices.isEmpty() && s.pendingRestore.isEmpty())
         assertEquals("nothing is loaded on a phone that is serving someone else", 0, env.count("loadModel 10.0.0.2:8787"))
         assertEquals(Persisted(), env.saved.last())
+    }
+
+    // ---------- finding 11: a re-plan on fewer phones releases the lender it drops ----------
+
+    @Test fun aReplanOnFewerPhonesStopsAndRestoresTheLenderItDropsBeforeLoading() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        assertNull(c.replan(listOf("Phone B")))
+        val s = awaitState("READY on two phones") { it.phase == Phase.READY && it.phones.size == 2 && env.chatStarts.get() == 2 }
+        assertEquals(listOf("Phone A", "Phone B"), s.phones.map { it.name })
+        assertEquals("Phone C was told to stop, once", 1, env.count("rpcStop 10.0.0.3:8787"))
+        assertEquals("Phone B kept its rpc-server", 0, env.count("rpcStop 10.0.0.2:8787"))
+        val dropped = env.calls.indexOf("rpcStop 10.0.0.3:8787")
+        val secondLoad = env.calls.withIndex().filter { it.value.startsWith("startChat") }.map { it.index }.last()
+        assertTrue("before the new load starts: $dropped < $secondLoad", dropped in 0 until secondLoad)
+        // its lease is no longer renewed, and nothing of it is owed
+        val renewals = env.count("rpcRenew 10.0.0.3:8787")
+        runBlocking { delay(150) }
+        assertEquals(renewals, env.count("rpcRenew 10.0.0.3:8787"))
+        assertTrue(s.pendingRestore.none { it.startsWith("Phone C") } && s.notices.isEmpty())
+    }
+
+    @Test fun aLenderThatIsAwayAtReplanIsNotCalledAndIsReleasedWhenItAnswersAgain() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.peerList = env.peerList.map { if (it.nodeId == "c") it.copy(away = true) else it }
+        awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+        assertNull(c.replan())
+        val s = awaitState("READY on two phones") { it.phase == Phase.READY && it.phones.size == 2 }
+        assertEquals("no call goes to a phone that is away", 0, env.count("rpcStop 10.0.0.3:8787"))
+        assertEquals(listOf("Phone C has not got its models back yet"), s.notices)
+        val renewals = env.count("rpcRenew 10.0.0.3:8787")
+        runBlocking { delay(100) }
+        assertEquals("and it is not renewed", renewals, env.count("rpcRenew 10.0.0.3:8787"))
+        // it is back: the next tick ends its loan and confirms
+        env.peerList = env.peerList.map { if (it.nodeId == "c") it.copy(away = false) else it }
+        awaitState("released") { it.notices.isEmpty() }
+        assertEquals(1, env.count("rpcStop 10.0.0.3:8787"))
+        assertEquals(Phase.READY, c.state.value.phase)
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {

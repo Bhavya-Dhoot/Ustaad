@@ -363,6 +363,7 @@ class SplitCoordinator(
             val peers = onlinePeers(sel)
             if (peers.isEmpty()) return fail("No other phone is online. The model needs ${gb(info.fileBytes)} and one phone cannot hold it.")
             manual?.let { SplitPlanner.checkLayers(it, info.blockCount, peers.size + 1) }?.let { return fail(it) }
+            releaseExcluded(peers)
             step("Asking ${peers.joinToString { it.name }} what it is running")
             val snaps = coroutineScope { peers.map { p -> async { p to runCatching { env.peerModels(p.addr) } } }.awaitAll() }
             snaps.firstOrNull { it.second.isFailure }?.let { (p, r) -> return fail("${p.name} did not answer: ${r.exceptionOrNull()?.message}") }
@@ -494,6 +495,34 @@ class SplitCoordinator(
             unconfirmed[nodeId] = addr
             step("${peerName(nodeId)} did not answer: its servers are still owed and will be retried")
         }
+    }
+
+    /**
+     * A re-plan on fewer phones: the lenders of the previous plan that the new one does not use are stopped and their servers restored
+     * before the new load starts, so their lease is no longer renewed and their memory is no longer held. A lender that is away is not
+     * called (its lease runs out by itself); its record stays and is retried when it answers.
+     */
+    private suspend fun releaseExcluded(keep: List<PeerInfo>) {
+        val keepIds = keep.map { it.nodeId }.toSet()
+        val dropped = touched.keys.toList().filter { it !in keepIds }
+        if (dropped.isEmpty()) return
+        step("Releasing ${dropped.joinToString { peerName(it) }}: not in the new plan")
+        val online = env.peers().filter { !it.away }.map { it.nodeId }.toSet()
+        coroutineScope {
+            for (k in dropped) {
+                val p = touched.remove(k) ?: continue
+                val rpcRan = rpcStarted.remove(k) != null
+                if (k in online) {
+                    launch { releasePeer(k, p.addr, rpcRan) }
+                } else {
+                    loans.remove(k)
+                    if ((restore[k] ?: emptyList()).isNotEmpty()) unconfirmed[k] = p.addr else restore.remove(k)
+                }
+            }
+        }
+        persist()
+        publishPending()
+        startRestoreRetry()
     }
 
     /** [MemCloudState.pendingRestore] and [MemCloudState.notices] from what is still owed. */
