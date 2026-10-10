@@ -58,6 +58,9 @@ class SplitCoordinator(
         val settleMs: Long = 200,
         /** How often a peer that has not confirmed it got its servers back is tried again. */
         val restoreRetryMs: Long = 5_000,
+        /** A lender whose rpc port is still held is stopped, waited for this long and asked again, this many times. */
+        val portRetries: Int = 2,
+        val portRetryDelayMs: Long = 2_000,
     )
 
     companion object {
@@ -472,8 +475,7 @@ class SplitCoordinator(
         // running: the driver stops them below, when the lease and the list already exist on the peer.
         setPhone(p.nodeId) { it.copy(step = "Starting rpc-server", restore = restoreText(p.nodeId)) }
         step("${p.name}: starting rpc-server on ${p.host}:${Ports.RPC} with the tensor cache")
-        val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList(), stopOwn = true))
-        if (st.state != "READY") throw IllegalStateException("rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}")
+        val st = startRpcOn(p)
         rpcStarted[p.nodeId] = p // from here the renew job extends its lease
 
         val freed = ArrayList<String>()
@@ -495,6 +497,31 @@ class SplitCoordinator(
             }
         }
         setPhone(p.nodeId) { it.copy(step = "rpc-server listening, waiting for weights", freed = freed, restore = restoreText(p.nodeId)) }
+    }
+
+    /**
+     * /rpc/start on [p]. A lender whose rpc port is still held (the earlier rpc-server has not gone yet; seen once on a phone:
+     * "port 50052 is still in use after two retries") is told to stop, given [Timing.portRetryDelayMs], and asked again, up to
+     * [Timing.portRetries] times, before the split fails. Any other refusal fails at once.
+     */
+    private suspend fun startRpcOn(p: PeerInfo): RpcStateDto {
+        var retries = 0
+        while (true) {
+            val failure: String = try {
+                val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList(), stopOwn = true))
+                if (st.state == "READY") return st
+                "rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.message ?: e.toString()
+            }
+            if (retries >= timing.portRetries || !MemCloudLogic.portInUse(failure)) throw IllegalStateException(failure)
+            retries++
+            step("${p.name}: port ${Ports.RPC} is still in use; stopping its rpc-server and trying again ($retries of ${timing.portRetries})")
+            stopRpcOn(p.addr)
+            delay(timing.portRetryDelayMs)
+        }
     }
 
     /** A 48-token answer from the small chat model that is about to be stopped: its tok/s is the scale for the split's number. */

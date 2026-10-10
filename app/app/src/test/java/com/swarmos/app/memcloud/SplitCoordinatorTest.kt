@@ -55,6 +55,9 @@ private class FakeEnv : SplitEnv {
     /** Peers no call reaches (switched off, out of range). */
     val unreachable = mutableSetOf<String>()
 
+    /** How many more /rpc/start calls to a peer fail because its rpc port is still held. */
+    val portHeld = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     /** Peers that answer but refuse /models/load. */
     val failingLoad = mutableSetOf<String>()
 
@@ -119,6 +122,11 @@ private class FakeEnv : SplitEnv {
         reach(addr)
         calls += "rpcStart $addr restore=${req.restore.joinToString(",") { it.role + ":" + it.file }} stopOwn=${req.stopOwn}"
         recordAtStart[addr] = saved.lastOrNull() ?: Persisted()
+        val held = portHeld[addr] ?: 0
+        if (held > 0) {
+            portHeld[addr] = held - 1
+            throw IllegalStateException("HTTP 409: {\"reason\":\"port 50052 is still in use after two retries (another app or an adb shell process holds it)\"}")
+        }
         if (addr in diesAfterStop) { // stopped its servers, then the connection or the phone was lost
             peerRoles[addr] = peerRoles.getValue(addr).mapValues { RoleSnap("STOPPED", null, null) }
             throw IllegalStateException("connection lost")
@@ -180,7 +188,7 @@ class SplitCoordinatorTest {
     private lateinit var env: FakeEnv
     private lateinit var scope: CoroutineScope
     private lateinit var c: SplitCoordinator
-    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30)
+    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1)
 
     @Before fun setUp() {
         env = FakeEnv()
@@ -522,6 +530,36 @@ class SplitCoordinatorTest {
         runBlocking { delay(150) }
         assertEquals(0, env.count("rpcStop 10.0.0.3:8787"))
         assertTrue(c.state.value.notices.isNotEmpty())
+    }
+
+    // ---------- finding 3: a lender whose rpc port is still held gets stop, wait, start again ----------
+
+    @Test fun aLenderWhosePortIsStillHeldIsStoppedAndAskedAgain() {
+        env.portHeld["10.0.0.2:8787"] = 1
+        assertNull(start("Phone B"))
+        val s = awaitState("READY") { it.phase == Phase.READY }
+        val b = env.calls.filter { it.contains("10.0.0.2:8787") && (it.startsWith("rpcStart") || it.startsWith("rpcStop")) }.map { it.substringBefore(' ') }
+        assertEquals(listOf("rpcStart", "rpcStop", "rpcStart"), b)
+        assertTrue(s.steps.any { it.contains("still in use") && it.contains("1 of 2") })
+    }
+
+    @Test fun aPortThatStaysHeldFailsTheSplitAfterTwoRetries() {
+        env.portHeld["10.0.0.2:8787"] = 10
+        assertNull(start("Phone B"))
+        val s = awaitState("FAILED") { it.phase == Phase.FAILED }
+        assertEquals(3, env.count("rpcStart 10.0.0.2:8787"))
+        assertTrue(s.failReason!!.contains("Phone B") && s.failReason!!.contains("in use"))
+        assertEquals(0, env.chatStarts.get())
+    }
+
+    @Test fun anotherRefusalIsNotRetried() {
+        env.failingRpcStart += "10.0.0.2:8787"
+        assertNull(start("Phone B"))
+        awaitState("FAILED") { it.phase == Phase.FAILED }
+        assertEquals(1, env.count("rpcStart 10.0.0.2:8787"))
+        assertTrue(MemCloudLogic.portInUse("HTTP 409: port 50052 is still in use after two retries"))
+        assertFalse(MemCloudLogic.portInUse("rpc-server failed to start"))
+        assertFalse(MemCloudLogic.portInUse(null))
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {
