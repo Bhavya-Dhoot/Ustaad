@@ -14,6 +14,7 @@ enum class BusyState(val id: String, val text: String, val stripWord: String?) {
     HalfDuty("half_duty", "running at half duty (warm phone)", "busy half"),
     PausedHot("paused_hot", "paused, the phone is hot", "paused hot"),
     PausedBattery("paused_battery", "paused, battery is low", "paused battery"),
+    PausedMemory("paused_memory", "paused, the phone is low on memory", "paused memory"),
     PausedBackground("paused_background", "paused, Ustaad is not in front", null),
     PausedModelRestarted("paused_model_restarted", "paused, the chat model was just (re)started", "paused model"),
     NoModel("no_model", "no chat model is loaded", null),
@@ -38,6 +39,8 @@ data class BusyConditions(
     /** -1 when unknown. */
     val batteryPct: Int,
     val charging: Boolean,
+    /** Free memory in MB from the health sample; -1 (or 0) when unknown. */
+    val ramAvailMb: Int = -1,
     /** The owner's Hammer switch on this phone: no half duty when warm. Every other rule still applies. */
     val hammer: Boolean = false,
     /** Milliseconds since Hammer was last switched off; [Long.MAX_VALUE] when it never was (or the switch-off ended with Keep busy). */
@@ -67,6 +70,13 @@ object BusyPolicy {
     /** After the chat server died during a filler job: no filler until it has been READY this long. */
     const val SETTLE_AFTER_DEATH_MS = 300_000L
 
+    /**
+     * Free memory under this pauses the loop: filler is not worth pushing a phone into memory pressure (the system would start
+     * killing apps, or Ustaad's own model servers). An unknown value (-1, or 0 as the health sample gives it before the
+     * first reading) does not pause.
+     */
+    const val MEM_FLOOR_MB = 1024
+
     /** After Hammer is switched off: no filler for this long, then the normal rule applies again. Real work is never held by it. */
     const val HAMMER_COOLDOWN_MS = 90_000L
 
@@ -75,10 +85,13 @@ object BusyPolicy {
      * yet, Ustaad in the background (allowed there only while charging with battery optimisations ignored: the vendor OS
      * froze and killed Ustaad and its model servers minutes after screen-off), real work seen in the last [IDLE_BEFORE_MS],
      * Hammer switched off less than [HAMMER_COOLDOWN_MS] ago, hot (thermal status 3 or more, the shared definition of too
-     * hot; it carries on by itself when the status is under 3 again), battery under the floor while not charging, then half
-     * duty at thermal status 2, else full duty. An unknown battery (-1) does not pause. With [BusyConditions.hammer] on only the
-     * half-duty step is skipped (status 2 runs at full duty); every rule above it, the pauses for real work, heat and battery
-     * included, applies as before, and the cool-down does not apply while Hammer is on.
+     * hot; it carries on by itself when the status is under 3 again), battery under the floor while not charging, free memory
+     * under [MEM_FLOOR_MB], then half duty at thermal status 2, else full duty. An unknown battery (-1) or unknown memory
+     * (-1 or 0) does not pause. Memory comes after heat and battery so the older pauses keep the state they always showed when
+     * several apply; it is before half duty because a phone short of memory should not run filler at any duty. With
+     * [BusyConditions.hammer] on only the half-duty step is skipped (status 2 runs at full duty); every rule above it, the
+     * pauses for real work, heat, battery and memory included, applies as before, and the cool-down does not apply while
+     * Hammer is on.
      */
     fun stateFor(c: BusyConditions): BusyState = when {
         !c.switchOn -> BusyState.Off
@@ -89,6 +102,7 @@ object BusyPolicy {
         !c.hammer && c.sinceHammerOffMs < HAMMER_COOLDOWN_MS -> BusyState.HammerCooldown
         ThermalLevel.isTooHot(c.thermalStatus) -> BusyState.PausedHot
         !c.charging && c.batteryPct in 0 until BATTERY_FLOOR_PCT -> BusyState.PausedBattery
+        c.ramAvailMb in 1 until MEM_FLOOR_MB -> BusyState.PausedMemory
         !c.hammer && ThermalLevel.isDegraded(c.thermalStatus) -> BusyState.HalfDuty
         else -> BusyState.Running
     }

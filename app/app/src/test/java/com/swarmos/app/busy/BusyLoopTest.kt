@@ -198,6 +198,23 @@ class BusyLoopTest {
         assertTrue(requests.isEmpty())
     }
 
+    @Test fun lowFreeMemoryPausesAndLooksAgainInTenSecondsEvenWithHammer() = runBlocking {
+        health = health!!.copy(ramAvailMb = BusyPolicy.MEM_FLOOR_MB - 1L)
+        execNow = 60_000
+        val l = loop()
+        assertEquals(10_000L, l.step())
+        assertEquals(BusyState.PausedMemory, states.last())
+        hammer = true
+        assertEquals(10_000L, l.step())
+        assertEquals(BusyState.PausedMemory, states.last())
+        assertTrue("no job was started", requests.isEmpty())
+        assertEquals("real work would get the slot at once", 0, exec.running)
+        health = health!!.copy(ramAvailMb = BusyPolicy.MEM_FLOOR_MB.toLong())
+        l.step()
+        assertEquals("the memory is read again before every job", BusyState.Running, states.last())
+        assertEquals(1, requests.size)
+    }
+
     @Test fun healthIsReadAgainBeforeEveryJob() = runBlocking {
         val l = loop()
         execNow = 60_000
