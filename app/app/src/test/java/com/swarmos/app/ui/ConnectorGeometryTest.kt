@@ -49,9 +49,9 @@ class ConnectorGeometryTest {
 
     @Test
     fun theWobbleIsVisibleOnANormalLineAndSmallerOnAShortOne() {
-        assertEquals(3f, wobbleAmplitude(240f).value, 0.001f)
-        assertEquals(3f, wobbleAmplitude(600f).value, 0.001f)
-        assertTrue(wobbleAmplitude(40f).value < 3f)
-        assertTrue(wobbleAmplitude(40f).value >= 1f)
+        assertEquals(3.2f, wobbleAmplitudeDp(240f), 0.001f)
+        assertEquals(3.2f, wobbleAmplitudeDp(60f), 0.001f) // the 60 dp visible part of a short Swarm connector
+        assertEquals(2.5f, wobbleAmplitudeDp(40f), 0.001f)
+        assertEquals(1.8f, wobbleAmplitudeDp(10f), 0.001f)
     }
 }

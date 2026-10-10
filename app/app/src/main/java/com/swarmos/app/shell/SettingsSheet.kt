@@ -112,7 +112,13 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                     .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                ScreenHeader("Settings") { Wordmark(Modifier.padding(bottom = 4.dp)) }
+                ScreenHeader("Settings") {
+                    // wordmark and version on one line: a separate version row pushed the Save button out of reach after Verify
+                    Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
+                        Wordmark()
+                        Text(" ${BuildConfig.VERSION_NAME}", style = SwarmType.mono.copy(fontSize = 12.sp, lineHeight = 18.sp, color = SwarmColors.graphite))
+                    }
+                }
                 Hairline()
                 SwarmTextField(
                     value = name,
@@ -134,7 +140,6 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                 )
                 AuditLogCard()
                 StopStartRow()
-                Text("Ustaad ${BuildConfig.VERSION_NAME}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
             }
             // pinned below the scroll area: it is always fully visible, however tall the content grows (after Verify, for one)
             PrimaryButton(
@@ -249,7 +254,7 @@ private fun StopStartRow() {
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            if (running) "Stops this phone's node server, the models and the wake locks."
+            if (running) "Stops this phone's node, models and wake locks."
             else "Ustaad is stopped. Starts the node server and the models again.",
             style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite),
         )

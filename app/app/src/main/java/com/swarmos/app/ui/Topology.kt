@@ -106,7 +106,7 @@ fun DoodleConnector(
             val start = Offset(a.x + ux * g0, a.y + uy * g0)
             val end = Offset(b.x - ux * g1, b.y - uy * g1)
             val jitter = Jitter(seed.toLong())
-            val line = smoothPath(wobblePoints(start, end, amp = wobbleAmplitude(len).toPx(), step = 24.dp.toPx(), jitter = jitter))
+            val line = smoothPath(wobblePoints(start, end, amp = wobbleAmplitudeDp(len / density).dp.toPx(), step = 16.dp.toPx(), jitter = jitter))
             val widthPx = thickness.value.dp.toPx()
             drawPath(line, SwarmColors.ink, style = inkStroke(widthPx, dashed, dashPx = 7.dp.toPx()))
             val dir = atan2((end.y - start.y).toDouble(), (end.x - start.x).toDouble())
@@ -157,8 +157,8 @@ internal fun clearanceBelowCaption(ux: Float, uy: Float, captionBottom: Float, h
     return minOf(below, beside) + margin
 }
 
-/** Sideways drift of a connector's hand-drawn line: 3 dp on a normal line, less on a very short one. */
-internal fun wobbleAmplitude(lengthPx: Float): Dp = (3f * (lengthPx / 240f).coerceIn(0.35f, 1f)).dp
+/** Sideways drift (dp) of a connector's hand-drawn line: up to 3.2 dp, and at least 1.8 dp so even a short line is visibly not ruled. */
+internal fun wobbleAmplitudeDp(lengthDp: Float): Float = (lengthDp / 16f).coerceIn(1.8f, 3.2f)
 
 @Preview(showBackground = true, backgroundColor = 0xFFF6F7F5, widthDp = 360)
 @Composable
