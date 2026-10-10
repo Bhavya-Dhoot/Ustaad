@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
+import com.swarmos.app.kb.KbPage
 import com.swarmos.app.ui.Hairline
 import com.swarmos.app.ui.HeroMetric
 import com.swarmos.app.ui.InkProgress
@@ -72,6 +73,7 @@ fun PduScreen() {
                 "ask" -> AskPage(onBack = { page = "library" }, onAudit = { page = "audit" })
                 "audit" -> AuditPage(onBack = { page = "ask" })
                 "scan" -> ScanPage(onBack = { page = "library" })
+                "kb" -> KbPage(onBack = { page = "library" })
                 else -> LibraryPage(go = { page = it })
             }
         }
@@ -186,6 +188,7 @@ private fun LibraryPage(go: (String) -> Unit) {
 
         PrimaryButton("Ask the swarm", { go("ask") }, Modifier.fillMaxWidth(), icon = SwarmIcon.Swarm)
         SecondaryButton("Scan a document", { go("scan") }, Modifier.fillMaxWidth())
+        SecondaryButton("Knowledge bank", { go("kb") }, Modifier.fillMaxWidth())
     }
 }
 
