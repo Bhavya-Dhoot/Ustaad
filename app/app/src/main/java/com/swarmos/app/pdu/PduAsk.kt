@@ -53,6 +53,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.swarmos.app.kb.KbDraft
+import com.swarmos.app.kb.KbHitCard
+import com.swarmos.app.kb.SaveCardPanel
+import com.swarmos.app.kb.SavedAnswerBlock
 import com.swarmos.app.ui.CitedText
 import com.swarmos.app.ui.LineIcon
 import com.swarmos.app.ui.SwarmIcon
@@ -142,6 +146,17 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
             TimingStrip(cur)
             if (cur.lexicalOnly) Tag("keyword search only on this phone, embedder not usable")
 
+            if (cur.cards.isNotEmpty()) {
+                SectionTitle("From the knowledge bank")
+                for (h in cur.cards) KbHitCard(h)
+            }
+            val savedHit = cur.savedAnswer
+            if (savedHit != null) {
+                SavedAnswerBlock(savedHit) { PduEngine.scope.launch { PduEngine.ask(cur.text, useSaved = false) } }
+                SecondaryButton("Query audit", onAudit, Modifier.fillMaxWidth())
+                return@Column
+            }
+
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle("Sources")
                 Spacer(Modifier.width(10.dp))
@@ -162,6 +177,14 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
                     scope.launch { opened = PduEngine.openSource(s).let { r -> if (r.opened) "opened on ${if (s.local) "this phone" else s.deviceName}" else "could not open: ${r.error}" } }
                 }
             }
+            val draft = KbDraft.of(cur)
+            var saving by remember(cur.qid) { mutableStateOf(false) }
+            var savedMessage by remember(cur.qid) { mutableStateOf<String?>(null) }
+            if (draft != null && savedMessage == null) {
+                if (saving) SaveCardPanel(draft, onSaved = { savedMessage = it; saving = false }, onCancel = { saving = false })
+                else SecondaryButton("Save to knowledge bank", { saving = true }, Modifier.fillMaxWidth())
+            }
+            savedMessage?.let { Tag(it) }
             SecondaryButton("Query audit", onAudit, Modifier.fillMaxWidth())
         }
     }
