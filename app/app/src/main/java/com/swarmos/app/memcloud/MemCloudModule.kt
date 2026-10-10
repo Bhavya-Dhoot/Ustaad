@@ -35,18 +35,26 @@ object MemCloudModule : SwarmModule {
             val via = runCatching { call.request.local.localAddress }.getOrNull()
             val from = call.request.headers[Signer.HEADER_NODE]
             when (val r = RpcWorker.start(req, via, from)) {
-                is RpcLender.StartResult.Ok -> call.respond(if (r.ready) HttpStatusCode.OK else HttpStatusCode.Conflict, RpcWorker.state(r.stopped))
+                is RpcLender.StartResult.Ok -> call.respond(if (r.ready) HttpStatusCode.OK else HttpStatusCode.Conflict, RpcWorker.state(r.stopped, r.loan))
                 is RpcLender.StartResult.Refused -> call.respond(HttpStatusCode.BadRequest, ErrorBody(r.message))
             }
         }
         // the driver extends the loan every few seconds; without a renewal it ends by itself after RpcLender.LEASE_MS
         post("/rpc/renew") {
-            when (val r = RpcWorker.renew(call.request.headers[Signer.HEADER_NODE])) {
+            val ref = body<LoanRef>() // the loan token; an older driver sends no body
+            when (val r = RpcWorker.renew(call.request.headers[Signer.HEADER_NODE], ref?.loan)) {
                 is RpcLender.RenewResult.Ok -> call.respond(RpcWorker.state())
                 is RpcLender.RenewResult.Refused -> call.respond(HttpStatusCode.Conflict, ErrorBody(r.message))
             }
         }
-        post("/rpc/stop") { call.respond(RpcWorker.stop("stopped by the driver")) }
+        // only the phone that holds the loan, and only for the loan it holds, can end it (409 otherwise)
+        post("/rpc/stop") {
+            val ref = body<LoanRef>()
+            when (val r = RpcWorker.stopFor(call.request.headers[Signer.HEADER_NODE], ref?.loan)) {
+                is RpcLender.StopResult.Ok -> call.respond(RpcWorker.state())
+                is RpcLender.StopResult.Refused -> call.respond(HttpStatusCode.Conflict, ErrorBody(r.message))
+            }
+        }
         // the tensor cache has no cap and the warm load depends on it, so it is cleared only on request (the state route reports its size)
         post("/rpc/cache/clear") {
             when (val r = RpcWorker.clearCache()) {

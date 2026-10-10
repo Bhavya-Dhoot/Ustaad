@@ -65,8 +65,10 @@ interface LenderEnv {
  * the link address the driver reached us on, which must be one of this phone's advertisable Wi-Fi or Direct addresses (never
  * 0.0.0.0, loopback or cellular), (3) a loan with a lease: the driver renews it every few seconds and it ends [LEASE_MS] after
  * the last renewal whatever the driver's heartbeat says, (4) stopped on `/rpc/stop` when the split ends. Whenever it stops, the
- * model servers that were stopped to make room are restarted from the list the driver sent with the start request, and one
- * driver at a time can hold the loan. Anyone on the same link who knows the port can still talk to rpc-server while it
+ * model servers that were stopped to make room are restarted from the list the driver sent with the start request. One
+ * driver at a time can hold the loan: it is reserved when a start is accepted, before anything suspends, and each loan has a
+ * generation token that renew and stop must carry (a driver on the older build sends none, which is accepted from the owner
+ * only). Anyone on the same link who knows the port can still talk to rpc-server while it
  * listens; that is the residual risk, and why the lease is short.
  */
 class RpcLender(private val env: LenderEnv) {
@@ -80,8 +82,11 @@ class RpcLender(private val env: LenderEnv) {
     }
 
     sealed interface StartResult {
-        /** [stopped]: the servers this phone stopped itself (only when the request asked it to), null otherwise. */
-        data class Ok(val ready: Boolean, val stopped: List<RestoreItem>? = null) : StartResult
+        /**
+         * [stopped]: the servers this phone stopped itself (only when the request asked it to), null otherwise.
+         * [loan]: the generation token of the loan, to be sent back on renew and stop.
+         */
+        data class Ok(val ready: Boolean, val stopped: List<RestoreItem>? = null, val loan: String? = null) : StartResult
         data class Refused(val message: String) : StartResult
     }
 
@@ -90,9 +95,25 @@ class RpcLender(private val env: LenderEnv) {
         data class Refused(val message: String) : RenewResult
     }
 
+    sealed interface StopResult {
+        object Ok : StopResult
+        data class Refused(val message: String) : StopResult
+    }
+
+    /**
+     * The loan one driver holds. It exists from the moment a start is accepted (before anything suspends), so a second driver is
+     * refused at once; [token] names this loan, so a late renew or stop from an earlier loan of the same driver finds it has ended.
+     */
+    private class Loan(val driverId: String?, val driverName: String, val token: String) {
+        /** True while /rpc/start is still working: the lease has not begun, and nothing may expire the loan. */
+        @Volatile var starting = true
+    }
+
     private val _lending = MutableStateFlow<Lending?>(null)
     val lending: StateFlow<Lending?> = _lending.asStateFlow()
 
+    /** The loan, or null. Changed only under the monitor of this object. */
+    @Volatile private var loan: Loan? = null
     @Volatile private var leaseUntilMs = 0L
     @Volatile private var restoreItems: List<RestoreItem> = emptyList()
 
@@ -108,11 +129,41 @@ class RpcLender(private val env: LenderEnv) {
         }
         val link = env.linkAddresses().firstOrNull { it.address == bind }
             ?: return StartResult.Refused("$bind is not a Wi-Fi or Direct link address of this phone")
-        val cur = _lending.value
-        if (cur != null && cur.driverId != fromNode) return StartResult.Refused("already lending memory to ${cur.driverName}")
         val where = if (link.direct) "direct link" else "Wi-Fi network"
         val driverName = env.peerName(fromNode) ?: fromNode ?: "another phone"
 
+        // Ownership is taken here, before the first suspension: two drivers cannot both see "no loan" and both be accepted.
+        var fresh = false
+        val mine: Loan = synchronized(this) {
+            val cur = loan
+            if (cur != null && cur.driverId != fromNode) return StartResult.Refused("this phone is lent to ${cur.driverName}")
+            if (cur != null && cur.starting) return StartResult.Refused("this phone is still starting rpc-server for ${cur.driverName}")
+            if (cur != null) {
+                cur.starting = true
+                cur
+            } else {
+                fresh = true
+                Loan(fromNode, driverName, java.util.UUID.randomUUID().toString()).also { loan = it }
+            }
+        }
+        var done = false
+        try {
+            val r = begin(req, bind, where, driverName, fromNode, mine, fresh)
+            done = r is StartResult.Ok && r.ready
+            return r
+        } finally {
+            synchronized(this) {
+                mine.starting = false
+                // a start that did not end in a running loan gives the reservation back (a loan that was already running stays as it was)
+                if (!done && fresh && loan === mine) {
+                    loan = null
+                    restoreItems = emptyList() // a driver on the older build restores its own servers when its start fails
+                }
+            }
+        }
+    }
+
+    private suspend fun begin(req: RpcStartRequest, bind: String, where: String, driverName: String, fromNode: String?, mine: Loan, fresh: Boolean): StartResult {
         // names from the request are reduced to a file name and must exist in the models folder
         val items = req.restore.mapNotNull { i ->
             val role = Role.parse(i.role) ?: return@mapNotNull null
@@ -147,38 +198,65 @@ class RpcLender(private val env: LenderEnv) {
         val ready = try {
             sameBind || env.startRpc(bind, req.port, req.threads ?: env.threads(), req.cache)
         } catch (e: Throwable) {
-            if (stopped != null) stop("rpc-server did not start")
+            if (stopped != null) stopIf(mine, "rpc-server did not start")
             throw e
         }
         if (!ready) {
-            if (stopped != null) stop("rpc-server did not start") // the servers this phone stopped for the loan come back now
+            if (stopped != null) stopIf(mine, "rpc-server did not start") // the servers this phone stopped for the loan come back now
             return StartResult.Ok(false)
         }
-        val now = env.nowMs() // wall clock, only for the "since" the screen shows
-        leaseUntilMs = env.elapsedMs() + LEASE_MS
-        val since = if (sameBind) cur?.sinceMs ?: now else now
-        _lending.value = Lending(fromNode, driverName, env.selfName(), bind, where, since, LEASE_MS)
+        synchronized(this) {
+            if (loan !== mine) {
+                // the loan was ended (a stop from its driver, or the banner) while rpc-server was starting
+                env.stopRpc()
+                return StartResult.Refused("the loan was ended while rpc-server was starting")
+            }
+            val now = env.nowMs() // wall clock, only for the "since" the screen shows
+            leaseUntilMs = env.elapsedMs() + LEASE_MS
+            val since = if (sameBind) _lending.value?.sinceMs ?: now else now
+            _lending.value = Lending(fromNode, driverName, env.selfName(), bind, where, since, LEASE_MS)
+        }
         env.setActivity(ACTIVITY_OWNER, "Lending memory to $driverName.") { stop("stopped from the banner") }
         if (!sameBind) env.audit("memcloud.rpc.start", "driver" to (fromNode ?: "?"), "bind" to bind, "link" to where)
-        return StartResult.Ok(true, stopped)
+        return StartResult.Ok(true, stopped, mine.token)
     }
 
-    /** The driver extends the loan; only the phone that started it may. */
-    fun renew(fromNode: String?): RenewResult {
-        val cur = _lending.value ?: return RenewResult.Refused("this phone is not lending memory")
+    /**
+     * The driver extends the loan; only the phone that started it may. [token] is the one /rpc/start returned; a driver on the older
+     * build sends none, which is accepted because the caller is the loan's owner.
+     */
+    fun renew(fromNode: String?, token: String? = null): RenewResult {
+        val cur = loan ?: return RenewResult.Refused("this phone is not lending memory")
         if (cur.driverId != fromNode) return RenewResult.Refused("the loan belongs to ${cur.driverName}")
+        if (token != null && token != cur.token) return RenewResult.Refused("that loan has ended; this phone is lending under a newer one")
+        if (cur.starting) return RenewResult.Ok(LEASE_MS) // the lease begins when the start is over
         if (!env.rpcReady()) {
-            stop("rpc-server is not running")
+            stopIf(cur, "rpc-server is not running")
             return RenewResult.Refused("rpc-server is not running")
         }
         leaseUntilMs = env.elapsedMs() + LEASE_MS
         return RenewResult.Ok(LEASE_MS)
     }
 
+    /**
+     * The driver ends the loan. Checked and done in one step under the monitor, so a stop from an earlier loan or another phone cannot
+     * end a newer loan. With no loan at all it still cleans up (stops rpc-server, restores what is listed), as before.
+     */
+    fun stopFrom(fromNode: String?, token: String?, reason: String): StopResult = synchronized(this) {
+        val cur = loan
+        if (cur != null) {
+            if (cur.driverId != fromNode) return StopResult.Refused("the loan belongs to ${cur.driverName}")
+            if (token != null && token != cur.token) return StopResult.Refused("that loan has ended; this phone is lending under a newer one")
+        }
+        stop(reason)
+        StopResult.Ok
+    }
+
     /** Stops rpc-server and brings back the model servers the driver stopped to make room. Safe to call when not lending. */
-    fun stop(reason: String) {
+    fun stop(reason: String) = synchronized(this) {
         val had = _lending.value
         env.stopRpc()
+        loan = null
         _lending.value = null
         env.clearActivity(ACTIVITY_OWNER)
         val items = restoreItems
@@ -190,13 +268,19 @@ class RpcLender(private val env: LenderEnv) {
         if (had != null) env.audit("memcloud.rpc.stop", "reason" to reason, "restored" to items.size.toString())
     }
 
+    /** [stop] only if [which] is still the loan: the lease timer and a failed start must not end a newer loan. */
+    private fun stopIf(which: Loan, reason: String) = synchronized(this) {
+        if (loan === which) stop(reason)
+    }
+
     /** Call about once a second: ends the loan when the lease has run out, or when rpc-server died on its own. */
     fun tick() {
-        val cur = _lending.value ?: return
+        val cur = loan ?: return
+        if (cur.starting) return
         if (!env.rpcReady()) {
-            stop("rpc-server stopped")
+            stopIf(cur, "rpc-server stopped")
             return
         }
-        if (env.elapsedMs() >= leaseUntilMs) stop("lease of ${cur.leaseMs / 1000} s expired: ${cur.driverName} did not renew it")
+        if (env.elapsedMs() >= leaseUntilMs) stopIf(cur, "lease of ${LEASE_MS / 1000} s expired: ${cur.driverName} did not renew it")
     }
 }

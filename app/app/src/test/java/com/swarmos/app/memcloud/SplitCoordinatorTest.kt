@@ -62,6 +62,13 @@ private class FakeEnv : SplitEnv {
     /** How many more /rpc/start calls to a peer fail because its rpc port is still held. */
     val portHeld = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
+    /** The loan token the driver sent with its last renew and stop to each peer ("none": no token). */
+    val renewLoans = java.util.concurrent.ConcurrentHashMap<String, String>()
+    val stopLoans = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Peers that answer /rpc/stop with 409: the loan is another phone's or a newer one. */
+    val refusingStop = mutableSetOf<String>()
+
     /** Peers that answer but refuse /models/load. */
     val failingLoad = mutableSetOf<String>()
 
@@ -161,12 +168,17 @@ private class FakeEnv : SplitEnv {
             val running = peerRoles.getValue(addr).filterValues { it.state != "STOPPED" }
             calls += "lenderStopsOwn $addr ${running.keys.sorted().joinToString(",")}"
             peerRoles[addr] = peerRoles.getValue(addr).mapValues { RoleSnap("STOPPED", null, null) }
-            return dto("READY").copy(stoppedOwn = running.map { (r, s) -> RestoreItem(r, s.file!!, s.rssMb) })
+            return dto("READY").copy(stoppedOwn = running.map { (r, s) -> RestoreItem(r, s.file!!, s.rssMb) }, loan = "loan-$addr")
         }
         return dto("READY")
     }
-    override suspend fun peerRpcRenew(addr: String): RpcStateDto { calls += "rpcRenew $addr"; return dto("READY") }
-    override suspend fun peerRpcStop(addr: String) { reach(addr); calls += "rpcStop $addr" }
+    override suspend fun peerRpcRenew(addr: String, loan: String?): RpcStateDto { calls += "rpcRenew $addr"; renewLoans[addr] = loan ?: "none"; return dto("READY") }
+    override suspend fun peerRpcStop(addr: String, loan: String?) {
+        reach(addr)
+        stopLoans[addr] = loan ?: "none"
+        if (addr in refusingStop) throw LoanNotOurs("the loan belongs to Phone X")
+        calls += "rpcStop $addr"
+    }
     override suspend fun peerRpcState(addr: String): RpcStateDto {
         val n = probeCount.merge(addr, 1, Int::plus)!!
         if (addr in deadRpc) throw IllegalStateException("no answer")
@@ -777,6 +789,40 @@ class SplitCoordinatorTest {
         val s = awaitState("READY") { it.phase == Phase.READY }
         assertEquals(listOf(2, 10, 20), s.shares.map { it.layers })
         assertEquals(listOf("Phone A", "Phone B", "Phone C"), s.shares.map { it.name })
+    }
+
+    // ---------- finding 10: the driver carries the loan's token ----------
+
+    @Test fun theDriverSendsTheLoansTokenOnEveryRenewAndOnStop() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        awaitCall("a renewal") { env.renewLoans["10.0.0.2:8787"] != null }
+        assertEquals("loan-10.0.0.2:8787", env.renewLoans["10.0.0.2:8787"])
+        c.stop()
+        awaitState("IDLE") { it.phase == Phase.IDLE }
+        assertEquals("loan-10.0.0.2:8787", env.stopLoans["10.0.0.2:8787"])
+    }
+
+    @Test fun aLenderOnTheOlderBuildGetsNoTokenAndNothingBreaks() {
+        env.oldLenders += "10.0.0.2:8787"
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        awaitCall("a renewal") { env.renewLoans["10.0.0.2:8787"] != null }
+        assertEquals("none", env.renewLoans["10.0.0.2:8787"])
+        c.stop()
+        awaitState("IDLE") { it.phase == Phase.IDLE }
+        assertEquals("none", env.stopLoans["10.0.0.2:8787"])
+    }
+
+    @Test fun aLenderThatSaysTheLoanIsNotOursAnymoreIsLeftAloneAndTheRecordGoes() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.refusingStop += "10.0.0.2:8787" // another phone holds it now, or a newer loan of ours
+        c.stop()
+        val s = awaitState("IDLE") { it.phase == Phase.IDLE }
+        assertTrue(s.notices.isEmpty() && s.pendingRestore.isEmpty())
+        assertEquals("nothing is loaded on a phone that is serving someone else", 0, env.count("loadModel 10.0.0.2:8787"))
+        assertEquals(Persisted(), env.saved.last())
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {

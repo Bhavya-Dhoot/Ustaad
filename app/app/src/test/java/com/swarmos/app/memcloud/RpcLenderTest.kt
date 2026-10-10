@@ -1,9 +1,13 @@
 package com.swarmos.app.memcloud
 
 import com.swarmos.app.llm.Role
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -29,6 +33,7 @@ private class FakeLender : LenderEnv {
     override fun threads() = 6
     override suspend fun startRpc(bind: String, port: Int, threads: Int, cache: Boolean): Boolean {
         calls += "startRpc $bind:$port t=$threads cache=$cache"
+        startGate?.await()
         if (throwOnStartRpc) throw IllegalStateException("exec failed")
         if (startFails) return false
         ready = true; this.bind = bind; this.port = port
@@ -44,6 +49,9 @@ private class FakeLender : LenderEnv {
     /** The chat and embedding servers that run on this phone until the lender stops them. */
     val own = mutableListOf(RestoreItem("chat", "small.gguf", 5000), RestoreItem("embed", "embed.gguf", 600))
     var throwOnStartRpc = false
+
+    /** When set, startRpc waits here: a start that is still in flight. */
+    var startGate: CompletableDeferred<Unit>? = null
     var restoringAtStop = mutableListOf<List<RestoreItem>>()
     lateinit var lender: RpcLender
     var memAvail = 20_000L
@@ -62,6 +70,14 @@ private class FakeLender : LenderEnv {
 }
 
 class RpcLenderTest {
+    /** A start that worked: rpc-server is ready, [stopped] is what the lender stopped itself, and the loan has a token. */
+    private fun assertOk(r: RpcLender.StartResult, stopped: List<RestoreItem>? = null) {
+        assertTrue("$r", r is RpcLender.StartResult.Ok && r.ready)
+        r as RpcLender.StartResult.Ok
+        assertEquals(stopped, r.stopped)
+        assertNotNull(r.loan)
+    }
+
     private val env = FakeLender()
     private val lender = RpcLender(env).also { env.lender = it }
     private val restore = listOf(RestoreItem("chat", "small.gguf"), RestoreItem("embed", "embed.gguf"))
@@ -78,13 +94,13 @@ class RpcLenderTest {
         assertTrue(env.calls.none { it.startsWith("startRpc") })
         // the request's own local address is used when the body names none
         val r = runBlocking { lender.start(RpcStartRequest(), "192.168.242.23", "c") }
-        assertEquals(RpcLender.StartResult.Ok(true), r)
+        assertOk(r)
         assertEquals("192.168.242.23", env.bind)
         assertEquals("Wi-Fi network", lender.lending.value!!.link)
     }
 
     @Test fun aDirectAddressIsNamedAsTheDirectLink() {
-        assertEquals(RpcLender.StartResult.Ok(true), start("192.168.49.1"))
+        assertOk(start("192.168.49.1"))
         val l = lender.lending.value!!
         assertEquals("direct link", l.link)
         assertEquals("Phone A is lending memory to Phone C on the direct link (192.168.49.1).", l.sentence)
@@ -129,7 +145,7 @@ class RpcLenderTest {
         assertTrue(other is RpcLender.StartResult.Refused)
         assertTrue((other as RpcLender.StartResult.Refused).message.contains("Phone C"))
         // the same driver may call start again (idempotent): rpc-server is not restarted
-        assertEquals(RpcLender.StartResult.Ok(true), start(from = "c"))
+        assertOk(start(from = "c"))
         assertEquals(1, env.calls.count { it.startsWith("startRpc") })
     }
 
@@ -177,7 +193,7 @@ class RpcLenderTest {
 
     @Test fun aLenderThatIsAskedToStopItsOwnServersRecordsTheListFirstAndStopsThemBeforeRpcServerStarts() {
         val r = start(restore = emptyList(), stopOwn = true)
-        assertEquals(RpcLender.StartResult.Ok(true, listOf(RestoreItem("chat", "small.gguf", 5000), RestoreItem("embed", "embed.gguf", 600))), r)
+        assertOk(r, listOf(RestoreItem("chat", "small.gguf", 5000), RestoreItem("embed", "embed.gguf", 600)))
         assertEquals(listOf("stopOwn chat", "stopOwn embed"), env.calls.filter { it.startsWith("stopOwn") })
         assertTrue("the servers are stopped before rpc-server starts", env.calls.indexOf("stopOwn embed") < env.calls.indexOfFirst { it.startsWith("startRpc") })
         // when each server was stopped the list already named both of them
@@ -210,7 +226,7 @@ class RpcLenderTest {
 
     @Test fun aDriverThatDoesNotAskForItGetsTheOldBehaviour() {
         val r = start()
-        assertEquals(RpcLender.StartResult.Ok(true), r)
+        assertOk(r)
         assertTrue("nothing is stopped by the lender", env.calls.none { it.startsWith("stopOwn") })
         assertEquals(listOf("chat", "embed"), lender.restoring.map { it.role })
     }
@@ -226,7 +242,7 @@ class RpcLenderTest {
         assertNull(lender.lending.value)
         assertTrue(lender.restoring.isEmpty())
         env.thermal = 3
-        assertEquals(RpcLender.StartResult.Ok(true, listOf(RestoreItem("chat", "small.gguf", 5000), RestoreItem("embed", "embed.gguf", 600))), start(stopOwn = true))
+        assertOk(start(stopOwn = true), listOf(RestoreItem("chat", "small.gguf", 5000), RestoreItem("embed", "embed.gguf", 600)))
     }
 
     @Test fun aPhoneWithTooLittleMemoryRefusesBeforeStoppingAnything() {
@@ -256,7 +272,7 @@ class RpcLenderTest {
         assertTrue(start() is RpcLender.StartResult.Ok)
         // the loan holds the weights now, so memory is low and the phone is warm; the same driver starting again must not be refused
         env.thermal = 5
-        assertEquals(RpcLender.StartResult.Ok(true), start(needMb = 7_000))
+        assertOk(start(needMb = 7_000))
     }
 
     // ---------- finding 6: the lease runs on elapsed time, not on the wall clock ----------
@@ -294,6 +310,106 @@ class RpcLenderTest {
     @Test fun theLendingSinceStaysOnTheWallClock() {
         start()
         assertEquals(1_000_000L, lender.lending.value!!.sinceMs)
+    }
+
+    // ---------- finding 10: ownership is taken before the first suspension; each loan has a generation token ----------
+
+    private fun tokenOf(r: RpcLender.StartResult) = (r as RpcLender.StartResult.Ok).loan!!
+    private fun req(stopOwn: Boolean = false) = RpcStartRequest(bind = "192.168.49.1", stopOwn = stopOwn)
+
+    @Test fun twoDriversCannotBothBeAcceptedWhileTheFirstStartIsStillSuspended() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        env.startGate = gate
+        val first = async { lender.start(req(), null, "c") }
+        yield() // the first start runs until rpc-server is starting
+        assertTrue(env.calls.any { it.startsWith("startRpc") })
+        val second = lender.start(req(), null, "x")
+        assertTrue("$second", second is RpcLender.StartResult.Refused && second.message.contains("lent to Phone C"))
+        gate.complete(Unit)
+        assertOk(first.await())
+        assertEquals("rpc-server was started once, for the first driver", 1, env.calls.count { it.startsWith("startRpc") })
+        assertEquals("Phone C", lender.lending.value!!.driverName)
+    }
+
+    @Test fun theSameDriverAskingTwiceAtOnceIsToldTheFirstStartIsStillRunning() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        env.startGate = gate
+        val first = async { lender.start(req(), null, "c") }
+        yield()
+        val again = lender.start(req(), null, "c")
+        assertTrue("$again", again is RpcLender.StartResult.Refused && again.message.contains("still starting"))
+        gate.complete(Unit)
+        assertOk(first.await())
+    }
+
+    @Test fun aRefusedOrFailedStartGivesTheReservationBack() {
+        env.thermal = 5
+        assertTrue(start(from = "c") is RpcLender.StartResult.Refused)
+        env.thermal = 0
+        env.startFails = true
+        assertEquals(RpcLender.StartResult.Ok(false), start(from = "c"))
+        env.startFails = false
+        assertOk(start(from = "x")) // nothing is held for c
+        assertEquals("x", lender.lending.value!!.driverName)
+    }
+
+    @Test fun aStopFromTheDriverWhileRpcServerIsStartingEndsTheLoanForGood() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        env.startGate = gate
+        val first = async { lender.start(RpcStartRequest(bind = "192.168.49.1", stopOwn = true), null, "c") }
+        yield()
+        assertEquals(RpcLender.StopResult.Ok, lender.stopFrom("c", null, "stopped by the driver"))
+        assertTrue("the servers it had stopped are back", env.calls.contains("restore chat small.gguf") && env.calls.contains("restore embed embed.gguf"))
+        gate.complete(Unit)
+        val r = first.await()
+        assertTrue("$r", r is RpcLender.StartResult.Refused)
+        assertNull(lender.lending.value)
+        assertFalse("rpc-server does not run on for nobody", env.ready)
+        assertEquals(1, env.calls.count { it == "restore chat small.gguf" })
+    }
+
+    @Test fun renewAndStopMustCarryTheTokenOfTheLoan() {
+        val t = tokenOf(start())
+        assertTrue(lender.renew("c", "not-this-loan") is RpcLender.RenewResult.Refused)
+        assertEquals(RpcLender.RenewResult.Ok(RpcLender.LEASE_MS), lender.renew("c", t))
+        assertEquals("a driver on the older build sends no token and is the owner", RpcLender.RenewResult.Ok(RpcLender.LEASE_MS), lender.renew("c", null))
+        assertTrue(lender.stopFrom("c", "not-this-loan", "late") is RpcLender.StopResult.Refused)
+        assertTrue(lender.stopFrom("x", t, "late") is RpcLender.StopResult.Refused)
+        assertNotNull("the loan runs on", lender.lending.value)
+        assertEquals(RpcLender.StopResult.Ok, lender.stopFrom("c", t, "stopped by the driver"))
+        assertNull(lender.lending.value)
+        assertTrue(env.calls.contains("restore chat small.gguf"))
+    }
+
+    @Test fun aStopWithoutATokenIsAcceptedOnlyFromTheOwner() {
+        start(from = "c")
+        val other = lender.stopFrom("x", null, "stopped by the driver")
+        assertTrue(other is RpcLender.StopResult.Refused && other.message.contains("Phone C"))
+        assertNotNull(lender.lending.value)
+        assertEquals(RpcLender.StopResult.Ok, lender.stopFrom("c", null, "stopped by the driver"))
+        assertNull(lender.lending.value)
+    }
+
+    @Test fun aLateStopFromAnEarlierLoanCannotEndTheNewOne() {
+        val t1 = tokenOf(start(from = "c"))
+        assertEquals(RpcLender.StopResult.Ok, lender.stopFrom("c", t1, "stopped by the driver"))
+        val t2 = tokenOf(start(from = "c"))
+        assertNotEquals("every loan has its own token", t1, t2)
+        // the same driver, an earlier loan: refused, and the new loan keeps its lease
+        assertTrue(lender.stopFrom("c", t1, "late") is RpcLender.StopResult.Refused)
+        assertTrue(lender.renew("c", t1) is RpcLender.RenewResult.Refused)
+        assertNotNull(lender.lending.value)
+        // another driver takes over; the old one's late stop (right token for its own loan) is refused too
+        lender.stopFrom("c", t2, "stopped by the driver")
+        assertOk(start(from = "x"))
+        assertTrue(lender.stopFrom("c", t2, "late") is RpcLender.StopResult.Refused)
+        assertNotNull(lender.lending.value)
+    }
+
+    @Test fun aRestartByTheSameDriverKeepsTheLoanAndItsToken() {
+        val t = tokenOf(start(from = "c"))
+        assertEquals(t, tokenOf(start(from = "c")))
+        assertEquals(1, env.calls.count { it.startsWith("startRpc") })
     }
 
     @Test fun theLendingActivityOwnerIsNotTheDrivers() {

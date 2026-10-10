@@ -106,6 +106,9 @@ class SplitCoordinator(
     private val touched = ConcurrentHashMap<String, PeerInfo>()
     private val rpcStarted = ConcurrentHashMap<String, PeerInfo>()
 
+    /** The generation token each lender returned from /rpc/start (node id to token); sent back on renew and stop. A lender on the older build gives none. */
+    private val loans = ConcurrentHashMap<String, String>()
+
     /**
      * Peers whose stopped servers are not confirmed back: node id to Node API address. Their items stay in [restore] and in the
      * persisted record until a call to the peer succeeds (the peer was unreachable, or refused).
@@ -198,22 +201,26 @@ class SplitCoordinator(
      * Brings a peer back to how it was: rpc-server stopped (a lender restores its own servers when that happens), and every server in
      * [items] that is still stopped is loaded again. False when the peer could not be reached or refused, so the caller keeps the record.
      */
-    private suspend fun stopRpcOn(addr: String): Boolean = try {
-        env.peerRpcStop(addr)
+    private suspend fun stopRpcOn(addr: String, loan: String? = null): Boolean = try {
+        env.peerRpcStop(addr, loan)
         true
     } catch (e: CancellationException) {
         throw e
+    } catch (e: LoanNotOurs) {
+        true // the loan is another phone's or a newer one: there is nothing of ours left to end
     } catch (e: Exception) {
         false
     }
 
-    private suspend fun confirmPeerRestored(addr: String, items: List<RestoreItem>): Boolean = try {
-        env.peerRpcStop(addr)
+    private suspend fun confirmPeerRestored(addr: String, items: List<RestoreItem>, loan: String? = null): Boolean = try {
+        env.peerRpcStop(addr, loan)
         val snap = env.peerModels(addr)
         for (i in items) if (snap[i.role]?.state == "STOPPED") env.peerLoadModel(addr, i.role, i.file)
         true
     } catch (e: CancellationException) {
         throw e
+    } catch (e: LoanNotOurs) {
+        true // another phone holds this lender now (or a newer loan of ours): whatever we stopped came back when ours ended
     } catch (e: Exception) {
         false
     }
@@ -479,7 +486,8 @@ class SplitCoordinator(
      */
     private suspend fun releasePeer(nodeId: String, addr: String, rpcRan: Boolean) {
         val items = restore[nodeId] ?: emptyList()
-        val ok = if (rpcRan) stopRpcOn(addr) else confirmPeerRestored(addr, items)
+        val loan = loans.remove(nodeId)
+        val ok = if (rpcRan) stopRpcOn(addr, loan) else confirmPeerRestored(addr, items, loan)
         if (ok || items.isEmpty()) {
             restore.remove(nodeId)
         } else {
@@ -533,6 +541,8 @@ class SplitCoordinator(
         step("${p.name}: starting rpc-server on ${p.host}:${Ports.RPC} with the tensor cache")
         val st = startRpcOn(p)
         rpcStarted[p.nodeId] = p // from here the renew job extends its lease
+        val token = st.loan
+        if (token != null) loans[p.nodeId] = token else loans.remove(p.nodeId)
 
         val freed = ArrayList<String>()
         val own = st.stoppedOwn
@@ -650,7 +660,7 @@ class SplitCoordinator(
                     Phase.IDLE, Phase.FAILED, Phase.BASELINE -> return@launch
                     else -> degradedSince = 0L
                 }
-                for (p in rpcStarted.values.toList()) launch { runCatching { env.peerRpcRenew(p.addr) } }
+                for (p in rpcStarted.values.toList()) launch { runCatching { env.peerRpcRenew(p.addr, loans[p.nodeId]) } }
             }
         }
     }

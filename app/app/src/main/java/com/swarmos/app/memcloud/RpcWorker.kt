@@ -89,7 +89,10 @@ object RpcWorker {
             lender.start(req, viaAddress, fromNode).also { if (it is RpcLender.StartResult.Ok && it.ready) ensureTicking() }
         }.await()
 
-    fun renew(fromNode: String?): RpcLender.RenewResult = lender.renew(fromNode)
+    fun renew(fromNode: String?, loan: String? = null): RpcLender.RenewResult = lender.renew(fromNode, loan)
+
+    /** The driver ends its loan; refused when the loan is another phone's or a newer one. */
+    fun stopFor(fromNode: String?, loan: String?): RpcLender.StopResult = lender.stopFrom(fromNode, loan, "stopped by the driver")
 
     fun stop(reason: String): RpcStateDto {
         lender.stop(reason)
@@ -110,7 +113,7 @@ object RpcWorker {
 
     internal fun bindOf(args: List<String>): String? = args.lastIndexOf("-H").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 
-    fun state(stopped: List<RestoreItem>? = null): RpcStateDto {
+    fun state(stopped: List<RestoreItem>? = null, loan: String? = null): RpcStateDto {
         val st = LlamaRuntime.statusOf(Role.RPC)
         val running = st.state != ServerState.STOPPED
         val cache = cacheStats()
@@ -134,6 +137,7 @@ object RpcWorker {
             lendingTo = lender.lending.value?.driverName,
             leaseMsLeft = lender.leaseMsLeft(),
             stoppedOwn = stopped,
+            loan = loan,
         )
     }
 

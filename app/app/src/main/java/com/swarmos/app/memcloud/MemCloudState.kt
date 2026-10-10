@@ -200,4 +200,10 @@ data class RpcStateDto(
      * (empty when none were running). Null from an older phone, which stops nothing and leaves that to the driver.
      */
     val stoppedOwn: List<RestoreItem>? = null,
+    /** Only in the answer to /rpc/start: the generation token of the loan, sent back as [LoanRef] on renew and stop. Null from an older phone. */
+    val loan: String? = null,
 )
+
+/** Optional body of /rpc/renew and /rpc/stop: which loan the call is about. Older drivers send no body, which is accepted from the loan's owner. */
+@Serializable
+data class LoanRef(val loan: String? = null)
