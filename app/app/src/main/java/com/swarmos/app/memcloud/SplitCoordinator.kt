@@ -85,6 +85,9 @@ class SplitCoordinator(
     /** True while the CHAT server on this phone is the one this coordinator started (split or baseline). */
     @Volatile private var ownsChat = false
 
+    /** True when the running split was started past the memory check (a re-plan keeps the choice). */
+    @Volatile private var forced = false
+
     /** What each phone was running before MemoryCloud stopped it ("self" is this phone). Survives an app restart. */
     private val restore = ConcurrentHashMap<String, List<RestoreItem>>()
 
@@ -263,7 +266,7 @@ class SplitCoordinator(
         if (!MemCloudLogic.canStart(ph)) return "a split is $ph; stop it or re-plan first"
         val f = env.modelFile(req.file) ?: return "no such model file in the models folder: ${req.file}"
         val mode = if (req.mode.equals("ram", true)) SplitMode.RAM else SplitMode.EQUAL
-        opJob = scope.launch { onAppStart(); runLoad(f.name, req.peers, mode, req.layers) }
+        opJob = scope.launch { onAppStart(); runLoad(f.name, req.peers, mode, req.layers, req.force) }
         null
     }
 
@@ -282,7 +285,7 @@ class SplitCoordinator(
         opJob = scope.launch {
             old?.cancel(ReplanCancel())
             teardownSplit()
-            runLoad(file, keep, SplitMode.EQUAL, null)
+            runLoad(file, keep, SplitMode.EQUAL, null, forced)
         }
         null
     }
@@ -301,7 +304,7 @@ class SplitCoordinator(
         }
     }
 
-    private suspend fun runLoad(file: String, sel: List<String>, mode: SplitMode, manual: List<Int>?) {
+    private suspend fun runLoad(file: String, sel: List<String>, mode: SplitMode, manual: List<Int>?, force: Boolean) {
         val t0 = env.nowMs()
         stopWatch()
         cancelGeneration()
@@ -322,7 +325,11 @@ class SplitCoordinator(
             if (!SplitPlanner.argsMatchPlan(sp, args)) return fail("Internal error: the llama-server flags do not place the layers as planned: $args")
             plan = sp
             participants = peers
-            val warnings = sp.fits().filter { !it.ok }.map { "${it.device.name} has ${mb(it.haveMb)} free and the planning estimate is ${mb(it.needMb)}" }
+            forced = force
+            val misfits = sp.fits().filter { !it.ok }
+            val warnings = misfits.map { "${it.device.name} has ${mb(it.haveMb)} free and the planning estimate is ${mb(it.needMb)}" }
+            // refuse before anything is stopped or sent; `force` is the explicit way to run the "does not fit" demonstration
+            if (misfits.isNotEmpty() && !force) return fail("The plan does not fit: ${warnings.joinToString("; ")}. Nothing was started or stopped. Give a phone fewer layers, add a phone, or start with force to try anyway.")
             val moe = if (info.isMoe) info.moeLayers else 0
             _state.update {
                 it.copy(
@@ -499,6 +506,10 @@ class SplitCoordinator(
         setPhone(p.nodeId) { it.copy(step = "rpc-server listening, waiting for weights", freed = freed, restore = restoreText(p.nodeId)) }
     }
 
+    /** What this phone asks of [p]: its planned share and the allowance; null past the memory check (force), so the lender does not refuse what the driver was told to try. */
+    private fun needMbFor(p: PeerInfo): Long? =
+        if (forced) null else plan?.fits()?.firstOrNull { it.device.nodeId == p.nodeId }?.needMb
+
     /**
      * /rpc/start on [p]. A lender whose rpc port is still held (the earlier rpc-server has not gone yet; seen once on a phone:
      * "port 50052 is still in use after two retries") is told to stop, given [Timing.portRetryDelayMs], and asked again, up to
@@ -508,7 +519,7 @@ class SplitCoordinator(
         var retries = 0
         while (true) {
             val failure: String = try {
-                val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList(), stopOwn = true))
+                val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList(), stopOwn = true, needMb = needMbFor(p)))
                 if (st.state == "READY") return st
                 "rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}"
             } catch (e: CancellationException) {

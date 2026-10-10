@@ -55,6 +55,9 @@ private class FakeEnv : SplitEnv {
     /** Peers no call reaches (switched off, out of range). */
     val unreachable = mutableSetOf<String>()
 
+    /** The megabytes the driver asked of each peer in its last /rpc/start (-1: none). */
+    val needMbSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     /** How many more /rpc/start calls to a peer fail because its rpc port is still held. */
     val portHeld = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
@@ -122,6 +125,7 @@ private class FakeEnv : SplitEnv {
         reach(addr)
         calls += "rpcStart $addr restore=${req.restore.joinToString(",") { it.role + ":" + it.file }} stopOwn=${req.stopOwn}"
         recordAtStart[addr] = saved.lastOrNull() ?: Persisted()
+        needMbSeen[addr] = req.needMb ?: -1L
         val held = portHeld[addr] ?: 0
         if (held > 0) {
             portHeld[addr] = held - 1
@@ -560,6 +564,40 @@ class SplitCoordinatorTest {
         assertTrue(MemCloudLogic.portInUse("HTTP 409: port 50052 is still in use after two retries"))
         assertFalse(MemCloudLogic.portInUse("rpc-server failed to start"))
         assertFalse(MemCloudLogic.portInUse(null))
+    }
+
+    // ---------- finding 4: a plan that does not fit is refused, unless forced ----------
+
+    private fun makeBTight() {
+        env.peerList = listOf(PeerInfo("b", "Phone B", "10.0.0.2:8787", false, 100, 1), PeerInfo("c", "Phone C", "10.0.0.3:8787", false, 9000, 1))
+        env.peerRoles["10.0.0.2:8787"] = mapOf("chat" to RoleSnap("STOPPED", null, null), "embed" to RoleSnap("STOPPED", null, null))
+    }
+
+    @Test fun aPlanThatDoesNotFitIsRefusedBeforeAnythingIsStoppedOrSent() {
+        makeBTight()
+        assertNull(start("Phone B"))
+        val s = awaitState("FAILED") { it.phase == Phase.FAILED }
+        assertTrue(s.failReason!!.contains("does not fit") && s.failReason!!.contains("Phone B has 100 MB free"))
+        assertTrue("it says how to go on", s.failReason!!.contains("force"))
+        assertEquals(0, env.count("rpcStart"))
+        assertEquals(0, env.count("stopLocal"))
+        assertEquals(0, env.chatStarts.get())
+    }
+
+    @Test fun theOverrideRunsTheDeliberateDoesNotFitDemonstration() {
+        makeBTight()
+        assertNull(c.start(StartRequest("model.gguf", listOf("Phone B"), force = true)))
+        val s = awaitState("READY") { it.phase == Phase.READY }
+        assertTrue("the warning stays on the state", s.warnings.any { it.contains("Phone B") })
+        assertEquals("the lender is not asked for what the driver was told to try", -1L, env.needMbSeen["10.0.0.2:8787"])
+    }
+
+    @Test fun theLenderIsAskedForExactlyItsPlannedShare() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        val plan = c.previewPlan("model.gguf", listOf("Phone B"), SplitMode.EQUAL)
+        assertEquals(plan.fits()[1].needMb, env.needMbSeen["10.0.0.2:8787"])
+        assertTrue(plan.fits()[1].needMb > SplitPlanner.OVERHEAD_MB)
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {

@@ -44,6 +44,10 @@ private class FakeLender : LenderEnv {
     var throwOnStartRpc = false
     var restoringAtStop = mutableListOf<List<RestoreItem>>()
     lateinit var lender: RpcLender
+    var memAvail = 20_000L
+    var thermal = 0
+    override fun memAvailMb() = memAvail
+    override fun thermalStatus() = thermal
     override fun ownModels() = own.toList()
     override fun stopOwn(role: Role) {
         calls += "stopOwn ${role.tag}"
@@ -60,8 +64,8 @@ class RpcLenderTest {
     private val lender = RpcLender(env).also { env.lender = it }
     private val restore = listOf(RestoreItem("chat", "small.gguf"), RestoreItem("embed", "embed.gguf"))
 
-    private fun start(bind: String? = "192.168.49.1", from: String? = "c", restore: List<RestoreItem> = this.restore, stopOwn: Boolean = false) =
-        runBlocking { lender.start(RpcStartRequest(bind = bind, restore = restore, stopOwn = stopOwn), null, from) }
+    private fun start(bind: String? = "192.168.49.1", from: String? = "c", restore: List<RestoreItem> = this.restore, stopOwn: Boolean = false, needMb: Long? = null) =
+        runBlocking { lender.start(RpcStartRequest(bind = bind, restore = restore, stopOwn = stopOwn, needMb = needMb), null, from) }
 
     @Test fun theBindAddressMustBeAnAdvertisableLinkAddress() {
         for (bad in listOf("0.0.0.0", "::", "127.0.0.1", "", "10.20.30.40" /* e.g. a cellular address */, "192.168.49.2" /* not ours */)) {
@@ -207,6 +211,50 @@ class RpcLenderTest {
         assertEquals(RpcLender.StartResult.Ok(true), r)
         assertTrue("nothing is stopped by the lender", env.calls.none { it.startsWith("stopOwn") })
         assertEquals(listOf("chat", "embed"), lender.restoring.map { it.role })
+    }
+
+    // ---------- finding 4: a lender looks at its own memory and heat ----------
+
+    @Test fun aHotPhoneRefusesAtThermalStatusFourAndNotAtThree() {
+        env.thermal = 4
+        val r = start(stopOwn = true)
+        assertTrue(r is RpcLender.StartResult.Refused)
+        assertTrue((r as RpcLender.StartResult.Refused).message.contains("too hot") && r.message.contains("thermal status 4"))
+        assertTrue("nothing was stopped and no loan was taken", env.calls.none { it.startsWith("stopOwn") || it.startsWith("startRpc") })
+        assertNull(lender.lending.value)
+        assertTrue(lender.restoring.isEmpty())
+        env.thermal = 3
+        assertEquals(RpcLender.StartResult.Ok(true, listOf(RestoreItem("chat", "small.gguf", 5000), RestoreItem("embed", "embed.gguf", 600))), start(stopOwn = true))
+    }
+
+    @Test fun aPhoneWithTooLittleMemoryRefusesBeforeStoppingAnything() {
+        env.memAvail = 1_000
+        val r = start(stopOwn = true, needMb = 7_000)
+        assertTrue(r is RpcLender.StartResult.Refused)
+        // 1000 MB free plus the 5600 MB its own servers would give back
+        assertTrue((r as RpcLender.StartResult.Refused).message.contains("6600 MB") && r.message.contains("7000 MB"))
+        assertTrue(env.calls.none { it.startsWith("stopOwn") || it.startsWith("startRpc") })
+        assertNull(lender.lending.value)
+    }
+
+    @Test fun theServersAboutToBeStoppedCountAsFreeWhenTheLenderStopsThemItself() {
+        env.memAvail = 3_000 // plus 5000 + 600 held by its own servers = 8600
+        assertTrue(start(stopOwn = true, needMb = 7_000) is RpcLender.StartResult.Ok)
+    }
+
+    @Test fun whenTheDriverStoppedTheServersAlreadyOnlyWhatIsFreeCounts() {
+        env.memAvail = 3_000
+        assertTrue(start(stopOwn = false, needMb = 7_000) is RpcLender.StartResult.Refused)
+        env.memAvail = 7_000
+        assertTrue(start(stopOwn = false, needMb = 7_000) is RpcLender.StartResult.Ok)
+    }
+
+    @Test fun noNeedMeansNoCheckAndARunningLoanIsNotAskedAgain() {
+        env.memAvail = 10 // an older driver, or the override: nothing asked
+        assertTrue(start() is RpcLender.StartResult.Ok)
+        // the loan holds the weights now, so memory is low and the phone is warm; the same driver starting again must not be refused
+        env.thermal = 5
+        assertEquals(RpcLender.StartResult.Ok(true), start(needMb = 7_000))
     }
 
     @Test fun theLendingActivityOwnerIsNotTheDrivers() {

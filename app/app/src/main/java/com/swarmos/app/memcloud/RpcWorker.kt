@@ -58,6 +58,9 @@ object AndroidLenderEnv : LenderEnv {
 
     override fun stopOwn(role: Role) = LlamaRuntime.stop(role)
 
+    override fun memAvailMb() = AppGraph.health.state.value.ramAvailMb
+    override fun thermalStatus() = AppGraph.health.state.value.thermalStatus
+
     override fun setActivity(owner: String, text: String, onStop: () -> Unit) = PhoneActivity.set(owner, text, onStop)
     override fun clearActivity(owner: String) = PhoneActivity.clear(owner)
 

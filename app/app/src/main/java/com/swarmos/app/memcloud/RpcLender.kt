@@ -40,6 +40,10 @@ interface LenderEnv {
     fun modelFileExists(file: String): Boolean
     fun restoreLocal(role: Role, file: String)
 
+    /** Memory this phone has available now, in MB, and its thermal status (0 cool .. 6 shutdown). */
+    fun memAvailMb(): Long
+    fun thermalStatus(): Int
+
     /** The chat and embedding servers of this phone that are not stopped, with the file each serves and its resident memory. */
     fun ownModels(): List<RestoreItem>
     fun stopOwn(role: Role)
@@ -66,6 +70,9 @@ class RpcLender(private val env: LenderEnv) {
         /** The loan ends this long after the last renewal. */
         const val LEASE_MS = 10_000L
         const val ACTIVITY_OWNER = "memcloud.lend"
+
+        /** A phone at this thermal status (severe) or above does not lend memory. */
+        const val THERMAL_REFUSE = 4
     }
 
     sealed interface StartResult {
@@ -110,11 +117,23 @@ class RpcLender(private val env: LenderEnv) {
         }
 
         val sameBind = env.rpcReady() && env.rpcPort() == req.port && env.rpcBind() == bind
+        val own = if (req.stopOwn) env.ownModels() else emptyList()
+
+        // This phone looks at itself before it lends anything. A loan that already runs is not asked again: its own weights fill the memory.
+        if (!sameBind) {
+            val temp = env.thermalStatus()
+            if (temp >= THERMAL_REFUSE) return StartResult.Refused("this phone is too hot to lend memory (thermal status $temp, the limit is ${THERMAL_REFUSE - 1})")
+            req.needMb?.let { need ->
+                // the servers this phone is about to stop count as free; when the driver stopped them already they are in MemAvailable
+                val have = env.memAvailMb() + own.sumOf { it.mb ?: 0L }
+                if (have < need) return StartResult.Refused("this phone has about $have MB available and the split asks for $need MB")
+            }
+        }
+
         var stopped: List<RestoreItem>? = null
         if (req.stopOwn) {
             // Order matters: the restore list is recorded first, then the servers are stopped, then rpc-server starts. A driver that
             // disappears at any point after this leaves a loan whose end (lease, stop, a failed start) brings these servers back.
-            val own = env.ownModels()
             restoreItems = (own + items + restoreItems).distinctBy { it.role }
             for (m in own) Role.parse(m.role)?.let { env.stopOwn(it) }
             stopped = own

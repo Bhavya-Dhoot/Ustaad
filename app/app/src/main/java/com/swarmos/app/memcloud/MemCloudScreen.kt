@@ -141,6 +141,7 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
     var byRam by rememberSaveable { mutableStateOf(false) }
     var excluded by rememberSaveable { mutableStateOf("") } // names switched off, comma separated
     var counts by remember { mutableStateOf<List<Int>?>(null) }
+    var force by remember { mutableStateOf(false) } // start although the plan does not fit a phone's free memory
     val selected = onlineNames.filter { n -> n !in excluded.split(',') }
     val key = listOf(chosen?.file, selected, byRam, onlineNames)
 
@@ -164,7 +165,7 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
         for (m in present) {
             val sel = m.file == chosen?.file
             Row(
-                Modifier.fillMaxWidth().clickable { file = m.file; counts = null }
+                Modifier.fillMaxWidth().clickable { file = m.file; counts = null; force = false }
                     .background(if (sel) SwarmColors.sheet else SwarmColors.whiteboard, SwarmShape)
                     .border(if (sel) 2.dp else 1.dp, if (sel) SwarmColors.ink else SwarmColors.smudge, SwarmShape).padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -241,11 +242,18 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
 
     st.failReason?.let { ErrorNote(it) }
     for (n in st.notices) ErrorNote(n)
-    plan?.let { p -> if (!p.fitsAll() && st.phase == Phase.IDLE) Note("Memory is tight on at least one phone") }
+    val tight = plan != null && !plan.fitsAll()
+    if (tight && (st.phase == Phase.IDLE || st.phase == Phase.FAILED)) {
+        Note("Memory is tight on at least one phone, so the load is refused")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Try anyway", style = SwarmType.body)
+            InkSwitch(force, { force = it })
+        }
+    }
     val (loadText, canPick) = MemCloudLogic.loadButton(selected.size)
     PrimaryButton(
         loadText,
-        { if (chosen != null) MemCloud.start(StartRequest(chosen.file, selected, if (byRam) "ram" else "equal", counts?.takeIf { c -> c.size == selected.size + 1 })) },
+        { if (chosen != null) MemCloud.start(StartRequest(chosen.file, selected, if (byRam) "ram" else "equal", counts?.takeIf { c -> c.size == selected.size + 1 }, force = force && tight)) },
         Modifier.fillMaxWidth(),
         enabled = chosen != null && canPick && plan != null,
     )

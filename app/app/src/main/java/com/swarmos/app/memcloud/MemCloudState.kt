@@ -139,6 +139,8 @@ data class MemCloudState(
     val mode: String = "equal",
     /** One layer count per phone (driver first); overrides [mode]. */
     val layers: List<Int>? = null,
+    /** Start even though the plan does not fit a phone's free memory (the deliberate "does not fit" demonstration). Default: refuse. */
+    val force: Boolean = false,
 )
 
 @Serializable data class ReplanRequest(val peers: List<String> = emptyList())
@@ -161,6 +163,11 @@ data class MemCloudState(
      * recorded [restore] and the lease. False (older drivers send no field): the driver has already stopped them.
      */
     val stopOwn: Boolean = false,
+    /**
+     * Megabytes the driver asks of this phone (its share of the weights plus the planning allowance). The phone refuses when its
+     * available memory, with the servers it is about to stop counted as free, is below this. Null: no check (older drivers, or [StartRequest.force]).
+     */
+    val needMb: Long? = null,
 )
 
 @Serializable
