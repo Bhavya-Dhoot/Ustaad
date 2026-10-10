@@ -27,6 +27,17 @@ class PhoneActivityTest {
     }
 
     @Test
+    fun anOwnerIsActiveWhileItHasAnEntryEvenWhenAnotherOwnerIsOnShow() {
+        PhoneActivity.set("pdu", "Indexing 12 files.")
+        PhoneActivity.set("choir", "Running a 20-problem check (1 of 20).")
+        assertEquals("Running a 20-problem check (1 of 20).", PhoneActivity.current.value?.text)
+        assertEquals(true, PhoneActivity.isActive("pdu"))
+        PhoneActivity.clear("pdu")
+        assertEquals(false, PhoneActivity.isActive("pdu"))
+        assertEquals(false, PhoneActivity.isActive("nobody"))
+    }
+
+    @Test
     fun progressFromTheSameOwnerReplacesItsTextInPlace() {
         PhoneActivity.set("choir", "Running a 20-problem check (6 of 20).")
         PhoneActivity.set("pdu", "Indexing 12 files.")

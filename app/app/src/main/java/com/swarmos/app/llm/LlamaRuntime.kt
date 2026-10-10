@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Process as AndroidProcess
 import android.util.Log
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.PhoneActivity
+import com.swarmos.app.core.ServicePolicy
 import com.swarmos.app.core.ThermalGate
 import com.swarmos.app.core.WorkKind
 import com.swarmos.app.memcloud.CpuSet
@@ -11,13 +13,19 @@ import com.swarmos.app.sched.Sched
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -77,6 +85,9 @@ object LlamaRuntime {
     /** How long to wait for a killed orphan to vanish from /proc before its port is checked. */
     private const val ORPHAN_WAIT_MS = 5_000L
 
+    /** Interval of the `/health` ping of a READY server ([watchHealth]). */
+    private const val HEALTH_PING_MS = 10_000L
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val locks = Role.entries.associateWith { Mutex() }
 
@@ -113,6 +124,9 @@ object LlamaRuntime {
         @Volatile var stopRequested = false
         @Volatile var wasReady = false
 
+        /** Set by the health watch just before it kills this process: why (stopped answering). The exit report says it instead of "SIGTERM". */
+        @Volatile var hungKill: String? = null
+
         /** The thread that copies the child's output into [ring]; joined before the ring is read after an exit (the last lines arrive late). */
         @Volatile var pumpThread: Thread? = null
     }
@@ -141,6 +155,31 @@ object LlamaRuntime {
 
     /** The same for the embedding server and AppGraph.embedder. */
     val realEmbedderReady: StateFlow<Boolean> = _realEmbedderReady.asStateFlow()
+
+    /**
+     * True while model work is running on this phone: a call is in flight on a llama-server (a local job, a job for another
+     * phone, Choir, the agent endpoint, an index run's embeddings) or a server is loading. The wake lock follows it
+     * ([com.swarmos.app.core.ServicePolicy]). It starts false, goes true at once, and goes false only [ServicePolicy.WORK_LINGER_MS]
+     * after the last call ended, so the gaps between the calls of one job do not take and drop the lock each time.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val working: Flow<Boolean> = combine(InFlight.count, board.status) { calls, st ->
+        calls > 0 || st.values.any { it.state == ServerState.STARTING }
+    }
+        .transformLatest { busy -> if (busy) emit(true) else { delay(ServicePolicy.WORK_LINGER_MS); emit(false) } }
+        .onStart { emit(false) }
+        .distinctUntilChanged()
+
+    /**
+     * This phone's chat model for the app's own features, as a client that is real or refuses: a call is answered by the real model
+     * or fails with [ModelNotLoadedException], never by the placeholder, whenever the server died while the call waited for a
+     * slot. Read at every call, so it follows AppGraph.llm. Features that must not show or store canned text (Data Union, Choir,
+     * the scheduler's executor) wrap it in their gate instead of AppGraph.llm, see GatedLlmClient.
+     */
+    val chatClient: LlmClient = RealModelGuard({ AppGraph.llm }, RealModelGuard.NO_CHAT)
+
+    /** The same for the embedding model. */
+    val embedClient: LlmClient = RealModelGuard({ AppGraph.embedder }, RealModelGuard.NO_EMBEDDER)
 
     /** Stats of the most recent generation on this phone (chat or bench). */
     val lastStats = MutableStateFlow<ChatStats?>(null)
@@ -184,11 +223,13 @@ object LlamaRuntime {
                 val embed = st.getValue(Role.EMBED)
                 // "ready" flags flip after the client swap on the way up and before it on the way down, so they never promise a client that is not there
                 if (!chat.isRealReady()) _realChatReady.value = false
-                if (!embed.isRealReady()) _realEmbedderReady.value = false
-                syncClient(Role.CHAT, chat, AppGraph.llm) { AppGraph.llm = it }
-                syncClient(Role.EMBED, embed, AppGraph.embedder) { AppGraph.embedder = it }
+                if (embed.isRealReady()) droppedEmbed = null // started again: the real client replaces the stand-in below
+                // an embedder stopped for memory stays "ready": its stand-in client starts the server on the first call
+                if (!embed.isRealReady() && droppedEmbed == null) _realEmbedderReady.value = false
+                syncClient(Role.CHAT, chat, AppGraph.llm, FakeLlmClient()) { AppGraph.llm = it }
+                syncClient(Role.EMBED, embed, AppGraph.embedder, droppedEmbed ?: FakeLlmClient()) { AppGraph.embedder = it }
                 if (chat.isRealReady()) _realChatReady.value = true
-                if (embed.isRealReady()) _realEmbedderReady.value = true
+                if (embed.isRealReady() || droppedEmbed != null) _realEmbedderReady.value = true
                 // one scheduler job at a time while the chat server is READY (parallel slots add no throughput), none otherwise
                 val cap = if (chat.state == ServerState.READY) LlamaArgs.SCHED_CAPACITY else 0
                 if (cap != schedCapacity) {
@@ -216,6 +257,54 @@ object LlamaRuntime {
             ModelStore.autoLoadFile(role)?.let { startAsync(role, it.absolutePath) }
         }
 
+    // ---- memory pressure ----
+
+    /** The stand-in client of an embedder stopped for memory ([dropIdleEmbedder]); null otherwise. */
+    @Volatile private var droppedEmbed: DroppedEmbedder? = null
+    private val reviveLock = Mutex()
+
+    /** Application.onTrimMemory: at RUNNING_CRITICAL an idle embedder is stopped. Returns at once, the work runs on the IO pool. */
+    fun onTrimMemory(level: Int) {
+        if (MemoryPressure.isCritical(level)) scope.launch { dropIdleEmbedder("trim level $level") }
+    }
+
+    /** Application.onLowMemory: the same as RUNNING_CRITICAL. */
+    fun onLowMemory() {
+        scope.launch { dropIdleEmbedder("low memory") }
+    }
+
+    /**
+     * Stops the embedding server when nothing uses it (no call in flight or ended in the last 30 s, no index run announced), says so
+     * in its status, and leaves a stand-in client that starts it again on the next [LlmClient.embed]. The chat server is never touched.
+     */
+    private fun dropIdleEmbedder(why: String) {
+        if (!serviceUp) return
+        val st = statusOf(Role.EMBED)
+        val path = st.modelPath ?: return
+        val idle = MemoryPressure.embedderIdle(
+            running = st.state == ServerState.READY,
+            callInFlight = InFlight.active(st.port),
+            msSinceLastCall = InFlight.idleForMs(st.port),
+            indexRunning = PhoneActivity.isActive("pdu"),
+        )
+        if (!idle) return
+        Log.w(TAG, "embed: stopping the idle embedder to free memory ($why)")
+        droppedEmbed = DroppedEmbedder(st.modelName ?: File(path).name.removeSuffix(".gguf"), path, ::reviveEmbedder)
+        stopProcessOf(Role.EMBED)
+        board.set(Role.EMBED) { it.copy(notice = MemoryPressure.DROPPED_NOTICE) }
+    }
+
+    /** Starts the embedder that was stopped for memory and returns its client; null when it is not wanted or did not get READY. */
+    private suspend fun reviveEmbedder(): LlmClient? = reviveLock.withLock {
+        val stopped = droppedEmbed
+        if (stopped == null) { // someone started it already (or it was stopped on purpose)
+            val st = statusOf(Role.EMBED)
+            return@withLock if (st.isRealReady()) LlamaServerClient(Role.EMBED, st.modelName ?: return@withLock null, st.port) else null
+        }
+        val st = start(Role.EMBED, stopped.modelPath)
+        if (st.state == ServerState.READY) LlamaServerClient(Role.EMBED, st.modelName ?: return@withLock null, st.port) else null
+    }
+
     /** Called by SwarmService.onDestroy: kill every child, restore the fake clients. */
     @Synchronized
     fun onServiceStopped() {
@@ -231,13 +320,14 @@ object LlamaRuntime {
         Sched.setCapacity(0)
     }
 
-    private fun syncClient(role: Role, st: ServerStatus, current: LlmClient, set: (LlmClient) -> Unit) {
+    /** [whenDown] replaces a real client when the server is not READY: the placeholder, or the stand-in of an embedder stopped for memory. */
+    private fun syncClient(role: Role, st: ServerStatus, current: LlmClient, whenDown: LlmClient, set: (LlmClient) -> Unit) {
         if (st.state == ServerState.READY) {
             val name = st.modelName ?: return
             val already = current is LlamaServerClient && current.modelName == name && current.port == st.port
             if (!already) set(LlamaServerClient(role, name, st.port))
-        } else if (current is LlamaServerClient) {
-            set(FakeLlmClient())
+        } else if (current is LlamaServerClient || (current is DroppedEmbedder && current !== whenDown)) {
+            set(whenDown)
         }
     }
 
@@ -440,6 +530,7 @@ object LlamaRuntime {
                     return Attempt(statusOf(role), false)
                 }
                 Log.i(TAG, "${role.tag}: READY on $backend after $ms ms")
+                watchHealth(run)
                 return Attempt(statusOf(role), false)
             }
             delay(300)
@@ -465,6 +556,11 @@ object LlamaRuntime {
      * (see [StatusBoard]) instead of racing with this stop, and none of them can overwrite the STOPPED it publishes.
      */
     fun stop(role: Role) {
+        if (role == Role.EMBED) droppedEmbed = null // an explicit stop is not "stopped for memory": no stand-in, no restart on next use
+        stopProcessOf(role)
+    }
+
+    private fun stopProcessOf(role: Role) {
         val run = board.stop(role) { running.remove(role) }
         lastErrors.remove(role)
         if (run != null) {
@@ -592,7 +688,7 @@ object LlamaRuntime {
             if (run.stopRequested) return@launch
             if (!run.wasReady) return@launch // a server that dies while it starts is reported (and, for the GPU build, retried on the CPU) by its start
             val last = run.ring.tail(3).joinToString(" | ")
-            val what = ProcInfo.describeExit(code)
+            val what = run.hungKill?.let { "$it; ${ProcInfo.describeExit(code)}" } ?: ProcInfo.describeExit(code)
             val reason = "$what after ${aliveMs / 1000} s; last log: $last"
             Log.e(TAG, "${run.role.tag}: DIED pid=${pidOf(run.process)} $reason")
             running.remove(run.role, run)
@@ -622,6 +718,31 @@ object LlamaRuntime {
                 },
                 backend = run.backend,
             )
+        }
+    }
+
+    /**
+     * After READY the process exit is not the only signal: every [HEALTH_PING_MS] this pings `/health`, and after
+     * [HangWatch.MAX_MISSES] misses in a row (counted only while no request is in flight within its own timeout) it kills the
+     * server, which sends it down the same path as any other death ([watchExit], [RestartPolicy]: one restart, then the
+     * GPU server falls back to the CPU build). What `/health` can and cannot prove is written on [HangWatch].
+     */
+    private fun watchHealth(run: Running) {
+        if (run.role == Role.RPC) return // rpc-server has no /health, and it is MemoryCloud's to supervise
+        scope.launch {
+            val watch = HangWatch()
+            while (true) {
+                delay(HEALTH_PING_MS)
+                if (!run.process.isAlive || run.stopRequested || !board.isCurrent(run.role, run.epoch)) return@launch
+                val answered = LlamaHttp.healthOk(run.cfg.port)
+                if (watch.record(answered, InFlight.busyWithinTimeout(run.cfg.port))) {
+                    val silentS = HEALTH_PING_MS * HangWatch.MAX_MISSES / 1000
+                    Log.e(TAG, "${run.role.tag}: /health unanswered ${HangWatch.MAX_MISSES} times in a row, killing pid=${pidOf(run.process)}")
+                    run.hungKill = "stopped answering /health for $silentS s, killed by Ustaad"
+                    killProcess(run.process)
+                    return@launch
+                }
+            }
         }
     }
 

@@ -57,6 +57,7 @@ class LlamaServerClient(
             var firstNs = 0L
             val c = LlamaHttp.newPost("$base/v1/chat/completions", readTimeout)
             if (!holder.attach(c)) return@launch // cancelled before the socket was opened
+            val flight = InFlight.begin(port, readTimeout.toLong())
             try {
                 LlamaHttp.send(c, body)
                 if (c.responseCode !in 200..299) throw LlamaServerException(LlamaHttp.errorText(c), c.responseCode)
@@ -91,6 +92,7 @@ class LlamaServerClient(
                 if (holder.isCancelled) throw kotlinx.coroutines.CancellationException("chat cancelled by the caller")
                 throw e
             } finally {
+                InFlight.end(flight)
                 c.disconnect()
             }
         }
@@ -122,21 +124,26 @@ class LlamaServerClient(
         check(role == Role.EMBED) { "embeddings come from AppGraph.embedder (the EMBED server), not the chat server" }
         val readTimeout = readTimeoutMs(EMBED_READ_TIMEOUT_MS)
         val t0 = System.nanoTime()
-        val out = cancellableIo { holder ->
-            val all = ArrayList<FloatArray>(texts.size)
-            for (batch in texts.chunked(EMBED_BATCH)) {
-                val c = LlamaHttp.newPost("$base/v1/embeddings", readTimeout)
-                if (!holder.attach(c)) throw kotlinx.coroutines.CancellationException("embed cancelled")
-                try {
-                    LlamaHttp.send(c, LlamaJson.embedBody(batch, modelName))
-                    val text = LlamaHttp.readBody(c)
-                    if (c.responseCode !in 200..299) throw LlamaServerException(text, c.responseCode)
-                    all += LlamaJson.parseEmbeddings(text)
-                } finally {
-                    c.disconnect()
+        val flight = InFlight.begin(port, readTimeout.toLong() * texts.chunked(EMBED_BATCH).size.coerceAtLeast(1)) // one timeout per batch
+        val out = try {
+            cancellableIo { holder ->
+                val all = ArrayList<FloatArray>(texts.size)
+                for (batch in texts.chunked(EMBED_BATCH)) {
+                    val c = LlamaHttp.newPost("$base/v1/embeddings", readTimeout)
+                    if (!holder.attach(c)) throw kotlinx.coroutines.CancellationException("embed cancelled")
+                    try {
+                        LlamaHttp.send(c, LlamaJson.embedBody(batch, modelName))
+                        val text = LlamaHttp.readBody(c)
+                        if (c.responseCode !in 200..299) throw LlamaServerException(text, c.responseCode)
+                        all += LlamaJson.parseEmbeddings(text)
+                    } finally {
+                        c.disconnect()
+                    }
                 }
+                all
             }
-            all
+        } finally {
+            InFlight.end(flight)
         }
         if (texts.isNotEmpty()) LlamaRuntime.recordEmbed(modelName, (System.nanoTime() - t0) / 1e6 / texts.size)
         return out
