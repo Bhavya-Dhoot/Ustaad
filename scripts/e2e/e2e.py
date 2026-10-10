@@ -7,7 +7,8 @@ Every number printed here is read from a response file; nothing is estimated.
   e2e.py get FILE EXPR [DEFAULT]        print EXPR evaluated with the parsed JSON as `d` ('' or DEFAULT when it fails)
   e2e.py ask-body KEY [K] [DEADLINE]    ASCII-only JSON body for POST /v1/pdu/ask or /v1/pdu/debug/scores
   e2e.py question KEY                   the question text
-  e2e.py slices PROBLEMS_FILE N         eval slices, one comma-separated id list per line, kinds mixed in every slice
+  e2e.py slices PROBLEMS_FILE N [SKIP]  eval slices, one comma-separated id list per line, kinds mixed in every slice (SKIP: ids to leave out)
+  e2e.py done-ids DIR                    ids that already have an error-free row in DIR/eval-slice-*.json
   e2e.py models-assert FILE CHATFILE    PASS/FAIL line for GET /v1/models/state
   e2e.py peer-assert FILE NODEID        'online ...' when NODEID is listed online in GET /v1/link/peers
   e2e.py choir-assert FILE               PASS/FAIL line for a /v1/choir/run trace
@@ -76,8 +77,19 @@ def cmd_ask_body(key, k="5", deadline="1500"):
     out(json.dumps({"text": QUESTIONS[key], "k": int(k), "deadlineMs": int(deadline)}, ensure_ascii=True))
 
 
-def cmd_slices(problems_file, n):
-    probs = load(problems_file)
+def cmd_done_ids(d):
+    ids = []
+    for f in glob.glob(os.path.join(d, "eval-slice-*.json")):
+        rep = try_load(f)
+        for r in (rep or {}).get("rows", []):
+            if not r.get("error"):
+                ids.append(r["problemId"])
+    out(",".join(sorted(set(ids))))
+
+
+def cmd_slices(problems_file, n, skip=""):
+    skipped = set(x for x in skip.split(",") if x)
+    probs = [p for p in load(problems_file) if p["id"] not in skipped]
     groups = {}
     for p in probs:
         groups.setdefault(p["group"], []).append(p["id"])
@@ -413,7 +425,7 @@ def cmd_report_batch(d):
         for line in open(tsv, encoding="utf-8"):
             p = line.rstrip("\n").split("\t")
             meta[p[0]] = p
-    out("| Run | Mode | Thermal at start A / C | Thermal at end A / C | Wall-clock s | Items done / failed | Total tokens | Aggregate tokens/s | Model | Fake |")
+    out("| Run | Mode | Thermal at start A / C | Peak thermal A / C | Wall-clock s | Items done / failed | Total tokens | Aggregate tokens/s | Model | Fake |")
     out("|---|---|---|---|---|---|---|---|---|---|")
     reports = []
     for f in sorted(glob.glob(os.path.join(d, "batch-*.json"))):
@@ -442,7 +454,7 @@ def cmd_report_batch(d):
 
 
 COMMANDS = {
-    "get": cmd_get, "ask-body": cmd_ask_body, "slices": cmd_slices, "models-assert": cmd_models_assert, "peer-assert": cmd_peer_assert,
+    "get": cmd_get, "done-ids": cmd_done_ids, "ask-body": cmd_ask_body, "slices": cmd_slices, "models-assert": cmd_models_assert, "peer-assert": cmd_peer_assert,
     "choir-assert": cmd_choir_assert, "ask-assert": cmd_ask_assert, "batch-assert": cmd_batch_assert,
     "report-choir-run": cmd_report_choir_run, "report-eval": cmd_report_eval, "report-pdu": cmd_report_pdu, "report-batch": cmd_report_batch,
 }

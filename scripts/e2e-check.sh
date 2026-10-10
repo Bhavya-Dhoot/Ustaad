@@ -26,6 +26,7 @@
 #   --min-problems N   eval counts as PASS only with at least N problems run (default 10)
 #   --chat-file NAME   chat model file both phones must run (default Qwen3.5-4B-Q4_K_M.gguf)
 #   --keep-models      do not stop the model servers when the script ends
+#   --resume           with --results of an earlier run: step e skips the problems that already have an error-free row there
 # Environment: SWARM_SECRET (else the debug dev secret, else the secret the debug build publishes at
 #   /v1/link/pairing-payload), ADB, PYTHON, E2E_COOL_MAX_MIN (longest thermal wait per guard, default 45),
 #   E2E_CHOIR_PROBLEM (check d, default m8), E2E_PRIVATE_TEST=0 (skip the temporary private file), E2E_PKG (default com.swarmos.app).
@@ -48,6 +49,7 @@ SLICE=5
 MAX_PROBLEMS=20
 MIN_PROBLEMS=10
 KEEP_MODELS=0
+RESUME=0
 RESULTS=""
 
 while [ $# -gt 0 ]; do
@@ -59,6 +61,7 @@ while [ $# -gt 0 ]; do
     --min-problems) MIN_PROBLEMS="$2"; shift 2 ;;
     --chat-file) CHAT_FILE="$2"; shift 2 ;;
     --keep-models) KEEP_MODELS=1; shift ;;
+    --resume) RESUME=1; shift ;;
     -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     --) shift; break ;;
     -*) echo "unknown option $1" >&2; exit 2 ;;
@@ -116,8 +119,13 @@ call() {
   [ -n "$body" ] && args+=(-H 'Content-Type: application/json' --data-binary "$body")
   : > "$out"
   t0=$(now_ms)
-  CODE=$(curl "${args[@]}" "http://${HP[$ph]}$path" 2>"$RESULTS/curl.err") || CODE=${CODE:-000}
-  [ -n "$CODE" ] || CODE=000
+  local try
+  for try in 1 2 3 4; do # a GET that failed at the transport level (000) is repeated: Wi-Fi blips of about a minute were seen
+    CODE=$(curl "${args[@]}" "http://${HP[$ph]}$path" 2>"$RESULTS/curl.err") || CODE=${CODE:-000}
+    [ -n "$CODE" ] || CODE=000
+    [ "$CODE" = 000 ] && [ "$method" = GET ] && [ "$try" -lt 4 ] && [ "$maxt" -le 60 ] || break
+    sleep 20
+  done
   CALL_MS=$(( $(now_ms) - t0 ))
 }
 
@@ -359,6 +367,8 @@ step_d() {
   if [ "${r%% *}" = PASS ]; then pass d-choir-run "${r#PASS } (HTTP $code, $ms ms at the client; thermal start A=${TH[A]} C=${TH[C]})"
   else fail d-choir-run "${r#FAIL } (HTTP $code, thermal start A=${TH[A]} C=${TH[C]})"; fi
   jx report-choir-run "$f" > "$RESULTS/tables/choir-run.md" 2>/dev/null
+  if [ "$(jx get "$f" "d['choirCorrect']")" = true ]; then pass d-choir-answer "final answer '$(jx get "$f" "d['finalPick']['answer']")' equals the known answer '$(jx get "$f" "d['knownAnswer']")'"
+  else fail d-choir-answer "final answer '$(jx get "$f" "d['finalNoTool']['answer']")' (with tool check '$(jx get "$f" "d['finalPick']['answer']")') is not the known answer '$(jx get "$f" "d['knownAnswer']")'"; fi
   note_peak A C
   echo "choir-run	thermal start A=${TH[A]} C=${TH[C]}	peak A=${PEAK[A]} C=${PEAK[C]}" >> "$RESULTS/thermal.log"
 }
@@ -409,9 +419,16 @@ step_e() {
   local i=0 line failed=0
   call A GET /v1/choir/problems "" "$RESULTS/choir-problems.json" 15
   [ "$CODE" = 200 ] || { fail e-eval "GET /v1/choir/problems gave HTTP $CODE"; return; }
-  : > "$RESULTS/slices.tsv"
-  local all; all=$(jx slices "$RESULTS/choir-problems.json" "$SLICE" | tr -d '\r')
-  local picked=0
+  local picked=0 all
+  if [ "$RESUME" = 1 ]; then # keep the slices of the earlier run, number on from the last one, skip problems that have a row
+    i=$(ls "$RESULTS"/eval-slice-*.json 2>/dev/null | sed 's/.*eval-slice-\([0-9]*\)\.json/\1/' | sort -n | tail -1); i=${i:-0}
+    local done_ids; done_ids=$(jx done-ids "$RESULTS")
+    all=$(jx slices "$RESULTS/choir-problems.json" "$SLICE" "$done_ids" | tr -d '\r')
+    picked=$(awk -F, '{print ($0 == "" ? 0 : NF)}' <<<"$done_ids")
+  else
+    : > "$RESULTS/slices.tsv"
+    all=$(jx slices "$RESULTS/choir-problems.json" "$SLICE" | tr -d '\r')
+  fi
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     (( picked >= MAX_PROBLEMS )) && break
