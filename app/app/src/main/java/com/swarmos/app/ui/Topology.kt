@@ -62,8 +62,11 @@ fun TopologyPanel(modifier: Modifier = Modifier, content: @Composable BoxScope.(
  * plus a little so the line stops short of the tokens ([startGap] overrides it at the [from] end,
  * for a token with a name under it). [label] is a handwritten pill [labelAt] (0..1) along the line
  * (throughput and round trip time). [dashed] when the far phone is away.
+ * [fromCaption] and [toCaption] are the distance from a token's centre to the bottom of the name written under it
+ * (0 when there is none): the line then starts or ends beyond the caption instead of running through it, whatever its
+ * angle ([captionHalfWidth] is how far the caption reaches to each side).
  * Changing [heartbeat] thickens the line for 150 ms (skipped when system animations are removed).
- * The wobble is seeded by [seed], so the line never shimmers.
+ * The wobble is seeded by [seed], so the line never shimmers; it is large enough to read as hand-drawn at phone scale.
  */
 @Composable
 fun DoodleConnector(
@@ -77,6 +80,9 @@ fun DoodleConnector(
     startGap: Dp = gap,
     labelAt: Float = 0.5f,
     seed: Int = 7,
+    fromCaption: Dp = 0.dp,
+    toCaption: Dp = 0.dp,
+    captionHalfWidth: Dp = 40.dp,
 ) {
     val animate = rememberAnimationsEnabled()
     val thickness = remember { Animatable(2f) }
@@ -94,12 +100,13 @@ fun DoodleConnector(
             if (len < 1f) return@Canvas
             val ux = (b.x - a.x) / len
             val uy = (b.y - a.y) / len
-            val g0 = startGap.toPx().coerceAtMost(len / 3f)
-            val g1 = gap.toPx().coerceAtMost(len / 3f)
+            val margin = 4.dp.toPx()
+            val g0 = maxOf(startGap.toPx(), clearanceBelowCaption(ux, uy, fromCaption.toPx(), captionHalfWidth.toPx(), margin)).coerceAtMost(len / 3f)
+            val g1 = maxOf(gap.toPx(), clearanceBelowCaption(-ux, -uy, toCaption.toPx(), captionHalfWidth.toPx(), margin)).coerceAtMost(len / 3f)
             val start = Offset(a.x + ux * g0, a.y + uy * g0)
             val end = Offset(b.x - ux * g1, b.y - uy * g1)
             val jitter = Jitter(seed.toLong())
-            val line = smoothPath(wobblePoints(start, end, amp = 1.6.dp.toPx(), step = 34.dp.toPx(), jitter = jitter))
+            val line = smoothPath(wobblePoints(start, end, amp = wobbleAmplitude(len).toPx(), step = 24.dp.toPx(), jitter = jitter))
             val widthPx = thickness.value.dp.toPx()
             drawPath(line, SwarmColors.ink, style = inkStroke(widthPx, dashed, dashPx = 7.dp.toPx()))
             val dir = atan2((end.y - start.y).toDouble(), (end.x - start.x).toDouble())
@@ -136,6 +143,22 @@ fun DoodleConnector(
         }
     }
 }
+
+/**
+ * How far along a line leaving a token in the unit direction ([ux], [uy]) it has to go to be clear of the caption under
+ * that token, plus [margin]: until it is below the caption's bottom ([captionBottom] from the token centre) or beside
+ * it ([halfWidth]). 0 when there is no caption or the line leaves upward or sideways (the caption is below the centre).
+ * Units are whatever the caller uses, as long as they are the same for all arguments.
+ */
+internal fun clearanceBelowCaption(ux: Float, uy: Float, captionBottom: Float, halfWidth: Float, margin: Float): Float {
+    if (captionBottom <= 0f || uy <= 0f) return 0f
+    val below = captionBottom / uy
+    val beside = if (ux != 0f) halfWidth / abs(ux) else Float.POSITIVE_INFINITY
+    return minOf(below, beside) + margin
+}
+
+/** Sideways drift of a connector's hand-drawn line: 3 dp on a normal line, less on a very short one. */
+internal fun wobbleAmplitude(lengthPx: Float): Dp = (3f * (lengthPx / 240f).coerceIn(0.35f, 1f)).dp
 
 @Preview(showBackground = true, backgroundColor = 0xFFF6F7F5, widthDp = 360)
 @Composable
