@@ -1,0 +1,5 @@
+INFO  phone 192.168.242.89  thermal 1  chat {'state': 'READY', 'backend': 'GPU', 'loadMs': 20433, 'restarts': 0}
+PASS  t-truncated-stream  killed pid 22429 six seconds into a long answer: HTTP 500, {"error": "the model stopped mid-answer"}
+PASS  t-restart  chat READY on GPU 0 s later, restarts 0, notice None
+FAIL  h-hung-server  froze pid 22683: first change after None; then READY on GPU with pid 22683, restarts 1
+INFO  end  thermal 2  chat {'state': 'READY', 'backend': 'GPU', 'restarts': 1}

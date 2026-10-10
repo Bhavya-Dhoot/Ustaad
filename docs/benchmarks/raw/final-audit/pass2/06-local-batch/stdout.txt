@@ -1,0 +1,1 @@
+A-local-pass2: 32/32 done, 0 failed, wall 94.4 s, 889 tokens, aggregate 9.41 tok/s | c6f7 32 jobs 11.4 tok/s decode | thermal 2 -> 2

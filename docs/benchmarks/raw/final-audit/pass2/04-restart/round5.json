@@ -1,0 +1,29 @@
+{
+ "round": 5,
+ "readyBefore_s": 0.1,
+ "thermalBefore": "1",
+ "focusBefore": "mCurrentFocus=Window{a2aa589 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }",
+ "pidBefore": "27153",
+ "forceStopCmd_s": 0.18,
+ "amStartCmd_s": 0.08,
+ "amStartOut": [
+  "Starting: Intent { cmp=com.swarmos.app/.MainActivity }"
+ ],
+ "t0": "02:09:11",
+ "busyAtFirstAnswer": {
+  "enabled": true,
+  "state": "no_model",
+  "jobsDone": 0,
+  "jobsCancelled": 0,
+  "jobsFailed": 0,
+  "tokens": 0,
+  "secondsGenerating": 0.0,
+  "share60s": 0.0,
+  "hammer": false
+ },
+ "chatBackend": "GPU",
+ "apiAnswers_s": 2.1,
+ "chatReady_s": 17.2,
+ "faultSeen": false,
+ "thermalAfter": "1"
+}

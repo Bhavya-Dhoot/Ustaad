@@ -1,0 +1,14 @@
+10-11 01:56:00.027 21811 21879 I LlamaRuntime: chat pid=22683: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)
+10-11 01:56:13.035 21811 21881 I LlamaRuntime: chat pid=22683: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)
+10-11 01:56:18.606 21811 22023 I SwarmLink: nsd browse started
+10-11 01:56:26.043 21811 21949 I LlamaRuntime: chat pid=22683: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)
+10-11 01:56:39.049 21811 22425 I LlamaRuntime: chat pid=22683: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)
+10-11 01:56:52.056 21811 22426 I LlamaRuntime: chat pid=22683: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)
+10-11 01:57:05.062 21811 21880 I LlamaRuntime: chat pid=22683: health ping missed (2 of 3 counted)
+10-11 01:57:18.070 21811 23175 I LlamaRuntime: chat pid=22683: health ping missed (2 of 3 counted; not counted now: a call is in flight within its time)
+10-11 01:57:18.606 21811 22023 I SwarmLink: nsd browse started
+10-11 01:57:31.078 21811 21881 I LlamaRuntime: chat pid=22683: health ping missed (2 of 3 counted; not counted now: a call is in flight within its time)
+10-11 01:58:18.605 21811 22023 I SwarmLink: nsd browse started
+10-11 01:59:18.607 21811 22023 I SwarmLink: nsd browse started
+10-11 01:59:47.470 21811 23690 I LlamaRuntime: chat: started on GPU pid=23704 /data/app/~~UvWTf6h-0vgUl6n1H3vuCg==/com.swarmos.app-N1KjD3pQ-7yQV6w0Vyd6QQ==/lib/arm64/libllama-server-gpu.so -m /storage/emulated/0/Android/data/com.swarmos.app/files/models/Qwen3.5-4B-Q4_K_M.gguf --host 127.0.0.1 --port
+10-11 01:59:51.138 21811 23692 I LlamaRuntime: chat pid=22683: health watch ended: the process exited

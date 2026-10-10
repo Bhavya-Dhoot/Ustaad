@@ -1,0 +1,2 @@
+  mCurrentFocus=Window{5049266 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
+  mWakefulness=Awake

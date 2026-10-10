@@ -1,0 +1,12 @@
+10-11 02:08:51.964 26882 26913 I LlamaRuntime: chat pid=26988: health watch armed, ping every 10000 ms
+10-11 02:09:09.645 27153 27226 I LlamaRuntime: chat pid=27244: health watch armed, ping every 10000 ms
+10-11 02:09:27.413 27468 27548 I LlamaRuntime: chat pid=27567: health watch armed, ping every 10000 ms
+10-11 02:14:50.595 27468 27533 I LlamaRuntime: chat pid=27567: health ping missed (0 of 3 counted; not counted now: a call is in flight within its time)
+10-11 02:15:03.604 27468 27540 I LlamaRuntime: chat pid=27567: health ping missed (0 of 3 counted; not counted now: a call is in flight within its time)
+10-11 02:15:16.614 27468 28120 I LlamaRuntime: chat pid=27567: health ping missed (0 of 3 counted; not counted now: a call is in flight within its time)
+10-11 02:15:29.618 27468 27503 I LlamaRuntime: chat pid=27567: health ping missed (0 of 3 counted; not counted now: a call is in flight within its time)
+10-11 02:15:42.624 27468 28120 I LlamaRuntime: chat pid=27567: health ping missed (1 of 3 counted)
+10-11 02:15:55.631 27468 28119 I LlamaRuntime: chat pid=27567: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)
+10-11 02:16:08.638 27468 27539 I LlamaRuntime: chat pid=27567: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)
+10-11 02:16:21.647 27468 28120 I LlamaRuntime: chat pid=27567: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)
+10-11 02:16:34.655 27468 27503 I LlamaRuntime: chat pid=27567: health ping missed (1 of 3 counted; not counted now: a call is in flight within its time)

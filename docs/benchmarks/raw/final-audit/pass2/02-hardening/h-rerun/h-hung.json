@@ -1,0 +1,20 @@
+{
+ "pid": 27567,
+ "kill": "",
+ "first_change": null,
+ "after": {
+  "state": "READY",
+  "model": "Qwen3.5-4B-Q4_K_M",
+  "file": "Qwen3.5-4B-Q4_K_M.gguf",
+  "reason": null,
+  "pid": 27567,
+  "port": 8080,
+  "rssMb": 1658,
+  "loadMs": 15970,
+  "structuredOutput": true,
+  "notice": null,
+  "restarts": 0,
+  "backend": "GPU",
+  "lastError": null
+ }
+}

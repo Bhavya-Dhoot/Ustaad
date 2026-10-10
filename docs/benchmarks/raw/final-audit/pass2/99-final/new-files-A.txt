@@ -1,0 +1,8 @@
+run-as files:
+files/audit.jsonl
+files/datastore/swarm.preferences_pb
+files/profileInstalled
+files/logs/chat.log
+files/logs/embed.log
+files/pdu.db-shm
+files/batches/batch-58b75fe32a2147c3.json

@@ -1,0 +1,27 @@
+{
+ "kills": [
+  [
+   23945,
+   ""
+  ],
+  [
+   24185,
+   ""
+  ]
+ ],
+ "after": {
+  "state": "READY",
+  "model": "Qwen3.5-4B-Q4_K_M",
+  "file": "Qwen3.5-4B-Q4_K_M.gguf",
+  "reason": null,
+  "pid": 24280,
+  "port": 8080,
+  "rssMb": 5731,
+  "loadMs": 5069,
+  "structuredOutput": true,
+  "notice": "The GPU server failed (killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer)). Running on the CPU build.",
+  "restarts": 1,
+  "backend": "CPU",
+  "lastError": "0.00.026.229 I srv  llama_server: initializing ...\n0.00.026.240 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)\n0.00.026.289 I srv  init_listene: The UI is disabled\n0.00.026.294 I srv  init_listene: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable\n0.00.027.839 I srv    load_model: loading model '/storage/emulated/0/Android/data/com.swarmos.app/files/models/Qwen3.5-4B-Q4_K_M.gguf'\n0.13.254.756 I cmn          init: llama threadpool init, n_threads = 4\n0.15.977.095 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 4096, kv_unified = 'false'\n0.16.003.165 I srv  llama_server: model loaded\n0.16.003.179 I srv  llama_server: listening on http://127.0.0.1:8080\n0.16.003.181 W srv  llama_server: notice: server default port will be changed to :9931 in a future release (ref: https://github.com/ggml-org/llama.cpp/pull/26508)\n0.16.517.342 I slot get_availabl: id  1 | task -1 | selected slot by LRU, t_last = -1\n0.16.517.581 I slot launch_slot_: id  1 | task 0 | processing task, is_child = 0\n0.17.677.614 I slot print_timing: id  1 | task 0 | prompt eval time =     630.13 ms /    13 tokens (   48.47 ms per token,    20.63 tokens per second)\n0.17.677.646 I slot print_timing: id  1 | task 0 |        eval time =     529.86 ms /     8 tokens (   75.69 ms per token,    13.21 tokens per second)\n0.17.677.649 I slot print_timing: id  1 | task 0 |       total time =    1159.99 ms /    21 tokens\n0.17.677.651 I slot print_timing: id  1 | task 0 |    graphs reused =          7\n0.17.677.709 I slot      release: id  1 | task 0 | stop processing: n_tokens = 20, truncated = 0\n[exit] killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer) after 21 s"
+ }
+}

@@ -149,3 +149,72 @@ None outside the app's own private data. Scripts did not write to `/sdcard` or `
 ## Final state of both phones
 
 Read at 01:04 (`99-final/state-A.txt`, `state-B.txt`, `memcloud-A.txt`, `memcloud-B.txt`, `agent-off-check.txt`): chat Qwen3.5-4B-Q4_K_M READY on GPU on both (useGpu true), embedder READY, rpc STOPPED, MemoryCloud IDLE with no notices and nothing pending, agent access off (port 8790 refused on both), thermal 2 on both. Shared folders as before: A `Documents/SwarmDemo` and `Pictures/SwarmDemo` shared; B unchanged, its `Documents/SwarmDemo/Private` still private. Read again at 01:09 (`99-final/busy-A.json`, `busy-B.json`): Keep busy enabled on both, `hammer` false, A `running`, B `half_duty`; A thermal 0, B thermal 2; chat and embedder READY, rpc STOPPED on both. Nothing is left changed.
+
+
+## Second pass on the fixed build, Phone A only
+
+Date and time: 2026-10-11, 01:53 to 02:26 IST. Phone A (`192.168.242.89`) only; Phones B and C received no adb command and no API call. The pairing secret was read from Phone A and never printed or written; a search of every raw file under `pass2/` for it, and for the agent key, found nothing. Raw files are under `docs/benchmarks/raw/final-audit/pass2/` (called `pass2/` below); the small helper scripts I used for item 4 and the h diagnostic (they are not repo scripts) are copied to `pass2/helpers/`.
+
+### Build and start state (`pass2/01-start/`)
+
+New build: versionName 0.1.0, lastUpdateTime 2026-10-11 01:50:35, base.apk sha256 prefix f4b00f44246c3de0 (first pass: 2573d917d9a098d7) (`build-A.txt`, `apk-sha-A.txt`). Models folder unchanged (`models-dir-A.txt`: Qwen3.5-4B-Q4_K_M.gguf and embeddinggemma-300M-Q8_0.gguf). At 01:53: chat READY on GPU, embedder READY, rpc STOPPED, thermal 1, Keep busy enabled and `paused_model_restarted` (app just installed, jobsDone 0, hammer false), MemoryCloud IDLE, agent access off (unauthenticated GET to port 8790: HTTP 000, `agent-off-check.txt`), shared folders `Documents/SwarmDemo` and `Pictures/SwarmDemo`, Ustaad in front, screen awake (`state-A.txt`, `busy-A.json`, `memcloud-A.txt`, `pdu-A.txt`, `focus-A.txt`).
+
+### 2. `scripts/hardening-check.py` on Phone A (`pass2/02-hardening/`)
+
+Commands: `... th` (`th/`), then `... gc` (`gc/`); h repeated once (`h-rerun/`) and once as a longer diagnostic (`h-extended/`, not a repo script).
+
+| Check | Result | Measured |
+|---|---|---|
+| t-truncated-stream | PASS | pid 22429 killed 6 s into a long answer: HTTP 500 "the model stopped mid-answer" |
+| t-restart | PASS | chat READY on GPU, restarts 0 (as printed) |
+| h-hung-server | **FAIL** | `FAIL  h-hung-server  froze pid 22683: first change after None; then READY on GPU with pid 22683, restarts 1` (`th/stdout.txt`, `th/h-hung.json`) |
+| h-hung-server, run again | **FAIL** | `FAIL  h-hung-server  froze pid 27567: first change after None; then READY on GPU with pid 27567, restarts 0` (`h-rerun/stdout.txt`) |
+| g-gpu-start | PASS | three reloads READY on GPU, loadMs 18399, 17816, 18141; 5 cache files |
+| c-cpu-fallback | PASS | two kills, chat READY on CPU, notice "The GPU server failed ... Running on the CPU build." |
+| c-gpu-restored | PASS | READY on GPU, loadMs 17819 |
+
+Counts: 5 PASS, 1 FAIL (h, reproduced in a second run). First pass on the old build: h PASS, first change after 98.9 s (section 1 above, `01-hardening/stdout.txt`).
+
+What the h failure is: the script freezes the chat server (SIGSTOP) and gives the app 120 s to restart it. The app did not within 120 s in either run. The app's log shows why: the health watch kept missing its ping, but most misses are "not counted now: a call is in flight within its time" (a Keep busy filler call in flight against the frozen server), and in the longer diagnostic below only 3 of the 16 missed pings counted (`th/applog-0156-0159.txt`, `h-rerun/applog-health.txt`, `h-extended/applog-health.txt`). At the 120 s mark 1 of 3 (second run) or 2 of 3 (first run) had counted, then the script released the server with SIGCONT. Diagnostic with a longer window (`h-extended/hung-extended.json`, `stdout.txt`, `applog-health.txt`): chat server frozen at 02:18:56; counted misses at 02:19:59, 02:21:04 and 02:22:22; at 02:22:22 "health watch: 3 misses in a row, killing the server"; first change seen by the PC 207.7 s after the freeze (state STARTING, restarts 1, notice "stopped answering /health for 30 s, killed by Ustaad"). During the freeze Keep busy's `jobsFailed` on A went from 1 to 4. So the watchdog still works but takes about 208 s instead of 99 s while Keep busy is running; the script's 120 s window is now too short. Whether 208 s is acceptable is a judgement for the orchestrator; the run is a FAIL against the script as written. I did not test with Keep busy switched off.
+
+### 3. `scripts/agent-check.py` on Phone A (`pass2/03-agent/`)
+
+Command as before: `python scripts/agent-check.py 192.168.242.89:5555 192.168.242.89 <key> <dir> abcdfghij`; step e (ustaad-swarm, routes to any online phone) not run. 14 PASS, 0 FAIL: a-auth 401/401/200; b-lan connection refused; c-other-uid HTTP200; d-chat 7.32 s, 87 tokens; d-stream first token 0.46 s, 13.4 tok/s; d-schema 3.02 s; d-embed 0.20 s, 256 dims; f-two-at-once alone 7.30 s, together 6.94 s and 13.56 s (1.86 times); g-refusals 400/404/400/400/413/400; h-openai-sdk chat 7.31 s, 52 chunks; i-background 5 s, 60 s, 180 s all 13.4 tok/s (in front 13.3); j-switch off then on again HTTP 200. Agent access off again afterwards: `pass2/03-agent/agent-off-check.txt` and `pass2/99-final/agent-off-check.txt` both HTTP 000.
+
+### 4. Restart fault, five rounds (`pass2/04-restart/`, helper `pass2/helpers/restart_rounds.py`)
+
+Each round: wait for chat and embedder READY, `am force-stop com.swarmos.app` (0.15 to 0.21 s), then one `am start -n com.swarmos.app/.MainActivity` (0.06 to 0.08 s); times counted from that `am start`; Ustaad was in front before every round (`focusBefore` in `round<n>.json`).
+
+| Round | Started | (a) signed GET /v1/sched/busy answers | (b) chat READY | Fault (no answer in 30 s) |
+|---|---|---|---|---|
+| 1 | 02:08:02 | 1.1 s | 15.3 s | no |
+| 2 | 02:08:18 | 1.3 s | 16.6 s | no |
+| 3 | 02:08:35 | 1.3 s | 17.1 s | no |
+| 4 | 02:08:53 | 1.3 s | 17.1 s | no |
+| 5 | 02:09:11 | 2.1 s | 17.2 s | no |
+
+The fault from the first pass did not appear, so no dumps were taken. After the first-pass fault the launcher was in front (screenshot at 00:49), and I do not know what was in front just before it, so I added a variant that was not asked for, to test whether a backgrounded app matters: three more rounds with the HOME key pressed and the launcher confirmed in front (`focusAfterHome` in `home-variant/round<n>.json`) before the force-stop. Results (`home-variant/stdout.txt`): round 1 API 1.2 s, chat READY 17.0 s; round 2 1.1 s, 15.9 s; round 3 1.2 s, 16.4 s; no fault. Eight attempts, no fault. I cannot say whether the new build fixed it or whether the first-pass trigger was something else (it happened once in two runs, 00:46 against 00:50). The first-pass observation stands in section 3 above (`03-privacy/manual-steps.txt`).
+
+### 5. Keep busy after a restart (`pass2/05-keepbusy/samples.txt`)
+
+After round 5 (chat READY about 02:09:28) Keep busy stayed `paused_model_restarted` until 02:11:32, then `running` with jobsDone 2. Over the next 62 s (02:11:32 to 02:12:34) jobsDone grew from 2 to 31, tokens 42 to 606, jobsFailed 0, jobsCancelled 0. PASS.
+
+### 6. Local batch (`pass2/06-local-batch/`)
+
+`python scripts/bench-batch.py 192.168.242.89 local A-local-pass2 <dir>`: 32 / 32 finished, 0 failed, wall 94.4 s, 889 tokens, aggregate 9.41 tok/s, decode 11.4 tok/s; thermal status 2 at the start and 2 at the end. First pass on the old build: 95.5 s, 9.31 tok/s, thermal 2. PASS (no threshold set in the brief).
+
+### Not run
+
+Agent-check step e (may route to Phone C); hardening step m (30B file not on the phone); anything involving B or C. Keep busy was not switched off in the h diagnostic.
+
+### Anomalies and deviations
+
+Thermal status 0 to 2 during the pass (`pass2/gate-log.txt`); no status above 2 seen. Kills are all script-made: chat server SIGKILL in t and twice in c, SIGSTOP in the h runs (killed by the app after its watchdog in the diagnostic), app force-stops in the 8 restart rounds. No adb reconnect. Deviations: h repeated twice (rerun and a 420 s diagnostic), 3 extra restart rounds with the app in the background. Keep busy's `jobsFailed` counter on A was 4 at the end of the h diagnostic and reads 0 at 02:25:49 (`99-final/busy-A.json`) because the later restart rounds reset it.
+
+### Files created on a phone
+
+None outside the app's own data (`pass2/99-final/new-files-A.txt`: files newer than 01:52 are the app's own `audit.jsonl`, `logs/chat.log`, `logs/embed.log`, `pdu.db-shm`, datastore and one batch report `batches/batch-58b75fe32a2147c3.json`). Nothing on `/sdcard` or `/data/local/tmp`.
+
+### Final state of Phone A (`pass2/99-final/`, read 02:25:49)
+
+Chat Qwen3.5-4B-Q4_K_M READY on GPU (useGpu true), embedder READY, rpc STOPPED, Keep busy enabled and `running`, hammer false, jobsFailed 0, MemoryCloud IDLE with no notices, agent access off (port 8790: HTTP 000), thermal 0, Ustaad in front (`mCurrentFocus=com.swarmos.app/.MainActivity`), screen awake, shared folders unchanged.

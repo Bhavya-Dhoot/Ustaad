@@ -1,0 +1,8 @@
+01:53:20 pass2-start | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+01:59:44 pass2-after-hardening-th | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+02:02:46 pass2-before-agent | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+02:07:53 pass2-before-restart-rounds | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+02:12:40 pass2-before-local-bench | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+02:14:40 pass2-before-h-rerun | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+02:18:56 pass2-before-hung-extended | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+02:22:46 pass2-before-home-rounds | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0

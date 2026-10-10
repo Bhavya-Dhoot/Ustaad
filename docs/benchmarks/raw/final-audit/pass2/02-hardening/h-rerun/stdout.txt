@@ -1,0 +1,3 @@
+INFO  phone 192.168.242.89  thermal 2  chat {'state': 'READY', 'backend': 'GPU', 'loadMs': 15970, 'restarts': 0}
+FAIL  h-hung-server  froze pid 27567: first change after None; then READY on GPU with pid 27567, restarts 0
+INFO  end  thermal 2  chat {'state': 'READY', 'backend': 'GPU', 'restarts': 0}

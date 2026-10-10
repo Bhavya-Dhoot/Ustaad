@@ -1,0 +1,2 @@
+memcloud phase IDLE notices [] pendingRestore []
+useGpu True chat backend GPU chat state READY
