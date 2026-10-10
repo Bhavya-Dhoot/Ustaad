@@ -1,6 +1,6 @@
 # HANDOFF
 
-As of 2026-10-10, master df102b8 plus documents (gates 0 to 5 and 7 closed, gate 6 open for the founder's rehearsal list). It builds with 830 unit tests, 0 failures, and the debug and demo APKs (docs/BUILD.md, 2026-10-10 11:47); that debug build was installed on phones A, B and C at 11:49 with chat on the GPU and the embedder ready on all three, each phone listing the other two. The finale runs 2026-10-09 to 2026-10-11. Read this file, then the newest file in gates/ (gate-7-agent-endpoint.md), then CLAUDE.md. Everything before the newest gate artifact is dead context (CLAUDE.md). What may be claimed is in docs/CLAIMS.md and is binding.
+As of 2026-10-10, master 3206cb4 plus documents (gates 0 to 5 and 7 closed, gate 6 open for the founder's rehearsal list). It builds with 830 unit tests, 0 failures, and the debug and demo APKs (docs/BUILD.md, 2026-10-10 11:57); that debug build was installed on phones A, B and C at 11:58, agent access off on all three, with chat on the GPU and the embedder ready on all three, each phone listing the other two. The finale runs 2026-10-09 to 2026-10-11. Read this file, then the newest file in gates/ (gate-7-agent-endpoint.md), then CLAUDE.md. Everything before the newest gate artifact is dead context (CLAUDE.md). What may be claimed is in docs/CLAIMS.md and is binding.
 
 Product name: Ustaad (code still says SwarmOS until the final rename, docs/CONTRACTS.md section 10).
 

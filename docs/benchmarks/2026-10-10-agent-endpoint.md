@@ -39,5 +39,8 @@ Before this work the app's llama-server processes answered any local caller on 1
 - Load from many clients, long prompts near the context limit, a client that stops reading (unit-tested only), the 429 limits (unit-tested only).
 - `usage.prompt_tokens` reports the tokens the model processed after its prompt cache (27 on the first call, 4 on a repeat of the same prompt), not the length of the prompt.
 
+## After the run: the switch came back on
+Found after the checks: agent access came back on by itself on Phone C about ten minutes after it had been switched off. The activity had been recreated (the phone was lying on its side and rotated) and the debug-only launch extras of the test, which said "on" with the test key, were applied again. Fixed in 3206cb4: launch extras are applied only on a fresh start. The app was rebuilt (830 unit tests, 0 failures), installed on phones A, B and C at 11:58 with agent access off and no agent extras in the launch, and the port was closed on all three afterwards. The recreation itself was not triggered again on a phone, so the fix is verified by reading the code, not by a run. The demo build never honoured these extras.
+
 ## Mistakes made during the run, for the record
 The first attempt to install the fixed build failed silently (a path the Windows adb could not read), so one full run of the checks hit the previous build; it was noticed from the install time and the missing key on port 8080, the build was installed properly and the run repeated. Results of that stray run are not used. One Data Union call used a wrong field name and returned HTTP 500; repeated with the right field.
