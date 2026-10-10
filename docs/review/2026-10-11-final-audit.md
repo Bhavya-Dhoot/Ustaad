@@ -1,0 +1,77 @@
+# Final audit of the implementation (2026-10-11)
+
+Working copy: filled in as each reviewer reports. Plan: plans/2026-10-11-final-audit.md. Code state audited: master f62da67 (the commits after it change documents and scripts only), 1453 unit tests, 0 failures, the same build on phones A, B and C.
+
+Who looked: Codex (gpt-6.1-sol, high effort, read-only, raw output in `2026-10-11-codex-audit.txt`), three Sonnet reviewers with one lens each (resources and keep busy; failure paths and stuck states; the fixes and claims of 2026-10-10), one Sonnet device tester on phones A and B (docs/benchmarks/2026-10-11-final-regression.md). Every finding below was read against the code by the orchestrator before it was counted.
+
+## Reviewer 3: do the fixes of 2026-10-10 hold, and do the claims match
+
+Fixes. Rows 1, 3 to 8 and 10 to 23 of the 2026-10-10 table were found in the code as described. What is left:
+
+| # | Where | What | Decision |
+|---|---|---|---|
+| F1 | pdu/PduStore.kt `setFolderPrivate` (row 2) | The fix is in the code (one transaction, repair at start), but no unit test would fail if the transaction were removed: the store needs Android's SQLite. Only the folder-selection rule is unit-tested. | Wording: the claim says "rule unit-tested, the write itself checked on a phone" (scripts/privacy-check.py). No code change. |
+| F2 | sched/RemoteLlmClient.kt `asSchedError`, link/NodeServer.kt dedup | A resent job whose first run is still going after 30 s gets HTTP 409 "the same request is still running", and the client reads every 409 as "phone runs another model". Read against sched/SwarmLlm.kt: the job then goes to another phone either way (the one resend is already spent), so the effect is a wrong error text and a job that runs twice under overload. | Written down, not fixed today: no change in behaviour to gain, and a change in the scheduler on the day of the demo is not worth a clearer message. |
+| F3 | llm/LlamaRuntime.kt memory check (row 9), link/PeerLinks.kt heartbeat paths | Held by phone checks, not by unit tests that would fail without them. | Accepted as phone-checked. |
+| F4 | core/Signer.kt (deferred item 1: the signature covers method, path, time and body only) | Still open. Its reason, "Phone A stays on the older build", ended at 00:29 when Phone A took the current build. | Still deferred, new reason: a change of the signature on the day of the demo would have to reach all three phones at once and buys nothing a judge can see. |
+| F5 | busy/BusyMode.kt `setEnabled`, `setHammer` | They write the audit entry on the caller's thread, which is the UI thread when a Settings button is used; the audit log is a synchronised file append. | Low. Fix candidate if another code change is made today (move the append to the existing save scope). |
+| F6 | llm/LlamaArgs.kt:109 | A comment says whether the server's memory growth stops "is for a phone run to show"; evening-checks section 2 showed it (1.1 to 1.6 GB over 45 minutes). | Comment update with the next code change. |
+
+Claims (docs/CLAIMS.md). Corrections to make:
+
+| Row | What is wrong | Correction |
+|---|---|---|
+| HD1 | "without getting in the way of real work" is stronger than the notes: under keep busy a warm phone decodes real work at 10.8 tok/s where 13.5 is available. | Say what was measured: 0.07 to 0.59 s before a real request starts; real decode on a warm phone is slower. |
+| HD1, gate 9 | "26 minutes and more" for Phone C's idle gap. | 36 minutes (21:35:18 to 22:11:43). |
+| HD1 | The Settings line "Also runs with the screen off while charging." describes what the code does when the battery exemption is granted. The exemption was never granted on a phone, so it is unmeasured. | Say so in the row. The exemption is the founder's to grant. |
+| HD1 | Hammer's helper text ("answers get slower and the phone gets hot", "pauses while the phone is too hot") is not measured: Thermal Status 3 was never reached on a phone. | Say so; measure Hammer on Phone A. |
+| HD4 | "half-written case is unit-tested only" overstates the test (see F1). | Reword. |
+| HD6 | The caveat "a phone joining mid-batch is unit-tested only" is out of date: evening-checks section 8 saw a joining phone take 10 of 32 jobs. | Reword; say 99.6 % in two of three runs. |
+| HD12 | "survives the coordinating phone dying" is stronger than the run: the batch ended as interrupted with 7 of 32 jobs done. | Say that. |
+| HD7 | The "switch" for leaner sources is a debug-build intent extra; there is no Settings toggle. | Say "debug build only". |
+| PS5, R26 | "lease unit-tested (11 tests), not run on a phone" is out of date: 32 tests, and HD3 saw a lender restore itself on a phone. | Reword. |
+| AG3 | "calls work while in the background" needs the caveat of evening-checks section 9 (status reads timing out, one 401 after 39 s, with the app in the background on a lit screen). | Add. |
+| LK6 | The 4.1 s figure for a silenced path belongs to the old 1000 ms heartbeat; it is 2500 ms now, and the final build showed 2.3 s after a force-stop. | Quote 2.3 s; mark 4.1 s as the old timeout. |
+
+Status lines: HANDOFF.md, README.md and docs/BUILD.md agree with each other and with the tree (f62da67, 1453 tests). All three still say Phone A is reserved and on the older build; HANDOFF.md line 45 carries an old table of builds per phone; README.md line 7 lacks a separator in one sentence.
+
+## Reviewer 1: keep busy, scheduler, heat, battery, memory
+
+No blocker and no high finding. Read against the code by the orchestrator where a decision depended on it.
+
+| # | Where | What | Decision |
+|---|---|---|---|
+| R1 | sched/JobExecutor.kt `submit` | The slot is counted before the job's coroutine has run a line. A caller cancelled in that moment cancels the coroutine before it starts, so nothing ever gives the count back: with one slot per phone the phone refuses every job and runs no filler until the app restarts. Read and agreed; not seen on a phone. | Fix now, with a test that reproduces it. |
+| R2 | busy/BusyLoop.kt, llm/LlamaServerClient.kt | A filler job has no time limit of its own. A model server that accepts a request and never answers holds the loop in "running" for up to ten minutes (the socket timeout): an idle phone that reports itself busy. | Fix now: 60 s limit, counted as a failed job. |
+| R3 | core/ThermalGate.kt, sched/SchedNode.kt | The gate has a kind for work from another phone, and nothing calls it: at Thermal Status 4 or more a phone still accepts jobs from others. Only the sender's two-second-old view of the phone keeps work away. | Fix now: refuse work from another phone at status 4 or more. |
+| R4 | memcloud/SplitCoordinator.kt `runBaseline`, `stop` | An exception in the single-phone baseline leaves the phase BASELINE, which counts as work in progress: the same class as the fault of 2026-10-10. No thrower was found. | Fix now. |
+| R5 | busy/BusyMode.kt | Hammer: the flag is cleared before the time of the switch-off is written (a job can start in between); a rest that was running continues after Keep busy is switched off and on; Hammer stays on after "Stop Ustaad" and a start in the same process, although the text says it is off after a restart; the audit entry is written on the UI thread. | Fix now, four small changes. |
+| R6 | busy/BusyLoop.kt `runOne` | Three calls sit between taking the filler slot and the try that gives it back, and the restore call runs before the release. If one of them threw, the slot would stay taken. No thrower named. | Fix now (ordering only). |
+| R7 | sched/GatedLlmClient.kt, pdu/Answering.kt | A slot taken inside a timeout block can be lost when the timeout fires as the slot is handed over. | Fix now. |
+| R8 | llm/LlamaRuntime.kt, RestartPolicy.kt | An automatic restart after a server death goes through the same heat and memory refusal as a manual load and is tried once. Refused, the phone has no chat model until the owner taps Load. | Written down. A retry loop in the runtime is not a change for the day of the demo; the refusal needs Thermal Status 4 or a memory shortage right after a server died, which frees its memory. |
+| R9 | llm/LlamaRuntime.kt memory check | The check reads free memory and reserves nothing: the chat and the embedding model are checked in parallel against the same figure. | Written down. The embedder is 0.3 GB against a margin of 1.5 GB. |
+| R10 | llm/Bench.kt, Selftest.kt | A benchmark starts while a filler job may still be running for up to a quarter of a second, so the first tokens of a measured run can overlap filler, more often with Hammer on. Size not measured. | Written down: switch Keep busy off for a benchmark that is quoted. |
+| R11 | busy/BusyPolicy.kt | After a pause for heat the loop resumes at the first reading under Thermal Status 3, with no settling time; with Hammer it could move back and forth on that edge. Thermal Status 3 was never reached on a phone. | Open until Hammer is measured for longer (Phone A). |
+| R12 | busy/BusyCounters.kt | The Settings line calls every stopped filler job "stopped by real work", also those stopped because the model restarted, and does not show failed jobs. | Written down. |
+| R13 | busy/, llm/MemoryPressure.kt | Keep busy has no input for free memory; the low-memory signal only stops an idle embedder. With Hammer there is no back-off for memory. | Written down as a gap, not a fault shown. |
+
+Checked and found sound by this reviewer: the Hammer and Keep busy switches are synchronised and coupled as described; the rest ends on a monotonic clock; a filler slot is given back only after its model call has ended; real work waits at most the stated three seconds behind filler; every caller that takes a slot releases it in a finally; signatures are checked on arrival, before any queueing; a dead phone ends in an error and not a hang; filler goes to the phone's own model only and its answers are dropped.
+
+## Reviewer 2: failure paths and states that stay stuck
+
+| # | Where | What | Decision |
+|---|---|---|---|
+| S1 | memcloud/SplitCoordinator.kt `startDegradedRestore` | High. After two minutes without a re-plan a degraded split gives this phone its models back and stays in the phase DEGRADED. That phase counts as work in progress, so keep busy runs no filler until someone presses Stop, and the "a large model is paused" banner comes back. The same class as the fault of 2026-10-10. Read and agreed. | Fix now. |
+| S2 | memcloud/RpcLender.kt `stop`, SplitCoordinator.kt `confirmPeerRestored` | High, trigger not shown. A lender starts its own models again in the same instant it tells the rpc server to stop. The memory check for the chat model can run while the rpc server still holds the split's weights and refuse the load; the role is then FAILED, the list of what to restore is already cleared, and the driver reloads only roles it sees as STOPPED. The 30B split has not been run since the memory check was added. | Fix now: wait for the rpc server to be gone, and treat FAILED like STOPPED when restoring. Needs the 30B run on three phones to confirm. |
+| S3 | memcloud/SplitCoordinator.kt:422 | A split that loses a phone in the last seconds of loading can be marked READY over DEGRADED, with no server behind it. | Fix now (one conditional). |
+| S4 | pdu/PduEngine.kt `runAsk` | Only a cancellation is caught. Any other exception leaves the question in "searching" and the Ask button disabled, and Stop has nothing to stop. No thrower shown. | Fix now. |
+| S5 | choir/ChoirRuntime.kt:123 | The busy flag is set before the try that clears it. | Fix now (one line). |
+| S6 | llm/ModelStore.kt:239, ModelsUi.kt, memcloud/RpcWorker.kt:150 | A model whose load failed is treated as in use: it cannot be deleted and the list offers neither Load nor Delete for it until the server card's Stop is used. The same class again: FAILED tested as "not STOPPED". | Fix now. |
+| S7 | link/LinkRoute.kt, link/LinkRuntime.kt `adopt` | The pairing message added on 2026-10-10 says "Will keep trying", and the retries end after ten minutes. Separately, a pairing with a host that never answers has already replaced the old secret, and nothing puts it back. | Wording fixed now. Restoring the old secret is written down: what a failed pairing should leave behind is the founder's decision. |
+| S8 | memcloud/SplitCoordinator.kt restore retry | The retry that gives a peer its models back never gives up: a model file deleted on the peer, or a peer that left for good, keeps it running every five seconds, also after a restart. | Written down. |
+| S9 | llm/StatusBoard.kt, RestartPolicy.kt | Two deaths of the GPU model server inside two minutes switch the phone to the CPU build for good, whatever killed it, the vendor system included. A note is shown and the GPU switch brings it back. | Written down; check the backend of every phone before the demo (all three are on the GPU as of 00:31). |
+| S10 | sched/SwarmLlm.kt:466 | The one resend to a phone that missed a ping uses an abort signal that has already fired, so the job moves to another phone for nothing. Heals at the next probe. | Written down. |
+| S11 | memcloud/RpcWorker.kt:104, RpcLender.kt:118 | A narrow race can leave a loan's lease without its timer; the list of models to restore is kept in memory only, so a lender whose process dies gets its default models back and not a non-default one. | Written down. |
+| S12 | link/LinkRuntime.kt:156 | The link is marked started before its ten start steps; an exception in the middle leaves it half up until it is stopped. No thrower shown. | Written down. |
+
+Checked and found sound by this reviewer: the flags keep busy trusts for benchmark, self-test, index run, downloads and loans; the order in which a driver records what it will stop on a peer before it stops it; a lender dying and a driver dying in a split; the fallback from the GPU build to the CPU build is bounded; the watch for a frozen server; bounded download attempts; Knowledge Bank revocation is atomic; a batch whose peer dies or joins; a dead phone ends in an error; a silent peer in a Data Union ask is bounded; link failover retries only while the caller is waiting.
