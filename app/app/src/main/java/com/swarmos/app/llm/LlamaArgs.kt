@@ -27,6 +27,25 @@ object BackendPlan {
         if ("--rpc" in extraArgs || "-rpc" in extraArgs) return listOf(Backend.CPU)
         return listOf(Backend.GPU, Backend.CPU)
     }
+
+    /**
+     * The banner of a chat server that moved from the GPU to the CPU build: shown by a start whose GPU attempt did not get READY
+     * and by the restart after a GPU server died twice. [reason] is the failure or the way it died.
+     */
+    fun fallbackNote(reason: String?): String = "The GPU server failed (${reason?.take(160) ?: "unknown reason"}). Running on the CPU build."
+}
+
+/**
+ * A GPU failure is remembered per install of the app: a GPU build that hangs costs [LlamaRuntime]'s whole GPU start timeout
+ * (120 s) on every start, so after the CPU build had to take over once, chat starts on the CPU until the app is updated or
+ * reinstalled (the stamp changes) or the owner turns the "Use GPU for chat" switch off and on again (the memory is cleared).
+ */
+object GpuFailureMemory {
+    const val SKIPPED_NOTE = "The GPU build failed earlier on this version of Ustaad, so the chat model runs on the CPU. " +
+        "Turn \"Use GPU for chat\" off and on to try the GPU again."
+
+    /** True when [failedStamp] (the install stamp stored with the failure, null when none) is this install's [currentStamp]. */
+    fun skipGpu(failedStamp: String?, currentStamp: String): Boolean = failedStamp != null && failedStamp == currentStamp
 }
 
 /**
@@ -70,9 +89,40 @@ object LlamaArgs {
      * Phones have 8 cores (2 prime + 6 performance); 6 chat threads leave two for the app and Android.
      */
     const val CHAT_THREADS = 6
+    const val MIN_CHAT_THREADS = 2
     const val EMBED_THREADS = 2
+
+    /**
+     * Threads of the CPU chat build for a phone where the app may run on [allowedCores] cores (memcloud/CpuSet.allowed): one core
+     * stays free for the app, at most [CHAT_THREADS], at least [MIN_CHAT_THREADS]. A child forked while the app is in the background
+     * inherits fewer cores, and llama.cpp's thread barriers spin, so more threads than cores make every graph wait for a
+     * descheduled thread (measured 0.3 against 3 tok/s, see CpuSet). The GPU build keeps [GPU_THREADS].
+     */
+    fun cpuChatThreads(allowedCores: Int): Int = (allowedCores - 1).coerceAtMost(CHAT_THREADS).coerceAtLeast(MIN_CHAT_THREADS)
     const val CHAT_CTX = 8192
     const val CHAT_SLOTS = 2
+
+    /**
+     * Memory caps of the chat server's prompt cache. This llama.cpp keeps up to 32 context checkpoints per slot (`-ctxcp`, tools/server
+     * README) and a host prompt cache of 8192 MiB (`-cram`, common/common.h cache_ram_mib); on a phone the chat server's resident
+     * memory was seen growing from about 0.8 GB after load to 3.0-3.9 GB over a session. Six checkpoints and 1 GiB keep the
+     * repeat-question cache hit (never 0: 0 turns the cache off). Both flags exist in the shipped CPU and GPU builds. Whether the
+     * growth stops at these values is for a phone run to show.
+     */
+    const val CHAT_CTX_CHECKPOINTS = 6
+    const val CHAT_CACHE_RAM_MIB = 1024
+
+    /** `GGML_OPENCL_KERNEL_CACHE_DIR`: where the OpenCL build keeps compiled programs, so a later start skips the compile (ggml-opencl/cl-program-cache.cpp). */
+    const val KERNEL_CACHE_ENV = "GGML_OPENCL_KERNEL_CACHE_DIR"
+    const val KERNEL_CACHE_DIR_NAME = "cl-cache"
+
+    /**
+     * The environment entry that points the GPU chat build at [kernelCacheDir] (a directory under the app's files). Without it the
+     * build looks for `<temp dir>/llama.cpp/cl-cache`, and the temp directory is not set for an exec'd child of an app, so the cache
+     * stays off and every start compiles every kernel again. Empty for the other builds and when no directory could be made.
+     */
+    fun kernelCacheEnv(role: Role, backend: Backend, kernelCacheDir: String?): Map<String, String> =
+        if (role == Role.CHAT && backend == Backend.GPU && !kernelCacheDir.isNullOrBlank()) mapOf(KERNEL_CACHE_ENV to kernelCacheDir) else emptyMap()
     const val EMBED_CTX = 4096
     const val EMBED_SLOTS = 2
 
@@ -84,16 +134,21 @@ object LlamaArgs {
     fun build(
         role: Role, modelPath: String?, port: Int, extra: List<String> = emptyList(), backend: Backend = Backend.CPU,
         apiKey: String = LlamaKey.value,
+        /** Cores this process may run on; the CPU chat build sizes its threads from it ([cpuChatThreads]). Null: [CHAT_THREADS]. */
+        allowedCores: Int? = null,
     ): List<String> {
         val gpu = role == Role.CHAT && backend == Backend.GPU
+        val chatThreads = if (gpu) GPU_THREADS else allowedCores?.let(::cpuChatThreads) ?: CHAT_THREADS
         val base = when (role) {
             Role.CHAT -> listOf(
                 "-m", requireNotNull(modelPath) { "chat needs a model" },
                 "--host", "127.0.0.1", "--port", port.toString(),
             ) + (if (gpu) listOf("-ngl", GPU_LAYERS.toString()) else emptyList()) + listOf(
-                "-t", (if (gpu) GPU_THREADS else CHAT_THREADS).toString(),
+                "-t", chatThreads.toString(),
                 "-c", CHAT_CTX.toString(),
                 "-np", CHAT_SLOTS.toString(),
+                "-ctxcp", CHAT_CTX_CHECKPOINTS.toString(),
+                "-cram", CHAT_CACHE_RAM_MIB.toString(),
                 "--reasoning", "off", // Qwen3.5 thinking off for every request (the client also sends enable_thinking=false)
                 "--no-webui",
                 API_KEY_FLAG, apiKey,

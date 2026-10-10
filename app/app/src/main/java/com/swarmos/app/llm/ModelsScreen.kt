@@ -71,8 +71,10 @@ import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.SwarmIcon
 import com.swarmos.app.ui.SwarmType
 import com.swarmos.app.ui.Tag
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -110,12 +112,21 @@ private fun ModelsPage(onBench: () -> Unit) {
     var freeBytes by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(tick) {
         while (true) {
-            present = ModelStore.present()
-            rss = Role.entries.associateWith { LlamaRuntime.rssKb(it) }
-            freeBytes = runCatching { StatFs(ModelStore.modelsDir().path).availableBytes }.getOrNull()
+            // directory listing, /proc reads and StatFs are disk I/O: never on the main thread
+            val (files, sizes, free) = withContext(Dispatchers.IO) {
+                Triple(
+                    ModelStore.present(),
+                    Role.entries.associateWith { LlamaRuntime.rssKb(it) },
+                    runCatching { StatFs(ModelStore.modelsDir().path).availableBytes }.getOrNull(),
+                )
+            }
+            present = files
+            rss = sizes
+            freeBytes = free
             delay(2000)
         }
     }
+    val uiScope = rememberCoroutineScope()
 
     val chat = status.getValue(Role.CHAT)
     val embed = status.getValue(Role.EMBED)
@@ -135,8 +146,9 @@ private fun ModelsPage(onBench: () -> Unit) {
                 primaryText(header.primary),
                 onClick = {
                     when (header.primary) {
-                        PrimaryAction.LoadModels -> {
-                            val started = LlamaRuntime.loadDefaults(onlyMissing = true)
+                        PrimaryAction.LoadModels -> uiScope.launch {
+                            // loadDefaults lists the models folder: off the main thread
+                            val started = withContext(Dispatchers.IO) { LlamaRuntime.loadDefaults(onlyMissing = true) }
                             loadNote = if (started.isEmpty()) "The default models are not on this phone. Download them below." else null
                         }
                         PrimaryAction.RunBenchmark -> onBench()
@@ -180,7 +192,7 @@ private fun ModelsPage(onBench: () -> Unit) {
         if (anyRunning || embedderMissing(chat.state, embed.state)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (embedderMissing(chat.state, embed.state)) {
-                    SecondaryButton("Load embedder", onClick = { LlamaRuntime.loadDefaults(onlyMissing = true) })
+                    SecondaryButton("Load embedder", onClick = { uiScope.launch(Dispatchers.IO) { LlamaRuntime.loadDefaults(onlyMissing = true) } })
                 }
                 if (anyRunning) SecondaryButton("Unload all", onClick = { LlamaRuntime.stopAll() })
             }

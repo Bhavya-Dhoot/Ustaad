@@ -18,7 +18,19 @@ import kotlinx.serialization.json.put
 import kotlin.math.sqrt
 
 /** The llama-server answered with an error (HTTP status or an `error` object inside the stream). */
-class LlamaServerException(message: String, val status: Int = 0) : RuntimeException(message)
+open class LlamaServerException(message: String, val status: Int = 0) : RuntimeException(message)
+
+/**
+ * The stream ended (clean end of file, the server was killed or closed the connection) before the server said the answer
+ * was finished: no `[DONE]` marker and no chunk with a finish reason. [partialText] is what arrived, for callers that show
+ * partial text; it is NOT a complete answer and must never be stored or signed as one. [chunks] counts the text deltas
+ * (the second parameter also keeps coroutine stack-trace recovery from rebuilding this exception with the message as the text).
+ */
+class ModelStoppedMidAnswerException(val partialText: String, val chunks: Int) : LlamaServerException(MESSAGE) {
+    companion object {
+        const val MESSAGE = "the model stopped mid-answer"
+    }
+}
 
 /**
  * Pure (no Android, no network) helpers for the llama-server OpenAI-compatible API:
@@ -76,6 +88,7 @@ object LlamaJson {
         completionTokens = t.num("predicted_n")?.toInt() ?: 0,
         promptMs = t.num("prompt_ms") ?: 0.0,
         genMs = t.num("predicted_ms") ?: 0.0,
+        cachedTokens = t.num("cache_n")?.toInt() ?: 0,
     )
 
     fun statsFromUsage(u: JsonObject): ChatStats = ChatStats(
@@ -162,6 +175,12 @@ class SseChatParser {
         private set
     var finishReason: String? = null
         private set
+
+    /**
+     * True once the server said the answer is finished: the `[DONE]` marker, or a chunk with a finish reason (the chunks that
+     * only carry usage and timings may be missing then). A stream that ends without either was cut off.
+     */
+    val complete: Boolean get() = done || finishReason != null
 
     /** Stats from the server timings object (preferred) or usage; null until one was seen. */
     var stats: ChatStats? = null
