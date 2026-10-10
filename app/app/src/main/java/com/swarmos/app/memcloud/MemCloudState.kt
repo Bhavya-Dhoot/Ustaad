@@ -122,6 +122,8 @@ data class MemCloudState(
     val smallModel: SmallModelView? = null,
     /** Model servers MemoryCloud stopped to make room and has not restored yet, e.g. "Phone A: chat Qwen3.5-4B-Q4_K_M.gguf". */
     val pendingRestore: List<String> = emptyList(),
+    /** Plain sentences the screen shows next to the status, e.g. "Phone B has not got its models back yet" while a restore is unconfirmed. */
+    val notices: List<String> = emptyList(),
     /** Mean heartbeat round trip (HTTP) over the peers in the split. */
     val rttMs: Double? = null,
     /** Mean TCP connect round trip to the peers' rpc-server ports; the number ExpertMesh uses. */

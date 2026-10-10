@@ -55,6 +55,9 @@ private class FakeEnv : SplitEnv {
     /** Peers no call reaches (switched off, out of range). */
     val unreachable = mutableSetOf<String>()
 
+    /** Peers that answer but refuse /models/load. */
+    val failingLoad = mutableSetOf<String>()
+
     /** Peers that stop their servers on /rpc/start and then drop the connection. */
     val diesAfterStop = mutableSetOf<String>()
 
@@ -107,7 +110,11 @@ private class FakeEnv : SplitEnv {
 
     override suspend fun peerModels(addr: String): Map<String, RoleSnap> { reach(addr); return peerRoles.getValue(addr) }
     override suspend fun peerStopRole(addr: String, role: String) { reach(addr); calls += "stopRole $addr $role" }
-    override suspend fun peerLoadModel(addr: String, role: String, file: String) { reach(addr); calls += "loadModel $addr $role $file" }
+    override suspend fun peerLoadModel(addr: String, role: String, file: String) {
+        reach(addr)
+        if (addr in failingLoad) throw java.io.IOException("load refused")
+        calls += "loadModel $addr $role $file"
+    }
     override suspend fun peerRpcStart(addr: String, req: RpcStartRequest): RpcStateDto {
         reach(addr)
         calls += "rpcStart $addr restore=${req.restore.joinToString(",") { it.role + ":" + it.file }} stopOwn=${req.stopOwn}"
@@ -173,7 +180,7 @@ class SplitCoordinatorTest {
     private lateinit var env: FakeEnv
     private lateinit var scope: CoroutineScope
     private lateinit var c: SplitCoordinator
-    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1)
+    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30)
 
     @Before fun setUp() {
         env = FakeEnv()
@@ -464,6 +471,57 @@ class SplitCoordinatorTest {
         // the reachable peer and this phone were put right
         assertEquals(1, env.count("loadModel 10.0.0.3:8787 chat small.gguf"))
         assertEquals(1, env.count("restoreLocal chat small.gguf"))
+    }
+
+    // ---------- finding 2: a restore that is not confirmed is kept, retried and shown ----------
+
+    @Test fun aPeerThatDoesNotAnswerWhenTheSplitStopsKeepsItsRecordIsRetriedAndShown() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.unreachable += "10.0.0.3:8787"
+        c.stop()
+        val s = awaitState("IDLE with a notice") { it.phase == Phase.IDLE && it.notices.isNotEmpty() }
+        assertEquals(listOf("Phone C has not got its models back yet"), s.notices)
+        assertEquals(listOf("Phone C: chat small.gguf", "Phone C: embed embed.gguf"), s.pendingRestore)
+        assertEquals("Phone B answered and is clear", 1, env.count("rpcStop 10.0.0.2:8787"))
+        val rec = env.saved.last()
+        assertEquals(setOf("c"), rec.restore.keys)
+        assertEquals(mapOf("c" to "10.0.0.3:8787"), rec.peerAddrs)
+        // the phone answers again: the next tick stops its loan, loads what is still stopped, and the record goes
+        env.unreachable -= "10.0.0.3:8787"
+        val after = awaitState("record cleared") { it.notices.isEmpty() && it.pendingRestore.isEmpty() }
+        assertTrue(after.phase == Phase.IDLE)
+        assertEquals(1, env.count("rpcStop 10.0.0.3:8787"))
+        assertEquals(1, env.count("loadModel 10.0.0.3:8787 chat small.gguf"))
+        assertEquals(Persisted(), env.saved.last())
+    }
+
+    @Test fun aLoadThatAPeerRefusesIsKeptAndRetriedUntilItWorks() {
+        env.diesAfterStop += "10.0.0.3:8787"
+        env.failingLoad += "10.0.0.3:8787"
+        assertNull(start("Phone B", "Phone C"))
+        val s = awaitState("FAILED with a notice") { it.phase == Phase.FAILED && it.notices.isNotEmpty() }
+        assertEquals(listOf("Phone C has not got its models back yet"), s.notices)
+        assertEquals(0, env.count("loadModel 10.0.0.3:8787"))
+        env.failingLoad -= "10.0.0.3:8787"
+        awaitState("record cleared") { it.notices.isEmpty() }
+        assertEquals(1, env.count("loadModel 10.0.0.3:8787 chat small.gguf"))
+        assertEquals(1, env.count("loadModel 10.0.0.3:8787 embed embed.gguf"))
+        assertTrue(c.state.value.pendingRestore.isEmpty())
+    }
+
+    @Test fun aRetryNeverTouchesAPhoneThatTheNextSplitIsUsing() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.unreachable += "10.0.0.3:8787"
+        c.stop()
+        awaitState("notice") { it.phase == Phase.IDLE && it.notices.isNotEmpty() }
+        // the phone answers again, but is away in the registry: no call goes to it
+        env.unreachable -= "10.0.0.3:8787"
+        env.peerList = env.peerList.map { if (it.nodeId == "c") it.copy(away = true) else it }
+        runBlocking { delay(150) }
+        assertEquals(0, env.count("rpcStop 10.0.0.3:8787"))
+        assertTrue(c.state.value.notices.isNotEmpty())
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {

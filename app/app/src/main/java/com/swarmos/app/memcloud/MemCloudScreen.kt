@@ -240,6 +240,7 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
     }
 
     st.failReason?.let { ErrorNote(it) }
+    for (n in st.notices) ErrorNote(n)
     plan?.let { p -> if (!p.fitsAll() && st.phase == Phase.IDLE) Note("Memory is tight on at least one phone") }
     val (loadText, canPick) = MemCloudLogic.loadButton(selected.size)
     PrimaryButton(
@@ -399,6 +400,7 @@ private fun DroppedView(st: MemCloudState, onlineIds: Set<String>) {
         Text("${lost ?: "A phone"} stopped answering.", style = SwarmType.title)
         Text("Generation stopped and the model server was shut down. ${st.failReason ?: ""}", style = SwarmType.body.copy(color = SwarmColors.graphite))
     }
+    for (n in st.notices) ErrorNote(n)
     if (n > 0) {
         val holders = shareAssignments(st.shares, n)
         LayerStrip(holders, holders.map { it != lost })

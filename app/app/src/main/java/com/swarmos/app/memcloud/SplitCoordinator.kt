@@ -56,6 +56,8 @@ class SplitCoordinator(
         val degradedRenewMs: Long = 60_000,
         val loadTimeoutMs: Long = 40L * 60_000,
         val settleMs: Long = 200,
+        /** How often a peer that has not confirmed it got its servers back is tried again. */
+        val restoreRetryMs: Long = 5_000,
     )
 
     companion object {
@@ -92,6 +94,7 @@ class SplitCoordinator(
      * persisted record until a call to the peer succeeds (the peer was unreachable, or refused).
      */
     private val unconfirmed = ConcurrentHashMap<String, String>()
+    private var retryJob: Job? = null
 
     @Volatile private var baselinePending: String? = null
 
@@ -162,7 +165,8 @@ class SplitCoordinator(
         }
         baselinePending = null
         persist()
-        _state.update { it.copy(pendingRestore = pendingText()) }
+        publishPending()
+        startRestoreRetry()
         env.clearActivity(ACTIVITY_OWNER)
     }
 
@@ -170,6 +174,15 @@ class SplitCoordinator(
      * Brings a peer back to how it was: rpc-server stopped (a lender restores its own servers when that happens), and every server in
      * [items] that is still stopped is loaded again. False when the peer could not be reached or refused, so the caller keeps the record.
      */
+    private suspend fun stopRpcOn(addr: String): Boolean = try {
+        env.peerRpcStop(addr)
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false
+    }
+
     private suspend fun confirmPeerRestored(addr: String, items: List<RestoreItem>): Boolean = try {
         env.peerRpcStop(addr)
         val snap = env.peerModels(addr)
@@ -278,7 +291,7 @@ class SplitCoordinator(
                 val old = synchronized(lock) { opJob }
                 old?.cancel()
                 teardownAll()
-                _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, steps = it.steps.takeLast(30) + "Stopped; chat and embedding servers restored", updatedAtMs = env.nowMs()) }
+                _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = it.steps.takeLast(30) + if (unconfirmed.isEmpty()) "Stopped; chat and embedding servers restored" else "Stopped; ${unconfirmed.keys.sorted().joinToString { k -> peerName(k) }} did not answer, its servers will be restored when it does", updatedAtMs = env.nowMs()) }
             } finally {
                 env.clearActivity(ACTIVITY_OWNER)
             }
@@ -291,7 +304,7 @@ class SplitCoordinator(
         cancelGeneration()
         val prev = _state.value
         loadParser = LoadLogParser()
-        _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
+        _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
             val peers = onlinePeers(sel)
@@ -380,21 +393,16 @@ class SplitCoordinator(
         if (ownsChat) { env.stopLocal(Role.CHAT); ownsChat = false }
         if (peers) {
             stopRenew()
-            val targets = touched.values.toList()
+            // peers of this split, and peers an earlier release could not confirm (a second call picks up what the first left)
+            val targets = LinkedHashMap<String, Pair<String, Boolean>>() // node id to (address, rpc-server ran)
             val started = rpcStarted.keys.toSet()
-            touched.clear()
+            for (k in touched.keys.toList()) touched.remove(k)?.let { targets[k] = it.addr to (k in started) }
+            for (k in unconfirmed.keys.toList()) unconfirmed.remove(k)?.let { if (k !in targets) targets[k] = it to false }
             rpcStarted.clear()
             coroutineScope {
-                for (p in targets) {
-                    launch {
-                        // A peer whose rpc-server ran restores its own servers when it stops. For any other peer the servers are either
-                        // untouched (the start was refused or failed) or stopped by a lender that died half way: ask what it runs, load what is stopped.
-                        if (p.nodeId in started) runCatching { env.peerRpcStop(p.addr) }
-                        else confirmPeerRestored(p.addr, restore[p.nodeId] ?: emptyList())
-                    }
-                }
+                for ((nodeId, t) in targets) launch { releasePeer(nodeId, t.first, t.second) }
             }
-            restore.keys.filter { it != "self" }.forEach { restore.remove(it) }
+            restore.keys.filter { it != "self" && !unconfirmed.containsKey(it) }.forEach { restore.remove(it) }
         }
         if (local) {
             val items = restore.remove("self") ?: emptyList()
@@ -402,7 +410,52 @@ class SplitCoordinator(
             env.clearActivity(ACTIVITY_OWNER)
         }
         persist()
-        _state.update { it.copy(pendingRestore = pendingText()) }
+        publishPending()
+        startRestoreRetry()
+    }
+
+    /**
+     * Gives a peer back what the split took. [rpcRan]: its rpc-server ran, so it restores its own servers when told to stop; any other
+     * peer is asked what it runs and gets what is still stopped loaded. A peer that does not answer keeps its record ([restore] and
+     * [unconfirmed]) and is retried by [startRestoreRetry] instead of being forgotten.
+     */
+    private suspend fun releasePeer(nodeId: String, addr: String, rpcRan: Boolean) {
+        val items = restore[nodeId] ?: emptyList()
+        val ok = if (rpcRan) stopRpcOn(addr) else confirmPeerRestored(addr, items)
+        if (ok || items.isEmpty()) {
+            restore.remove(nodeId)
+        } else {
+            unconfirmed[nodeId] = addr
+            step("${peerName(nodeId)} did not answer: its servers are still owed and will be retried")
+        }
+    }
+
+    /** [MemCloudState.pendingRestore] and [MemCloudState.notices] from what is still owed. */
+    private fun publishPending() {
+        _state.update { it.copy(pendingRestore = pendingText(), notices = noticesText()) }
+    }
+
+    private fun noticesText(): List<String> = unconfirmed.keys.sorted().map { "${peerName(it)} has not got its models back yet" }
+
+    /** Calls every peer that has not confirmed, every [Timing.restoreRetryMs], until all have. Skips a peer that is in a split being started or is away. */
+    private fun startRestoreRetry() {
+        if (unconfirmed.isEmpty() || retryJob?.isActive == true) return
+        retryJob = scope.launch {
+            while (isActive && unconfirmed.isNotEmpty()) {
+                delay(timing.restoreRetryMs)
+                if (synchronized(lock) { opJob?.isActive == true }) continue
+                for ((nodeId, addr) in unconfirmed.entries.toList()) {
+                    if (touched.containsKey(nodeId) || env.peers().firstOrNull { it.nodeId == nodeId }?.away != false) continue
+                    if (confirmPeerRestored(addr, restore[nodeId] ?: emptyList())) {
+                        unconfirmed.remove(nodeId)
+                        restore.remove(nodeId)
+                        step("${peerName(nodeId)} has its models back")
+                    }
+                }
+                persist()
+                publishPending()
+            }
+        }
     }
 
     // ---------- memory hygiene ----------
