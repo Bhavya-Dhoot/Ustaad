@@ -47,6 +47,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
@@ -262,11 +264,16 @@ private fun KeepBusyRows() {
             report = BusyMode.report()
         }
     }
+    val ctx = LocalContext.current
+    var exempt by remember { mutableStateOf(ctx.isBatteryExempt()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { exempt = ctx.isBatteryExempt() } // back from the system dialog
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SwitchRow(
             "Keep busy", "Runs short practice questions on this phone while it has no other work, and stops the moment real work arrives.",
             checked = on, onChange = { BusyMode.setEnabled(it) },
         )
+        Text(keepBusyScreenOffLine(exempt), style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite))
+        if (!exempt) SecondaryButton("Allow with the screen off", onClick = { ctx.requestBatteryExemption() })
         if (on) {
             Text(
                 "Now: ${state.text}. ${report.line()}",

@@ -233,9 +233,12 @@ fun readSetupState(ctx: Context): SetupState {
         ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED
     }
     val notifications = NotificationManagerCompat.from(ctx).areNotificationsEnabled()
-    val battery = ctx.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(ctx.packageName) == true
-    return SetupState(nearby, notifications, battery)
+    return SetupState(nearby, notifications, ctx.isBatteryExempt())
 }
+
+/** The system lets Ustaad ignore battery optimisations (the setup row and the "Keep busy" screen-off line read this). */
+internal fun Context.isBatteryExempt(): Boolean =
+    getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -253,7 +256,7 @@ private fun Context.openAppSettings() {
 }
 
 /** The system dialog "let this app always run in the background" for this package only; falls back to the app page. */
-private fun Context.requestBatteryExemption() {
+internal fun Context.requestBatteryExemption() {
     runCatching {
         startActivity(
             Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.fromParts("package", packageName, null))

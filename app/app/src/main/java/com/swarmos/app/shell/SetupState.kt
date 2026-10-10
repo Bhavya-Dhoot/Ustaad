@@ -31,6 +31,10 @@ fun nearbyPermissions(sdkInt: Int): List<String> = buildList {
     add(Manifest.permission.BLUETOOTH_CONNECT)
 }
 
+/** The helper line under the "Keep busy" switch: whether the mode can also run with the screen off, which needs the battery exemption. */
+fun keepBusyScreenOffLine(batteryExempt: Boolean): String =
+    if (batteryExempt) "Also runs with the screen off while charging." else "Runs only while Ustaad is on screen."
+
 /** The "Allow background start" row is only shown on vivo and iQOO phones, whose OriginOS stops background apps. */
 fun isVivoFamily(manufacturer: String, brand: String): Boolean =
     listOf(manufacturer, brand).any { it.trim().lowercase() in setOf("vivo", "iqoo") }
