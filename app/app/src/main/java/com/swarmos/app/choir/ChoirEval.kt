@@ -14,6 +14,10 @@ data class EvalRow(
     val group: String,
     val expected: String,
     val baselineAnswer: String? = null,
+    /** What the scorer compared: [baselineAnswer] after normalisation (a number as a canonical decimal, an option letter). */
+    val baselineNormalised: String? = null,
+    /** Why the baseline has no answer ("no valid answer", a timeout), when it has none. */
+    val baselineNote: String? = null,
     val baselineCorrect: Boolean = false,
     val baselineMs: Long = 0,
     val baselineTokens: Int = 0,
@@ -34,6 +38,10 @@ data class EvalRow(
     val consistent: Boolean = false,
     /** One phone, three samples: answers of the coordinator sampled three times in a row, majority taken. Null when not run. */
     val samplesAnswer: String? = null,
+    /** The valid answers of the three samples in order, and what was compared for the majority pick. */
+    val samplesAnswers: List<String> = emptyList(),
+    val samplesNormalised: String? = null,
+    val samplesFailures: List<String> = emptyList(),
     val samplesCorrect: Boolean = false,
     val samplesMs: Long = 0,
     val samplesTokens: Int = 0,
@@ -123,6 +131,8 @@ object ChoirEval {
             group = p.group,
             expected = p.answer,
             baselineAnswer = base?.answer,
+            baselineNormalised = base?.answer?.let { Normalizer.normalize(p.kind, it) },
+            baselineNote = if (base?.answer == null) t.lanes.firstOrNull()?.error else null,
             baselineCorrect = t.baselineCorrect == true,
             baselineMs = base?.wallMs ?: 0,
             baselineTokens = base?.tokens ?: 0,
@@ -139,6 +149,9 @@ object ChoirEval {
             verifiedByTest = tool?.verified == true && tool.checkSource == PROBLEM_CHECK,
             consistent = tool?.verified == true && tool.checkSource != PROBLEM_CHECK,
             samplesAnswer = samples?.answer,
+            samplesAnswers = samples?.answers ?: emptyList(),
+            samplesNormalised = samples?.answer?.let { Normalizer.normalize(p.kind, it) },
+            samplesFailures = samples?.failures ?: emptyList(),
             samplesCorrect = samples?.answer?.let { Normalizer.same(p.kind, it, p.answer) } == true && p.answer.isNotEmpty(),
             samplesMs = samples?.wallMs ?: 0,
             samplesTokens = samples?.tokens ?: 0,
@@ -217,7 +230,11 @@ object ChoirEval {
 }
 
 /** What "one phone, three samples" produced for one problem. [answered] counts the samples that returned a usable answer. */
-data class SamplesResult(val answers: List<String>, val answer: String?, val tokens: Int, val wallMs: Long, val answered: Int)
+data class SamplesResult(
+    val answers: List<String>, val answer: String?, val tokens: Int, val wallMs: Long, val answered: Int,
+    /** One entry per sample that gave no usable answer: why. */
+    val failures: List<String> = emptyList(),
+)
 
 /**
  * The equal-compute baseline: the coordinator alone samples the problem three times in a row (roles and
@@ -239,6 +256,7 @@ object ChoirSamples {
         val t0 = clock()
         val prompt = problem.prompt()
         val votes = mutableListOf<Vote>()
+        val failures = mutableListOf<String>()
         var tokens = 0
         for ((i, role) in ROLES.withIndex()) {
             val req = SolveRequest("$taskId-s$i", prompt, problem.kind, role, config.solveTokens, SAMPLE_BUDGET_MS, ChoirCoordinator.seedFor(taskId, "sample$i"))
@@ -249,12 +267,14 @@ object ChoirSamples {
             } catch (t: Throwable) {
                 null
             }
+            if (a != null) tokens += a.tokens
             if (a != null && a.error == null) {
-                tokens += a.tokens
                 votes.add(Vote("s$i", a.answer, a.confidence, keySteps = a.keySteps))
+            } else {
+                failures.add(a?.error ?: "timeout")
             }
         }
-        return SamplesResult(votes.map { it.answer }, pick(problem.kind, votes), tokens, clock() - t0, votes.size)
+        return SamplesResult(votes.map { it.answer }, pick(problem.kind, votes), tokens, clock() - t0, votes.size, failures)
     }
 
     fun pick(kind: Kind, votes: List<Vote>): String? {

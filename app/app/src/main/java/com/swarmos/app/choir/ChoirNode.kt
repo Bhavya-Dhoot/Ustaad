@@ -49,23 +49,23 @@ class ChoirNode(
         val t0 = clock()
         tasks[req.taskId] = TaskState(req.problem, req.kind, req.role, null)
         val sc = script
-        val chat = ChatRequest(
-            messages = ChoirPrompts.solve(req),
-            maxTokens = req.maxTokens,
-            temperature = ChoirPrompts.temperature(req.role),
-            jsonSchema = ChoirPrompts.SOLVE_SCHEMA,
-            seed = req.seed,
-        )
-        val outcome = call(
-            budgetMs = req.budgetMs,
-            chat = chat,
+        val letters = AnswerCheck.optionLetters(req.problem)
+        val gen = generate(
+            kind = req.kind, letters = letters, problem = req.problem, budgetMs = req.budgetMs,
+            build = { short ->
+                ChatRequest(
+                    messages = ChoirPrompts.solve(req, short),
+                    maxTokens = req.maxTokens,
+                    temperature = ChoirPrompts.temperature(req.role),
+                    jsonSchema = ChoirPrompts.solveSchema(req.kind, letters, short),
+                    seed = req.seed,
+                )
+            },
             scripted = sc?.r1?.let { SwarmJson.encodeToString(it) },
             fake = { FakePlanner.solveJson(findProblem(req.problem), req, me.nodeId) },
-            round = 1,
-            taskId = req.taskId,
-            nodeId = me.nodeId,
+            round = 1, taskId = req.taskId, nodeId = me.nodeId,
         )
-        return finishAnswer(req.taskId, 1, me, outcome, t0)
+        return finishAnswer(req.taskId, 1, me, gen, t0)
     }
 
     suspend fun revise(req: ReviseRequest): NodeAnswer {
@@ -75,22 +75,22 @@ class ChoirNode(
             ?: return NodeAnswer(req.taskId, 2, me.nodeId, me.name, llm().modelName, error = "unknown task ${req.taskId}").fitWire()
         val others = req.others.take(4).map { it.fitWire() }
         val sc = script
-        val chat = ChatRequest(
-            messages = ChoirPrompts.revise(st.kind, st.problem, st.own, others),
-            maxTokens = req.maxTokens,
-            temperature = ChoirPrompts.TEMP_REVISE,
-            jsonSchema = ChoirPrompts.SOLVE_SCHEMA,
-        )
-        val outcome = call(
-            budgetMs = req.budgetMs,
-            chat = chat,
+        val letters = AnswerCheck.optionLetters(st.problem)
+        val gen = generate(
+            kind = st.kind, letters = letters, problem = st.problem, budgetMs = req.budgetMs,
+            build = { short ->
+                ChatRequest(
+                    messages = ChoirPrompts.revise(st.kind, st.problem, st.own, others, short),
+                    maxTokens = req.maxTokens,
+                    temperature = ChoirPrompts.TEMP_REVISE,
+                    jsonSchema = ChoirPrompts.solveSchema(st.kind, letters, short),
+                )
+            },
             scripted = (sc?.r2 ?: sc?.r1)?.let { SwarmJson.encodeToString(it) },
             fake = { FakePlanner.reviseJson(findProblem(st.problem), req.taskId, me.nodeId, st.own, others) },
-            round = 2,
-            taskId = req.taskId,
-            nodeId = me.nodeId,
+            round = 2, taskId = req.taskId, nodeId = me.nodeId,
         )
-        return finishAnswer(req.taskId, 2, me, outcome, t0)
+        return finishAnswer(req.taskId, 2, me, gen, t0)
     }
 
     suspend fun judge(req: JudgeRequest): JudgeAnswer {
@@ -161,12 +161,37 @@ class ChoirNode(
 
     private val modelScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private fun finishAnswer(taskId: String, round: Int, me: NodeIdentity, o: Outcome, t0: Long): NodeAnswer {
+    private class Generated(val outcome: Outcome, val parsed: Parsed?, val retried: Boolean)
+
+    /**
+     * One model call whose answer must be usable ([AnswerCheck]); if it is not, one more call with a shorter instruction
+     * inside whatever budget is left. The tokens of both calls are counted. `parsed` is null when there is no valid answer.
+     */
+    private suspend fun generate(
+        kind: Kind, letters: List<Char>, problem: String, budgetMs: Long, build: (short: Boolean) -> ChatRequest,
+        scripted: String?, fake: () -> String, round: Int, taskId: String, nodeId: String,
+    ): Generated {
+        val t0 = clock()
+        val first = call(budgetMs, build(false), scripted, fake, round, taskId, nodeId)
+        if (first.error != null) return Generated(first, null, false)
+        val p1 = parseSolve(first.text)
+        if (p1 != null && AnswerCheck.isValid(kind, p1.answer, letters, problem)) return Generated(first, p1, false)
+        val left = budgetMs - (clock() - t0)
+        if (left < MIN_RETRY_MS) return Generated(first, null, false)
+        val second = call(left, build(true), scripted, fake, round, taskId, nodeId)
+        val both = Outcome(second.text, first.tokens + second.tokens, second.model, second.fake, second.error)
+        if (second.error != null) return Generated(both, null, true)
+        val p2 = parseSolve(second.text)?.takeIf { AnswerCheck.isValid(kind, it.answer, letters, problem) }
+        return Generated(both, p2, true)
+    }
+
+    private fun finishAnswer(taskId: String, round: Int, me: NodeIdentity, g: Generated, t0: Long): NodeAnswer {
+        val o = g.outcome
         val ms = clock() - t0
-        if (o.error != null) return NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, ms = ms, error = o.error).fitWire()
-        val p = parseSolve(o.text)
-            ?: return NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, tokens = o.tokens, ms = ms, error = "no answer in model output").fitWire()
-        val out = NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, p.answer, p.confidence, p.keySteps, o.tokens, ms).fitWire()
+        if (o.error != null) return NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, tokens = o.tokens, ms = ms, error = o.error, retried = g.retried).fitWire()
+        val p = g.parsed
+            ?: return NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, tokens = o.tokens, ms = ms, error = NO_VALID_ANSWER, retried = g.retried).fitWire()
+        val out = NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, p.answer.trim(), p.confidence, p.keySteps, o.tokens, ms, retried = g.retried).fitWire()
         tasks[taskId]?.own = Candidate(out.answer, out.keySteps)
         return out
     }
@@ -176,6 +201,8 @@ class ChoirNode(
         problems().filter { promptText.contains(it.text) }.maxByOrNull { it.text.length }
 
     companion object {
+        const val NO_VALID_ANSWER = "no valid answer"
+        private const val MIN_RETRY_MS = 800L
         private val ANSWER_STR = Regex(""""answer"\s*:\s*"((?:[^"\\]|\\.)*)"""")
         private val ANSWER_NUM = Regex(""""answer"\s*:\s*(-?\d+(?:\.\d+)?)""")
         private val CONF = Regex(""""confidence"\s*:\s*(-?\d+(?:\.\d+)?)""")

@@ -130,7 +130,7 @@ object ChoirController {
     }
 
     /** Runs the built-in set (or the given ids) one after another; stores filesDir/choir-eval-<ts>.json. Stop (see [cancelEval]) keeps the finished rows. */
-    suspend fun runEval(ids: List<String>?, options: RunOptions = RunOptions(), withSamples: Boolean = true): EvalReport = gate.withLock {
+    suspend fun runEval(ids: List<String>?, options: RunOptions = RunOptions(), withSamples: Boolean = true, withPeers: Boolean = true): EvalReport = gate.withLock {
         refusal()?.let { reason ->
             evalSession.refuse(reason)
             throw RunRefused(reason)
@@ -147,7 +147,7 @@ object ChoirController {
             evalSession.run(
                 list,
                 runOne = { p ->
-                    coordinator.run(p, newTaskId(), selfParticipant(), remotePeers(), options) { _run.value = it }.also {
+                    coordinator.run(p, newTaskId(), selfParticipant(), if (withPeers) remotePeers() else emptyList(), options) { _run.value = it }.also {
                         _run.value = it
                         fake = fake || it.fake
                         it.lanes.forEach { l -> nodes.add(l.name) }

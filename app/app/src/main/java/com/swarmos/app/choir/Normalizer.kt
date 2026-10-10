@@ -20,6 +20,10 @@ object Normalizer {
     private val MCQ_LEAD = Regex("""^\s*[(\[]?([A-Fa-f])\s*[).:\]]""")
     private val MCQ_SINGLE = Regex("""^\s*[(\[]?([A-Fa-f])[)\].:]?\s*$""")
     private val MCQ_ANY = Regex("""\b([A-F])\b""")
+    private val STRICT_NUMBER = Regex(
+        """^\s*(?:(?:rs|inr|usd)\.?\s*|[₹$€£]\s*)?([-+−]?\d{1,3}(?:,\d{3})+(?:\.\d+)?|[-+−]?\d+(?:\.\d+)?|[-+]?\d+\s*/\s*\d+)\s*(?:%|[A-Za-z]{1,12}\.?)?\s*$""",
+        RegexOption.IGNORE_CASE,
+    )
 
     /** First usable number of [raw] (after the last '=' if there is one), or null. A simple fraction a/b is evaluated. */
     fun parseNumber(raw: String): Double? {
@@ -36,6 +40,24 @@ object Normalizer {
         return NUMBER.find(s)?.value?.toDoubleOrNull()
     }
 
+    /**
+     * The value of an answer that IS a number: optionally a currency mark in front (Rs, INR, a symbol), thousands commas,
+     * a simple fraction, and at most one trailing unit word or a percent sign. Anything else is not a number: braces,
+     * an expression ("800 * 1.25"), "x = 12", two numbers, a sentence. This is what scoring and voting use; [parseNumber]
+     * (first number in the text) stays for reading the model's own steps.
+     */
+    fun parseNumberStrict(raw: String): Double? {
+        val m = STRICT_NUMBER.find(raw.replace('−', '-')) ?: return null
+        val body = m.groupValues[1].replace(",", "")
+        val frac = Regex("""^([-+]?\d+)\s*/\s*(\d+)$""").find(body)
+        val v = if (frac != null) {
+            val d = frac.groupValues[2].toDouble()
+            if (d == 0.0) return null
+            frac.groupValues[1].toDouble() / d
+        } else body.toDoubleOrNull()
+        return v?.takeIf { it.isFinite() }
+    }
+
     fun sameNumber(a: Double, b: Double): Boolean = abs(a - b) <= max(ABS_TOL, REL_TOL * max(abs(a), abs(b)))
 
     /** The MCQ option letter in [raw] ("B", "b)", "(B) 42", "Option B", "The answer is B"), or null. */
@@ -44,6 +66,13 @@ object Normalizer {
         MCQ_EXPLICIT.find(raw)?.let { return it.groupValues[1].uppercase()[0] }
         MCQ_LEAD.find(raw)?.let { return it.groupValues[1].uppercase()[0] }
         return MCQ_ANY.find(raw)?.groupValues?.get(1)?.get(0)
+    }
+
+    /** A bare option letter, or a letter followed by ) . : and optional text ("B) Box 2"). Not "The answer is B". */
+    fun mcqLetterStrict(raw: String): Char? {
+        MCQ_SINGLE.find(raw)?.let { return it.groupValues[1].uppercase()[0] }
+        MCQ_LEAD.find(raw)?.let { return it.groupValues[1].uppercase()[0] }
+        return null
     }
 
     fun normText(raw: String): String =
@@ -63,16 +92,16 @@ object Normalizer {
 
     /** Canonical key for [raw]; two answers with the same key count as the same answer (numbers also match within tolerance, see [same]). */
     fun normalize(kind: Kind, raw: String): String = when (kind) {
-        Kind.MATH -> parseNumber(raw)?.let { "n:" + numKey(it) } ?: ("t:" + normText(raw))
-        Kind.MCQ -> mcqLetter(raw)?.let { "l:$it" } ?: ("t:" + normText(raw))
+        Kind.MATH -> parseNumberStrict(raw)?.let { "n:" + numKey(it) } ?: ("t:" + normText(raw))
+        Kind.MCQ -> mcqLetterStrict(raw)?.let { "l:$it" } ?: ("t:" + normText(raw))
         Kind.CODE -> "c:" + normCode(raw)
         Kind.TEXT -> "t:" + normText(raw)
     }
 
     fun same(kind: Kind, a: String, b: String): Boolean {
         if (kind == Kind.MATH) {
-            val x = parseNumber(a)
-            val y = parseNumber(b)
+            val x = parseNumberStrict(a)
+            val y = parseNumberStrict(b)
             if (x != null && y != null) return sameNumber(x, y)
         }
         return normalize(kind, a) == normalize(kind, b)

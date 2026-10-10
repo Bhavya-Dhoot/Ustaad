@@ -170,6 +170,7 @@ fun ChoirScreen() {
     var kindName by rememberSaveable { mutableStateOf(Kind.MATH.name) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var useTest by rememberSaveable { mutableStateOf(false) }
+    var showAll by rememberSaveable { mutableStateOf(false) }
     val kind = Kind.valueOf(kindName)
 
     // dictation (on-device recognizer only; the mic is disabled, with a line saying why, when the phone has none)
@@ -260,9 +261,9 @@ fun ChoirScreen() {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("Check against the problem's test", style = SwarmType.label)
+                            Text(ChoirScreenLogic.TEST_SWITCH_LABEL, style = SwarmType.label)
                             Text(
-                                if (useTest) "On: built-in problems are checked against their own test" else "Off: only the models' written steps are checked",
+                                ChoirScreenLogic.testSwitchHelp(useTest),
                                 style = SwarmType.label.copy(fontSize = 12.sp, color = SwarmColors.graphite),
                             )
                         }
@@ -281,7 +282,7 @@ fun ChoirScreen() {
                     // roles go to the phones that will be asked; an away phone is listed but takes no role
                     var asked = 0
                     PhonesCard(
-                        listOf(Triple(self.name, "Solver (coordinator)", self.chatModel ?: AppGraph.llm.modelName)) +
+                        listOf(Triple(self.name, "Solver (coordinator)", ChoirScreenLogic.selfModelLabel(self.chatModel, AppGraph.llm.modelName))) +
                             peersSorted.map { p ->
                                 val noModel = !BuildConfig.DEBUG && !ChoirReadiness.peerHasRealModel(p.info.chatModel)
                                 val role = when {
@@ -292,7 +293,7 @@ fun ChoirScreen() {
                                 Triple(p.info.name, role, p.info.chatModel ?: "model unknown")
                             },
                     )
-                    if (peersOnline.isEmpty()) Text("No peers online: the coordinator runs alone.", style = SwarmType.label.copy(fontSize = 12.sp, color = SwarmColors.graphite))
+                    ChoirScreenLogic.soloNotice(peersOnline.size)?.let { Text(it, style = SwarmType.label.copy(fontSize = 12.sp, color = SwarmColors.graphite)) }
                 }
             }
             item(key = "try") {
@@ -302,23 +303,36 @@ fun ChoirScreen() {
                 }
             }
             item(key = "problems") {
-                Column(Modifier.fillMaxWidth().clip(SwarmShape).background(SwarmColors.sheet).border(1.5.dp, SwarmColors.ink, SwarmShape)) {
-                    problems.forEachIndexed { i, p ->
-                        if (i > 0) Hairline()
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                                .background(if (p.id == selectedId) SwarmColors.smudge else Color.Transparent)
-                                .clickable { text = p.prompt(); kindName = p.kind.name; selectedId = p.id }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(p.id, style = Mono11Dim, modifier = Modifier.width(30.dp))
-                            Text(p.text.lines().first(), style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            Spacer(Modifier.width(8.dp))
-                            KindTag(kindLabel(p.kind))
+                // grouped by kind; the gap between groups and a tinted selected row do the separating, no line under every row
+                Column(
+                    Modifier.fillMaxWidth().clip(SwarmShape).background(SwarmColors.sheet).border(1.5.dp, SwarmColors.ink, SwarmShape).padding(vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    ChoirScreenLogic.problemGroups(problems, showAll).forEach { group ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("${kindLabel(group.kind)}, ${group.total}", style = Mono11Dim, modifier = Modifier.padding(horizontal = 12.dp))
+                            group.items.forEach { p ->
+                                Row(
+                                    Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                        .background(if (p.id == selectedId) SwarmColors.smudge else Color.Transparent)
+                                        .clickable { text = p.prompt(); kindName = p.kind.name; selectedId = p.id }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(p.id, style = Mono11Dim, modifier = Modifier.width(30.dp))
+                                    Text(p.text.lines().first(), style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                }
+                            }
                         }
                     }
                 }
+            }
+            if (ChoirScreenLogic.canExpand(problems)) item(key = "problems-toggle") {
+                SecondaryButton(
+                    if (showAll) "Show fewer" else "Show all ${problems.size}",
+                    onClick = { showAll = !showAll },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 
@@ -362,16 +376,6 @@ private fun MicButton(listening: Boolean, enabled: Boolean, onClick: () -> Unit,
             contentAlignment = Alignment.Center,
         ) { LineIcon(SwarmIcon.Mic, tint = if (listening) SwarmColors.sheet else ink, size = 22.dp) }
     }
-}
-
-@Composable
-private fun KindTag(label: String) {
-    Text(
-        label,
-        style = Mono11,
-        maxLines = 1,
-        modifier = Modifier.border(1.dp, SwarmColors.ink, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 3.dp),
-    )
 }
 
 @Composable
@@ -476,13 +480,13 @@ private fun RunSection(r: RunTrace, now: Long) {
 private fun LaneCard(lane: LaneTrace) {
     val tokens = (lane.r1?.tokens ?: 0) + (lane.r2?.tokens ?: 0)
     val wall = lane.latest?.wallMs
-    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY || lane.status == LaneStatus.NO_MODEL
+    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY || lane.status == LaneStatus.NO_MODEL || lane.status == LaneStatus.NO_VALID_ANSWER
     val streaming = lane.status == LaneStatus.SOLVING || lane.status == LaneStatus.REVISING || lane.status == LaneStatus.JUDGING
     Lane(
         name = lane.name,
         role = roleLabel(lane.role),
         trailing = {
-            if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; LaneStatus.NO_MODEL -> "No model"; else -> "Error" }, caution = true, small = true)
+            if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; LaneStatus.NO_MODEL -> "No model"; LaneStatus.NO_VALID_ANSWER -> "No answer"; else -> "Error" }, caution = true, small = true)
             else {
                 Text("$tokens tok", style = Mono11Dim)
                 Spacer(Modifier.width(8.dp))
@@ -559,6 +563,7 @@ private fun MatrixCard(r: RunTrace, m: Matrix) {
 
 @Composable
 private fun ScoreboardSection(e: EvalProgress) {
+    val solo = ChoirScreenLogic.isSoloRun(e.rows)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(if (e.running) "Running ${e.done} of ${e.total}" else "${e.total} problems", style = SwarmType.display, modifier = Modifier.weight(1f))
@@ -575,34 +580,41 @@ private fun ScoreboardSection(e: EvalProgress) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ScoreBar("One phone alone", s.baselineCorrect, s.n, note = "mean ${secs(s.baselineMeanMs.toLong())} s")
                     if (s.samplesN > 0) ScoreBar("One phone, three samples", s.samplesCorrect, s.samplesN, note = "mean ${secs(s.samplesMeanMs.toLong())} s")
-                    ScoreBar("Choir", s.choirCorrect, s.n, note = "mean ${secs(s.choirMeanMs.toLong())} s")
-                    ScoreBar("Choir + tool check", s.choirToolCorrect, s.n, emphasised = true, note = "mean ${secs(s.choirMeanMs.toLong())} s")
+                    if (!solo) {
+                        ScoreBar("Choir", s.choirCorrect, s.n, note = "mean ${secs(s.choirMeanMs.toLong())} s")
+                        ScoreBar("Choir + tool check", s.choirToolCorrect, s.n, emphasised = true, note = "mean ${secs(s.choirMeanMs.toLong())} s")
+                    }
                     Note("n = ${s.n}, same token caps", Modifier.align(Alignment.End), rotation = -2f)
                 }
             }
-            Column {
-                MetricRow("Verified by the problem's test", s.verifiedByTest.toString())
-                MetricRow("Consistent with the models' own steps", s.consistent.toString())
-                MetricRow("Abstained", s.abstained.toString())
-                MetricRow("Mean rounds", "%.1f".format(s.meanRounds))
+            if (solo) {
+                Text(ChoirScreenLogic.SOLO_BOARD_NOTE, style = Mono11Dim)
+            } else {
+                Column {
+                    MetricRow("Verified by the problem's test", s.verifiedByTest.toString())
+                    MetricRow("Consistent with the models' own steps", s.consistent.toString())
+                    MetricRow("Abstained", s.abstained.toString())
+                    MetricRow("Mean rounds", "%.1f".format(s.meanRounds))
+                }
+                Text(
+                    if (e.useProblemCheck) "Tool check used the problems' own tests, so choir + tool check is scored with an answer key."
+                    else "Tool check used only the models' own written steps.",
+                    style = Mono11Dim,
+                )
             }
-            Text(
-                if (e.useProblemCheck) "Tool check used the problems' own tests, so choir + tool check is scored with an answer key."
-                else "Tool check used only the models' own written steps.",
-                style = Mono11Dim,
-            )
-            ScoreTable(e.rows, withSamples = s.samplesN > 0)
+            ScoreTable(e.rows, withSamples = s.samplesN > 0, solo = solo)
         }
         e.lastFile?.let { Text("Saved: $it", style = Mono11Dim) }
     }
 }
 
 @Composable
-private fun ScoreTable(rows: List<EvalRow>, withSamples: Boolean) {
+private fun ScoreTable(rows: List<EvalRow>, withSamples: Boolean, solo: Boolean) {
     val cols = buildList {
         add("#" to 0.9f); add("Kind" to 1.1f); add("Alone" to 1f)
         if (withSamples) add("3x" to 0.8f)
-        add("Choir" to 1f); add("+Tool" to 1f); add("R" to 0.6f); add("Secs" to 1f)
+        if (!solo) { add("Choir" to 1f); add("+Tool" to 1f); add("R" to 0.6f) }
+        add("Secs" to 1f)
     }
     Column(Modifier.fillMaxWidth().clip(SwarmShape).background(SwarmColors.sheet).border(1.5.dp, SwarmColors.ink, SwarmShape)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
@@ -615,10 +627,12 @@ private fun ScoreTable(rows: List<EvalRow>, withSamples: Boolean) {
                 Text(kindLabel(row.kind).take(5), style = SwarmType.label.copy(fontSize = 11.sp, color = SwarmColors.graphite), modifier = Modifier.weight(1.1f))
                 Box(Modifier.weight(1f)) { TickMark(row.baselineCorrect) }
                 if (withSamples) Box(Modifier.weight(0.8f)) { if (row.samplesAnswered != null) TickMark(row.samplesCorrect) }
-                Box(Modifier.weight(1f)) { TickMark(row.choirCorrect) }
-                Box(Modifier.weight(1f)) { TickMark(row.choirToolCorrect) }
-                Text("${row.rounds}", style = Mono11, modifier = Modifier.weight(0.6f))
-                Text(secs(row.choirMs), style = Mono11, modifier = Modifier.weight(1f))
+                if (!solo) {
+                    Box(Modifier.weight(1f)) { TickMark(row.choirCorrect) }
+                    Box(Modifier.weight(1f)) { TickMark(row.choirToolCorrect) }
+                    Text("${row.rounds}", style = Mono11, modifier = Modifier.weight(0.6f))
+                }
+                Text(secs(if (solo) row.baselineMs else row.choirMs), style = Mono11, modifier = Modifier.weight(1f))
             }
         }
     }
