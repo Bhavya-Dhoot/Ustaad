@@ -86,3 +86,36 @@ Record per step: the raw response, the time, thermal status of both phones. Pass
 ## Not covered by this procedure
 
 The visual states (empty page, SAVED and REVOKED stamps, the save panel, the saved-answer block) need a screenshot pass on a phone. The relevance floors need a calibration run with real saved answers and the real embedder, like `docs/benchmarks` for the file index. The 3-minute re-sync and the "peer comes online" trigger are only exercised if the run leaves the phones together for a few minutes after step 6.
+
+## Third run: replication without a sync call (2026-10-10)
+
+Run 09:41 to 10:01 IST on the three iQOO phones, base app `com.swarmos.app`, port 8787. Build: `app-debug.apk` built 09:30, one minute after merge `1f514b6` (which carries `924e720`, "push after a shared save or revoke, receiving-side audit, saved-answer provenance, privacy decided on the phone"); `app/` and `scripts/` are identical between `1f514b6` and master `3a55086` (`git diff --stat` empty). Installed with `adb install -r` on A, B and C (no `pm clear`), launched with `am start -n com.swarmos.app/.MainActivity --es name 'Phone X' --ez setupDone true --ez autoload true`. Chat `Qwen3.5-4B-Q4_K_M` READY on GPU, embedder `embeddinggemma-300M-Q8_0` READY on all three at 09:42:50 and again at 10:00. Each phone listed the other two online. Phone B = author, C and A = receivers. **No call to `/v1/kb/debug/sync` was made at any point.**
+
+**Thermal status** (`dumpsys thermalservice`): 0 on A, B and C at every read (eight reads between 09:41 and 10:00, including before each save, before the Choir run and at the end); never above 0.
+
+Method: save or revoke on B through `scripts/swarm-call.sh` (HTTP 200 returned, timestamp T0 taken on the PC right after), then at once two background loops, one on C and one on A, each doing `GET /v1/kb/cards` about every 1.1 s (call 0.3 to 0.5 s plus 0.6 s sleep), stopping at the first poll that lists the card id (or, for revocation, shows `revokedMs` set), at most 60 s. All times below are on the PC clock, so they do not depend on the phone clocks. "Sent / answered" is when that poll request left and when its answer arrived; the card was on the phone by "answered". Every event was seen by the **first** poll, so the true delay is below the "answered" value and cannot be resolved further with this method.
+
+| Event on B (HTTP 200 at T0) | Seen on C (sent / answered, ms after T0) | Seen on A (sent / answered, ms after T0) |
+|---|---|---|
+| Shared save, card 1 | +387 / +754 | +402 / +754 |
+| Revoke, card 1 | +92 / +506 | +103 / +476 |
+| Shared save, card 2 (step d) | +166 / +497 | +182 / +536 |
+| Revoke, card 2 (step f) | +112 / +420 | +131 / +467 |
+| Revoke, card 0 (extra, see below) | +105 / +504 | +117 / +454 |
+| Shared save, card 0 | blank: my first poller was started with a shifted argument list (grep -P failed on the card id) and never polled the card; the card had reached C and A anyway (audit rows below) | blank, same reason |
+
+Card 0 was the first save of the run; the poller bug cost its listing time, so I revoked it and repeated save and revoke with cards 1 and 2. All three cards were saved from the same real answer (Phone B asked "Where is the warranty bill for my laptop?" at 09:45:59, GPU, ttft 5242 ms, total 9815 ms; four sources, the fourth being B's private file).
+
+**Phone-side timestamps** (audit logs read with `run-as com.swarmos.app cat files/audit.jsonl`, phone clocks, so tens of ms of skew between phones): B `kb.save` or `kb.revoke` to the `kb.sync` entry with side "received" on C: +97, +56 (revoke 0), +56, +66 (revoke 1), +84 ms (save 0, revoke 0, save 1, revoke 1, save 2); on A: +22, -12, -13, +10, +10 ms. B logged its own two `kb.sync` side "started" entries 66 to 126 ms after each save or revoke.
+
+**Step d: card served while the author is stopped.** Card 2 saved at 09:50:08 and listed on C and A (row above). `am force-stop com.swarmos.app` on B at 09:50:17; ask on C 75 ms later (C still listed B online, so I asked again after C listed B "away" and B's API gave "Connection refused"). Both asks: `fromCard` = card 2 id, `cardIds` = [card 2], `model` empty, `devices` empty (no phone queried), `incomplete` false, `note` null, `savedBy` "Phone B", `savedAtMs` 1791606011007, `sources` = 2 (Phone B IMG_2231.jpg 2025-03-14, Phone A Laptop_Extended_Warranty_Certificate.pdf 2025-03-16, no file text). `timings.totalMs` 40 (first ask) and 47 (second); the whole HTTP call took 398 and 405 ms including signing and curl. B relaunched right after the second ask; C listed it online again after 1954 ms.
+
+**Step e: receiving-side audit.** Yes. C's `audit.jsonl` holds five `kb.sync` entries with `"side":"received"` (payload: peer id, sent 0, got 1, rejected 0, counts only, no card text) and two `pdu.ask_saved` entries (card 2 id). A holds five `received` entries too. There is no HTTP audit route in the app; the file was read through `run-as`, as `scripts/e2e2-check.sh` does.
+
+**Step f.** Cards 0, 1 and 2 were revoked on B; at 10:00 no phone holds an active shared card (SWARM tier with `revokedMs` null: A 0, B 0, C 0). B still holds one old kept (PRIVATE) card from the earlier run, "(card kept on this phone)"; it is not shared and was not made by this run.
+
+**Deviation from the procedure, and a finding that closes an earlier one.** `scripts/e2e/e2e2.py kb-save-body` sends all four sources of the ask; the phone answered **HTTP 409** "A source is in a private folder, so this card cannot be shared" because the fourth source is B's private file. The app's own Save keeps only the cited sources, so I sent the first two (the answer cites only [1] and [2]) and the save was accepted: tier SWARM, audit hash `0c1f2b2d...` (card 1). This is the privacy decision on the phone that the second run (finding 4) said was missing.
+
+**Against the second run** (`2026-10-10-e2e2-knowledge-bank.md`, build `5569e36`): card and tombstone were not on C within 48 s and 60 s without a sync call; here both were on both phones at the first poll, under 0.8 s. Not measured: what happens with a phone that is away when the card is saved, the 3-minute timer, and more than one card in flight.
+
+**Two oddities noticed, not investigated.** (1) First launch quoting error: my `adb shell am start ... --es name "Phone X"` lost its quotes, so the three phones were named "Phone" from 09:42 until I re-sent the intent with `'Phone X'` at about 09:47; a "Phone" row (09:45:01) stays in C's "Asked of this phone" audit list. (2) Live ask time to first word was 5.2 to 5.8 s on this build (B 5242 and 5770 ms via the API, C 5291 ms in the UI, 2998 ms with A away) against 556 ms for the same question in the second run; the cause (cold GPU after the reinstall, the new build, or the deadline wait) was not tested.
