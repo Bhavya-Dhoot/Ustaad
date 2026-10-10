@@ -4,6 +4,7 @@ import com.swarmos.app.llm.ChatChunk
 import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatResult
 import com.swarmos.app.llm.ChatStats
+import com.swarmos.app.llm.FakeLlmClient
 import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.sched.FakePhone
 import com.swarmos.app.sched.GatedLlmClient
@@ -132,6 +133,7 @@ class AgentServerTest {
     @Volatile private var swarmReady = true
     @Volatile private var embedReady = true
     private val embedder = TestLlm("E")
+    @Volatile private var embedderClient: LlmClient = embedder
 
     @After fun tearDown() {
         server?.stop()
@@ -147,11 +149,11 @@ class AgentServerTest {
     ) {
         node = SchedNode(scope, { "a" }, { chat }, { embedder }, { null })
         val backend = AgentBackend(
-            local = GatedLlmClient({ chat }, node, maxWaitMs),
+            local = AgentBackend.gate({ chat }, node, maxWaitMs),
             localReady = { chatReady },
             swarm = SwarmLlm({ phones }, scope, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100),
             swarmReady = { swarmReady },
-            embedder = { embedder },
+            embedder = { RealModelOnly({ embedderClient }, AgentBackend.NO_EMBEDDER) },
             embedderReady = { embedReady },
             selfName = { "Phone A" },
             nameOf = { id -> if (id == "b") "Phone B" else id },
@@ -502,6 +504,22 @@ class AgentServerTest {
         val w = post("/v1/chat/completions", chatBody(model = "ustaad-swarm"))
         assertEquals(503, w.status)
         assertEquals("No chat model is loaded on any phone in the swarm", w.errorMessage)
+    }
+
+    @Test fun thePlaceholderNeverAnswersEvenIfItIsSwappedInAfterTheReadyCheck() {
+        start()
+        chat = FakeLlmClient() // the model went away while the request was on its way: the ready flag still said yes
+        val plain = post("/v1/chat/completions", chatBody())
+        assertEquals(503, plain.status)
+        assertEquals("No chat model is loaded on this phone", plain.errorMessage)
+        val streamed = post("/v1/chat/completions", chatBody(""""stream":true"""))
+        assertEquals(503, streamed.status)
+        assertFalse(streamed.body.contains("FAKE"))
+        assertEquals("the slot is given back", 0, node.chatExec.running)
+        embedderClient = FakeLlmClient()
+        val e = post("/v1/embeddings", """{"model":"ustaad-local","input":"x"}""")
+        assertEquals(503, e.status)
+        assertEquals("No embedding model is loaded on this phone", e.errorMessage)
     }
 
     @Test fun errorsStayJsonWhateverTheClientAccepts() {
