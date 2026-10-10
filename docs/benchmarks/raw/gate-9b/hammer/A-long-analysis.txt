@@ -1,0 +1,36 @@
+switch log: ['01:15:39 start: 192.168.242.89:5555, normal keep busy for 120 s, then Hammer for 25.0 min', '01:17:39 hammer on', '01:42:39 hammer off']
+before (normal): 01:15:39 to 01:17:33 (1.9 min): share 46 %, 259 tok/min, 9.44 tok/s generating, jobs 24, failed 0 | status 2: 100 % | gpu step {5: 12} | skin 42.3-42.5 C, shell 39.6-39.8, battery 39.5-39.6 | states {'half_duty': 12}
+Hammer, all: 01:17:43 to 01:42:37 (24.9 min): share 78 %, 379 tok/min, 8.08 tok/s generating, jobs 437, failed 0 | status 2: 79 %, 3: 21 % | gpu step {5: 2, 7: 144} | skin 42.5-45.0 C, shell 39.8-42.0, battery 39.7-42.0 | states {'running': 117, 'paused_hot': 28, 'waiting_for_idle': 1}
+  Hammer min 0-5: 01:17:43 to 01:22:31 (4.8 min): share 96 %, 468 tok/min, 8.09 tok/s generating, jobs 105, failed 0 | status 2: 100 % | gpu step {5: 2, 7: 27} | skin 42.5-44.6 C, shell 39.8-41.5, battery 39.7-41.4 | states {'running': 29}
+  Hammer min 5-10: 01:22:42 to 01:27:30 (4.8 min): share 79 %, 382 tok/min, 8.07 tok/s generating, jobs 85, failed 0 | status 2: 79 %, 3: 21 % | gpu step {7: 29} | skin 43.7-45.0 C, shell 40.9-41.9, battery 41.4-41.9 | states {'running': 24, 'paused_hot': 5}
+  Hammer min 10-15: 01:27:40 to 01:32:28 (4.8 min): share 77 %, 373 tok/min, 8.10 tok/s generating, jobs 82, failed 0 | status 2: 79 %, 3: 21 % | gpu step {7: 29} | skin 43.7-45.0 C, shell 40.9-42.0, battery 41.4-42.0 | states {'paused_hot': 6, 'running': 22, 'waiting_for_idle': 1}
+  Hammer min 15-20: 01:32:39 to 01:37:38 (5.0 min): share 72 %, 347 tok/min, 7.99 tok/s generating, jobs 82, failed 0 | status 2: 70 %, 3: 30 % | gpu step {7: 30} | skin 43.7-45.0 C, shell 40.9-42.0, battery 41.5-42.0 | states {'running': 22, 'paused_hot': 8}
+  Hammer min 20-25: 01:37:48 to 01:42:37 (4.8 min): share 68 %, 333 tok/min, 8.11 tok/s generating, jobs 73, failed 0 | status 2: 69 %, 3: 31 % | gpu step {7: 29} | skin 43.5-45.0 C, shell 40.8-42.0, battery 41.5-42.0 | states {'paused_hot': 9, 'running': 20}
+after off: 01:42:47 to 01:49:29 (6.7 min): share 39 %, 187 tok/min, 8.03 tok/s generating, jobs 58, failed 0 | status 2: 100 % | gpu step {7: 40} | skin 42.2-44.7 C, shell 39.9-41.7, battery 39.9-41.7 | states {'hammer_cooldown': 9, 'half_duty': 30, 'waiting_for_idle': 1}
+pauses for heat: [('01:24:04', '01:24:25', '31 s'), ('01:27:20', '01:27:51', '41 s'), ('01:30:04', '01:30:35', '41 s'), ('01:32:49', '01:33:20', '41 s'), ('01:35:24', '01:35:55', '41 s'), ('01:37:48', '01:38:19', '41 s'), ('01:40:33', '01:41:14', '51 s')]
+samples at thermal status 3 or more: 30 of 198 | highest status 3 | max skin 45.024 | max battery 42.0 | max cpu 63.2 | max gpu temp 65.5
+    01:42:47 status 2 step 7 skin 44.668 shell 41.694 hammer_cooldown 680
+    01:42:57 status 2 step 7 skin 44.431 shell 41.412 hammer_cooldown 680
+    01:43:08 status 2 step 7 skin 44.069 shell 41.104 hammer_cooldown 680
+    01:43:18 status 2 step 7 skin 43.717 shell 40.859 hammer_cooldown 680
+    01:43:28 status 2 step 7 skin 43.436 shell 40.659 hammer_cooldown 680
+    01:43:38 status 2 step 7 skin 43.134 shell 40.487 hammer_cooldown 680
+    01:43:49 status 2 step 7 skin 42.862 shell 40.326 hammer_cooldown 680
+    01:43:59 status 2 step 7 skin 42.67 shell 40.169 hammer_cooldown 680
+    01:44:09 status 2 step 7 skin 42.45 shell 40.034 hammer_cooldown 680
+    01:44:20 status 2 step 7 skin 42.317 shell 40.008 half_duty 682
+    01:44:30 status 2 step 7 skin 42.408 shell 40.128 half_duty 684
+    01:44:40 status 2 step 7 skin 42.453 shell 40.168 half_duty 685
+    01:44:51 status 2 step 7 skin 42.531 shell 40.259 half_duty 687
+    01:45:01 status 2 step 7 skin 42.598 shell 40.275 half_duty 689
+    01:45:11 status 2 step 7 skin 42.598 shell 40.24 half_duty 691
+    01:45:22 status 2 step 7 skin 42.586 shell 40.213 half_duty 693
+real 01:15:44 decode 13.3 tok/s, outside the model 0.60 s, keep busy before: half_duty 
+real 01:20:43 decode 11.1 tok/s, outside the model 0.25 s, keep busy before: running | during Hammer
+real 01:25:41 decode 10.9 tok/s, outside the model 0.05 s, keep busy before: running | during Hammer
+real 01:30:43 decode 10.8 tok/s, outside the model 0.08 s, keep busy before: paused_hot | during Hammer
+real 01:35:42 decode 10.9 tok/s, outside the model 0.07 s, keep busy before: paused_hot | during Hammer
+real 01:40:43 decode 10.8 tok/s, outside the model 0.09 s, keep busy before: paused_hot | during Hammer
+real 01:45:43 decode 10.7 tok/s, outside the model 0.05 s, keep busy before: half_duty 
+
+[exited with code 0]

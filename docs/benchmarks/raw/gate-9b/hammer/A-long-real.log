@@ -1,0 +1,7 @@
+01:15:44 A-1: HTTP 200, wall 4.91 s, model time 4.30 s (prompt 684 ms, 48 tokens, 13.3 tok/s), so 0.60 s outside the model | busy before: half_duty cancelled=6 | after: waiting_for_idle cancelled=7
+01:20:43 A-2: HTTP 200, wall 3.62 s, model time 3.37 s (prompt 407 ms, 33 tokens, 11.1 tok/s), so 0.25 s outside the model | busy before: running cancelled=7 | after: waiting_for_idle cancelled=8
+01:25:41 A-3: HTTP 200, wall 2.21 s, model time 2.15 s (prompt 407 ms, 19 tokens, 10.9 tok/s), so 0.05 s outside the model | busy before: running cancelled=8 | after: waiting_for_idle cancelled=9
+01:30:43 A-4: HTTP 200, wall 4.00 s, model time 3.92 s (prompt 398 ms, 38 tokens, 10.8 tok/s), so 0.08 s outside the model | busy before: paused_hot cancelled=9 | after: waiting_for_idle cancelled=9
+01:35:42 A-5: HTTP 200, wall 3.22 s, model time 3.15 s (prompt 400 ms, 30 tokens, 10.9 tok/s), so 0.07 s outside the model | busy before: paused_hot cancelled=9 | after: paused_hot cancelled=9
+01:40:43 A-6: HTTP 200, wall 3.91 s, model time 3.83 s (prompt 407 ms, 37 tokens, 10.8 tok/s), so 0.09 s outside the model | busy before: paused_hot cancelled=9 | after: paused_hot cancelled=9
+01:45:43 A-7: HTTP 200, wall 3.81 s, model time 3.75 s (prompt 399 ms, 36 tokens, 10.7 tok/s), so 0.05 s outside the model | busy before: half_duty cancelled=9 | after: waiting_for_idle cancelled=9
