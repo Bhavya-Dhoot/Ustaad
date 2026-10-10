@@ -74,6 +74,8 @@ object MemCloudModule : SwarmModule {
         post("/start") {
             val req = body<StartRequest>()
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("""body must be {"file":"<name>.gguf","peers":["Phone B"],"mode":"equal|ram","layers":[..]}"""))
+            // a layer split that cannot be right for this model and these phones is a bad request, not a busy one
+            MemCloud.validateStart(req)?.let { return@post call.respond(HttpStatusCode.BadRequest, ErrorBody(it)) }
             val refused = MemCloud.start(req)
             if (refused != null) call.respond(HttpStatusCode.Conflict, ErrorBody(refused)) else call.respond(HttpStatusCode.Accepted, MemCloud.state.value)
         }

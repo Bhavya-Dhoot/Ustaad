@@ -277,6 +277,23 @@ class SplitCoordinator(
 
     // ---------- start / replan / stop ----------
 
+    /**
+     * Why [req] cannot be accepted whatever the phones do, or null: today only an explicit [StartRequest.layers] that is wrong for the
+     * model and the phones online now (see [SplitPlanner.checkLayers]). Reads the GGUF header, so call it off the main thread.
+     * The route answers 400 with this text; [start] itself would fail the load with the same words.
+     */
+    fun validateStart(req: StartRequest): String? {
+        val layers = req.layers ?: return null
+        val file = env.modelFile(req.file)?.name ?: return null // start() says there is no such file
+        val peers = onlinePeers(req.peers)
+        if (peers.isEmpty()) return null // start() says no other phone is online
+        return try {
+            SplitPlanner.checkLayers(layers, header(file).blockCount, peers.size + 1)
+        } catch (e: Exception) {
+            e.message ?: e.toString()
+        }
+    }
+
     /** Returns null when the load was started, else the reason it was refused. */
     fun start(req: StartRequest): String? = synchronized(lock) {
         val ph = _state.value.phase
@@ -338,6 +355,7 @@ class SplitCoordinator(
             val info = withContext(Dispatchers.IO) { header(file) }
             val peers = onlinePeers(sel)
             if (peers.isEmpty()) return fail("No other phone is online. The model needs ${gb(info.fileBytes)} and one phone cannot hold it.")
+            manual?.let { SplitPlanner.checkLayers(it, info.blockCount, peers.size + 1) }?.let { return fail(it) }
             step("Asking ${peers.joinToString { it.name }} what it is running")
             val snaps = coroutineScope { peers.map { p -> async { p to runCatching { env.peerModels(p.addr) } } }.awaitAll() }
             snaps.firstOrNull { it.second.isFailure }?.let { (p, r) -> return fail("${p.name} did not answer: ${r.exceptionOrNull()?.message}") }

@@ -137,7 +137,10 @@ data class MemCloudState(
     val peers: List<String> = emptyList(),
     /** "equal" (default) or "ram". */
     val mode: String = "equal",
-    /** One layer count per phone (driver first); overrides [mode]. */
+    /**
+     * One layer count per phone, this phone first and then the other phones in name order (Phone A, B, C), overrides [mode].
+     * Each count is at least 1 and they add up to the model's layer count; the route answers 400 with the reason otherwise.
+     */
     val layers: List<Int>? = null,
     /** Start even though the plan does not fit a phone's free memory (the deliberate "does not fit" demonstration). Default: refuse. */
     val force: Boolean = false,

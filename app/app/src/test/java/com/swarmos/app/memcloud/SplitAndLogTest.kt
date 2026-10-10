@@ -185,6 +185,17 @@ class CpuSetTest {
 }
 
 class SplitPlannerTest {
+    @Test fun anExplicitLayerSplitMustHaveOneCountPerPhoneEachAtLeastOneAddingUpToTheModel() {
+        assertNull(SplitPlanner.checkLayers(listOf(16, 16, 16), 48, 3))
+        assertNull(SplitPlanner.checkLayers(listOf(1, 1, 46), 48, 3))
+        assertTrue(SplitPlanner.checkLayers(listOf(24, 24), 48, 3)!!.contains("needs 3 counts"))
+        assertTrue(SplitPlanner.checkLayers(listOf(16, 16, 16, 0), 48, 3)!!.contains("needs 3 counts"))
+        assertTrue(SplitPlanner.checkLayers(listOf(0, 24, 24), 48, 3)!!.contains("at least one layer"))
+        assertTrue(SplitPlanner.checkLayers(listOf(30, -2, 20), 48, 3)!!.contains("at least one layer"))
+        assertTrue(SplitPlanner.checkLayers(listOf(16, 16, 17), 48, 3)!!.contains("add up to 49 but the model has 48 layers"))
+        assertTrue(SplitPlanner.checkLayers(listOf(10, 10, 10), 48, 3)!!.contains("add up to 30"))
+    }
+
     private fun info(layers: Int = 48, perLayer: Long = 380_000_000L) = GgufInfo(
         "m.gguf", layers * perLayer + 500_000_000, "qwen3moe", "M", layers, 2048, 4096, 128, 8, 0,
         List(layers) { perLayer }, 300_000_000L, 200_000_000L,

@@ -749,6 +749,36 @@ class SplitCoordinatorTest {
         assertNull(s.smallModel)
     }
 
+    // ---------- item 9: the explicit layers override is validated ----------
+
+    @Test fun anExplicitLayerSplitIsCheckedBeforeAnythingStartsAndTheRouteCanAnswer400() {
+        // the fake model has 32 layers; this phone and Phone B are two phones
+        assertNull(c.validateStart(StartRequest("model.gguf", listOf("Phone B"))))
+        assertNull(c.validateStart(StartRequest("model.gguf", listOf("Phone B"), layers = listOf(10, 22))))
+        assertTrue(c.validateStart(StartRequest("model.gguf", listOf("Phone B"), layers = listOf(10, 10, 12)))!!.contains("needs 2 counts"))
+        assertTrue(c.validateStart(StartRequest("model.gguf", listOf("Phone B"), layers = listOf(0, 32)))!!.contains("at least one layer"))
+        assertTrue(c.validateStart(StartRequest("model.gguf", listOf("Phone B"), layers = listOf(10, 20)))!!.contains("add up to 30 but the model has 32 layers"))
+        // an unknown file or no phone is start()'s own refusal, not a layers problem
+        assertNull(c.validateStart(StartRequest("missing.gguf", listOf("Phone B"), layers = listOf(1, 1))))
+        env.peerList = emptyList()
+        assertNull(c.validateStart(StartRequest("model.gguf", emptyList(), layers = listOf(32))))
+    }
+
+    @Test fun aBadLayerSplitThatReachesTheLoadFailsItBeforeAnyPhoneIsTouched() {
+        assertNull(c.start(StartRequest("model.gguf", listOf("Phone B"), layers = listOf(0, 32))))
+        val s = awaitState("FAILED") { it.phase == Phase.FAILED }
+        assertTrue(s.failReason!!.contains("at least one layer"))
+        assertEquals(0, env.count("rpcStart"))
+        assertEquals(0, env.count("stopLocal"))
+    }
+
+    @Test fun aGoodLayerSplitIsUsedAsGiven() {
+        assertNull(c.start(StartRequest("model.gguf", listOf("Phone B", "Phone C"), layers = listOf(2, 10, 20))))
+        val s = awaitState("READY") { it.phase == Phase.READY }
+        assertEquals(listOf(2, 10, 20), s.shares.map { it.layers })
+        assertEquals(listOf("Phone A", "Phone B", "Phone C"), s.shares.map { it.name })
+    }
+
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {
         assertNull(start("Phone B"))
         awaitState("READY") { it.phase == Phase.READY }
