@@ -187,4 +187,9 @@ class MemCloudLogicTest {
         assertTrue(MemCloudLogic.canStart(Phase.IDLE))
         assertTrue(MemCloudLogic.canStart(Phase.FAILED))
     }
+
+    // 2026-10-10: a refused start left Phone C in FAILED and its keep-busy loop waited 26 minutes for "idle"
+    @Test fun aFailedStartDoesNotCountAsWorkInProgress() {
+        assertEquals(setOf(Phase.IDLE, Phase.FAILED), Phase.entries.filterNot(MemCloudLogic::holdsPhone).toSet())
+    }
 }

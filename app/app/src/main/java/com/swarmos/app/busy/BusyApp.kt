@@ -14,7 +14,7 @@ import com.swarmos.app.llm.Role
 import com.swarmos.app.llm.Selftest
 import com.swarmos.app.llm.ServerState
 import com.swarmos.app.memcloud.MemCloud
-import com.swarmos.app.memcloud.Phase
+import com.swarmos.app.memcloud.MemCloudLogic
 import com.swarmos.app.memcloud.RpcWorker
 import com.swarmos.app.pdu.PduEngine
 import com.swarmos.app.sched.Sched
@@ -85,7 +85,7 @@ object BusyApp {
     /** Work that holds the model or the phone's memory without taking a chat slot: it counts as real work for the loop. */
     private fun otherWorkRunning(): Boolean =
         ModelBench.running.value || Selftest.running.value ||
-            MemCloud.state.value.phase != Phase.IDLE || RpcWorker.lending.value != null ||
+            MemCloudLogic.holdsPhone(MemCloud.state.value.phase) || RpcWorker.lending.value != null ||
             ChoirController.busy.value || PduEngine.progress.value.running ||
             ModelStore.downloads.value.values.any { it is DownloadState.Downloading || it is DownloadState.Verifying }
 }

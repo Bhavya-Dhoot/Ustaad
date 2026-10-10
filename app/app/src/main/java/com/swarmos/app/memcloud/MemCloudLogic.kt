@@ -130,6 +130,12 @@ object MemCloudLogic {
     /** Whether a new load may start from [phase] (the caller has already checked that no operation is running). */
     fun canStart(phase: Phase): Boolean = phase != Phase.READY && phase != Phase.DEGRADED
 
+    /**
+     * Whether MemoryCloud is using this phone's model servers or memory in [phase]. FAILED is not: a failed start or run ends
+     * with the same teardown as stop, and the phase then stays FAILED until the owner starts again.
+     */
+    fun holdsPhone(phase: Phase): Boolean = phase != Phase.IDLE && phase != Phase.FAILED
+
     /** Buttons the screen offers in DEGRADED: re-plan needs at least one phone left besides this one. */
     fun canReplan(remainingPeers: Int): Boolean = remainingPeers >= 1
 }
