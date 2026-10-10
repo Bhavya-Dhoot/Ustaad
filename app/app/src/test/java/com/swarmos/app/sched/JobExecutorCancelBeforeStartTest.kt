@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
 
 /** Runs nothing until [runPending] is called: the executor's job coroutines stay undispatched while the test cancels the caller. */
-private class ManualDispatcher : CoroutineDispatcher() {
+internal class ManualDispatcher : CoroutineDispatcher() {
     private val tasks = ConcurrentLinkedQueue<Runnable>()
 
     val pending: Int get() = tasks.size
