@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 566" width="960" height="566" role="img" aria-labelledby="t d" stroke-linecap="round" stroke-linejoin="round">
+<title id="t">A warm phone answers slower: decode speed by GPU throttle step</title>
+<desc id="d">Four horizontal bars of decode speed in tokens per second for real requests, by the phone's GPU throttle step, on one shared scale from 0 to 20. Step 0, a cold phone: 18.17 to 18.30 (2 requests). Step 4: 14.12 to 14.30 (7 requests). Step 5: 13.32 to 13.62 (10 requests). Step 7: 10.74 to 11.34 (17 requests). Each bar ends at the slowest request seen at that step. A note says the slowest step starts when the phone's shell temperature reaches 40.0 C. Phone C and Phone B, one evening. Thermal status alone does not show this: the same Thermal Status 2 sat at step 5 and at step 7. Source: docs/benchmarks/2026-10-10-throttle-passive.md, sections 5 and 6.</desc>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="#15171A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="0" y="0" width="960" height="566" fill="#F6F7F5"/>
+<text x="32" y="44" font-family="'Bricolage Grotesque','Geist','Segoe UI',system-ui,sans-serif" font-size="26" font-weight="700" fill="#15171A">A warm phone answers slower</text>
+<text x="32" y="76" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#5E636B">Decode speed of real requests, by the phone's GPU throttle step (higher is faster).</text>
+<text x="32" y="104" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">Each bar ends at the slowest request seen at that step; the numbers give the range.</text>
+<text x="48" y="132" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">GPU throttle step</text>
+<text x="48" y="168" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Step 0</text>
+<text x="48" y="195" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">cold phone, 2 requests</text>
+<rect x="250" y="156" width="327.06" height="32" rx="0" fill="#15171A" stroke="#15171A" stroke-width="2.5"/>
+<text x="591.06" y="177.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">18.17 to 18.30</text>
+<text x="48" y="240" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Step 4</text>
+<text x="48" y="267" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">7 requests</text>
+<rect x="250" y="228" width="254.16" height="32" rx="0" fill="#15171A" stroke="#15171A" stroke-width="2.5"/>
+<text x="518.16" y="249.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">14.12 to 14.30</text>
+<text x="48" y="312" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Step 5</text>
+<text x="48" y="339" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">10 requests</text>
+<rect x="250" y="300" width="239.76" height="32" rx="0" fill="#15171A" stroke="#15171A" stroke-width="2.5"/>
+<text x="503.76" y="321.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">13.32 to 13.62</text>
+<text x="48" y="384" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Step 7</text>
+<text x="48" y="411" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">17 requests</text>
+<rect x="250" y="372" width="193.32" height="32" rx="0" fill="#15171A" stroke="#15171A" stroke-width="2.5"/>
+<text x="457.32" y="393.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">10.74 to 11.34</text>
+<path d="M250 140 L250 424 L610 424" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<path d="M250 424 L250 429" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<text x="250" y="448" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A" text-anchor="middle">0</text>
+<path d="M340 424 L340 429" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<text x="340" y="448" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A" text-anchor="middle">5</text>
+<path d="M430 424 L430 429" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<text x="430" y="448" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A" text-anchor="middle">10</text>
+<path d="M520 424 L520 429" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<text x="520" y="448" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A" text-anchor="middle">15</text>
+<path d="M610 424 L610 429" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<text x="610" y="448" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A" text-anchor="middle">20</text>
+<text x="430" y="474" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B" text-anchor="middle">tokens per second</text>
+<rect x="640" y="338" width="288" height="100" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="656" y="369" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="656" dy="0">The slowest step starts when</tspan><tspan x="656" dy="26">the phone's shell temperature</tspan><tspan x="656" dy="26">reaches <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">40.0 C</tspan>.</tspan></text>
+<path d="M640 388 L606 388" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="32" y="514" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#5E636B">Phone C and Phone B, one evening. Thermal status alone does not show this.</text>
+<text x="32" y="543" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">Source: <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">docs/benchmarks/2026-10-10-throttle-passive.md</tspan>, sections 5 and 6.</text>
+</svg>

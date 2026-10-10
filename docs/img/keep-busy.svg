@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 635" width="960" height="635" role="img" aria-labelledby="t d" stroke-linecap="round" stroke-linejoin="round">
+<title id="t">Keep busy: the states of a phone with nothing to do, and the Hammer switch</title>
+<desc id="d">A state diagram of the Keep busy mode, the filler work a phone does when nobody asks it anything. A rule across the top: Real work always goes first, filler stops when a real request arrives. The states are Off (the default); Waiting (5 seconds with no real work); Running (filler jobs back to back); Half duty (warm phone, Thermal Status 2, it rests as long as each job lasts); and Paused (too hot at Thermal Status 3 or more, or battery under 30 percent and not charging, or Ustaad not on screen). Arrows: Off to Waiting when switched on; Waiting to Running; Running to Half duty at status 2 and back when cooler; Running and Half duty to Paused; Paused back to Waiting by itself; Running back to Waiting when a real request arrives. Below is the Hammer switch, the owner's choice, one per phone, off whenever Ustaad starts; a dashed line from Hammer on ends in a bar under Half duty, meaning Hammer on blocks half duty. Hammer on: no half duty, the phone runs flat out when warm, and heat, battery and real work still win. Hammer off: rest 90 seconds, then back to normal; real work is not held by the rest. Sources: busy/BusyPolicy.kt and docs/benchmarks/2026-10-11-hammer.md.</desc>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="#15171A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="0" y="0" width="960" height="635" fill="#F6F7F5"/>
+<text x="32" y="44" font-family="'Bricolage Grotesque','Geist','Segoe UI',system-ui,sans-serif" font-size="24" font-weight="700" fill="#15171A">Keep busy: what a phone does when nobody asks it anything</text>
+<rect x="32" y="62" width="896" height="44" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="90" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="17" fill="#15171A"><tspan font-weight="700">Real work always goes first</tspan>: filler stops when a real request arrives.</text>
+<rect x="32" y="164" width="96" height="119" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="190" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Off</text>
+<text x="48" y="217" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="48" dy="0">default</tspan></text>
+<rect x="205" y="164" width="176" height="119" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="221" y="190" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Waiting</text>
+<text x="221" y="217" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="221" dy="0"><tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">5</tspan> seconds with</tspan><tspan x="221" dy="26">no real work</tspan></text>
+<rect x="458" y="164" width="176" height="119" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="474" y="190" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Running</text>
+<text x="474" y="217" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="474" dy="0">filler jobs</tspan><tspan x="474" dy="26">back to back</tspan></text>
+<rect x="712" y="164" width="216" height="119" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="728" y="190" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Half duty</text>
+<text x="728" y="217" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="728" dy="0">Warm phone, Thermal</tspan><tspan x="728" dy="26">Status <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">2</tspan>: rests as</tspan><tspan x="728" dy="26">long as each job.</tspan></text>
+<path d="M128 223.5 L205 223.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="166" y="212.5" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A" text-anchor="middle">turn on</text>
+<path d="M381 223.5 L458 223.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M634 206.5 L712 206.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="673" y="195.5" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A" text-anchor="middle">status <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">2</tspan></text>
+<path d="M712 241.5 L634 241.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="673" y="264.5" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A" text-anchor="middle">cooler</text>
+<path d="M546 164 L546 143 L293 143 L293 164" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="420" y="129" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A" text-anchor="middle">A real request arrives: filler stops</text>
+<rect x="205" y="327" width="330" height="119" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="221" y="353" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Paused</text>
+<text x="221" y="380" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="221" dy="0">Too hot (Thermal Status <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">3</tspan> or more)</tspan><tspan x="221" dy="26">Battery under <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">30 %</tspan> and not charging</tspan><tspan x="221" dy="26">Ustaad is not on screen</tspan></text>
+<path d="M500 283 L500 327" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M730 283 L730 386.5 L535 386.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M250 327 L250 283" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="262" y="309" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">back by itself</text>
+<rect x="32" y="466" width="896" height="147" rx="12" fill="#E4E7E3"/>
+<rect x="48" y="478" width="40" height="20" rx="10" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<circle cx="78" cy="488" r="6" fill="#15171A"/>
+<text x="100" y="494" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Hammer switch</text>
+<text x="240.8" y="494" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">the owner's choice, one switch per phone, off whenever Ustaad starts</text>
+<rect x="48" y="508" width="420" height="93" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="64" y="534" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Hammer off</text>
+<text x="64" y="561" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="64" dy="0">Rest <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">90</tspan> seconds, then back to normal.</tspan><tspan x="64" dy="26">Real work is not held by the rest.</tspan></text>
+<rect x="492" y="508" width="420" height="93" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="508" y="534" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Hammer on</text>
+<text x="508" y="561" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="508" dy="0">No half duty, runs flat out on a warm phone.</tspan><tspan x="508" dy="26">Heat, battery and real work still win.</tspan></text>
+<path d="M860 508 L860 294" fill="none" stroke="#15171A" stroke-width="2.5" stroke-dasharray="7 6"/>
+<path d="M846 294 L874 294" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<text x="848" y="335" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A" text-anchor="end">no half duty</text>
+</svg>

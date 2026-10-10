@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640" role="img" aria-labelledby="t d" stroke-linecap="round" stroke-linejoin="round">
+<title id="t">Three phones, one local AI: the link and the five things the phones do together</title>
+<desc id="d">Three phones stand side by side: Phone A with a teal token, Phone B with a tangerine token and Phone C with a magenta token, each with its own model. One line joins all three and is labelled SwarmLink: local Wi-Fi, Wi-Fi Direct, Bluetooth as fallback. Under them a list names the five things the phones do together. Swarm spreads jobs over the phones. Agent Choir has several phones answer one problem and vote. Data Union searches across phones while the files stay where they are. MemoryCloud runs a model too large for one phone by splitting it across phones. Knowledge Bank shares saved answers between phones. A stamp at the bottom says: No cloud. No account. Nothing leaves the phones.</desc>
+<rect x="0" y="0" width="960" height="640" fill="#F6F7F5"/>
+<text x="32" y="44" font-family="'Bricolage Grotesque','Geist','Segoe UI',system-ui,sans-serif" font-size="26" font-weight="700" fill="#15171A">Three phones, one local AI</text>
+<rect x="110" y="68" width="180" height="140" rx="14" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<path d="M180 80 L220 80" fill="none" stroke="#E4E7E3" stroke-width="4"/>
+<circle cx="200" cy="112" r="18" fill="#1E9BB0" stroke="#15171A" stroke-width="2.5"/>
+<text x="200" y="118" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A" text-anchor="middle">A</text>
+<text x="200" y="158" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A" text-anchor="middle">Phone A</text>
+<text x="200" y="187" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B" text-anchor="middle">its own model</text>
+<rect x="390" y="68" width="180" height="140" rx="14" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<path d="M460 80 L500 80" fill="none" stroke="#E4E7E3" stroke-width="4"/>
+<circle cx="480" cy="112" r="18" fill="#E08A3C" stroke="#15171A" stroke-width="2.5"/>
+<text x="480" y="118" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A" text-anchor="middle">B</text>
+<text x="480" y="158" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A" text-anchor="middle">Phone B</text>
+<text x="480" y="187" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B" text-anchor="middle">its own model</text>
+<rect x="670" y="68" width="180" height="140" rx="14" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<path d="M740 80 L780 80" fill="none" stroke="#E4E7E3" stroke-width="4"/>
+<circle cx="760" cy="112" r="18" fill="#C8457E" stroke="#15171A" stroke-width="2.5"/>
+<text x="760" y="118" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A" text-anchor="middle">C</text>
+<text x="760" y="158" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A" text-anchor="middle">Phone C</text>
+<text x="760" y="187" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B" text-anchor="middle">its own model</text>
+<path d="M200 208 L200 240 L760 240 L760 208" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<path d="M480 240 L480 208" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<text x="480" y="272" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A" text-anchor="middle"><tspan font-weight="700">SwarmLink</tspan>: local Wi-Fi, Wi-Fi Direct, Bluetooth as fallback</text>
+<rect x="32" y="296" width="896" height="254" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="56" y="324" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">What the phones do together</text>
+<path d="M48 340 L912 340" fill="none" stroke="#E4E7E3" stroke-width="2"/>
+<text x="56" y="367" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A">Swarm</text>
+<text x="232" y="367" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A">Jobs are spread over the phones.</text>
+<path d="M48 382 L912 382" fill="none" stroke="#E4E7E3" stroke-width="2"/>
+<text x="56" y="409" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A">Agent Choir</text>
+<text x="232" y="409" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A">Several phones answer one problem and vote.</text>
+<path d="M48 424 L912 424" fill="none" stroke="#E4E7E3" stroke-width="2"/>
+<text x="56" y="451" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A">Data Union</text>
+<text x="232" y="451" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A">Search across phones; the files stay where they are.</text>
+<path d="M48 466 L912 466" fill="none" stroke="#E4E7E3" stroke-width="2"/>
+<text x="56" y="493" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A">MemoryCloud</text>
+<text x="232" y="493" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A">A model too large for one phone, split across phones.</text>
+<path d="M48 508 L912 508" fill="none" stroke="#E4E7E3" stroke-width="2"/>
+<text x="56" y="535" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="18" font-weight="700" fill="#15171A">Knowledge Bank</text>
+<text x="232" y="535" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A">Saved answers are shared between phones.</text>
+<rect x="96" y="562" width="768" height="56" rx="14" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<rect x="101" y="567" width="758" height="46" rx="10" fill="none" stroke="#15171A" stroke-width="1.5"/>
+<text x="480" y="596" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="22" font-weight="700" fill="#15171A" text-anchor="middle">No cloud. No account. Nothing leaves the phones.</text>
+</svg>

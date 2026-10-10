@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 599" width="960" height="599" role="img" aria-labelledby="t d" stroke-linecap="round" stroke-linejoin="round">
+<title id="t">A model too large for one phone: one model cut into three parts, one part per phone</title>
+<desc id="d">One model, Qwen3-30B-A3B with 48 layers and 18.6 GB, drawn as a tall bar cut into three parts. The top part, layers 0 to 15, is magenta and belongs to Phone C, the driver, which runs the model server. The middle part, layers 16 to 31, is teal and belongs to Phone A, a lender. The bottom part, layers 32 to 47, is tangerine and belongs to Phone B, a lender. The lenders lend memory and run a small lending server. Arrows labelled layers run from the driver to each lender: 5743 MB to Phone A and 5991 MB to Phone B. Captions: on one phone the 18.6 GB model gave no token in 134 seconds and 23 background apps were killed. Three phones ran it at 5.7 to 6.4 tokens per second, first word after 1.5 to 2.8 seconds. A lender gets its own models back when the split ends or its driver disappears; in one test they were back after 27 seconds. One run: first load 319 seconds, second load 65 seconds. Sources: docs/SUMMARY.md section 4 and docs/CLAIMS.md rows MC3, MC4 and MC7.</desc>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="#15171A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="0" y="0" width="960" height="599" fill="#F6F7F5"/>
+<text x="32" y="44" font-family="'Bricolage Grotesque','Geist','Segoe UI',system-ui,sans-serif" font-size="26" font-weight="700" fill="#15171A">A model too large for one phone</text>
+<text x="48" y="76" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">One model, 48 layers</text>
+<text x="48" y="104" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#5E636B">Qwen3-30B-A3B, 18.6 GB</text>
+<rect x="48" y="118" width="72" height="128" rx="0" fill="#C8457E" stroke="#15171A" stroke-width="2.5"/>
+<path d="M50 126 H118 M50 134 H118 M50 142 H118 M50 150 H118 M50 158 H118 M50 166 H118 M50 174 H118 M50 182 H118 M50 190 H118 M50 198 H118 M50 206 H118 M50 214 H118 M50 222 H118 M50 230 H118 M50 238 H118" fill="none" stroke="#15171A" stroke-width="1"/>
+<rect x="48" y="246" width="72" height="128" rx="0" fill="#1E9BB0" stroke="#15171A" stroke-width="2.5"/>
+<path d="M50 254 H118 M50 262 H118 M50 270 H118 M50 278 H118 M50 286 H118 M50 294 H118 M50 302 H118 M50 310 H118 M50 318 H118 M50 326 H118 M50 334 H118 M50 342 H118 M50 350 H118 M50 358 H118 M50 366 H118" fill="none" stroke="#15171A" stroke-width="1"/>
+<rect x="48" y="374" width="72" height="128" rx="0" fill="#E08A3C" stroke="#15171A" stroke-width="2.5"/>
+<path d="M50 382 H118 M50 390 H118 M50 398 H118 M50 406 H118 M50 414 H118 M50 422 H118 M50 430 H118 M50 438 H118 M50 446 H118 M50 454 H118 M50 462 H118 M50 470 H118 M50 478 H118 M50 486 H118 M50 494 H118" fill="none" stroke="#15171A" stroke-width="1"/>
+<path d="M120 182 L192 182" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<rect x="192" y="134" width="360" height="96" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<circle cx="224" cy="182" r="16" fill="#C8457E" stroke="#15171A" stroke-width="2.5"/>
+<text x="224" y="188" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A" text-anchor="middle">C</text>
+<text x="252" y="159" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Phone C, the driver</text>
+<text x="252" y="186" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">runs the model server</text>
+<text x="252" y="213" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">layers 0 to 15</text>
+<path d="M120 310 L192 310" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<rect x="192" y="262" width="360" height="96" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<circle cx="224" cy="310" r="16" fill="#1E9BB0" stroke="#15171A" stroke-width="2.5"/>
+<text x="224" y="316" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A" text-anchor="middle">A</text>
+<text x="252" y="287" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Phone A, lends memory</text>
+<text x="252" y="314" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">runs a small lending server</text>
+<text x="252" y="341" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">layers 16 to 31</text>
+<path d="M120 438 L192 438" fill="none" stroke="#15171A" stroke-width="2.5"/>
+<rect x="192" y="390" width="360" height="96" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<circle cx="224" cy="438" r="16" fill="#E08A3C" stroke="#15171A" stroke-width="2.5"/>
+<text x="224" y="444" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A" text-anchor="middle">B</text>
+<text x="252" y="415" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Phone B, lends memory</text>
+<text x="252" y="442" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">runs a small lending server</text>
+<text x="252" y="469" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">layers 32 to 47</text>
+<path d="M552 182 L580 182 L580 438 L552 438" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M580 310 L552 310" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="592" y="300" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">layers</text>
+<text x="592" y="326" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#5E636B">5743 MB</text>
+<text x="592" y="428" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">layers</text>
+<text x="592" y="454" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#5E636B">5991 MB</text>
+<text x="684" y="134" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">One phone cannot run it</text>
+<text x="684" y="161" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="684" dy="0">On one phone: no token</tspan><tspan x="684" dy="26">in <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">134 s</tspan>, 23 background</tspan><tspan x="684" dy="26">apps killed.</tspan></text>
+<path d="M684 236 L928 236" fill="none" stroke="#E4E7E3" stroke-width="2"/>
+<text x="684" y="262" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Three phones can</text>
+<text x="684" y="298" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="24" fill="#15171A">5.7 to 6.4</text>
+<text x="684" y="330" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="684" dy="0">tokens per second; first word</tspan><tspan x="684" dy="26">after <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">1.5 to 2.8 s</tspan></tspan></text>
+<path d="M684 372 L928 372" fill="none" stroke="#E4E7E3" stroke-width="2"/>
+<text x="684" y="398" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Models come back</text>
+<text x="684" y="425" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="684" dy="0">A lender gets its own models</tspan><tspan x="684" dy="26">back when the split ends or</tspan><tspan x="684" dy="26">its driver disappears.</tspan></text>
+<text x="684" y="503" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">One test: back after <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">27 s</tspan>.</text>
+<text x="32" y="548" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">Three phones, one run: first load <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">319 s</tspan>, second load <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">65 s</tspan>. Phone C drives, Phones A and B lend.</text>
+<text x="32" y="574" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">Sources: <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">docs/SUMMARY.md</tspan> section 4; <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">docs/CLAIMS.md</tspan> rows MC3, MC4, MC7.</text>
+</svg>

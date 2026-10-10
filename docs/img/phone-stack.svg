@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 638" width="960" height="638" role="img" aria-labelledby="t d" stroke-linecap="round" stroke-linejoin="round">
+<title id="t">Inside one phone: app screens, modules, two doors, model servers and model files</title>
+<desc id="d">A stack of five layers inside one phone, from top to bottom. First the app screens, five tabs called Swarm, Models, Choir, Data and Memory, written in Jetpack Compose. Second the modules, each shown with its plain name and its package name: links (link), scheduler (sched), Agent Choir (choir), Data Union (pdu), MemoryCloud (memcloud), Knowledge Bank (kb), agent endpoint (agent) and Keep busy (busy). Third two doors to the outside. The node API on port 8787 signs every request with HMAC-SHA256 and serves paired phones. The agent endpoint on port 8790 serves this phone only, needs a key, and is for other apps. Fourth the model servers (llama.cpp): the chat model on the GPU, the embedding model for Data Union search, and the lending server used only during a split. Fifth the model files, stored on the phone, one file per model.</desc>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="#15171A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="0" y="0" width="960" height="638" fill="#F6F7F5"/>
+<text x="32" y="44" font-family="'Bricolage Grotesque','Geist','Segoe UI',system-ui,sans-serif" font-size="26" font-weight="700" fill="#15171A">Inside one phone</text>
+<rect x="32" y="62" width="896" height="42" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="89" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">App screens</text>
+<text x="169.6" y="89" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#5E636B">five tabs: Swarm, Models, Choir, Data, Memory. Written in Jetpack Compose.</text>
+<rect x="32" y="114" width="896" height="194" rx="12" fill="#E4E7E3"/>
+<text x="48" y="142" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Modules</text>
+<text x="131.2" y="142" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">plain name above, package name below</text>
+<rect x="48" y="154" width="204" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="64" y="180" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">links</text>
+<text x="64" y="207" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">link</text>
+<rect x="268" y="154" width="204" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="284" y="180" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">scheduler</text>
+<text x="284" y="207" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">sched</text>
+<rect x="488" y="154" width="204" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="504" y="180" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Agent Choir</text>
+<text x="504" y="207" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">choir</text>
+<rect x="708" y="154" width="204" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="724" y="180" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Data Union</text>
+<text x="724" y="207" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">pdu</text>
+<rect x="48" y="231" width="204" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="64" y="257" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">MemoryCloud</text>
+<text x="64" y="284" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">memcloud</text>
+<rect x="268" y="231" width="204" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="284" y="257" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Knowledge Bank</text>
+<text x="284" y="284" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">kb</text>
+<rect x="488" y="231" width="204" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="504" y="257" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">agent endpoint</text>
+<text x="504" y="284" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">agent</text>
+<rect x="708" y="231" width="204" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="724" y="257" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Keep busy</text>
+<text x="724" y="284" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="14" fill="#15171A">busy</text>
+<rect x="32" y="318" width="160" height="119" rx="12" fill="#F6F7F5" stroke="#15171A" stroke-width="2.5" stroke-dasharray="7 6"/>
+<text x="112" y="368.5" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A" text-anchor="middle">Paired phones</text>
+<text x="112" y="395.5" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B" text-anchor="middle">on the Wi-Fi</text>
+<rect x="768" y="318" width="160" height="119" rx="12" fill="#F6F7F5" stroke="#15171A" stroke-width="2.5" stroke-dasharray="7 6"/>
+<text x="848" y="368.5" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A" text-anchor="middle">Other apps</text>
+<text x="848" y="395.5" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B" text-anchor="middle">on this phone</text>
+<rect x="216" y="318" width="258" height="119" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="232" y="344" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Node API, port 8787</text>
+<text x="232" y="371" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="232" dy="0">every request signed</tspan><tspan x="232" dy="26">(HMAC-SHA256), for</tspan><tspan x="232" dy="26">paired phones</tspan></text>
+<rect x="486" y="318" width="258" height="119" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="502" y="344" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Agent endpoint</text>
+<text x="502" y="371" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="502" dy="0">port 8790, this phone only,</tspan><tspan x="502" dy="26">with a key,</tspan><tspan x="502" dy="26">for other apps</tspan></text>
+<path d="M192 377.5 L216 377.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M768 377.5 L744 377.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="32" y="447" width="896" height="117" rx="12" fill="#E4E7E3"/>
+<text x="48" y="475" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Model servers (llama.cpp)</text>
+<text x="304" y="475" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">each one runs as its own process</text>
+<rect x="48" y="487" width="277" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="64" y="513" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Chat model</text>
+<text x="64" y="540" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">runs on the GPU</text>
+<rect x="341" y="487" width="277" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="357" y="513" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Embedding model</text>
+<text x="357" y="540" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">for Data Union search</text>
+<rect x="634" y="487" width="277" height="67" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="650" y="513" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Lending server</text>
+<text x="650" y="540" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A">used only during a split</text>
+<rect x="32" y="574" width="896" height="42" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="601" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">Model files</text>
+<text x="169.6" y="601" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#5E636B">stored on the phone, one file per model</text>
+</svg>

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 462" width="960" height="462" role="img" aria-labelledby="t d" stroke-linecap="round" stroke-linejoin="round">
+<title id="t">One job through the swarm: five steps and the fallback when a phone stops answering</title>
+<desc id="d">One job through the swarm, left to right in five steps. Step 1: a question is typed on the asking phone. Step 2: the scheduler picks a phone by speed and heat; each phone takes one job at a time. Step 3: a signed request (HMAC-SHA256) goes to the chosen phone. Step 4: if that phone was doing filler work, the filler job is cancelled and the real request starts within 0.6 seconds. Step 5: the answer streams back word by word to the asking phone. Below the main line is a second lane for the fallback: the chosen phone stops answering, it is marked away in about 2 seconds, and the job runs again on another phone. In a force-stop test it was dropped after 2.3 seconds and all 32 of 32 jobs finished, one run. Sources: docs/CLAIMS.md rows LK6, HD1 and HD12.</desc>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="#15171A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="0" y="0" width="960" height="462" fill="#F6F7F5"/>
+<text x="32" y="44" font-family="'Bricolage Grotesque','Geist','Segoe UI',system-ui,sans-serif" font-size="26" font-weight="700" fill="#15171A">One job through the swarm</text>
+<rect x="32" y="68" width="160" height="171" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="94" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A">A question</text>
+<text x="48" y="121" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="48" dy="0">typed on the</tspan><tspan x="48" dy="26">asking phone</tspan></text>
+<rect x="216" y="68" width="160" height="171" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="232" y="94" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A">Pick a phone</text>
+<text x="232" y="121" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="232" dy="0">The scheduler</tspan><tspan x="232" dy="26">weighs speed and</tspan><tspan x="232" dy="26">heat. Each phone</tspan><tspan x="232" dy="26">takes one job</tspan><tspan x="232" dy="26">at a time.</tspan></text>
+<rect x="400" y="68" width="160" height="171" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="416" y="94" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A">Signed request</text>
+<text x="416" y="121" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="416" dy="0">goes to the</tspan><tspan x="416" dy="26">chosen phone,</tspan><tspan x="416" dy="26">signed with</tspan><tspan x="416" dy="26"><tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">HMAC-SHA256</tspan></tspan></text>
+<rect x="584" y="68" width="160" height="171" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="600" y="94" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A">Filler stops</text>
+<text x="600" y="121" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="600" dy="0">Only if the</tspan><tspan x="600" dy="26">phone was doing</tspan><tspan x="600" dy="26">filler work. The</tspan><tspan x="600" dy="26">request starts</tspan><tspan x="600" dy="26">within <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">0.6 s</tspan>.</tspan></text>
+<rect x="768" y="68" width="160" height="171" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="784" y="94" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A">Answer streams</text>
+<text x="784" y="121" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="784" dy="0">back to the</tspan><tspan x="784" dy="26">asking phone,</tspan><tspan x="784" dy="26">word by word.</tspan></text>
+<path d="M192 153.5 L216 153.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M376 153.5 L400 153.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M560 153.5 L584 153.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M744 153.5 L768 153.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="32" y="283" width="896" height="125" rx="12" fill="#E4E7E3"/>
+<text x="48" y="313" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" font-weight="700" fill="#15171A">If that phone stops answering</text>
+<text x="48" y="341" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B"><tspan x="48" dy="0">Force-stop test, one run:</tspan><tspan x="48" dy="26">dropped after <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">2.3 s</tspan>,</tspan><tspan x="48" dy="26"><tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">32 of 32</tspan> jobs finished.</tspan></text>
+<rect x="400" y="299" width="160" height="93" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="416" y="325" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A">No answer</text>
+<text x="416" y="352" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="416" dy="0">The chosen phone</tspan><tspan x="416" dy="26">stops answering.</tspan></text>
+<rect x="584" y="299" width="160" height="93" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="600" y="325" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A">Dropped</text>
+<text x="600" y="352" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="600" dy="0">Marked away in</tspan><tspan x="600" dy="26">about 2 seconds.</tspan></text>
+<rect x="768" y="299" width="160" height="93" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="784" y="325" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#15171A">Runs again</text>
+<text x="784" y="352" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#15171A"><tspan x="784" dy="0">The job runs</tspan><tspan x="784" dy="26">on another phone</tspan></text>
+<path d="M560 345.5 L584 345.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M744 345.5 L768 345.5" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M480 239 L480 299" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M848 299 L848 239" fill="none" stroke="#15171A" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="32" y="438" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="14" fill="#5E636B">Sources: <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">docs/CLAIMS.md</tspan> rows LK6, HD1 and HD12. Each figure is one run.</text>
+</svg>

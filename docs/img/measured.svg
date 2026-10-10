@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 608" width="960" height="608" role="img" aria-labelledby="t d" stroke-linecap="round" stroke-linejoin="round">
+<title id="t">Measured on the phones: four before and after comparisons</title>
+<desc id="d">Four pairs of horizontal bars, each a before and an after measured on the iQOO phones. Bars inside one pair share a scale; the pairs do not share one. Pair 1, tokens per second: the fastest single phone 12.03, three phones 30.91 (mean of 5 runs, 28.90 to 31.94). Pair 2, first word of an answer in seconds, chat on the CPU against the GPU: 7.20 against 2.59. Pair 3, the same question asked again, in seconds: 4.5 to 5.3 the first time, 0.3 to 0.55 asked again; bars use the lower end of each range. Pair 4, link speed in Mbps: the access point 89 to 102, Wi-Fi Direct 641 to 725; bars use the lower end of each range. Most pairs are one run per side. Sources and run counts: docs/SUMMARY.md, section 4.</desc>
+<rect x="0" y="0" width="960" height="608" fill="#F6F7F5"/>
+<text x="32" y="44" font-family="'Bricolage Grotesque','Geist','Segoe UI',system-ui,sans-serif" font-size="26" font-weight="700" fill="#15171A">Measured on the phones</text>
+<text x="32" y="74" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#5E636B">First bar: before. Second bar: after. Bars in a pair share a scale; pairs do not.</text>
+<rect x="32" y="94" width="896" height="104" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="123" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A"><tspan x="48" dy="0">Three phones against the</tspan><tspan x="48" dy="28">fastest single phone,</tspan><tspan x="48" dy="28">tokens per second</tspan></text>
+<text x="368" y="133" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#15171A">Best single phone</text>
+<rect x="540" y="116" width="73.95" height="24" rx="0" fill="#E4E7E3" stroke="#15171A" stroke-width="2.5"/>
+<text x="625.95" y="133.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">12.03 tok/s</text>
+<text x="368" y="169" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#15171A">Three phones</text>
+<rect x="540" y="152" width="190" height="24" rx="0" fill="#15171A" stroke="#15171A" stroke-width="2.5"/>
+<text x="742" y="169.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">30.91 tok/s</text>
+<rect x="32" y="212" width="896" height="104" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="252" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A"><tspan x="48" dy="0">First word of an answer,</tspan><tspan x="48" dy="28">CPU against GPU, in seconds</tspan></text>
+<text x="368" y="251" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#15171A">CPU</text>
+<rect x="540" y="234" width="190" height="24" rx="0" fill="#E4E7E3" stroke="#15171A" stroke-width="2.5"/>
+<text x="742" y="251.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">7.20 s</text>
+<text x="368" y="287" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#15171A">GPU</text>
+<rect x="540" y="270" width="68.35" height="24" rx="0" fill="#15171A" stroke="#15171A" stroke-width="2.5"/>
+<text x="620.35" y="287.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">2.59 s</text>
+<rect x="32" y="330" width="896" height="104" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="370" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A"><tspan x="48" dy="0">The same question asked again,</tspan><tspan x="48" dy="28">in seconds</tspan></text>
+<text x="368" y="369" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#15171A">First time</text>
+<rect x="540" y="352" width="190" height="24" rx="0" fill="#E4E7E3" stroke="#15171A" stroke-width="2.5"/>
+<text x="742" y="369.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">4.5 to 5.3 s</text>
+<text x="368" y="405" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#15171A">Asked again</text>
+<rect x="540" y="388" width="12.67" height="24" rx="0" fill="#15171A" stroke="#15171A" stroke-width="2.5"/>
+<text x="564.67" y="405.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">0.3 to 0.55 s</text>
+<rect x="32" y="448" width="896" height="104" rx="12" fill="#FCFDFB" stroke="#15171A" stroke-width="2.5"/>
+<text x="48" y="488" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="16" fill="#15171A"><tspan x="48" dy="0">Wi-Fi Direct against the</tspan><tspan x="48" dy="28">access point, in Mbps</tspan></text>
+<text x="368" y="487" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#15171A">Access point</text>
+<rect x="540" y="470" width="26.38" height="24" rx="0" fill="#E4E7E3" stroke="#15171A" stroke-width="2.5"/>
+<text x="578.38" y="487.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">89 to 102 Mbps</text>
+<text x="368" y="523" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#15171A">Wi-Fi Direct</text>
+<rect x="540" y="506" width="190" height="24" rx="0" fill="#15171A" stroke="#15171A" stroke-width="2.5"/>
+<text x="742" y="523.5" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-size="16" fill="#15171A">641 to 725 Mbps</text>
+<text x="32" y="582" font-family="'Geist','Segoe UI',system-ui,sans-serif" font-size="15" fill="#5E636B">Most pairs are one run per side. Sources and run counts: <tspan font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">docs/SUMMARY.md</tspan>, section 4.</text>
+</svg>
