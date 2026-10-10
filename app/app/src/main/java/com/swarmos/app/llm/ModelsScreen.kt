@@ -232,7 +232,7 @@ private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, sample: Spee
                 st.modelName ?: "not loaded",
                 Modifier.weight(1f),
                 style = SwarmType.mono.copy(color = if (st.modelName == null) SwarmColors.graphite else SwarmColors.ink),
-                maxLines = 2,
+                maxLines = 1, // one line with an ellipsis, never a break inside the name
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(8.dp))

@@ -11,6 +11,14 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AskDisplayTest {
+    @Test fun theAuditListsEachTitleOnceAndSaysOnePhoneInTheSingular() {
+        assertEquals(listOf("IMG_2231.jpg", "IMG_2238.jpg"), AuditText.titles(listOf("IMG_2231.jpg", "IMG_2231.jpg", "IMG_2238.jpg", "IMG_2238.jpg")))
+        assertEquals(emptyList<String>(), AuditText.titles(emptyList()))
+        assertEquals("0 phones", AuditText.phones(0))
+        assertEquals("1 phone", AuditText.phones(1))
+        assertEquals("2 phones", AuditText.phones(2))
+    }
+
     private fun src(n: Int) = SourceUi(n, "d$n", "Phone $n", false, PduHit("File$n", "h$n", "txt", 0, "snippet", 0.5, n), false)
 
     @Test fun theAnswerAreaNamesThePhonesThatDidNotAnswer() {

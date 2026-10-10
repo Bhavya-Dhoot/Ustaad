@@ -398,6 +398,39 @@ class KbSearchTest {
     }
 }
 
+class KbTextTest {
+    private val ms = 1_760_000_000_000L
+
+    @Test fun everySourceLineShowsPhoneTitleAndDateAndNeverEndsOnTheSeparator() {
+        val lines = listOf(
+            KbText.sourceLine(KbSource("Phone A", "Laptop_Extended_Warranty_Certificate.pdf", ms, false)),
+            KbText.sourceLine(KbSource("Phone B", "", ms, false)),
+            KbText.sourceLine(KbSource("Phone B", "   ", ms, false)),
+            KbText.sourceLine(KbSource("Phone C", "IMG_2231.jpg", 0, false)),
+        )
+        for (l in lines) assertFalse(l, l.trimEnd().endsWith("\u00b7"))
+        assertTrue(lines[0].startsWith("Phone A \u00b7 Laptop_\u2026") && lines[0].contains("ate.pdf") && lines[0].endsWith("2025-10-09"))
+        assertTrue(lines[0].length <= 40)                                 // fits one line of the card, so the date is not cut off
+        assertEquals("Phone B \u00b7 (untitled) \u00b7 2025-10-09", lines[1])
+        assertEquals(lines[1], lines[2])
+        assertEquals("Phone C \u00b7 IMG_2231.jpg \u00b7 undated", lines[3])
+    }
+
+    @Test fun aMarkerWithASourceGetsItsLineAndOneWithoutStaysPlainText() {
+        val card = KbCanon.make("s", "q?", "a [1] b [2] c [3]", listOf(KbSource("Phone B", "IMG_2231.jpg", ms, false), KbSource("Phone A", "", ms, false)), "n", "N", 5, "h")
+        assertEquals("[1] Phone B \u00b7 IMG_2231.jpg \u00b7 2025-10-09", KbText.citeLine(card, 1))
+        assertEquals("[2] Phone A \u00b7 (untitled) \u00b7 2025-10-09", KbText.citeLine(card, 2))
+        assertNull(KbText.citeLine(card, 3))                              // [3] has no source: no chip, no action
+        assertNull(KbText.citeLine(card, 0))
+    }
+
+    @Test fun cardsSavedOnTheSameDayAreToldApartByTheTime() {
+        val zone = java.time.ZoneId.of("Asia/Kolkata")
+        assertEquals("2026-10-10 09:54", KbText.dayTime(java.time.ZonedDateTime.of(2026, 10, 10, 9, 54, 30, 0, zone).toInstant().toEpochMilli(), zone))
+        assertEquals("2026-10-10 14:05", KbText.dayTime(java.time.ZonedDateTime.of(2026, 10, 10, 14, 5, 0, 0, zone).toInstant().toEpochMilli(), zone))
+    }
+}
+
 class KbDraftTest {
     @Test fun markersInTheSavedTextAreRenumberedToTheCardsSourceList() {
         // the answer cited sources 1 and 3 of the live list; the card keeps those two as [1] and [2]

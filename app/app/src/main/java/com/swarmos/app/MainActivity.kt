@@ -10,6 +10,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -19,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.swarmos.app.core.PhoneActivity
@@ -150,7 +153,9 @@ private fun SwarmRoot(galleryPage: Int, onLeaveGallery: () -> Unit) {
                 if (inGallery) GalleryPage(galleryPage) else modules[selected].Screen()
             }
         }
-        SwarmBottomBar(
+        // the keyboard covers the bar instead of the bar floating above it; the page above keeps the room
+        val keyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        if (!keyboardOpen) SwarmBottomBar(
             items = items,
             selected = if (inGallery) galleryTab(galleryPage) else selected,
             onSelect = { i -> selected = i; onLeaveGallery() },

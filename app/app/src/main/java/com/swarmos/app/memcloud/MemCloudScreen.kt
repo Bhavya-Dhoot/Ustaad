@@ -179,12 +179,10 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
         val info = plan.info
         val ownAvail = plan.driver.device.ramAvailMb
         SwarmCard {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) {
-                    Text(info.file, style = SwarmType.mono)
-                    Text(listOfNotNull(MemCloudLogic.secondaryName(info.file, info.name), info.architecture).joinToString("  "), style = SwarmType.label.copy(color = SwarmColors.graphite))
-                }
-                if (!MemCloudLogic.fitsOnOnePhone(info.fileBytes, ownAvail)) Stamp("Too big for one phone", caution = true)
+            Column(Modifier.fillMaxWidth()) {
+                Text(info.file, style = SwarmType.mono)
+                Text(listOfNotNull(MemCloudLogic.secondaryName(info.file, info.name), info.architecture).joinToString("  "), style = SwarmType.label.copy(color = SwarmColors.graphite))
+                if (!MemCloudLogic.fitsOnOnePhone(info.fileBytes, ownAvail)) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Stamp("Too big for one phone", caution = true) }
             }
             Spacer(Modifier.height(8.dp))
             MetricRow("File size", gb(info.fileBytes), "GB")

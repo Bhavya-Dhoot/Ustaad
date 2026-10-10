@@ -76,11 +76,11 @@ internal fun AuditPage(onBack: () -> Unit) {
                 Text("\"${cur.text}\"", style = SwarmType.body)
                 val peers = cur.devices.filter { !it.local && it.status != "offline" }
                 Spacer(Modifier.height(8.dp))
-                Tag("${peers.firstOrNull()?.sentBytes ?: 0} bytes to ${peers.size} phones, text only")
+                Tag("${peers.firstOrNull()?.sentBytes ?: 0} bytes to ${AuditText.phones(peers.size)}, text only")
             }
 
             SectionTitle("Returned by each phone")
-            for (d in cur.devices.sortedBy { it.name }) {
+            for (d in cur.devices.distinctBy { it.deviceId }.sortedBy { it.name }) {
                 Lane(
                     name = d.name,
                     role = if (d.local) "this phone" else "peer",
@@ -100,7 +100,7 @@ internal fun AuditPage(onBack: () -> Unit) {
                                 Spacer(Modifier.height(4.dp))
                                 Hairline()
                                 Spacer(Modifier.height(6.dp))
-                                for (t in d.titles) Text(t, style = SwarmType.mono, maxLines = 1)
+                                for (t in AuditText.titles(d.titles)) Text(t, style = SwarmType.mono, maxLines = 1)
                             }
                             if (d.withheldPrivate > 0) {
                                 Spacer(Modifier.height(6.dp))
@@ -132,7 +132,7 @@ internal fun AuditPage(onBack: () -> Unit) {
                 MetricRow("snippets sent", "${s.n}")
                 MetricRow("bytes sent", "${s.bytes}")
                 if (s.withheldPrivate > 0) MetricRow("private matches withheld", "${s.withheldPrivate}")
-                for (t in s.titles) Text(t, style = SwarmType.mono.copy(color = SwarmColors.graphite), maxLines = 1)
+                for (t in AuditText.titles(s.titles)) Text(t, style = SwarmType.mono.copy(color = SwarmColors.graphite), maxLines = 1)
             }
         }
 
@@ -152,4 +152,12 @@ internal fun AuditPage(onBack: () -> Unit) {
             }
         }
     }
+}
+
+/** Wording and lists of the audit page. */
+internal object AuditText {
+    fun phones(n: Int) = if (n == 1) "1 phone" else "$n phones"
+
+    /** A file shown once per phone, even when the phone answered with the same title twice. */
+    fun titles(titles: List<String>): List<String> = titles.distinct()
 }
