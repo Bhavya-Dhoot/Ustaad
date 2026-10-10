@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -330,9 +332,13 @@ fun StreamingText(text: String, streaming: Boolean, modifier: Modifier = Modifie
     )
 }
 
-/** 1 -> 0 -> 1 blink phase of the stream caret; solid (1) when not streaming or when animations are removed. */
+/**
+ * 1 -> 0 -> 1 blink phase of the stream caret; solid (1) when not streaming or when animations are removed. It is the State, not its
+ * value: reading the value here would recompose the whole answer text every frame while a stream runs. [caretContent] reads it where
+ * the caret is drawn.
+ */
 @Composable
-internal fun rememberCaretBlink(streaming: Boolean): Float {
+internal fun rememberCaretBlink(streaming: Boolean): State<Float> {
     val animate = rememberAnimationsEnabled()
     return if (streaming && animate) {
         rememberInfiniteTransition(label = "caret").animateFloat(
@@ -342,18 +348,18 @@ internal fun rememberCaretBlink(streaming: Boolean): Float {
                 keyframes { durationMillis = 900; 1f at 0; 1f at 450; 0f at 451; 0f at 900 },
             ),
             label = "caret",
-        ).value
-    } else 1f
+        )
+    } else remember { mutableStateOf(1f) }
 }
 
-/** The 2 dp Ink caret as inline text content (append it with appendInlineContent("caret", "|")). */
+/** The 2 dp Ink caret as inline text content (append it with appendInlineContent("caret", "|")). The blink is read in the draw layer. */
 @Composable
-internal fun caretContent(style: TextStyle, blink: Float): InlineTextContent {
+internal fun caretContent(style: TextStyle, blink: State<Float>): InlineTextContent {
     val caretHeight = with(LocalDensity.current) { (style.fontSize.toPx() * 0.95f).toSp() }
     return InlineTextContent(
         Placeholder(width = 6.sp, height = caretHeight, placeholderVerticalAlign = PlaceholderVerticalAlign.Center),
     ) {
-        Box(Modifier.fillMaxHeight().padding(start = 4.dp).width(2.dp).alpha(blink).background(SwarmColors.ink))
+        Box(Modifier.fillMaxHeight().padding(start = 4.dp).width(2.dp).graphicsLayer { alpha = blink.value }.background(SwarmColors.ink))
     }
 }
 
