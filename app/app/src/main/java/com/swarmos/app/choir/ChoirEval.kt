@@ -79,6 +79,8 @@ data class EvalReport(
     val deadlineMs: Long,
     val summary: EvalSummary,
     val rows: List<EvalRow>,
+    /** Stopped from the phone before the last problem: the rows are what was finished. */
+    val stopped: Boolean = false,
 )
 
 @Serializable
@@ -94,12 +96,16 @@ data class EvalProgress(
     val error: String? = null,
     /** The run used the problems' own tests (an answer key), so choir + tool check is scored against it. */
     val useProblemCheck: Boolean = false,
+    val stopped: Boolean = false,
 )
 
 /**
  * Eval harness: runs problems one after another through [runOne] and scores three arms from the same runs:
  * the coordinator's own R1 answer (one phone alone), the choir pick without the tool, and the choir pick with the tool.
  */
+/** The evaluation was cancelled; [rows] are the problems that were finished before that. */
+class EvalCancelled(val rows: List<EvalRow>) : kotlinx.coroutines.CancellationException("evaluation stopped")
+
 object ChoirEval {
     /** Why a 20-problem eval must not start now, or null. Uses the shared thermal threshold ([ThermalLevel.isTooHot]). */
     fun refuseWhenHot(thermalStatus: Int): String? =
@@ -179,17 +185,22 @@ object ChoirEval {
         runSamples: (suspend (Problem) -> SamplesResult)? = null,
     ): List<EvalRow> {
         val rows = mutableListOf<EvalRow>()
-        for (p in problems) {
-            onProgress(rows.toList(), p)
-            val row = try {
-                val trace = runOne(p)
-                rowOf(p, trace, runSamples?.invoke(p))
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (t: Throwable) {
-                errorRow(p, t.message ?: t::class.simpleName ?: "failed")
+        try {
+            for (p in problems) {
+                onProgress(rows.toList(), p)
+                val row = try {
+                    val trace = runOne(p)
+                    rowOf(p, trace, runSamples?.invoke(p))
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    errorRow(p, t.message ?: t::class.simpleName ?: "failed")
+                }
+                rows.add(row)
             }
-            rows.add(row)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            if (e is EvalCancelled) throw e
+            throw EvalCancelled(rows.toList()).also { it.initCause(e) }
         }
         onProgress(rows.toList(), null)
         return rows

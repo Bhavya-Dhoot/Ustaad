@@ -15,14 +15,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.concurrent.atomic.AtomicInteger
 
 enum class ServerState { STOPPED, STARTING, READY, FAILED }
 
@@ -58,6 +56,7 @@ data class ServerStatus(
  * Public API for other modules (MemoryCloud, Choir, Data Union):
  *  - [start] / [stop] / [stopAll] / [status] / [statusOf] / [logTail] / [rssKb] / [lastStats]
  *  - AppGraph.llm / AppGraph.embedder switch to real [LlamaServerClient]s while CHAT / EMBED are READY, and back to FakeLlmClient otherwise.
+ *  - [realChatReady] / [realEmbedderReady]: true only while that role is READY with a real model (use these, not `is FakeLlmClient`).
  * Everything runs only while SwarmService is alive: it calls [onServiceStarted] and [onServiceStopped].
  */
 object LlamaRuntime {
@@ -75,10 +74,12 @@ object LlamaRuntime {
     private val locks = Role.entries.associateWith { Mutex() }
 
     /**
-     * Bumped by [stop]. A start remembers the value it was requested under and gives up when it changed, so a Stop that
-     * arrives while a start is queued, killing orphans or loading can never be followed by a server nobody asked for.
+     * Status and epoch of every role. A start remembers the epoch it was requested under, a running server keeps it in its
+     * [Running] record, and both give up (and stop writing status) when a [stop] or a newer start changed it: a Stop that
+     * arrives while a start is queued, loading, or between a server's death and its restart can never be followed by a
+     * server nobody asked for or by a stale STARTING / FAILED status.
      */
-    private val epochs = Role.entries.associateWith { AtomicInteger(0) }
+    private val board = StatusBoard()
 
     /** Held while a child is being launched and published in [running], and while orphans are scanned (an orphan scan must not kill a child that is about to be published). */
     private val procLock = Any()
@@ -93,6 +94,8 @@ object LlamaRuntime {
         val startedNs: Long,
         val cfg: StartConfig,
         val backend: Backend,
+        /** The epoch of the start that launched this process; every later status write on its behalf checks it. */
+        val epoch: Int,
     ) {
         @Volatile var stopRequested = false
         @Volatile var wasReady = false
@@ -100,10 +103,22 @@ object LlamaRuntime {
 
     private val running = java.util.concurrent.ConcurrentHashMap<Role, Running>()
 
-    private val _status = MutableStateFlow(Role.entries.associateWith { ServerStatus(it) })
-
     /** State of every role. Collect it from the UI. */
-    val status: StateFlow<Map<Role, ServerStatus>> = _status.asStateFlow()
+    val status: StateFlow<Map<Role, ServerStatus>> = board.status
+
+    private val _realChatReady = MutableStateFlow(false)
+
+    /**
+     * True only while CHAT is READY with a real model and AppGraph.llm already is the client for it (so reading AppGraph.llm
+     * after seeing true never returns the fake client). False while stopped, loading, failed or restarting. Choir, Data Union
+     * and MemoryCloud use this instead of testing `AppGraph.llm is FakeLlmClient`.
+     */
+    val realChatReady: StateFlow<Boolean> = _realChatReady.asStateFlow()
+
+    private val _realEmbedderReady = MutableStateFlow(false)
+
+    /** The same for the embedding server and AppGraph.embedder. */
+    val realEmbedderReady: StateFlow<Boolean> = _realEmbedderReady.asStateFlow()
 
     /** Stats of the most recent generation on this phone (chat or bench). */
     val lastStats = MutableStateFlow<ChatStats?>(null)
@@ -114,11 +129,7 @@ object LlamaRuntime {
     @Volatile private var serviceUp = false
     private var serviceJobs: List<Job> = emptyList()
 
-    fun statusOf(role: Role): ServerStatus = _status.value.getValue(role)
-
-    private fun setStatus(role: Role, f: (ServerStatus) -> ServerStatus) {
-        _status.update { it + (role to f(it.getValue(role))) }
-    }
+    fun statusOf(role: Role): ServerStatus = board.statusOf(role)
 
     // ---- lifecycle tied to SwarmService ----
 
@@ -128,10 +139,16 @@ object LlamaRuntime {
         if (serviceUp) return
         serviceUp = true
         val wire = scope.launch {
-            _status.collect { st ->
+            board.status.collect { st ->
                 val chat = st.getValue(Role.CHAT)
+                val embed = st.getValue(Role.EMBED)
+                // "ready" flags flip after the client swap on the way up and before it on the way down, so they never promise a client that is not there
+                if (!chat.isRealReady()) _realChatReady.value = false
+                if (!embed.isRealReady()) _realEmbedderReady.value = false
                 syncClient(Role.CHAT, chat, AppGraph.llm) { AppGraph.llm = it }
-                syncClient(Role.EMBED, st.getValue(Role.EMBED), AppGraph.embedder) { AppGraph.embedder = it }
+                syncClient(Role.EMBED, embed, AppGraph.embedder) { AppGraph.embedder = it }
+                if (chat.isRealReady()) _realChatReady.value = true
+                if (embed.isRealReady()) _realEmbedderReady.value = true
                 // one scheduler job at a time while the chat server is READY (parallel slots add no throughput), none otherwise
                 val cap = if (chat.state == ServerState.READY) LlamaArgs.SCHED_CAPACITY else 0
                 if (cap != schedCapacity) {
@@ -165,6 +182,8 @@ object LlamaRuntime {
         serviceJobs.forEach { it.cancel() }
         serviceJobs = emptyList()
         stopAll()
+        _realChatReady.value = false
+        _realEmbedderReady.value = false
         AppGraph.llm = com.swarmos.app.llm.FakeLlmClient()
         AppGraph.embedder = com.swarmos.app.llm.FakeLlmClient()
         schedCapacity = 0
@@ -210,7 +229,7 @@ object LlamaRuntime {
         readyTimeoutMs: Long = READY_TIMEOUT_MS,
     ): Deferred<ServerStatus> {
         // A newer start or a stop() after this point cancels this start; a pending automatic restart is superseded too.
-        val epoch = epochs.getValue(role).incrementAndGet()
+        val epoch = board.newEpoch(role)
         val cfg = StartConfig(modelPath, extraArgs, port, env, readyTimeoutMs = readyTimeoutMs)
         return scope.async { startInternal(role, cfg, epoch, auto = false) }
     }
@@ -233,13 +252,13 @@ object LlamaRuntime {
     private suspend fun startLocked(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus = locks.getValue(role).withLock {
         val modelPath = cfg.modelPath
         val port = cfg.port
-        if (epochs.getValue(role).get() != epoch) return@withLock statusOf(role) // stopped before this start began
+        if (!board.isCurrent(role, epoch)) return@withLock statusOf(role) // stopped before this start began
         val prior = statusOf(role)
         stopProcess(role) // waits until the old process is gone, so its port is free
         val ctx = AppGraph.appContext
-        if (!serviceUp) return@withLock fail(role, "SwarmService is not running", modelPath, port)
+        if (!serviceUp) return@withLock fail(role, epoch, "SwarmService is not running", modelPath, port)
         if (role != Role.RPC && (modelPath == null || !File(modelPath).isFile)) {
-            return@withLock fail(role, "model file not found: $modelPath", modelPath, port)
+            return@withLock fail(role, epoch, "model file not found: $modelPath", modelPath, port)
         }
         val libDir = File(ctx.applicationInfo.nativeLibraryDir)
         val plan = BackendPlan.choose(role, cfg.extraArgs, ModelStore.useGpu.value, File(libDir, LlamaArgs.GPU_BINARY).exists(), cfg.cpuOnly)
@@ -270,20 +289,21 @@ object LlamaRuntime {
         val shownBackend = if (role == Role.CHAT) backend else null
         val retryOnFail = gpu
         val bin = File(libDir, LlamaArgs.binaryFor(role, backend))
-        if (!bin.exists()) return Attempt(fail(role, "${bin.name} is not in the APK (nativeLibraryDir ${bin.parent})", modelPath, port, shownBackend), retryOnFail)
+        if (!bin.exists()) return Attempt(fail(role, epoch, "${bin.name} is not in the APK (nativeLibraryDir ${bin.parent})", modelPath, port, shownBackend), retryOnFail)
         if (!ensurePortFree(role, port)) {
-            return Attempt(fail(role, "port $port is still in use after two retries (another app or an adb shell process holds it)", modelPath, port, shownBackend), false)
+            return Attempt(fail(role, epoch, "port $port is still in use after two retries (another app or an adb shell process holds it)", modelPath, port, shownBackend), false)
         }
-        if (epochs.getValue(role).get() != epoch) return Attempt(statusOf(role), false)
+        if (!board.isCurrent(role, epoch)) return Attempt(statusOf(role), false)
         val args = LlamaArgs.build(role, modelPath, port, cfg.extraArgs, backend)
         val cmd = listOf(bin.absolutePath) + args
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
         val ring = LogRing()
         val restarts = if (auto) prior.restarts else 0
         val startingNotice = fallbackNote ?: if (auto) prior.notice else null
-        setStatus(role) {
+        val announced = board.setIfCurrent(role, epoch) {
             ServerStatus(role, ServerState.STARTING, null, modelPath, port, null, args, System.currentTimeMillis(), null, startingNotice, restarts, shownBackend)
         }
+        if (!announced) return Attempt(statusOf(role), false) // a stop() slipped in: it published STOPPED, keep it
         val run: Running
         synchronized(procLock) {
             val proc = try {
@@ -297,21 +317,20 @@ object LlamaRuntime {
                     }
                     .start()
             } catch (e: Exception) {
-                return Attempt(fail(role, "cannot exec ${bin.name}: ${e.message}", modelPath, port, shownBackend), retryOnFail)
+                return Attempt(fail(role, epoch, "cannot exec ${bin.name}: ${e.message}", modelPath, port, shownBackend), retryOnFail)
             }
-            run = Running(role, proc, ring, System.nanoTime(), cfg, backend)
+            run = Running(role, proc, ring, System.nanoTime(), cfg, backend, epoch)
             running[role] = run
         }
         val proc = run.process
         // stop() may have run between the epoch check above and the publish just now: it found nothing to kill, so do it here
-        if (epochs.getValue(role).get() != epoch) {
+        val pid = pidOf(proc)
+        if (!board.setIfCurrent(role, epoch) { it.copy(pid = pid) }) {
             run.stopRequested = true
             running.remove(role, run)
             killProcess(proc)
             return Attempt(statusOf(role), false)
         }
-        val pid = pidOf(proc)
-        setStatus(role) { it.copy(pid = pid) }
         Log.i(TAG, "${role.tag}: started on $backend pid=$pid ${cmd.joinToString(" ")}")
         pump(run, logFile)
         watchExit(run)
@@ -321,7 +340,7 @@ object LlamaRuntime {
         val deadline = System.nanoTime() + deadlineMs * 1_000_000
         while (System.nanoTime() < deadline) {
             if (!proc.isAlive) break
-            if (epochs.getValue(role).get() != epoch) { // stopped, or superseded by a newer start: stop loading at once
+            if (!board.isCurrent(role, epoch)) { // stopped, or superseded by a newer start: stop loading at once
                 run.stopRequested = true
                 running.remove(role, run)
                 killProcess(proc)
@@ -332,19 +351,25 @@ object LlamaRuntime {
                 delay(400)
                 if (!proc.isAlive || !probe(role, port)) continue
                 val warmOk = warmUp(role, port)
-                if (run.stopRequested || epochs.getValue(role).get() != epoch) return Attempt(statusOf(role), false)
+                if (run.stopRequested || !board.isCurrent(role, epoch)) return Attempt(statusOf(role), false)
                 if (!proc.isAlive) break
                 if (gpu && !warmOk) { // READY on paper, but the first generation failed on the GPU: use the CPU build instead
                     run.stopRequested = true
                     running.remove(role, run)
                     killProcess(proc)
                     waitFor(proc, 4_000)
-                    return Attempt(fail(role, "the first request failed on the GPU", modelPath, port, shownBackend), true)
+                    return Attempt(fail(role, epoch, "the first request failed on the GPU", modelPath, port, shownBackend), true)
                 }
                 val ms = (System.nanoTime() - run.startedNs) / 1_000_000
                 run.wasReady = true
                 val doneNotice = fallbackNote ?: if (auto) "Restarted automatically after the server was killed." else null
-                setStatus(role) { it.copy(state = ServerState.READY, readyAfterMs = ms, notice = doneNotice) }
+                if (!board.setIfCurrent(role, epoch) { it.copy(state = ServerState.READY, readyAfterMs = ms, notice = doneNotice) }) {
+                    // a stop() or a newer start got in between and owns the status now: this server is not wanted
+                    run.stopRequested = true
+                    running.remove(role, run)
+                    killProcess(proc)
+                    return Attempt(statusOf(role), false)
+                }
                 Log.i(TAG, "${role.tag}: READY on $backend after $ms ms")
                 return Attempt(statusOf(role), false)
             }
@@ -355,28 +380,26 @@ object LlamaRuntime {
             running.remove(role, run)
             killProcess(proc)
             waitFor(proc, 4_000)
-            return Attempt(fail(role, "not ready after ${deadlineMs / 1000} s; ${ring.tail(1).lastOrNull().orEmpty()}", modelPath, port, shownBackend), retryOnFail)
+            return Attempt(fail(role, epoch, "not ready after ${deadlineMs / 1000} s; ${ring.tail(1).lastOrNull().orEmpty()}", modelPath, port, shownBackend), retryOnFail)
         }
         if (run.stopRequested) return Attempt(statusOf(role), false)
         run.stopRequested = true // the exit is reported here, not by watchExit
         running.remove(role, run)
         val code = runCatching { proc.exitValue() }.getOrDefault(-1)
-        return Attempt(fail(role, "${ProcInfo.describeExit(code)} during start; last log: ${ring.tail(3).joinToString(" | ")}", modelPath, port, shownBackend), retryOnFail)
+        return Attempt(fail(role, epoch, "${ProcInfo.describeExit(code)} during start; last log: ${ring.tail(3).joinToString(" | ")}", modelPath, port, shownBackend), retryOnFail)
     }
 
     /**
      * Stops [role] (SIGTERM, then SIGKILL after 3 s). Safe to call when it is not running, and safe while a start for this
-     * role is queued, checking ports or loading: that start is cancelled (see [epochs]) instead of racing with this stop.
-     * It also ends the automatic restart of a server that was killed.
+     * role is queued, checking ports or loading, or while a killed server waits for its restart: all of those are cancelled
+     * (see [StatusBoard]) instead of racing with this stop, and none of them can overwrite the STOPPED it publishes.
      */
     fun stop(role: Role) {
-        epochs.getValue(role).incrementAndGet()
-        val run = running.remove(role)
+        val run = board.stop(role) { running.remove(role) }
         if (run != null) {
             run.stopRequested = true
             killProcess(run.process)
         }
-        setStatus(role) { ServerStatus(role, port = it.port) }
     }
 
     /** Stops every role. Non-blocking for the caller beyond the SIGTERM; a watchdog escalates to SIGKILL. */
@@ -389,7 +412,7 @@ object LlamaRuntime {
         val run = running.remove(role) ?: return
         run.stopRequested = true
         killProcess(run.process)
-        setStatus(role) { ServerStatus(role, port = it.port) }
+        board.set(role) { ServerStatus(role, port = it.port) }
         if (!waitFor(run.process, 4_000)) {
             run.process.destroyForcibly()
             waitFor(run.process, 2_000)
@@ -432,9 +455,10 @@ object LlamaRuntime {
         return false
     }
 
-    private fun fail(role: Role, reason: String, modelPath: String?, port: Int, backend: Backend? = null): ServerStatus {
+    /** Publishes FAILED unless a stop() or a newer start owns the status by now (then it is left alone). Returns the status as it stands. */
+    private fun fail(role: Role, epoch: Int, reason: String, modelPath: String?, port: Int, backend: Backend? = null): ServerStatus {
         Log.e(TAG, "${role.tag}: FAILED: $reason")
-        setStatus(role) {
+        board.setIfCurrent(role, epoch) {
             val note = if (it.restarts > 0) "The automatic restart failed. Tap Load to start it again." else null
             ServerStatus(role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs, null, note, it.restarts, backend)
         }
@@ -493,32 +517,23 @@ object LlamaRuntime {
             val what = ProcInfo.describeExit(code)
             val reason = "$what after ${aliveMs / 1000} s; last log: $last"
             Log.e(TAG, "${run.role.tag}: DIED pid=${pidOf(run.process)} $reason")
-            if (running[run.role] === run) running.remove(run.role, run)
+            running.remove(run.role, run)
             val role = run.role
             val cfg = run.cfg
-            setStatus(role) {
-                ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, null, it.restarts, it.backend)
-            }
-            val epoch = epochs.getValue(role).get()
-            when (val d = RestartPolicy.decide(role, run.wasReady, serviceUp, statusOf(role).restarts, aliveMs, cfg.extraArgs)) {
-                RestartPolicy.Decision.Ignore -> {}
-                RestartPolicy.Decision.GiveUp -> setStatus(role) {
-                    it.copy(notice = "The server was killed again ($what), so it is not restarted. Tap Load to start it.")
-                }
-                is RestartPolicy.Decision.Restart -> {
-                    setStatus(role) {
-                        it.copy(
-                            state = ServerState.STARTING,
-                            notice = "The server was killed ($what). Restarting in ${d.delayMs / 1000} s.",
-                            restarts = d.attempt,
-                        )
-                    }
-                    delay(d.delayMs)
+            // Every step below is under the epoch this server was STARTED under (not the one at death time), so a stop()
+            // between the death and the restart is honoured and never followed by a stale FAILED or STARTING.
+            board.reportUnexpectedExit(
+                role, run.epoch, run.wasReady, { serviceUp }, aliveMs, cfg.extraArgs, what,
+                failedStatus = {
+                    ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, null, it.restarts, it.backend)
+                },
+                wait = { delay(it) },
+                restart = {
                     // a GPU server that was killed is restarted on the GPU (with the CPU fallback); a CPU server stays on the CPU
                     val again = cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU)
-                    if (serviceUp && epochs.getValue(role).get() == epoch) startInternal(role, again, epoch, auto = true)
-                }
-            }
+                    startInternal(role, again, run.epoch, auto = true)
+                },
+            )
         }
     }
 

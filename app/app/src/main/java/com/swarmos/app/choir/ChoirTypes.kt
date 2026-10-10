@@ -19,7 +19,7 @@ enum class CheckResult { VERIFIED, REFUTED, NOT_CHECKABLE }
 enum class PickMethod { TOOL, MAJORITY, CONFIDENCE, JUDGE, ABSTAIN }
 
 @Serializable
-enum class LaneStatus { WAITING, SOLVING, ANSWERED, REVISING, REVISED, JUDGING, TIMED_OUT, ERROR, AWAY }
+enum class LaneStatus { WAITING, SOLVING, ANSWERED, REVISING, REVISED, JUDGING, TIMED_OUT, ERROR, AWAY, NO_MODEL }
 
 object ChoirLimits {
     const val WIRE_MAX_BYTES = 1024
