@@ -108,13 +108,14 @@ step_on() { case ",$STEPS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 # NOSIG=1 call ...  sends no signature headers.
 call() {
   local ph=$1 method=$2 path=$3 body=${4-} out=${5:-$RESULTS/last.json} maxt=${6:-60}
-  local ts sig msg nl=$'\n' t0 sigpath="${3%%\?*}"
-  local args=(-sS -m "$maxt" -o "$out" -w '%{http_code}' -X "$method")
+  local ts sig msg nl=$'\n' t0 sigpath="$3" reqid="" got want  # the signed path is the raw URI, query string included
+  local args=(-sS -m "$maxt" -o "$out" -D "$RESULTS/hdr.tmp" -w '%{http_code}' -X "$method")
   if [ "${NOSIG:-0}" != 1 ]; then
     ts=$(now_ms)
     msg="${method}${nl}${sigpath}${nl}${ts}${nl}${body}"
     sig=$(printf '%s' "$msg" | openssl dgst -sha256 -hmac "${SEC[$ph]:-$DEV_SECRET}" -hex | awk '{print $NF}')
-    args+=(-H "X-Swarm-Node: e2e-pc" -H "X-Swarm-Ts: $ts" -H "X-Swarm-Sig: $sig" -H "X-Swarm-Req: e2e-$(openssl rand -hex 8)")
+    reqid="e2e-$(openssl rand -hex 8)"
+    args+=(-H "X-Swarm-Node: e2e-pc" -H "X-Swarm-Ts: $ts" -H "X-Swarm-Sig: $sig" -H "X-Swarm-Req: $reqid")
   fi
   [ -n "$body" ] && args+=(-H 'Content-Type: application/json' --data-binary "$body")
   : > "$out"
@@ -126,7 +127,13 @@ call() {
     [ "$CODE" = 000 ] && [ "$method" = GET ] && [ "$try" -lt 4 ] && [ "$maxt" -le 60 ] || break
     sleep 20
   done
-  CALL_MS=$(( $(now_ms) - t0 ))
+  CALL_MS=$(( $(now_ms) - t0 )); RSP=skip
+  if [ "${NOSIG:-0}" != 1 ] && [ "$CODE" != 000 ]; then # every answer carries X-Swarm-Rsp = HMAC(secret, "rsp\n$status\n$reqid\n$body")
+    got=$(tr -d '\r' < "$RESULTS/hdr.tmp" | awk -F': *' 'tolower($1) == "x-swarm-rsp" { v = tolower($2) } END { print v }')
+    want=$({ printf 'rsp\n%s\n%s\n' "$CODE" "$reqid"; cat "$out"; } | openssl dgst -sha256 -hmac "${SEC[$ph]:-$DEV_SECRET}" -hex | awk '{print $NF}')
+    if [ -z "$got" ]; then RSP=none; elif [ "$got" = "$want" ]; then RSP=ok; else RSP=bad; fi
+    [ "$RSP" = ok ] || echo "answer MAC $RSP: $method $path HTTP $CODE" >> "$RESULTS/rsp-problems.log"
+  fi
 }
 
 # secret to sign with: SWARM_SECRET, the debug dev secret, or what the debug build publishes for adb tooling
@@ -136,11 +143,9 @@ resolve_secret() {
   SEC[$ph]="$DEV_SECRET"; SRC[$ph]="debug dev secret"
   call "$ph" GET /v1/health "" "$RESULTS/secret-probe.json" 8
   [ "$CODE" = 200 ] && return 0
-  NOSIG=1 call "$ph" GET /v1/link/pairing-payload "" "$RESULTS/secret-payload-$ph.tmp" 8
-  local s; s=$(jx get "$RESULTS/secret-payload-$ph.tmp" "d['secret']")
-  rm -f "$RESULTS/secret-payload-$ph.tmp"
+  s=$("$ADB" -s "${SER[$ph]}" shell "run-as $PKG cat files/datastore/swarm.preferences_pb" </dev/null 2>/dev/null | grep -a -o '[0-9a-f]\{64\}' | head -1)
   [ -n "$s" ] || return 1
-  SEC[$ph]="$s"; SRC[$ph]="secret published by the debug build (/v1/link/pairing-payload)"
+  SEC[$ph]="$s"; SRC[$ph]="secret read from the app DataStore (run-as); the dev secret was rejected"
   call "$ph" GET /v1/health "" "$RESULTS/secret-probe.json" 8
   [ "$CODE" = 200 ]
 }
@@ -284,7 +289,7 @@ step_a() {
         fail "a2-health-$ph" "signed GET /v1/health gave HTTP $CODE"
       fi
     else
-      fail "a2-health-$ph" "no secret signs successfully (dev secret rejected and no pairing payload)"
+      fail "a2-health-$ph" "no secret signs successfully (dev secret rejected and no secret in the app DataStore)"
     fi
     NOSIG=1 call "$ph" GET /v1/health "" "$RESULTS/unsigned-$ph.json" 10
     if [ "$CODE" = 401 ]; then pass "a3-unsigned-$ph" "unsigned GET /v1/health -> 401 ($(jx get "$RESULTS/unsigned-$ph.json" "d['error']"))"
