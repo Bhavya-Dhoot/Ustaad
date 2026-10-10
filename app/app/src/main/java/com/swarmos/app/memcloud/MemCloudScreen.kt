@@ -72,6 +72,7 @@ fun MemCloudScreen() {
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val tick by ModelStore.tick.collectAsStateWithLifecycle()
     val lending by RpcWorker.lending.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { MemCloud.onAppStart() } // cleans up after a killed session, off the main thread
     var showExpert by rememberSaveable { mutableStateOf(false) }
 
     // peers' model servers change what the plan can count on; ask while this screen is open
@@ -88,7 +89,7 @@ fun MemCloudScreen() {
         lending?.let { l ->
             SwarmCard {
                 Text(l.sentence, style = SwarmType.body)
-                Text("It stops when the split ends or that phone is out of reach for 10 s.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+                Text(l.leaseSentence, style = SwarmType.label.copy(color = SwarmColors.graphite))
                 Spacer(Modifier.height(8.dp))
                 SecondaryButton("Stop lending", { RpcWorker.stop("stopped on this phone") }, Modifier.fillMaxWidth())
             }
@@ -196,7 +197,7 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
                     Spacer(Modifier.width(12.dp))
                     Stepper(s.layerCount, onMinus = { counts = SplitPlanner.shift(plan.counts(), i, -1) }, onPlus = { counts = SplitPlanner.shift(plan.counts(), i, +1) })
                 }
-                if (!fit.ok) ErrorNote("May not fit: needs ${gb(fit.needMb * 1048576)} GB with buffers, has ${gb(fit.haveMb * 1048576)} GB.")
+                if (!fit.ok) ErrorNote("May not fit: the planning estimate is ${gb(fit.needMb * 1048576)} GB (weights plus a ${SplitPlanner.OVERHEAD_MB / 1024.0} GB allowance), this phone can give ${gb(fit.haveMb * 1048576)} GB.")
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -312,7 +313,8 @@ private fun PhoneLanes(st: MemCloudState, showProgress: Boolean) {
             }
             MetricRow("Memory in use", mbText(p.rssMb), "peak ${mbText(p.peakMb)}")
             p.thermalStatus?.let { MetricRow("Temperature", HealthMonitor.thermalWord(it), "status $it") }
-            p.rttMs?.let { MetricRow("Round trip from this phone", "%.1f".format(it), "ms") }
+            p.rttMs?.let { MetricRow("Heartbeat round trip (HTTP)", "%.1f".format(it), "ms") }
+            p.tcpRttMs?.let { MetricRow("TCP round trip to rpc-server", "%.1f".format(it), "ms") }
         }
     }
 }
@@ -339,7 +341,7 @@ private fun RunningView(st: MemCloudState, onExpert: () -> Unit) {
         Spacer(Modifier.height(6.dp))
         st.loadMs?.let { MetricRow("Load time", "%.0f".format(it / 1000.0), "s") }
         g?.ttftMs?.let { MetricRow("Time to first token", "%.2f".format(it / 1000.0), "s") }
-        for (p in st.phones.filter { !it.isDriver }) p.rttMs?.let { MetricRow("Round trip to ${p.name}", "%.1f".format(it), "ms") }
+        for (p in st.phones.filter { !it.isDriver }) p.tcpRttMs?.let { MetricRow("TCP round trip to ${p.name}", "%.1f".format(it), "ms") }
         st.boundariesPerToken?.let { MetricRow("Phone boundaries per token", it.toString()) }
     }
     val alone = st.shares.firstOrNull()?.let { MemCloudLogic.fitsOnOnePhone(st.fileBytes ?: Long.MAX_VALUE, it.haveMb) } == true
@@ -446,7 +448,7 @@ private fun ExpertMeshView(st: MemCloudState, onBack: () -> Unit) {
     } else if (!m.isMoe) {
         ErrorNote("${m.name} has no experts (dense model), so there is nothing to place by expert.")
     } else {
-        val rtt = st.rttMs
+        val rtt = st.tcpRttMs
         val boundaries = st.boundariesPerToken
         SwarmCard {
             Text(m.name, style = SwarmType.mono)
@@ -467,16 +469,16 @@ private fun ExpertMeshView(st: MemCloudState, onBack: () -> Unit) {
         }
         Hairline()
         if (rtt == null) {
-            ErrorNote("No round trip measured yet: load a split with at least one other phone.")
+            ErrorNote("No round trip measured yet: load a split with at least one other phone (it is a TCP connect to the rpc-server port).")
         } else {
             val remoteMs = ExpertMesh.remoteExpertMsPerToken(m.moeLayers, rtt)
             val ceiling = ExpertMesh.remoteExpertCeilingTokPerSec(m.moeLayers, rtt)
-            MetricRow("Round trip (heartbeat)", "%.1f".format(rtt), "ms")
-            MetricRow("Experts on other phones: ${m.moeLayers} layers x %.1f ms".format(rtt), "%.0f".format(remoteMs), "ms per token")
-            MetricRow("Ceiling with remote experts", tok(ceiling), "tok/s")
+            MetricRow("Round trip, TCP connect to rpc-server", "%.1f".format(rtt), "ms")
+            MetricRow("Estimate if experts were remote: ${m.moeLayers} layers x %.1f ms".format(rtt), "%.0f".format(remoteMs), "ms per token")
+            MetricRow("Estimated ceiling, network wait only", tok(ceiling), "tok/s")
             if (boundaries != null) {
                 val rangeMs = ExpertMesh.layerRangeMsPerToken(boundaries, rtt)
-                MetricRow("Layer ranges: $boundaries boundaries x %.1f ms".format(rtt), "%.0f".format(rangeMs), "ms per token")
+                MetricRow("Estimate with layer ranges: $boundaries boundaries x %.1f ms".format(rtt), "%.0f".format(rangeMs), "ms per token")
             }
         }
         st.generation?.decodeTokPerSec?.let { MetricRow("Measured on this split", "%.1f".format(it), "tok/s") }

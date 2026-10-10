@@ -18,7 +18,7 @@ import io.ktor.server.routing.post
  * MemoryCloud: one phone drives a model whose layers sit on several phones (llama.cpp rpc-server), and the
  * Memory tab shows where every layer lives. Routes under /v1/memcloud/ (all signed):
  *
- * Worker: POST /rpc/start {port, cache, bind, threads}, POST /rpc/stop, GET /rpc/state.
+ * Worker: POST /rpc/start {port, cache, bind, threads, restore}, POST /rpc/renew, POST /rpc/stop, GET /rpc/state.
  * Coordinator: POST /start {file, peers, mode, layers}, POST /replan {peers}, POST /stop, POST /ask {prompt, maxTokens},
  * POST /baseline {timeoutSec}, GET /state, GET /plan?file=&peers=&mode=. Long operations answer 202 at once
  * (the node server drops a connection idle for 45 s); poll GET /state.
@@ -34,8 +34,15 @@ object MemCloudModule : SwarmModule {
             val via = runCatching { call.request.local.localAddress }.getOrNull()
             val from = call.request.headers[Signer.HEADER_NODE]
             when (val r = RpcWorker.start(req, via, from)) {
-                is RpcWorker.StartResult.Ok -> call.respond(if (r.state.state == "READY") HttpStatusCode.OK else HttpStatusCode.Conflict, r.state)
-                is RpcWorker.StartResult.Refused -> call.respond(HttpStatusCode.BadRequest, ErrorBody(r.message))
+                is RpcLender.StartResult.Ok -> call.respond(if (r.ready) HttpStatusCode.OK else HttpStatusCode.Conflict, RpcWorker.state())
+                is RpcLender.StartResult.Refused -> call.respond(HttpStatusCode.BadRequest, ErrorBody(r.message))
+            }
+        }
+        // the driver extends the loan every few seconds; without a renewal it ends by itself after RpcLender.LEASE_MS
+        post("/rpc/renew") {
+            when (val r = RpcWorker.renew(call.request.headers[Signer.HEADER_NODE])) {
+                is RpcLender.RenewResult.Ok -> call.respond(RpcWorker.state())
+                is RpcLender.RenewResult.Refused -> call.respond(HttpStatusCode.Conflict, ErrorBody(r.message))
             }
         }
         post("/rpc/stop") { call.respond(RpcWorker.stop("stopped by the driver")) }
