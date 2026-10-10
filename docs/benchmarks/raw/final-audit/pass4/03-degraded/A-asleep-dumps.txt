@@ -1,0 +1,16 @@
+# read 03:10:42 after the degraded run; before any wake-up
+  mWakefulness=Asleep
+  mWakefulnessChanging=false
+  mHoldingDisplaySuspendBlocker=false
+  mMinimumScreenOffTimeoutConfig=5000
+  mScreenOffTimeoutSetting=300000
+  mMaximumScreenOffTimeoutFromDeviceAdmin=9223372036854775807 (enforced=false)
+  mUserActivityTimeoutOverrideFromWindowManager=7000
+Display Power: com.android.server.power.PowerManagerService$1@a9fb36b
+  mCurrentFocus=Window{com.android.systemui:f58e5d8 u0 NotificationShade type=2040 }
+    mShowingDream=false mDreamingLockscreen=true
+    isKeyguardShowing=true
+u0_a346      10628  1757   16619044 237484 0                   0 S com.swarmos.app
+u0_a346      10709 10628   15011976  63920 0                   0 S libllama-server-gpu.so
+u0_a346      10713 10628   11818664 147928 0                   0 S libllama-server.so
+300000

@@ -1,0 +1,2 @@
+thermal 89: Thermal Status: 0
+thermal 23: Thermal Status: 2

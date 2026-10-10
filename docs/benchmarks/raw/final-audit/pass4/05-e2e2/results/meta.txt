@@ -1,0 +1,15 @@
+date: 2026-10-11 03:13:13 IST
+repo head: 17aad2d (Merge: a model start the app made itself and a gate refused is tried again, and )
+steps: s; chat file Qwen3.5-4B-Q4_K_M.gguf
+phone 1: Phone B 192.168.242.23:8787 node 477684c1; secret: SWARM_SECRET
+      versionName=0.1.0
+      lastUpdateTime=2026-10-11 02:51:20
+  
+  2740937888 2026-10-10 00:17 Qwen3.5-4B-Q4_K_M.gguf
+  333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf
+phone 2: Phone A 192.168.242.89:8787 node c6f72247; secret: SWARM_SECRET
+      versionName=0.1.0
+      lastUpdateTime=2026-10-11 02:34:10
+  
+  2740937888 2026-10-10 00:17 Qwen3.5-4B-Q4_K_M.gguf
+  333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf

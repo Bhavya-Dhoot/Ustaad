@@ -1,0 +1,12 @@
+INFO  driver 192.168.242.23 {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'}  lender 192.168.242.89 {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'}
+PASS  v-bad-layers  layers [0, 32]: HTTP 400 {"error": "every phone needs at least one layer, got [0, 32]"}; driver phase IDLE
+PASS  n-lender-memory  loan asking for 999999 MB: HTTP 400 {"error": "this phone has about 4795 MB available and the split asks for 999999 MB"}; lender models afterwards {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'}
+PASS  s-load  start HTTP 202; phase READY after 34 s (loadMs 26668); lender lendingTo Phone B, lender models {'chat': 'STOPPED', 'embed': 'STOPPED', 'rpc': 'READY'}; notices []
+PASS  s-ask  68 tokens, first token 4791 ms, 6.093971368550932 tok/s
+PASS  s-stale-stop  stop with a wrong loan token from the PC: HTTP 409 {"error": "the loan belongs to Phone B"}; lender still lendingTo Phone B
+PASS  s-cache-clear-refused  cache clear while lending: HTTP 409 {"error": "this phone is lending memory to Phone B; stop the loan first"}
+PASS  s-restore  after stop: driver {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'} in 17 s, lender {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'} in 3 s; driver notices []
+PASS  k-driver-killed  lender two seconds into the start: {'chat': 'STOPPED', 'embed': 'STOPPED', 'rpc': 'READY'}, lendingTo Phone B; driver app force-stopped; lender {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'} after 27 s, lendingTo None
+INFO  relaunch driver: Starting: Intent { cmp=com.swarmos.app/.MainActivity }
+PASS  k-driver-recovered  driver after relaunch: {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'} in 15 s; phase IDLE; notices []
+INFO  end  driver {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'}  lender {'chat': 'READY', 'embed': 'READY', 'rpc': 'STOPPED'}

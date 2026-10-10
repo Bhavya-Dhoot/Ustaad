@@ -1,0 +1,19 @@
+03:10:57 Phone A screen was Asleep with keyguard showing since about 03:05 (screen_off_timeout 300000 ms), app process alive, API port timing out. Restoring: KEYCODE_WAKEUP, dismiss-keyguard, then the plain am start.
+  mWakefulness=Awake
+  mCurrentFocus=Window{c2af04a u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
+    isKeyguardShowing=false
+Starting: Intent { cmp=com.swarmos.app/.MainActivity }
+  mWakefulness=Awake
+  mCurrentFocus=Window{c2af04a u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
+    isKeyguardShowing=false
+chat {'state': 'STARTING', 'backend': 'CPU', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'rssMb': 3053, 'notice': "The GPU server failed (not ready after 120 s; 0.00.034.157 I srv    load_model: loading model '/storage/emulated/0/Android/data/com.swarmos.app/files/models/Qwen3.5-4B-Q4_K_M.gguf'). Running on the CPU build.", 'lastError': "0.00.031.544 I srv  llama_server: initializing ...\n0.00.031.568 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)\n0.00.031.628 I srv  init_listene: The UI is disabled\n0.00.031.629 I srv  init_listene: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable\n0.00.034.157 I srv    load_model: loading model '/storage/emulated/0/Android/data/com.swarmos.app/files/models/Qwen3.5-4B-Q4_K_M.gguf'"}
+embed {'state': 'READY', 'file': 'embeddinggemma-300M-Q8_0.gguf', 'rssMb': 135, 'loadMs': 2274}
+rpc {'state': 'STOPPED'}
+thermal 0
+03:11:15 chat {'state': 'READY', 'backend': 'CPU', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'rssMb': 5652, 'loadMs': 12203, 'notice': "The GPU server failed (not read
+03:11:23 chat on A fell back to CPU ('GPU server failed (not ready after 120 s)') while the screen was asleep. Restoring with the hardening-check step c restore calls: gpu false, gpu true, stop chat, load chat.
+03:11:23 post /v1/models/gpu {"enabled":false} -> {"node": "Phone A", "roles": {"chat": {"state": "READY", "model": "Qwen3.5-4B-Q4_K_M", "file": "Qwen3.5-4B-Q4_K_M.gguf",
+03:11:23 post /v1/models/gpu {"enabled":true} -> {"node": "Phone A", "roles": {"chat": {"state": "READY", "model": "Qwen3.5-4B-Q4_K_M", "file": "Qwen3.5-4B-Q4_K_M.gguf",
+03:11:24 post /v1/models/stop {"role":"chat"} -> {"node": "Phone A", "roles": {"chat": {"state": "STOPPED", "model": null, "file": null, "reason": null, "pid": null, "po
+03:11:27 load chat -> {"node": "Phone A", "roles": {"chat": {"state": "READY", "model": "Qwen3.5-4B-Q4_K_M", "file": "Qwen3.5-4B-Q4_K_M.gguf",
+03:11:41 chat {'state': 'READY', 'backend': 'GPU', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'rssMb': 773, 'loadMs': 13629}

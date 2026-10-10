@@ -1,0 +1,89 @@
+{
+ "startCall": {
+  "status": 202,
+  "t": 0.0
+ },
+ "splitPhase": "READY",
+ "splitReadySecondsFromStart": 33.0,
+ "splitLoadMs": 24520,
+ "forceStopAt": "02:58:51",
+ "phaseAtRelease": "DEGRADED",
+ "jobsDoneAtFirstFiller": 2,
+ "jobsDoneAfter60s": 33,
+ "jobsFailedAfter60s": 0,
+ "phaseAfter60s": "DEGRADED",
+ "t0_forceStop_clock": "02:58:51",
+ "degradedSecondsAfterForceStop": 5.3,
+ "releasedSecondsAfterForceStop": 127.8,
+ "releasedSecondsAfterDegraded": 122.5,
+ "chatReadySecondsAfterForceStop": 0.3,
+ "chatReadySecondsAfterReleased": -127.5,
+ "firstFillerSecondsAfterForceStop": 266.0,
+ "firstFillerSecondsAfterReleased": 138.1,
+ "phaseTransitions": {
+  "READY": [
+   36.3
+  ],
+  "DEGRADED": [
+   41.4
+  ]
+ },
+ "amStartToApiSeconds": 2.0,
+ "amStartToBothReadySeconds": null,
+ "finalMemcloudB": {
+  "phase": "IDLE",
+  "file": null,
+  "model": null,
+  "layers": null,
+  "experts": null,
+  "expertsUsed": null,
+  "moeLayers": null,
+  "fileBytes": null,
+  "ctx": null,
+  "args": [],
+  "shares": [],
+  "phones": [],
+  "boundariesPerToken": null,
+  "warnings": [],
+  "lostPhone": null,
+  "released": false,
+  "failReason": null,
+  "loadStartedAtMs": 0,
+  "loadMs": null,
+  "log": null,
+  "steps": [
+   "Reading the model header",
+   "Asking Phone A what it is running",
+   "Planned Phone B layers 0-15, Phone A layers 16-31",
+   "Measuring Qwen3.5-4B-Q4_K_M on this phone alone, for scale",
+   "Phone A: starting rpc-server on 192.168.242.89:50052 with the tensor cache",
+   "Phone A: stopped chat server Qwen3.5-4B-Q4_K_M.gguf (816 MB)",
+   "Phone A: stopped embed server embeddinggemma-300M-Q8_0.gguf (693 MB)",
+   "Phone B: stopping chat server Qwen3.5-4B-Q4_K_M.gguf (921 MB) to make room for Qwen3.5-4B-Q4_K_M.gguf",
+   "Phone B: stopping embed server embeddinggemma-300M-Q8_0.gguf (694 MB) to make room for Qwen3.5-4B-Q4_K_M.gguf",
+   "Loading: llama-server --rpc 192.168.242.89:50052 -ngl 17 -t 8 -c 4096 -np 1 -fit off",
+   "Ready after 24 s",
+   "Phone A lost (heartbeat lost): generation stopped, server killed",
+   "Phone A did not answer: its servers are still owed and will be retried",
+   "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan.",
+   "Phone A did not answer: its servers are still owed and will be retried",
+   "Stopped; Phone A did not answer, its servers will be restored when it does",
+   "Phone A has its models back"
+  ],
+  "generation": null,
+  "baseline": null,
+  "smallModel": {
+   "name": "Qwen3.5-4B-Q4_K_M",
+   "tokPerSec": 14.081503153523295,
+   "tokens": 48
+  },
+  "pendingRestore": [],
+  "notices": [],
+  "rttMs": null,
+  "tcpRttMs": null,
+  "updatedAtMs": 1791668064729
+ },
+ "finalMemcloudA": {
+  "_err": "TimeoutError"
+ }
+}

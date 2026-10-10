@@ -1,0 +1,256 @@
+02:58:14 +    0.1s  POST 192.168.242.23 /v1/memcloud/start {"file": "Qwen3.5-4B-Q4_K_M.gguf", "peers": ["Phone A"]} -> 202 {"phase": "IDLE", "file": null, "model": null, "layers": null, "experts": null, "expertsUsed": null, "moeLayers": null, "fileBytes": null, "ctx": null, "args": 
+02:58:14 +    0.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=PLANNING released=False lost=None fail=None notices=[]
+02:58:17 +    2.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=STARTING_PEERS released=False lost=None fail=None notices=[]
+02:58:19 +    4.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=STARTING_PEERS released=False lost=None fail=None notices=[]
+02:58:21 +    6.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:23 +    8.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:25 +   10.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:27 +   12.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:29 +   14.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:31 +   16.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:33 +   18.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:35 +   20.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:37 +   22.8s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:39 +   24.8s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:41 +   26.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:43 +   29.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:45 +   31.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=LOADING released=False lost=None fail=None notices=[]
+02:58:47 +   33.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=READY released=False lost=None fail=None notices=[]
+02:58:47 +   33.1s  GET 192.168.242.89 /v1/memcloud/rpc/state -> lendingTo=Phone B
+02:58:47 +   33.1s  GET 192.168.242.89 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=READY restarts=0
+02:58:51 +   36.3s  ADB 192.168.242.89 am force-stop com.swarmos.app -> ''  (t0 of the degraded phase)
+02:58:51 +   36.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=READY released=False lost=None fail=None notices=[]
+02:58:51 +   36.4s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/CPU embed=STOPPED rpc=STOPPED restarts=0
+02:58:51 +   36.4s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+02:58:51 +   36.4s  ==== B chat READY seen 0.3 s after the force-stop, before released
+02:58:56 +   41.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:58:56 +   41.4s  ==== DEGRADED seen 5.3 s after the force-stop
+02:58:56 +   41.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:58:56 +   41.5s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:01 +   46.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:01 +   46.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:01 +   46.6s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:06 +   51.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:06 +   51.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:06 +   51.7s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:11 +   56.7s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:11 +   56.8s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:11 +   56.8s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:16 +   61.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:16 +   61.9s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:16 +   61.9s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:21 +   66.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:21 +   67.0s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:21 +   67.0s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:26 +   72.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:26 +   72.1s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:26 +   72.1s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:31 +   77.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:32 +   77.1s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:32 +   77.2s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:37 +   82.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:37 +   82.2s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:37 +   82.3s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:42 +   87.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:42 +   87.3s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:42 +   87.3s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:47 +   92.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:47 +   92.4s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:47 +   92.4s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:52 +   97.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:52 +   97.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:52 +   97.6s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+02:59:57 +  102.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+02:59:57 +  102.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+02:59:57 +  102.6s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:02 +  107.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:02 +  107.7s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:02 +  107.7s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:07 +  112.8s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:07 +  112.8s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:07 +  112.8s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:12 +  117.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:12 +  117.9s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:12 +  118.0s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:17 +  123.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:17 +  123.0s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:17 +  123.1s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:22 +  128.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:23 +  128.1s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:23 +  128.2s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:28 +  133.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:28 +  133.3s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:28 +  133.3s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:33 +  138.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:33 +  138.4s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:33 +  138.4s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:38 +  143.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:38 +  143.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:38 +  143.5s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:43 +  148.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:43 +  148.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:43 +  148.7s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:48 +  153.8s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:48 +  153.8s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:48 +  153.8s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:53 +  158.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=False lost=Phone A fail=heartbeat lost notices=[]
+03:00:53 +  158.9s  GET 192.168.242.23 /v1/models/state -> 200 chat=STOPPED/None embed=STOPPED rpc=STOPPED restarts=0
+03:00:53 +  158.9s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:00:58 +  163.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:00:58 +  163.9s  ==== released=true seen 127.8 s after the force-stop, 122.5 s after DEGRADED; phase DEGRADED
+03:00:58 +  164.0s  GET 192.168.242.23 /v1/models/state -> 200 chat=STARTING/GPU embed=READY rpc=STOPPED restarts=0
+03:00:58 +  164.0s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:03 +  169.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:03 +  169.1s  GET 192.168.242.23 /v1/models/state -> 200 chat=STARTING/GPU embed=READY rpc=STOPPED restarts=0
+03:01:04 +  169.1s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:09 +  174.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:09 +  174.2s  GET 192.168.242.23 /v1/models/state -> 200 chat=STARTING/GPU embed=READY rpc=STOPPED restarts=0
+03:01:09 +  174.2s  GET 192.168.242.23 /v1/sched/busy -> 200 state=no_model jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:14 +  179.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:14 +  179.3s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:14 +  179.3s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:19 +  184.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:19 +  184.4s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:19 +  184.4s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:24 +  189.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:24 +  189.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:24 +  189.5s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:29 +  194.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:29 +  194.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:29 +  194.6s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:34 +  199.7s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:34 +  199.7s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:34 +  199.7s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:39 +  204.8s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:39 +  204.8s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:39 +  204.9s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:44 +  209.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:44 +  209.9s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:44 +  209.9s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:49 +  215.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:49 +  215.0s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:49 +  215.0s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:01:54 +  220.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:01:55 +  220.1s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:01:55 +  220.1s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:00 +  225.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:00 +  225.2s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:00 +  225.3s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:05 +  230.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:05 +  230.3s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:05 +  230.4s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:10 +  235.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:10 +  235.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:10 +  235.5s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:15 +  240.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:15 +  240.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:15 +  240.6s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:20 +  245.7s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:20 +  245.7s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:20 +  245.8s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:25 +  250.8s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:25 +  250.9s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:25 +  250.9s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:30 +  255.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:30 +  256.0s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:30 +  256.0s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:35 +  261.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:35 +  261.1s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:36 +  261.1s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:41 +  266.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:41 +  266.2s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:41 +  266.3s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:46 +  271.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:46 +  271.3s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:46 +  271.4s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:51 +  276.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:51 +  276.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:51 +  276.5s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:02:56 +  281.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:02:56 +  281.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:02:56 +  281.6s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:03:01 +  286.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:01 +  286.7s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:01 +  286.7s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:03:06 +  291.7s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:06 +  291.8s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:06 +  291.8s  GET 192.168.242.23 /v1/sched/busy -> 200 state=paused_model_restarted jobsDone=0 failed=0 cancelled=0 tokens=0
+03:03:11 +  296.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:11 +  296.9s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:11 +  296.9s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=0 failed=0 cancelled=0 tokens=0
+03:03:16 +  302.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:16 +  302.0s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:16 +  302.1s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=2 failed=0 cancelled=0 tokens=42
+03:03:16 +  302.1s  ==== first filler job counted 266.0 s after the force-stop; phase DEGRADED; busy running
+03:03:21 +  307.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:22 +  307.2s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:22 +  307.2s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=5 failed=0 cancelled=0 tokens=91
+03:03:27 +  312.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:27 +  312.2s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:27 +  312.2s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=8 failed=0 cancelled=0 tokens=152
+03:03:32 +  317.3s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:32 +  317.3s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:32 +  317.3s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=11 failed=0 cancelled=0 tokens=198
+03:03:37 +  322.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:37 +  322.4s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:37 +  322.5s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=13 failed=0 cancelled=0 tokens=237
+03:03:42 +  327.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:42 +  327.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:42 +  327.6s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=16 failed=0 cancelled=0 tokens=307
+03:03:47 +  332.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:47 +  332.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:47 +  332.6s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=18 failed=0 cancelled=0 tokens=347
+03:03:52 +  337.7s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:52 +  337.7s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:52 +  337.7s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=20 failed=0 cancelled=0 tokens=411
+03:03:57 +  342.8s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:03:57 +  342.8s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:03:57 +  342.8s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=23 failed=0 cancelled=0 tokens=462
+03:04:02 +  347.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:04:02 +  347.9s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:04:02 +  347.9s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=25 failed=0 cancelled=0 tokens=500
+03:04:07 +  353.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:04:07 +  353.0s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:04:07 +  353.0s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=27 failed=0 cancelled=0 tokens=534
+03:04:12 +  358.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:04:12 +  358.1s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:04:12 +  358.1s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=30 failed=0 cancelled=0 tokens=597
+03:04:18 +  363.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=DEGRADED released=True lost=Phone A fail=heartbeat lost notices=['Phone A has not got its models back yet', "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan."]
+03:04:18 +  363.2s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:04:18 +  363.2s  GET 192.168.242.23 /v1/sched/busy -> 200 state=running jobsDone=33 failed=0 cancelled=0 tokens=638
+03:04:18 +  363.2s  ==== 60 s after the first filler job: jobsDone 2 -> 33, failed 0, phase DEGRADED
+03:04:18 +  363.3s  POST 192.168.242.23 /v1/memcloud/stop {} -> 202 {"phase": "DEGRADED", "file": "Qwen3.5-4B-Q4_K_M.gguf", "model": "Qwen3.5-4B", "layers": 32, "experts": null, "expertsUsed": null, "moeLayers": 0, "fileBytes": 
+03:04:18 +  363.5s  ADB 192.168.242.89 am start -> ['Starting: Intent { cmp=com.swarmos.app/.MainActivity }']
+03:04:20 +  365.2s  A API answers 2.0 s after am start
+03:04:20 +  365.3s  GET 192.168.242.89 /v1/models/state -> 200 chat=STARTING/GPU embed=STARTING rpc=STOPPED restarts=0
+03:04:20 +  365.3s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:04:20 +  365.4s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=['Phone A has not got its models back yet']
+03:04:24 +  369.5s  GET 192.168.242.89 /v1/models/state -> 200 chat=STARTING/GPU embed=READY rpc=STOPPED restarts=0
+03:04:24 +  369.5s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:04:24 +  369.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=['Phone A has not got its models back yet']
+03:04:28 +  373.6s  GET 192.168.242.89 /v1/models/state -> 200 chat=STARTING/GPU embed=READY rpc=STOPPED restarts=0
+03:04:28 +  373.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:04:28 +  373.7s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:04:55 +  400.8s  GET 192.168.242.89 /v1/models/state -> 0 chat=None/None embed=None rpc=None restarts=None
+03:04:55 +  400.8s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:04:55 +  400.8s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:05:22 +  427.9s  GET 192.168.242.89 /v1/models/state -> 0 chat=None/None embed=None rpc=None restarts=None
+03:05:22 +  428.0s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:05:22 +  428.0s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:05:50 +  455.2s  GET 192.168.242.89 /v1/models/state -> 0 chat=None/None embed=None rpc=None restarts=None
+03:05:50 +  455.2s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:05:50 +  455.2s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:06:17 +  482.4s  GET 192.168.242.89 /v1/models/state -> 0 chat=None/None embed=None rpc=None restarts=None
+03:06:17 +  482.4s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:06:17 +  482.5s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:06:44 +  509.5s  GET 192.168.242.89 /v1/models/state -> 0 chat=None/None embed=None rpc=None restarts=None
+03:06:44 +  509.6s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:06:44 +  509.6s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:07:11 +  536.8s  GET 192.168.242.89 /v1/models/state -> 0 chat=None/None embed=None rpc=None restarts=None
+03:07:11 +  536.8s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:07:11 +  536.9s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:07:38 +  564.0s  GET 192.168.242.89 /v1/models/state -> 0 chat=None/None embed=None rpc=None restarts=None
+03:07:38 +  564.1s  GET 192.168.242.23 /v1/models/state -> 200 chat=READY/GPU embed=READY rpc=STOPPED restarts=0
+03:07:38 +  564.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:07:43 +  568.1s  GET 192.168.242.23 /v1/memcloud/state -> 200 phase=IDLE released=False lost=None fail=None notices=[]
+03:08:03 +  588.2s  GET 192.168.242.89 /v1/memcloud/state -> 0 phase=None released=None lost=None fail=None notices=None

@@ -1,0 +1,10 @@
+02:52:48 pass4-before-memcloud-BA | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+02:55:02 pass4-after-memcloud-BA | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+02:55:11 pass4-before-memcloud-AB | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+02:58:03 pass4-after-memcloud-AB | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+03:12:07 pass4-after-degraded | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:12:40 pass4-before-privacy | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:12:52 pass4-before-e2e2 | 89: chat_ready=0 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:13:01 pass4-before-e2e2 | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:13:21 pass4-before-swarm-bench | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:14:18 pass4-final | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2

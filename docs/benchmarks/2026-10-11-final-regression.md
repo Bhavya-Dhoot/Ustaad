@@ -218,3 +218,93 @@ None outside the app's own data (`pass2/99-final/new-files-A.txt`: files newer t
 ### Final state of Phone A (`pass2/99-final/`, read 02:25:49)
 
 Chat Qwen3.5-4B-Q4_K_M READY on GPU (useGpu true), embedder READY, rpc STOPPED, Keep busy enabled and `running`, hammer false, jobsFailed 0, MemoryCloud IDLE with no notices, agent access off (port 8790: HTTP 000), thermal 0, Ustaad in front (`mCurrentFocus=com.swarmos.app/.MainActivity`), screen awake, shared folders unchanged.
+
+
+## Third pass on the fixed build, phones A and B
+
+Date and time: 2026-10-11, 02:52 to 03:16 IST. Phones A (`192.168.242.89`) and B (`192.168.242.23`) only. Phone C received no adb command and no API call; it was in neither phone's peer list at the start (`pass4/01-start/peers-A.txt`, `peers-B.txt`), in B's `/v1/sched/phones` before the swarm batch (`pass4/06-swarm-batch/sched-phones-B-before.json`), nor in B's peer list after it (`peers-B-after.json`). The pairing secret was read from Phone A and never printed or written; a search of every raw file under `pass4/` for it found nothing. Raw files: `docs/benchmarks/raw/final-audit/pass4/` (called `pass4/` below; the folder name differs from the "third pass" title). My helper scripts (not repo scripts) are in `pass4/helpers/`. B's read-only polling script from the coordinator was ignored.
+
+### 1. Build and start state (`pass4/01-start/`)
+
+| Phone | lastUpdateTime | base.apk sha256 (first 16) | Files |
+|---|---|---|---|
+| A | 2026-10-11 02:34:10 | d482365f80db92bc | `build-A.txt`, `apk-sha-A.txt` |
+| B | 2026-10-11 02:51:20 | d482365f80db92bc | `build-B.txt`, `apk-sha-B.txt` |
+
+Same apk on both. Models folders identical (Qwen3.5-4B-Q4_K_M.gguf, embeddinggemma-300M-Q8_0.gguf). At 02:52: both phones chat READY on GPU, embedder READY, rpc STOPPED, MemoryCloud IDLE, hammer false, Keep busy enabled (A `half_duty`, jobsDone 191, jobsFailed 1; B `paused_model_restarted`, jobsDone 0), Ustaad in front and screen awake on both, thermal A 2, B 0 (`state-*.txt`, `busy-*.json`, `memcloud-*.txt`, `focus-*.txt`). One thing already there: Phone A's chat showed restarts 1, notice "Restarted automatically after the server was killed" and a `lastError` ending "stopped answering /health for 30 s, killed by Ustaad ... after 228 s" (left from a freeze before this pass; `state-A.txt`). Agent access was not read at the start; it was read at the end (HTTP 000 on both).
+
+### 2. `scripts/memcloud-check.py`, both directions (`pass4/02-memcloud-B-drives/`, `pass4/02-memcloud-A-drives/`)
+
+Commands: `python scripts/memcloud-check.py 192.168.242.23 192.168.242.89 "Phone A" <dir> vnsk` and `python scripts/memcloud-check.py 192.168.242.89 192.168.242.23 "Phone B" <dir> vnsk`. Each direction: 9 PASS, 0 FAIL (`stdout.txt` in each folder).
+
+| Number | B drives, A lends | A drives, B lends |
+|---|---|---|
+| Split READY after start | 34 s (loadMs 26668) | 32 s (loadMs 23605) |
+| Answer | 68 tokens, first token 4791 ms, 6.09 tok/s | 74 tokens, first token 5141 ms, 5.81 tok/s |
+| v-bad-layers / n-lender-memory | PASS (HTTP 400, "about 4795 MB available") | PASS (HTTP 400, "about 5629 MB available") |
+| Stale stop / cache clear while lending | HTTP 409 / HTTP 409, PASS | HTTP 409 / HTTP 409, PASS |
+| Driver models READY after stop | 17 s | 17 s |
+| Lender chat READY again after stop | 3 s | 0 s |
+| Lender chat READY again after the driver app was killed (k) | 27 s, lendingTo None | 26 s, lendingTo None |
+| Driver READY after relaunch | 15 s | 17 s |
+
+For comparison only, the first pass on the older build (B drives, A lends) gave split READY 48 s, 74 tokens at 4.12 tok/s, lender restore 0 s, k 26 s (section 2 above).
+After each direction `get /v1/models/state` on both phones (`pass4/02-memcloud-*/models-state-A.json`, `models-state-B.json`): chat READY on GPU, embedder READY, rpc STOPPED, restarts 0, lastError null, notice null, MemoryCloud IDLE with no notices and nothing pending, on both phones both times.
+
+### 3. A degraded split left alone (`pass4/03-degraded/`)
+
+Done by a helper script (`pass4/helpers/degraded.py`) that logs every call with its time: `calls.log` (every call), `stdout.txt`, `timeline.json`, `memcloud-state-*.json` (full state at each phase change). Start body as in memcloud-check step s: `POST /v1/memcloud/start {"file": "Qwen3.5-4B-Q4_K_M.gguf", "peers": ["Phone A"]}` on B. Polls of `/v1/memcloud/state`, `/v1/models/state` and `/v1/sched/busy` on B every 5 s from the force-stop on (the brief asked for the last two only from `released`; they are read-only).
+
+| Event | Clock | After force-stop | Detail |
+|---|---|---|---|
+| Split start posted on B | 02:58:14 | | HTTP 202 |
+| Split READY | 02:58:47 | | 33.0 s after start, loadMs 24520, A lendingTo Phone B |
+| `am force-stop com.swarmos.app` on A | 02:58:51 | 0 | not restarted |
+| Phase DEGRADED | 02:58:56 | 5.3 s | lostPhone "Phone A", failReason "heartbeat lost"; B chat STOPPED, Keep busy `no_model` |
+| `released` true | 03:00:58 | 127.8 s | 122.5 s after DEGRADED; phase still DEGRADED; notice "Phone B's own chat and embedding models were restored automatically after 2 minutes in DEGRADED with no re-plan"; B chat STARTING on GPU |
+| B chat READY on GPU | 03:01:14 (first poll) | 143 s | about 16 s after released; Keep busy `paused_model_restarted`, jobsDone 0 |
+| Keep busy `running` | 03:03:11 | 260 s | 117 s after chat READY; phase DEGRADED |
+| First filler job counted | 03:03:16 | 266 s | 138 s after released; jobsDone 2; phase DEGRADED |
+| 60 s after the first filler job | 03:04:18 | 327 s | jobsDone 2 to 33, jobsFailed 0, phase DEGRADED |
+| `POST /v1/memcloud/stop {}` on B | 03:04:18 | | HTTP 202; B phase IDLE at 03:04:20 |
+| `am start` on A | 03:04:18 | | API answered 2.0 s later |
+
+During the split B's `/v1/models/state` reads chat READY on CPU (the small fallback model, `smallModel` 14.08 tok/s in the state): that is not the chat READY of the table, which is the first READY on GPU after released.
+
+Verdict on the fix under test: it holds. After `released` B's own chat came back on its own (about 16 s), Keep busy left `no_model` and `paused_model_restarted` after its 120 s settle, and filler jobs were counted again (2 to 33 in 60 s, none failed) while MemoryCloud still read DEGRADED. DEGRADED was not cleared by the release: the phase stayed DEGRADED until the stop was posted.
+
+A did not recover on its own after `am start`, and this is a separate finding. `am start` at 03:04:18 was answered (API up in 2.0 s, chat and embedder STARTING), but from about 03:04:55 every call to A timed out until the helper gave up at 03:08:03 (`stdout.txt`, lines from 03:04:55; `timeline.json` `amStartToBothReadySeconds` null), and A's API still did not answer when I looked at 03:08:35. When I looked at 03:10:42 Phone A was `mWakefulness=Asleep` with the keyguard showing, `screen_off_timeout` 300000 ms, and the Ustaad process and its servers alive (`A-asleep-dumps.txt`). Ustaad holds KEEP_SCREEN_ON while it is in front (checked on both phones at 03:12), but it had been force-stopped for 5.5 minutes and the screen timed out; the later `am start` found a sleeping screen. The app's GPU load on A did not finish in 120 s and A fell back to CPU: "The GPU server failed (not ready after 120 s ...). Running on the CPU build." I did not capture the moment the screen went off. I then did the following (`manual-steps.txt`): `input keyevent KEYCODE_WAKEUP` and `wm dismiss-keyguard` at 03:10:5x, the plain `am start`; A chat READY on CPU at 03:11:15; then the restore calls of hardening-check step c (`POST /v1/models/gpu` false, then true, `POST /v1/models/stop` chat, `POST /v1/models/load` chat): chat READY on GPU, loadMs 13629, at 03:11:41. So the pair was back in the expected state at 03:12:07 (`gate-log.txt`), about 8 minutes after the `am start`, only after a manual wake. In the earlier passes every force-stop was followed by a restart within seconds, so this is the first time a force-stopped Ustaad was left for longer than the screen timeout (my inference for why the screen was off; not measured).
+
+Final MemoryCloud state of both (`final-memcloud-A.json`, `final-memcloud-B.json`, read 03:12): IDLE, no notices, pendingRestore empty, released false, on both; B's step log ends "Phone A has its models back". Chat READY on GPU, embedder READY, rpc STOPPED on both (`final-models-*.json`).
+
+### 4. `scripts/privacy-check.py`, owner A, peer B (`pass4/04-privacy/`)
+
+`QUESTION="What is my mobile phone bill for September?" EXPECT="Mobile_Bill" python scripts/privacy-check.py 192.168.242.89 192.168.242.23 <dir>`. 3 PASS, 0 FAIL: baseline (peer sees `IMG_1046_Mobile_Bill_Sept.jpg`); private-after-kill (owner back after 2 s, folder private, peer's query returns [], withheld 1); shared-again (bill photo returned, withheld 0). The restart fault of the first pass did not appear. Folder `Pictures/SwarmDemo` shared again afterwards (`pdu-status-A-before.json` for the starting state).
+
+### 5. `scripts/e2e2-check.sh --steps s` (`pass4/05-e2e2/`)
+
+`scripts/e2e2-check.sh --steps s --results docs/benchmarks/raw/final-audit/pass4/05-e2e2/results 192.168.242.23 192.168.242.89`. 12 PASS, 0 FAIL, 0 WARN (`results/checks.log`: `SUMMARY pass=12 fail=0 warn=0`): hello 100 ms (B) and 150 ms (A), signed health 140 and 124 ms with answer MAC ok, unsigned 401 on both, B lists A online after 715 ms and A lists B after 709 ms, chat Qwen3.5-4B-Q4_K_M on GPU on both, embedder READY.
+
+### 6. Two-phone swarm throughput (`pass4/06-swarm-batch/`)
+
+Before it: B's `/v1/sched/phones` listed only B (local, up) and A (up); no Phone C (`sched-phones-B-before.json`). Thermal at the start: A 0, B 2 (`thermal-before.txt`). `python scripts/bench-batch.py 192.168.242.23 swarm B-swarm <dir>`: 32 / 32 finished, 0 failed, wall 36.3 s, 889 tokens, aggregate 24.52 tok/s; per phone B 15 jobs (decode 13.4 tok/s), A 17 jobs (decode 16.7 tok/s); mode swarm, real model, no fake (`batch-B-swarm.json`, `stdout.txt`). Thermal at the end: A 0, B 2 (`thermal-after.txt`). Phone C was still absent from B's peer list afterwards. PASS. For reference only, `docs/benchmarks/2026-10-10-e2e2-swarm-throughput.md` row swarm2-1 has 47.6 s and 18.83 tok/s for two phones from thermal 0 on the older build; not a like-for-like comparison.
+
+### Not run
+
+`scripts/batch-failover-check.py`, as instructed. Agent access was not read at the start of the pass (only at the end).
+
+### Anomalies and deviations
+
+- Item 3: A's screen went to sleep while Ustaad was force-stopped; Ustaad on A became unreachable after `am start` and its GPU load fell back to CPU; manual wake, `am start` and the hardening-c restore calls were needed (above). This was the only manual intervention.
+- Thermal status 0 to 2 in `gate-log.txt`; nothing above 2.
+- Script- or test-made kills: driver app force-stops in memcloud step k (B, then A), force-stop of A in item 3, force-stop of A in the privacy check. No adb reconnect (`adb devices` listed A, B, C, and B's USB serial throughout).
+- The helper for item 3 polled `/v1/models/state` and `/v1/sched/busy` on B from the force-stop on, not only from `released`.
+
+### Files created on a phone
+
+None outside the app's own data (`pass4/99-final/new-files-A.txt`, `new-files-B.txt`: `audit.jsonl`, logs, `pdu.db-*`, and one batch report `batches/batch-6c886169ac394550.json` on B). Nothing on `/sdcard` or `/data/local/tmp`.
+
+### Final state of both phones (`pass4/99-final/`, read 03:15)
+
+Phone A: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, Keep busy enabled and `running` (jobsFailed 0), hammer false, MemoryCloud IDLE, agent access off (HTTP 000 on port 8790), shared folders `Documents/SwarmDemo` and `Pictures/SwarmDemo`, thermal 0, screen awake, Ustaad in front.
+Phone B: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, Keep busy enabled and `half_duty` (jobsFailed 0), hammer false, MemoryCloud IDLE, agent access off (HTTP 000), thermal 2, screen awake, Ustaad in front. B lists only Phone A as a peer.

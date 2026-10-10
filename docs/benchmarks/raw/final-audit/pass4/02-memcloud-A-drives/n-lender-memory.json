@@ -1,0 +1,11 @@
+[
+ 400,
+ {
+  "error": "this phone has about 5629 MB available and the split asks for 999999 MB"
+ },
+ {
+  "chat": "READY",
+  "embed": "READY",
+  "rpc": "STOPPED"
+ }
+]

@@ -1,0 +1,145 @@
+{
+ "phase": "READY",
+ "file": "Qwen3.5-4B-Q4_K_M.gguf",
+ "model": "Qwen3.5-4B",
+ "layers": 32,
+ "experts": null,
+ "expertsUsed": null,
+ "moeLayers": 0,
+ "fileBytes": 2740937888,
+ "ctx": 4096,
+ "args": [
+  "--rpc",
+  "192.168.242.89:50052",
+  "-ngl",
+  "17",
+  "-t",
+  "8",
+  "-c",
+  "4096",
+  "-np",
+  "1",
+  "-fit",
+  "off"
+ ],
+ "shares": [
+  {
+   "nodeId": "477684c1",
+   "name": "Phone B",
+   "isDriver": true,
+   "firstLayer": 0,
+   "layers": 16,
+   "range": "0-15",
+   "weightMb": 1551,
+   "needMb": 3088,
+   "haveMb": 7294,
+   "fits": true
+  },
+  {
+   "nodeId": "c6f72247",
+   "name": "Phone A",
+   "isDriver": false,
+   "firstLayer": 16,
+   "layers": 16,
+   "range": "16-31",
+   "weightMb": 1549,
+   "needMb": 3086,
+   "haveMb": 7225,
+   "fits": true
+  }
+ ],
+ "phones": [
+  {
+   "nodeId": "477684c1",
+   "name": "Phone B",
+   "isDriver": true,
+   "step": "Serving; layers 0-15",
+   "online": true,
+   "rssMb": 2863,
+   "peakMb": 3769,
+   "receivedMb": null,
+   "cachedMb": null,
+   "loadFraction": 0.0,
+   "thermalStatus": 0,
+   "ramAvailMb": 9083,
+   "rttMs": null,
+   "tcpRttMs": null,
+   "freed": [
+    "chat Qwen3.5-4B-Q4_K_M.gguf, 921 MB",
+    "embed embeddinggemma-300M-Q8_0.gguf, 694 MB"
+   ],
+   "restore": [
+    "chat Qwen3.5-4B-Q4_K_M.gguf",
+    "embed embeddinggemma-300M-Q8_0.gguf"
+   ]
+  },
+  {
+   "nodeId": "c6f72247",
+   "name": "Phone A",
+   "isDriver": false,
+   "step": "Serving; layers 16-31",
+   "online": true,
+   "rssMb": 1654,
+   "peakMb": 1654,
+   "receivedMb": 1650,
+   "cachedMb": 6792,
+   "loadFraction": 1.0,
+   "thermalStatus": 1,
+   "ramAvailMb": 8684,
+   "rttMs": 36.868541,
+   "tcpRttMs": 6.074896,
+   "freed": [
+    "chat Qwen3.5-4B-Q4_K_M.gguf, 816 MB",
+    "embed embeddinggemma-300M-Q8_0.gguf, 693 MB"
+   ],
+   "restore": [
+    "chat Qwen3.5-4B-Q4_K_M.gguf",
+    "embed embeddinggemma-300M-Q8_0.gguf"
+   ]
+  }
+ ],
+ "boundariesPerToken": 2,
+ "warnings": [],
+ "lostPhone": null,
+ "released": false,
+ "failReason": null,
+ "loadStartedAtMs": 1791667698996,
+ "loadMs": 24520,
+ "log": {
+  "offloaded": null,
+  "offloadableTotal": null,
+  "buffers": [],
+  "listening": false,
+  "error": null
+ },
+ "steps": [
+  "Reading the model header",
+  "Asking Phone A what it is running",
+  "Planned Phone B layers 0-15, Phone A layers 16-31",
+  "Measuring Qwen3.5-4B-Q4_K_M on this phone alone, for scale",
+  "Phone A: starting rpc-server on 192.168.242.89:50052 with the tensor cache",
+  "Phone A: stopped chat server Qwen3.5-4B-Q4_K_M.gguf (816 MB)",
+  "Phone A: stopped embed server embeddinggemma-300M-Q8_0.gguf (693 MB)",
+  "Phone B: stopping chat server Qwen3.5-4B-Q4_K_M.gguf (921 MB) to make room for Qwen3.5-4B-Q4_K_M.gguf",
+  "Phone B: stopping embed server embeddinggemma-300M-Q8_0.gguf (694 MB) to make room for Qwen3.5-4B-Q4_K_M.gguf",
+  "Loading: llama-server --rpc 192.168.242.89:50052 -ngl 17 -t 8 -c 4096 -np 1 -fit off",
+  "Ready after 24 s"
+ ],
+ "generation": null,
+ "baseline": null,
+ "smallModel": {
+  "name": "Qwen3.5-4B-Q4_K_M",
+  "tokPerSec": 14.081503153523295,
+  "tokens": 48
+ },
+ "pendingRestore": [
+  "Phone A: chat Qwen3.5-4B-Q4_K_M.gguf",
+  "Phone A: embed embeddinggemma-300M-Q8_0.gguf",
+  "Phone B: chat Qwen3.5-4B-Q4_K_M.gguf",
+  "Phone B: embed embeddinggemma-300M-Q8_0.gguf"
+ ],
+ "notices": [],
+ "rttMs": 36.868541,
+ "tcpRttMs": 6.074896,
+ "updatedAtMs": 1791667730197
+}

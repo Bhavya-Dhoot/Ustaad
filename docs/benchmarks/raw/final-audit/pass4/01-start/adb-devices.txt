@@ -1,0 +1,6 @@
+List of devices attached
+10BFAU14Q6000XR	device
+192.168.242.23:5555	device
+192.168.242.76:5555	device
+192.168.242.89:5555	device
+
