@@ -52,6 +52,8 @@ class LlamaServerClient(
         val holder = ConnHolder()
         val reader = launch(Dispatchers.IO) {
             val parser = SseChatParser()
+            val partial = StringBuilder()
+            var chunks = 0
             var firstNs = 0L
             val c = LlamaHttp.newPost("$base/v1/chat/completions", readTimeout)
             if (!holder.attach(c)) return@launch // cancelled before the socket was opened
@@ -64,16 +66,24 @@ class LlamaServerClient(
                         val delta = parser.feed(line)
                         if (delta != null) {
                             if (firstNs == 0L) firstNs = System.nanoTime()
+                            partial.append(delta)
+                            chunks++
                             send(ChatChunk(delta))
                         }
                         if (parser.done) break
                     }
                 }
+                // An end of file before the server said "finished" is a server that died or dropped the connection: the text so far
+                // is a cut-off answer. Reporting it as a success would let callers show, store or sign it as final.
+                if (!parser.complete) throw ModelStoppedMidAnswerException(partial.toString(), chunks)
                 val endNs = System.nanoTime()
                 val first = if (firstNs == 0L) endNs else firstNs
                 val stats = parser.finalStats((first - startNs) / 1e6, (endNs - first) / 1e6)
-                AppGraph.health.lastDecodeTokPerSec = stats.decodeTokPerSec.takeIf { it > 0 }
-                LlamaRuntime.lastStats.value = stats
+                // the numbers are telemetry: failing to publish them must not fail an answer that arrived whole
+                runCatching {
+                    AppGraph.health.lastDecodeTokPerSec = stats.decodeTokPerSec.takeIf { it > 0 }
+                    LlamaRuntime.lastStats.value = stats
+                }
                 send(ChatChunk("", done = true, stats = stats))
             } catch (e: Exception) {
                 // Our own disconnect (the caller gave up) makes the blocked read fail with "Socket closed": that is a
@@ -259,9 +269,21 @@ internal object LlamaHttp {
         false
     }
 
+    /**
+     * The whole body as text. A body shorter than its Content-Length means the server closed the connection mid-answer: that
+     * fails with an IOException instead of returning the cut-off text as if it were complete (on a JVM the socket layer does not
+     * notice a short fixed-length body by itself).
+     */
     fun readBody(c: HttpURLConnection): String {
-        val stream = if (c.responseCode in 200..299) c.inputStream else c.errorStream
-        return stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+        val ok = c.responseCode in 200..299
+        val bytes = (if (ok) c.inputStream else c.errorStream)?.use { it.readBytes() } ?: return ""
+        if (ok) checkNotShort(bytes.size, c.contentLengthLong)
+        return String(bytes, Charsets.UTF_8)
+    }
+
+    /** Throws when [declared] (Content-Length, -1 when absent) says more bytes were coming than the [got] that arrived. */
+    internal fun checkNotShort(got: Int, declared: Long) {
+        if (declared >= 0 && got < declared) throw java.io.IOException("the model server closed the connection after $got of $declared bytes")
     }
 
     fun errorText(c: HttpURLConnection): String = readBody(c).ifBlank { "HTTP ${c.responseCode}" }
