@@ -77,8 +77,8 @@ object MemCloudLogic {
         val phones = s.shares.size
         val peers = s.phones.filter { !it.isDriver }.joinToString(" and ") { it.name }
         return when (s.phase) {
-            Phase.PLANNING, Phase.STARTING_PEERS -> if (phones >= 2) "Preparing a large model across $phones phones." else "Preparing a large model across phones."
-            Phase.LOADING -> "Loading a large model across $phones phones (${overallPercent(s.shares, s.phones)} percent)."
+            Phase.PLANNING, Phase.STARTING_PEERS -> if (phones >= 2) "Preparing a large model across ${plural(phones, "phone")}." else "Preparing a large model across phones."
+            Phase.LOADING -> "Loading a large model across ${plural(phones, "phone")} (${overallPercent(s.shares, s.phones)} percent)."
             Phase.READY -> "Running a large model with $peers."
             Phase.DEGRADED -> "A large model is paused: ${s.lostPhone ?: "a phone"} stopped answering."
             Phase.BASELINE -> "Trying a large model on this phone alone."
@@ -91,6 +91,38 @@ object MemCloudLogic {
 
     /** True when the whole file plus the planning overhead fits in what this phone can give ([haveMb], after its own servers stop). */
     fun fitsOnOnePhone(fileBytes: Long, haveMb: Long): Boolean = fileBytes / (1024 * 1024) + SplitPlanner.OVERHEAD_MB <= haveMb
+
+    /** "1 phone", "2 phones"; [many] defaults to the one-form plus "s". */
+    fun plural(n: Int, one: String, many: String = one + "s"): String = "$n ${if (n == 1) one else many}"
+
+    /** Caption of a lane: short enough never to clip on a phone screen. */
+    fun laneRole(isDriver: Boolean): String = if (isDriver) "this phone, driver" else "worker"
+
+    /**
+     * The GGUF `general.name` as a secondary line under the file name, only when it says something the file name does not:
+     * at least four characters and not already contained in the file name ("Hf" and "Qwen3.5-4B" for Qwen3.5-4B-Q4_K_M.gguf are hidden).
+     */
+    fun secondaryName(fileName: String, ggufName: String?): String? {
+        val n = ggufName?.trim().orEmpty()
+        if (n.length < 4) return null
+        fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+        return if (norm(fileName.removeSuffix(".gguf")).contains(norm(n))) null else n
+    }
+
+    /** Subtitle under the title: what the planner says about the selected model on this phone. Null [fitsAlone] = no plan yet. */
+    fun subtitle(fitsAlone: Boolean?): String = when (fitsAlone) {
+        false -> "A model too big for one phone, split by layers."
+        true -> "Fits this phone; splitting it is slower and shown only to prove the mechanism."
+        null -> "A model split by layers across phones."
+    }
+
+    /** Text of the load button for [selectedPeers] other phones, and whether it can be pressed. */
+    fun loadButton(selectedPeers: Int): Pair<String, Boolean> =
+        if (selectedPeers < 1) "Pick at least one other phone" to false else "Load across ${plural(selectedPeers + 1, "phone")}" to true
+
+    /** Accessibility text of the layer strip in the plan: what is planned, and that nothing is loaded yet. */
+    fun planDescription(shares: List<ShareView>): String =
+        "Plan, no layer loaded yet: " + shares.filter { it.layers > 0 }.joinToString(", ") { "${it.name} layers ${it.range}" }
 
     /** Whether a new load may start from [phase] (the caller has already checked that no operation is running). */
     fun canStart(phase: Phase): Boolean = phase != Phase.READY && phase != Phase.DEGRADED

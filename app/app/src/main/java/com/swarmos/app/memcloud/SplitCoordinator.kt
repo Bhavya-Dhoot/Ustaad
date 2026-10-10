@@ -169,15 +169,15 @@ class SplitCoordinator(
     }
 
     /** Peers that are online now, ordered by name (Phone A, B, C), optionally narrowed by node id or name. */
-    fun onlinePeers(selection: List<String> = emptyList()): List<PeerInfo> =
+    fun onlinePeers(selection: List<String> = emptyList(), emptyMeansNone: Boolean = false): List<PeerInfo> =
         env.peers().filter { !it.away }
-            .filter { p -> selection.isEmpty() || selection.any { it.equals(p.nodeId, true) || it.equals(p.name, true) } }
+            .filter { p -> if (selection.isEmpty()) !emptyMeansNone else selection.any { it.equals(p.nodeId, true) || it.equals(p.name, true) } }
             .sortedBy { it.name }
 
     /** Plan for [file] over this phone and the [peers] given (node ids or names; empty = all online). */
-    fun previewPlan(file: String, peers: List<String>, mode: SplitMode, manual: List<Int>? = null): SplitPlan {
+    fun previewPlan(file: String, peers: List<String>, mode: SplitMode, manual: List<Int>? = null, emptyMeansNone: Boolean = false): SplitPlan {
         val info = header(file)
-        return SplitPlanner.plan(info, devicesFor(onlinePeers(peers)), mode, manual)
+        return SplitPlanner.plan(info, devicesFor(onlinePeers(peers, emptyMeansNone)), mode, manual)
     }
 
     private fun devicesFor(peers: List<PeerInfo>): List<PlanDevice> {
@@ -637,10 +637,10 @@ class SplitCoordinator(
 
     // ---------- baseline: the same model on this phone alone ----------
 
-    /** Returns null when the attempt started. It replaces the split server (they share the chat port). */
-    fun baseline(timeoutSec: Int = 120): String? = synchronized(lock) {
+    /** Returns null when the attempt started. It replaces the split server (they share the chat port). [file] defaults to the one of the last split. */
+    fun baseline(timeoutSec: Int = 120, file: String? = null): String? = synchronized(lock) {
         val st = _state.value
-        val file = st.file ?: return "choose a model first (start a split once, or pass a file)"
+        val file = file?.let { n -> env.modelFile(n)?.name ?: return "no such model file in the models folder: $n" } ?: st.file ?: return "choose a model first"
         if (opJob?.isActive == true && st.phase != Phase.READY && st.phase != Phase.DEGRADED && st.phase != Phase.FAILED) return "busy: ${st.phase.name}"
         opJob = scope.launch { runBaseline(file, timeoutSec) }
         null
@@ -650,7 +650,7 @@ class SplitCoordinator(
         // the workers are not needed for a single-phone attempt: release them (they restore themselves); this phone's own servers stay stopped until the end
         teardownAll(local = false, peers = true)
         val t0 = env.nowMs()
-        _state.update { it.copy(phase = Phase.BASELINE, baseline = BaselineView(true, "LOADING", "Loading $file on this phone with no RPC", 0), steps = it.steps + "Baseline: loading $file on this phone alone (timeout $timeoutSec s)", updatedAtMs = t0) }
+        _state.update { it.copy(phase = Phase.BASELINE, file = file, baseline = BaselineView(true, "LOADING", "Loading $file on this phone with no RPC", 0), steps = it.steps + "Baseline: loading $file on this phone alone (timeout $timeoutSec s)", updatedAtMs = t0) }
         val path = env.modelFile(file)?.absolutePath
         if (path == null) {
             _state.update { it.copy(phase = Phase.IDLE, baseline = BaselineView(false, "FAILED", "The model file $file is gone.", 0)) }

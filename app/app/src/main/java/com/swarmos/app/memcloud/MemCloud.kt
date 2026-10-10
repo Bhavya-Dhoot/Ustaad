@@ -27,12 +27,12 @@ object MemCloud {
 
     fun header(file: String): GgufInfo = coordinator.header(file)
     fun onlinePeers(selection: List<String> = emptyList()): List<PeerInfo> = coordinator.onlinePeers(selection)
-    fun previewPlan(file: String, peers: List<String>, mode: SplitMode, manual: List<Int>? = null): SplitPlan = coordinator.previewPlan(file, peers, mode, manual)
+    fun previewPlan(file: String, peers: List<String>, mode: SplitMode, manual: List<Int>? = null, emptyMeansNone: Boolean = false): SplitPlan = coordinator.previewPlan(file, peers, mode, manual, emptyMeansNone)
     suspend fun refreshPeers() = coordinator.refreshPeers()
     fun start(req: StartRequest): String? = coordinator.start(req)
     fun replan(peers: List<String> = emptyList()): String? = coordinator.replan(peers)
     fun stop() = coordinator.stop()
     fun ask(prompt: String, maxTokens: Int = 200): String? = coordinator.ask(prompt, maxTokens)
     fun cancelGeneration() = coordinator.cancelGeneration()
-    fun baseline(timeoutSec: Int = 120): String? = coordinator.baseline(timeoutSec)
+    fun baseline(timeoutSec: Int = 120, file: String? = null): String? = coordinator.baseline(timeoutSec, file)
 }

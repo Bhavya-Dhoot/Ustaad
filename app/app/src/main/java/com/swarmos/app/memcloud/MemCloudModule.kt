@@ -89,7 +89,7 @@ object MemCloudModule : SwarmModule {
 
         post("/baseline") {
             val req = body<BaselineRequest>() ?: BaselineRequest()
-            val refused = MemCloud.baseline(req.timeoutSec)
+            val refused = MemCloud.baseline(req.timeoutSec, req.file)
             if (refused != null) call.respond(HttpStatusCode.Conflict, ErrorBody(refused)) else call.respond(HttpStatusCode.Accepted, MemCloud.state.value)
         }
     }
