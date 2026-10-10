@@ -96,6 +96,13 @@ data class QueryUi(
     val savedAnswer: KbHit? = null,
 )
 
+/** Said when an ask ends by an error nobody planned for (the cause is in the log and the audit record). */
+internal const val ASK_FAILED_NOTE = "Something went wrong while answering. Ask again."
+
+/** An ask that was stopped ([note] is AnswerNotes.STOPPED) or failed ([ASK_FAILED_NOTE]), closed: "done", keeping its own note if it has one, with the total time. */
+internal fun closedAsk(q: QueryUi, note: String, totalMs: Long): QueryUi =
+    if (q.phase == "done") q else q.copy(phase = "done", note = q.note ?: note, timings = q.timings.copy(totalMs = totalMs))
+
 /** Whether a real embedding model is loaded and answering. A fake or stopped one is never "ready". */
 data class EmbedderStatus(val name: String, val ready: Boolean)
 
@@ -577,10 +584,14 @@ object PduEngine {
             return askBody(qid, t0, text, k, deadlineMs, useSaved)
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
-                updateQuery(qid) {
-                    if (it.phase == "done") it
-                    else it.copy(phase = "done", note = it.note ?: AnswerNotes.STOPPED, timings = it.timings.copy(totalMs = now() - t0))
-                }
+                updateQuery(qid) { closedAsk(it, AnswerNotes.STOPPED, now() - t0) }
+                handle.last = _query.value?.takeIf { it.qid == qid }
+            }
+            throw e
+        } catch (e: Throwable) {
+            // any other failure must not leave the ask in "searching" or "answering": that disables Ask for good and leaves Stop with nothing to stop
+            withContext(NonCancellable) {
+                updateQuery(qid) { closedAsk(it, ASK_FAILED_NOTE, now() - t0) }
                 handle.last = _query.value?.takeIf { it.qid == qid }
             }
             throw e
