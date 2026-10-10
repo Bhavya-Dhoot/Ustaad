@@ -32,7 +32,7 @@ SHA256 below is of the file as downloaded, verified equal to the Hugging Face LF
 
 ## Large model status
 
-Download complete and verified on the PC (size 18,556,686,752 and sha256 equal to the Hugging Face LFS oid; a PC crash at 00:49 zero-filled the tail, so the file was truncated and resumed with `curl -C -`, then re-hashed). Pushed to phone C over wireless ADB (49 minutes, 6.0 MB/s), `/data/local/tmp/llama/models/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf`, size verified (18,556,686,752 B). It cannot run on one phone and did not load split over two (see `docs/benchmarks/2026-10-10-rpc-split-spike.md` for the measurements).
+Download complete and verified on the PC (size 18,556,686,752 and sha256 equal to the Hugging Face LFS oid; a PC crash at 00:49 zero-filled the tail, so the file was truncated and resumed with `curl -C -`, then re-hashed). Pushed to phone C over wireless ADB (49 minutes, 6.0 MB/s), `/data/local/tmp/llama/models/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf`, size verified (18,556,686,752 B). It cannot run on one phone and did not load split over two (see `docs/benchmarks/2026-10-10-rpc-split-spike.md` for the measurements). Split over three phones through the app it loads and generates at 5.7 to 6.4 tok/s (`docs/benchmarks/2026-10-10-memorycloud-inapp.md`, section "Three phones"); for that run the file was also copied into the app's models folder on phone C, so phone C holds two copies (37 GB).
 
 Re-fetch command if it is ever lost:
 
