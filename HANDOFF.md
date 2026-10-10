@@ -20,7 +20,7 @@ Other evidence: throughput on three phones, 30.91 tok/s (28.90 to 31.94) against
 
 ## What is open (gate 6)
 
-- The second visual pass is docs/design/qa2/REPORT.md: of the 17 first-pass defects 10 are fixed, 2 partly and 5 not checked, and new ones were listed. Eight further screen fixes were merged in 0a71f33 and their screenshot check is running (docs/design/qa3). A real Choir run frame exists (docs/design/qa2/20 to 22); no frame of a swarm batch with a result exists (the Swarm-load frames in docs/design/qa/ and docs/design/shots/ carry a FAKE stamp or no model).
+- The second visual pass is docs/design/qa2/REPORT.md: of the 17 first-pass defects 10 are fixed, 2 partly and 5 not checked, and new ones were listed. Eight further screen fixes were merged in 0a71f33 and all eight were seen fixed on Phone C (docs/design/qa3, 12 screenshots; small leftovers are listed in gates/gate-6-expertmesh-polish.md). The same session ran a smoke test of the final build: docs/benchmarks/2026-10-10-final-build-smoke.md.
 - The demo build has never been exercised end to end: no Choir run, no split, no swarm batch, no Data Union ask on `com.ustaad.app` (docs/BUILD.md lists three curl checks run on phone C with no recorded result).
 - Two things only the founder can do by hand, on every phone: the battery exemption in first-run setup (untested as a fix, gates/gate-2-inference-baseline.md), and QR pairing in the demo build (the camera scan has never been exercised; docs/CLAIMS.md LK9).
 - The phones overheat within minutes of sustained work: a 20-problem Choir run took all three to Thermal Status 2 to 3 in eight minutes (gate-3-agent-choir.md); decode on the GPU fell from 12.3 to 6.8 tok/s over ten minutes (docs/benchmarks/2026-10-10-llama-cpu-baseline.md). Demo segments stay short; Ustaad stays in front with the screen on.
@@ -63,7 +63,7 @@ Network: the PC and the phones were on the access point "Chulbul" (192.168.242.x
 1. Install the demo build on all three phones, run the three curl checks in docs/BUILD.md, and run every demo step once on it: a swarm batch, the warranty question with the pair, Choir `m3`, the 30B split. Record the results in docs/benchmarks/ (a new e2e note) and update docs/CLAIMS.md.
 2. Rehearse docs/DEMO.md once with a recording and the thermal state logged; time the fresh start of the 30B split after a Stop with warm caches (only a re-plan, 65 s, was timed).
 3. Second visual pass (gate 6): reshoot the frames listed in docs/DECK.md on the demo build, including one real Choir run and one real swarm batch; fix the top defects in docs/design/qa/REPORT.md and the open items in docs/review/2026-10-10-second-review.md (the Data Union index guard when the embedder stops mid-run; the debug-only intent extras).
-4. Check the result of the qa3 screenshot run (eight screen fixes) and reshoot the frames the deck uses; then measure the Knowledge Bank with a phone away at save time (docs/CLAIMS.md KB3).
+4. Reshoot the frames the deck uses from the final build if wanted (docs/design/qa3 has the fixed screens); run the founder rehearsal list in gates/gate-6-expertmesh-polish.md; then measure the Knowledge Bank with a phone away at save time (docs/CLAIMS.md KB3).
 5. By a person: camera QR scan, document scan, dictation, citation tap, a Verify of the audit log, the 20-minute screen-off soak, airplane mode with the Direct group, Office Kit mirroring (docs/CLAIMS.md M6 to M8).
 6. Do the final rename to `com.ustaad.app` for the debug build and the code identifiers last.
 
