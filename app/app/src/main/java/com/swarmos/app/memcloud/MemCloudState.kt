@@ -111,6 +111,8 @@ data class MemCloudState(
     val warnings: List<String> = emptyList(),
     /** Name of the phone whose loss put the split in DEGRADED. */
     val lostPhone: String? = null,
+    /** DEGRADED only: this phone has already given its own models and the lenders back (the automatic restore), so the split holds nothing here. */
+    val released: Boolean = false,
     val failReason: String? = null,
     val loadStartedAtMs: Long = 0,
     val loadMs: Long? = null,

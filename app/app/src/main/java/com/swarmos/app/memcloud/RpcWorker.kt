@@ -44,7 +44,29 @@ object AndroidLenderEnv : LenderEnv {
     override fun rpcReady() = LlamaRuntime.statusOf(Role.RPC).state == ServerState.READY
     override fun rpcBind() = RpcWorker.bindOf(LlamaRuntime.statusOf(Role.RPC).args)
     override fun rpcPort() = LlamaRuntime.statusOf(Role.RPC).port
-    override fun stopRpc() = LlamaRuntime.stop(Role.RPC)
+
+    /** The pid of the rpc-server that [stopRpc] last stopped, until [awaitRpcGone] has seen it leave. LlamaRuntime forgets the pid at once. */
+    @Volatile private var stoppedPid: Long? = null
+
+    override fun stopRpc() {
+        LlamaRuntime.statusOf(Role.RPC).pid?.let { stoppedPid = it }
+        LlamaRuntime.stop(Role.RPC)
+    }
+
+    override fun awaitRpcGone(timeoutMs: Long): Boolean {
+        val pid = stoppedPid ?: return true
+        val end = SystemClock.elapsedRealtime() + timeoutMs
+        while (true) {
+            val gone = try {
+                !File("/proc/$pid").exists() || ProcInfo.isZombie(File("/proc/$pid/status").readText())
+            } catch (_: Exception) {
+                true
+            }
+            if (gone) { stoppedPid = null; return true }
+            if (SystemClock.elapsedRealtime() >= end) return false
+            Thread.sleep(50)
+        }
+    }
 
     override fun modelFileExists(file: String) = ModelStore.fileOf(file).isFile
 
@@ -63,7 +85,8 @@ object AndroidLenderEnv : LenderEnv {
     override fun memAvailMb() = AppGraph.health.state.value.ramAvailMb
     override fun thermalStatus() = AppGraph.health.state.value.thermalStatus
 
-    override fun setActivity(owner: String, text: String, onStop: () -> Unit) = PhoneActivity.set(owner, text, onStop)
+    // the banner's Stop runs on the main thread; ending a loan waits for rpc-server to leave, so it goes to the worker scope
+    override fun setActivity(owner: String, text: String, onStop: () -> Unit) = PhoneActivity.set(owner, text) { RpcWorker.inBackground(onStop) }
     override fun clearActivity(owner: String) = PhoneActivity.clear(owner)
 
     override fun audit(kind: String, vararg kv: Pair<String, String>) {
@@ -94,9 +117,11 @@ object RpcWorker {
     /** The driver ends its loan; refused when the loan is another phone's or a newer one. */
     fun stopFor(fromNode: String?, loan: String?): RpcLender.StopResult = lender.stopFrom(fromNode, loan, "stopped by the driver")
 
-    fun stop(reason: String): RpcStateDto {
-        lender.stop(reason)
-        return state()
+    /** The "Stop lending" button (main thread): ending the loan waits for rpc-server to leave, so it runs in this object's scope. */
+    fun stop(reason: String) = inBackground { lender.stop(reason) }
+
+    internal fun inBackground(block: () -> Unit) {
+        scope.launch { block() }
     }
 
     @Synchronized
@@ -147,7 +172,7 @@ object RpcWorker {
     fun clearCache(): RpcCache.ClearResult {
         val busy = when {
             lender.lending.value != null -> "this phone is lending memory to ${lender.lending.value?.driverName}; stop the loan first"
-            LlamaRuntime.statusOf(Role.RPC).state != ServerState.STOPPED -> "rpc-server is running; stop it first"
+            LlamaRuntime.statusOf(Role.RPC).state.let { it == ServerState.READY || it == ServerState.STARTING } -> "rpc-server is running; stop it first" // FAILED has no process: the cache may go
             else -> null
         }
         return RpcCache.clear(cacheDir(), busy)

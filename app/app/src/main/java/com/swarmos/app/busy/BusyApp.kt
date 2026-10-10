@@ -88,7 +88,7 @@ object BusyApp {
     /** Work that holds the model or the phone's memory without taking a chat slot: it counts as real work for the loop. */
     private fun otherWorkRunning(): Boolean =
         ModelBench.running.value || Selftest.running.value ||
-            MemCloudLogic.holdsPhone(MemCloud.state.value.phase) || RpcWorker.lending.value != null ||
+            MemCloudLogic.holdsPhone(MemCloud.state.value) || RpcWorker.lending.value != null ||
             ChoirController.busy.value || PduEngine.progress.value.running ||
             ModelStore.downloads.value.values.any { it is DownloadState.Downloading || it is DownloadState.Verifying }
 }

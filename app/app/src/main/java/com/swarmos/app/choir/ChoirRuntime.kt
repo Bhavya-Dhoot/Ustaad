@@ -120,11 +120,11 @@ object ChoirController {
         keepScripts: Boolean = false,
     ): RunTrace = gate.withLock {
         refusal()?.let { throw RunRefused(it) }
-        _busy.value = true
         val opts = options.copy(majoritySkipsRound2 = majoritySkipsRound2())
         val peers = remotePeers()
         // fake per-node answers exist in debug builds only
         val scripts = if (BuildConfig.DEBUG) scripts else emptyMap()
+        _busy.value = true // after everything above that can throw, right before the try whose finally clears it
         try {
             if (scripts.isNotEmpty()) applyScripts(scripts, peers)
             ChoirActivity.during(ChoirActivity.asking(1 + peers.count { !it.away && !it.noModel })) {

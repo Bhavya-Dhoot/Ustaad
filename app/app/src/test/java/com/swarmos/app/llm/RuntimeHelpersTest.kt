@@ -100,6 +100,19 @@ class RuntimeHelpersTest {
         assertNull(ModelStore.autoLoadChoice(Role.CHAT, listOf(PresentModel("Qwen3.5-4B-Q4_K_M.gguf", 1_000, false))))
     }
 
+    // a model whose load failed holds nothing: Delete is allowed, while a loading or running server still blocks it
+    @Test fun aModelIsInUseOnlyWhileItsServerIsLoadingOrRunning() {
+        fun status(state: ServerState, path: String?) = ServerStatus(Role.CHAT, state, modelPath = path)
+        val file = "Qwen3.5-4B-Q4_K_M.gguf"
+        val path = "/data/user/0/app/files/models/$file"
+        assertTrue(ModelStore.inUse(listOf(status(ServerState.READY, path)), file))
+        assertTrue(ModelStore.inUse(listOf(status(ServerState.STARTING, path)), file))
+        assertFalse(ModelStore.inUse(listOf(status(ServerState.FAILED, path)), file))
+        assertFalse(ModelStore.inUse(listOf(status(ServerState.STOPPED, path)), file))
+        assertFalse(ModelStore.inUse(listOf(status(ServerState.READY, "/data/models/other.gguf")), file))
+        assertFalse(ModelStore.inUse(emptyList(), file))
+    }
+
     @Test fun everyCatalogEntryHasAPinnedSizeAndSha256() {
         for (e in ModelCatalog.entries) {
             assertEquals("${e.file} sha256", 64, e.sha256.length)

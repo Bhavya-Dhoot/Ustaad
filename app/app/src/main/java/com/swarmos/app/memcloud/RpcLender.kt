@@ -41,6 +41,12 @@ interface LenderEnv {
     fun rpcPort(): Int
     fun stopRpc()
 
+    /**
+     * Blocks until the rpc-server process that [stopRpc] last stopped has left the process table (it still holds the split's weights
+     * until then), at most [timeoutMs]. True when it is gone or there was none. Blocking: call it off the main thread.
+     */
+    fun awaitRpcGone(timeoutMs: Long): Boolean
+
     fun modelFileExists(file: String): Boolean
     fun restoreLocal(role: Role, file: String)
 
@@ -79,6 +85,9 @@ class RpcLender(private val env: LenderEnv) {
 
         /** A phone at this thermal status (severe) or above does not lend memory. */
         const val THERMAL_REFUSE = 4
+
+        /** How long ending a loan waits for rpc-server's process to leave before it loads this phone's own models again (SIGTERM, then SIGKILL after 3 s). */
+        const val RPC_GONE_WAIT_MS = 5_000L
     }
 
     sealed interface StartResult {
@@ -242,18 +251,24 @@ class RpcLender(private val env: LenderEnv) {
      * The driver ends the loan. Checked and done in one step under the monitor, so a stop from an earlier loan or another phone cannot
      * end a newer loan. With no loan at all it still cleans up (stops rpc-server, restores what is listed), as before.
      */
-    fun stopFrom(fromNode: String?, token: String?, reason: String): StopResult = synchronized(this) {
-        val cur = loan
-        if (cur != null) {
-            if (cur.driverId != fromNode) return StopResult.Refused("the loan belongs to ${cur.driverName}")
-            if (token != null && token != cur.token) return StopResult.Refused("that loan has ended; this phone is lending under a newer one")
+    fun stopFrom(fromNode: String?, token: String?, reason: String): StopResult {
+        val ended = synchronized(this) {
+            val cur = loan
+            if (cur != null) {
+                if (cur.driverId != fromNode) return StopResult.Refused("the loan belongs to ${cur.driverName}")
+                if (token != null && token != cur.token) return StopResult.Refused("that loan has ended; this phone is lending under a newer one")
+            }
+            endLoan()
         }
-        stop(reason)
-        StopResult.Ok
+        giveBack(ended, reason)
+        return StopResult.Ok
     }
 
-    /** Stops rpc-server and brings back the model servers the driver stopped to make room. Safe to call when not lending. */
-    fun stop(reason: String) = synchronized(this) {
+    /** What ending a loan leaves to do: the loan that was running (null when none) and the model servers to bring back. */
+    private class Ended(val had: Lending?, val items: List<RestoreItem>)
+
+    /** The loan ends and rpc-server is told to stop. Changes state only; call under the monitor, then [giveBack] outside it. */
+    private fun endLoan(): Ended {
         val had = _lending.value
         env.stopRpc()
         loan = null
@@ -261,16 +276,32 @@ class RpcLender(private val env: LenderEnv) {
         env.clearActivity(ACTIVITY_OWNER)
         val items = restoreItems
         restoreItems = emptyList()
-        for (i in items) {
+        return Ended(had, items)
+    }
+
+    /**
+     * Brings back the model servers the driver stopped to make room, once rpc-server's process is really gone: it still holds the
+     * split's weights for a moment after the stop, and a chat model loaded then is refused for want of memory. The wait is bounded
+     * ([RPC_GONE_WAIT_MS]) and happens outside the monitor, so a new start is not held up by it.
+     */
+    private fun giveBack(ended: Ended, reason: String) {
+        if (ended.items.isNotEmpty()) env.awaitRpcGone(RPC_GONE_WAIT_MS)
+        for (i in ended.items) {
             val role = Role.parse(i.role) ?: continue
             if (env.modelFileExists(i.file)) env.restoreLocal(role, i.file)
         }
-        if (had != null) env.audit("memcloud.rpc.stop", "reason" to reason, "restored" to items.size.toString())
+        if (ended.had != null) env.audit("memcloud.rpc.stop", "reason" to reason, "restored" to ended.items.size.toString())
+    }
+
+    /** Stops rpc-server and brings back the model servers the driver stopped to make room. Safe to call when not lending. */
+    fun stop(reason: String) {
+        giveBack(synchronized(this) { endLoan() }, reason)
     }
 
     /** [stop] only if [which] is still the loan: the lease timer and a failed start must not end a newer loan. */
-    private fun stopIf(which: Loan, reason: String) = synchronized(this) {
-        if (loan === which) stop(reason)
+    private fun stopIf(which: Loan, reason: String) {
+        val ended = synchronized(this) { if (loan === which) endLoan() else null }
+        if (ended != null) giveBack(ended, reason)
     }
 
     /** Call about once a second: ends the loan when the lease has run out, or when rpc-server died on its own. */

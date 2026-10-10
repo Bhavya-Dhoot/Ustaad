@@ -176,17 +176,19 @@ class SplitCoordinator(
                 for ((nodeId, addr) in p.peerAddrs) {
                     launch {
                         val items = p.restore[nodeId] ?: emptyList()
-                        // a peer that cannot be reached keeps its record: the driver still owes it those servers
-                        if (!confirmPeerRestored(addr, items) && items.isNotEmpty()) {
+                        // a peer that cannot be reached keeps its record: the driver still owes it those servers (and the loan it must end)
+                        val loan = p.peerLoans[nodeId]
+                        if (!confirmPeerRestored(addr, items, loan) && items.isNotEmpty()) {
                             restore[nodeId] = items
                             unconfirmed[nodeId] = addr
+                            if (loan != null) loans[nodeId] = loan
                         }
                     }
                 }
             }
             for (i in p.restore["self"] ?: emptyList()) {
                 val role = Role.parse(i.role) ?: continue
-                if (env.local(role).state == ServerState.STOPPED) env.restoreLocal(role, i.file)
+                if (env.local(role).state.let { s -> s == ServerState.STOPPED || s == ServerState.FAILED }) env.restoreLocal(role, i.file) // FAILED: the load was refused while rpc-server still held memory
             }
             _state.update {
                 it.copy(steps = it.steps + if (unconfirmed.isEmpty()) "The app restarted during a split: workers stopped, servers restored" else "The app restarted during a split: ${unconfirmed.keys.joinToString { k -> peerName(k) }} could not be reached, its servers are still owed")
@@ -217,7 +219,8 @@ class SplitCoordinator(
     private suspend fun confirmPeerRestored(addr: String, items: List<RestoreItem>, loan: String? = null): Boolean = try {
         env.peerRpcStop(addr, loan)
         val snap = env.peerModels(addr)
-        for (i in items) if (snap[i.role]?.state == "STOPPED") env.peerLoadModel(addr, i.role, i.file)
+        // FAILED counts as stopped: a lender whose load was refused while rpc-server still held memory is not back
+        for (i in items) if (snap[i.role]?.state.let { s -> s == "STOPPED" || s == "FAILED" }) env.peerLoadModel(addr, i.role, i.file)
         true
     } catch (e: CancellationException) {
         throw e
@@ -342,8 +345,9 @@ class SplitCoordinator(
                 old?.cancel()
                 degradedJob?.cancel()
                 degradedNote = null
-                teardownAll()
-                _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = it.steps.takeLast(30) + if (unconfirmed.isEmpty()) "Stopped; chat and embedding servers restored" else "Stopped; ${unconfirmed.keys.sorted().joinToString { k -> peerName(k) }} did not answer, its servers will be restored when it does", updatedAtMs = env.nowMs()) }
+                // a teardown that throws must not leave the phase on READY, LOADING or DEGRADED: Stop always ends in IDLE
+                val problem = try { teardownAll(); null } catch (e: CancellationException) { throw e } catch (e: Exception) { e.message ?: e.toString() }
+                _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = it.steps.takeLast(30) + if (problem != null) "Stopped, but putting the models back failed: $problem" else if (unconfirmed.isEmpty()) "Stopped; chat and embedding servers restored" else "Stopped; ${unconfirmed.keys.sorted().joinToString { k -> peerName(k) }} did not answer, its servers will be restored when it does", updatedAtMs = env.nowMs()) }
             } finally {
                 env.clearActivity(ACTIVITY_OWNER)
             }
@@ -420,8 +424,10 @@ class SplitCoordinator(
             if (_state.value.phase != Phase.LOADING) return // lost a phone while loading: DEGRADED already says so
             if (status.state == ServerState.READY) {
                 refreshLive(final = true)
+                // refreshLive suspends: the watch may have degraded the split meanwhile, and READY must not overwrite that
                 _state.update {
-                    it.copy(phase = Phase.READY, loadMs = status.readyAfterMs, steps = it.steps + "Ready after ${(status.readyAfterMs ?: 0) / 1000} s", updatedAtMs = env.nowMs())
+                    if (it.phase != Phase.LOADING) it
+                    else it.copy(phase = Phase.READY, loadMs = status.readyAfterMs, steps = it.steps + "Ready after ${(status.readyAfterMs ?: 0) / 1000} s", updatedAtMs = env.nowMs())
                 }
             } else {
                 val culprit = attribute(status.reason.orEmpty() + " " + env.chatLog(30).joinToString(" "))
@@ -438,7 +444,7 @@ class SplitCoordinator(
 
     /** FAILED with the reason, and the same teardown as stop: workers stopped, this phone's servers back, activity line cleared. */
     private suspend fun fail(reason: String) {
-        _state.update { it.copy(phase = Phase.FAILED, failReason = reason, steps = it.steps + "Failed: $reason", updatedAtMs = env.nowMs()) }
+        _state.update { it.copy(phase = Phase.FAILED, released = false, failReason = reason, steps = it.steps + "Failed: $reason", updatedAtMs = env.nowMs()) }
         withContext(NonCancellable) { teardownAll() }
     }
 
@@ -495,6 +501,7 @@ class SplitCoordinator(
             restore.remove(nodeId)
         } else {
             unconfirmed[nodeId] = addr
+            if (loan != null) loans[nodeId] = loan // the retry ends this loan and no other: a newer loan of this driver on that phone is left alone
             step("${peerName(nodeId)} did not answer: its servers are still owed and will be retried")
         }
     }
@@ -516,9 +523,11 @@ class SplitCoordinator(
                 val rpcRan = rpcStarted.remove(k) != null
                 if (k in online) {
                     launch { releasePeer(k, p.addr, rpcRan) }
+                } else if ((restore[k] ?: emptyList()).isNotEmpty()) {
+                    unconfirmed[k] = p.addr // its loan token stays in [loans] for the retry
                 } else {
                     loans.remove(k)
-                    if ((restore[k] ?: emptyList()).isNotEmpty()) unconfirmed[k] = p.addr else restore.remove(k)
+                    restore.remove(k)
                 }
             }
         }
@@ -544,9 +553,13 @@ class SplitCoordinator(
                 if (synchronized(lock) { opJob?.isActive == true }) continue
                 for ((nodeId, addr) in unconfirmed.entries.toList()) {
                     if (touched.containsKey(nodeId) || env.peers().firstOrNull { it.nodeId == nodeId }?.away != false) continue
-                    if (confirmPeerRestored(addr, restore[nodeId] ?: emptyList())) {
+                    // the token of the loan this record is about: a stop for an older loan is refused by a lender that holds a newer one of ours
+                    if (confirmPeerRestored(addr, restore[nodeId] ?: emptyList(), loans[nodeId])) {
+                        // a new split may have taken the phone while the call was out: then it owns the record, and its own release settles it
+                        if (touched.containsKey(nodeId)) continue
                         unconfirmed.remove(nodeId)
                         restore.remove(nodeId)
+                        loans.remove(nodeId)
                         step("${peerName(nodeId)} has its models back")
                     }
                 }
@@ -574,6 +587,7 @@ class SplitCoordinator(
         rpcStarted[p.nodeId] = p // from here the renew job extends its lease
         val token = st.loan
         if (token != null) loans[p.nodeId] = token else loans.remove(p.nodeId)
+        persist() // the token is on disk with the record, so a restart can end this loan and no newer one
 
         val freed = ArrayList<String>()
         val own = st.stoppedOwn
@@ -671,7 +685,7 @@ class SplitCoordinator(
     private fun restoreText(key: String): List<String> = (restore[key] ?: emptyList()).map { "${it.role} ${it.file}" }
 
     private fun persist() {
-        runCatching { env.save(Persisted(restore.toMap(), touched.mapValues { it.value.addr } + unconfirmed, baselinePending)) }
+        runCatching { env.save(Persisted(restore.toMap(), touched.mapValues { it.value.addr } + unconfirmed, baselinePending, loans.toMap())) }
     }
 
     // ---------- leases, watching ----------
@@ -792,7 +806,8 @@ class SplitCoordinator(
                         val after = if (minutes >= 1) "%.0f minutes".format(minutes) else "${timing.degradedRestoreMs / 1000} seconds"
                         val note = "${env.selfName()}'s own chat and embedding models were restored automatically after $after in DEGRADED with no re-plan."
                         degradedNote = note
-                        _state.update { it.copy(notices = noticesText(), steps = (it.steps + note).takeLast(60), updatedAtMs = env.nowMs()) }
+                        // the phone is free again: the keep-busy loop may run, and the "paused" banner is not shown (a re-plan clears this)
+                        _state.update { it.copy(released = true, notices = noticesText(), steps = (it.steps + note).takeLast(60), updatedAtMs = env.nowMs()) }
                     }
                 }.also { opJob = it }
             }
@@ -946,55 +961,67 @@ class SplitCoordinator(
         val st = _state.value
         val file = file?.let { n -> env.modelFile(n)?.name ?: return "no such model file in the models folder: $n" } ?: st.file ?: return "choose a model first"
         if (opJob?.isActive == true && st.phase != Phase.READY && st.phase != Phase.DEGRADED && st.phase != Phase.FAILED) return "busy: ${st.phase.name}"
+        // The phase is taken here, before the job suspends to release the workers: a second call (a double tap) then finds BASELINE
+        // with a running job and is refused, instead of replacing the job and running two baselines.
+        _state.update { it.copy(phase = Phase.BASELINE, released = false, file = file, baseline = BaselineView(true, "LOADING", "Releasing the other phones first", 0), updatedAtMs = env.nowMs()) }
         opJob = scope.launch { runBaseline(file, timeoutSec) }
         null
     }
 
     private suspend fun runBaseline(file: String, timeoutSec: Int) {
-        // the workers are not needed for a single-phone attempt: release them (they restore themselves); this phone's own servers stay stopped until the end
-        teardownAll(local = false, peers = true)
         val t0 = env.nowMs()
-        _state.update { it.copy(phase = Phase.BASELINE, file = file, baseline = BaselineView(true, "LOADING", "Loading $file on this phone with no RPC", 0), steps = it.steps + "Baseline: loading $file on this phone alone (timeout $timeoutSec s)", updatedAtMs = t0) }
-        val path = env.modelFile(file)?.absolutePath
-        if (path == null) {
-            _state.update { it.copy(phase = Phase.IDLE, baseline = BaselineView(false, "FAILED", "The model file $file is gone.", 0)) }
-            return
-        }
-        prepSelf(file)
-        val args = listOf("-ngl", "0", "-c", SPLIT_CTX.toString(), "-np", "1", "-fit", "off")
-        baselinePending = "$file|$t0|$timeoutSec"
-        persist()
-        ownsChat = true
-        val server = env.startChat(path, args, timeoutSec * 1000L)
-        val ticker = scope.launch {
-            while (isActive) {
-                val rss = env.local(Role.CHAT).rssMb
-                _state.update { it.copy(baseline = it.baseline?.copy(elapsedMs = env.nowMs() - t0, detail = "Loading on this phone alone${rss?.let { r -> ", ${mb(r)} resident" } ?: ""}")) }
-                delay(1000)
-            }
-        }
+        var ticker: Job? = null
+        var cleanupProblem: String? = null
         var result: BaselineView
+        // every step is inside the try: whatever throws, the phase ends in IDLE with a result, the flags are cleared and this phone's servers come back
         try {
-            val status = server.await()
-            result = when {
-                status.state == ServerState.READY -> measureBaselineDecode(t0)
-                (status.reason ?: "").contains("killed by signal") -> BaselineView(false, "KILLED", status.reason.orEmpty(), env.nowMs() - t0)
-                (status.reason ?: "").startsWith("not ready after") -> BaselineView(false, "TIMEOUT", "Not loaded after $timeoutSec s. ${env.chatLog(1).lastOrNull().orEmpty()}", env.nowMs() - t0)
-                else -> {
-                    val err = LoadLogParser().also { it.feed(env.chatLog(200)) }.snapshot().error
-                    BaselineView(false, "FAILED", err ?: status.reason.orEmpty(), env.nowMs() - t0)
+            // the workers are not needed for a single-phone attempt: release them (they restore themselves); this phone's own servers stay stopped until the end
+            teardownAll(local = false, peers = true)
+            _state.update { it.copy(phase = Phase.BASELINE, released = false, file = file, baseline = BaselineView(true, "LOADING", "Loading $file on this phone with no RPC", 0), steps = it.steps + "Baseline: loading $file on this phone alone (timeout $timeoutSec s)", updatedAtMs = t0) }
+            val path = env.modelFile(file)?.absolutePath
+            if (path == null) {
+                result = BaselineView(false, "FAILED", "The model file $file is gone.", 0)
+            } else {
+                prepSelf(file)
+                val args = listOf("-ngl", "0", "-c", SPLIT_CTX.toString(), "-np", "1", "-fit", "off")
+                baselinePending = "$file|$t0|$timeoutSec"
+                persist()
+                ownsChat = true
+                val server = env.startChat(path, args, timeoutSec * 1000L)
+                ticker = scope.launch {
+                    while (isActive) {
+                        val rss = env.local(Role.CHAT).rssMb
+                        _state.update { it.copy(baseline = it.baseline?.copy(elapsedMs = env.nowMs() - t0, detail = "Loading on this phone alone${rss?.let { r -> ", ${mb(r)} resident" } ?: ""}")) }
+                        delay(1000)
+                    }
+                }
+                val status = server.await()
+                result = when {
+                    status.state == ServerState.READY -> measureBaselineDecode(t0)
+                    (status.reason ?: "").contains("killed by signal") -> BaselineView(false, "KILLED", status.reason.orEmpty(), env.nowMs() - t0)
+                    (status.reason ?: "").startsWith("not ready after") -> BaselineView(false, "TIMEOUT", "Not loaded after $timeoutSec s. ${env.chatLog(1).lastOrNull().orEmpty()}", env.nowMs() - t0)
+                    else -> {
+                        val err = LoadLogParser().also { it.feed(env.chatLog(200)) }.snapshot().error
+                        BaselineView(false, "FAILED", err ?: status.reason.orEmpty(), env.nowMs() - t0)
+                    }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e // Stop writes the state; the cleanup below still runs
+        } catch (e: Exception) {
+            result = BaselineView(false, "FAILED", e.message ?: e.toString(), env.nowMs() - t0)
         } finally {
-            ticker.cancel()
+            ticker?.cancel()
             withContext(NonCancellable) {
-                env.stopLocal(Role.CHAT)
-                ownsChat = false
                 baselinePending = null
-                teardownAll(local = true, peers = false) // this phone's small servers come back
+                try {
+                    teardownAll(local = true, peers = false) // stops the baseline server (ownsChat) and brings this phone's small servers back
+                } catch (e: Exception) {
+                    cleanupProblem = e.message ?: e.toString()
+                }
             }
         }
-        _state.update { it.copy(phase = Phase.IDLE, baseline = result, phones = emptyList(), steps = it.steps + "Baseline: ${result.outcome} after ${result.elapsedMs / 1000} s", updatedAtMs = env.nowMs()) }
+        _state.update { it.copy(phase = Phase.IDLE, baseline = result, phones = emptyList(), steps = it.steps + "Baseline: ${result.outcome} after ${result.elapsedMs / 1000} s" + listOfNotNull(cleanupProblem?.let { p -> "Baseline: putting the models back failed: $p" }), updatedAtMs = env.nowMs()) }
     }
 
     private suspend fun measureBaselineDecode(t0: Long): BaselineView {

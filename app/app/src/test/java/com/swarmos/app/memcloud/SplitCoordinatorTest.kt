@@ -72,8 +72,28 @@ private class FakeEnv : SplitEnv {
     /** Peers that answer but refuse /models/load. */
     val failingLoad = mutableSetOf<String>()
 
-    /** Peers that stop their servers on /rpc/start and then drop the connection. */
+    /** Peers that stop their servers on /rpc/start and then drop the connection; [diedState] is what their roles read afterwards. */
     val diesAfterStop = mutableSetOf<String>()
+    @Volatile var diedState = "STOPPED"
+
+    /** The loan each lender holds now (address to token), issued by /rpc/start like the real lender: the same driver asking again keeps the loan. */
+    val currentLoan = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val loansIssued = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /** When set, a /rpc/stop to [stopGateAddr] (any peer when null) is sent, then waits here before the lender sees it: a call that is out on the network. */
+    @Volatile var stopGate: CompletableDeferred<Unit>? = null
+    @Volatile var stopGateAddr: String? = null
+    val stopParked = CopyOnWriteArrayList<String>()
+
+    /** Every /rpc/stop the driver sent: "address token" ("none" for no token). */
+    val stopsSent = CopyOnWriteArrayList<String>()
+
+    /** When set, the first /rpc/state call waits here (the driver's final refresh while it loads); [stateParked] says it got there. */
+    val firstStateGate = java.util.concurrent.atomic.AtomicReference<CompletableDeferred<Unit>?>(null)
+    val stateParked = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** This phone's own restore of a model server throws (a teardown that fails). */
+    @Volatile var restoreThrows = false
 
     /** What the driver had saved to disk at the moment each peer received /rpc/start. */
     val recordAtStart = java.util.concurrent.ConcurrentHashMap<String, Persisted>()
@@ -96,7 +116,7 @@ private class FakeEnv : SplitEnv {
     val flaky = mutableSetOf<String>()
     val probeCount = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
-    enum class Chat { READY, FAIL, HANG }
+    enum class Chat { READY, FAIL, HANG, THROW }
     @Volatile var chatMode = Chat.READY
     val chatStarts = AtomicInteger()
     val llmChats = AtomicInteger()
@@ -157,7 +177,7 @@ private class FakeEnv : SplitEnv {
             throw IllegalStateException("HTTP 409: {\"reason\":\"port 50052 is still in use after two retries (another app or an adb shell process holds it)\"}")
         }
         if (addr in diesAfterStop) { // stopped its servers, then the connection or the phone was lost
-            peerRoles[addr] = peerRoles.getValue(addr).mapValues { RoleSnap("STOPPED", null, null) }
+            peerRoles[addr] = peerRoles.getValue(addr).mapValues { RoleSnap(diedState, null, null) }
             throw IllegalStateException("connection lost")
         }
         if (rpcStartDelayMs > 0) delay(rpcStartDelayMs)
@@ -168,18 +188,32 @@ private class FakeEnv : SplitEnv {
             val running = peerRoles.getValue(addr).filterValues { it.state != "STOPPED" }
             calls += "lenderStopsOwn $addr ${running.keys.sorted().joinToString(",")}"
             peerRoles[addr] = peerRoles.getValue(addr).mapValues { RoleSnap("STOPPED", null, null) }
-            return dto("READY").copy(stoppedOwn = running.map { (r, s) -> RestoreItem(r, s.file!!, s.rssMb) }, loan = "loan-$addr")
+            return dto("READY").copy(stoppedOwn = running.map { (r, s) -> RestoreItem(r, s.file!!, s.rssMb) }, loan = issue(addr))
         }
         return dto("READY")
+    }
+
+    /** The token of the loan on [addr]: a new one when the lender holds none ("loan-addr" the first time), else the one it holds. */
+    private fun issue(addr: String): String = currentLoan.computeIfAbsent(addr) {
+        val n = loansIssued.merge(addr, 1, Int::plus)!!
+        if (n == 1) "loan-$addr" else "loan-$addr#$n"
     }
     override suspend fun peerRpcRenew(addr: String, loan: String?): RpcStateDto { calls += "rpcRenew $addr"; renewLoans[addr] = loan ?: "none"; return dto("READY") }
     override suspend fun peerRpcStop(addr: String, loan: String?) {
         reach(addr)
         stopLoans[addr] = loan ?: "none"
+        stopsSent += "$addr ${loan ?: "none"}"
+        val gate = stopGate
+        if (gate != null && (stopGateAddr == null || stopGateAddr == addr)) { stopParked += addr; gate.await() }
         if (addr in refusingStop) throw LoanNotOurs("the loan belongs to Phone X")
+        // the lender's own rule: a stop that names a loan it no longer holds is refused (a stop with no token is taken from the owner)
+        val held = currentLoan[addr]
+        if (loan != null && held != null && loan != held) throw LoanNotOurs("that loan has ended; this phone is lending under a newer one")
+        currentLoan.remove(addr)
         calls += "rpcStop $addr"
     }
     override suspend fun peerRpcState(addr: String): RpcStateDto {
+        firstStateGate.getAndSet(null)?.let { stateParked.set(true); it.await() }
         val n = probeCount.merge(addr, 1, Int::plus)!!
         if (addr in deadRpc) throw IllegalStateException("no answer")
         if (addr in flaky && n % 2 == 0) throw IllegalStateException("one lost check")
@@ -195,7 +229,10 @@ private class FakeEnv : SplitEnv {
     override fun local(role: Role) = local.getValue(role)
     override fun localPeakMb(role: Role): Long? = null
     override fun stopLocal(role: Role) { calls += "stopLocal ${role.tag}"; local[role] = LocalServer(ServerState.STOPPED, null, null) }
-    override fun restoreLocal(role: Role, file: String) { calls += "restoreLocal ${role.tag} $file"; local[role] = LocalServer(ServerState.READY, file, 100) }
+    override fun restoreLocal(role: Role, file: String) {
+        if (restoreThrows) throw IllegalStateException("restore failed")
+        calls += "restoreLocal ${role.tag} $file"; local[role] = LocalServer(ServerState.READY, file, 100)
+    }
 
     override fun startChat(path: String, args: List<String>, readyTimeoutMs: Long): Deferred<ServerStatus> {
         chatStarts.incrementAndGet()
@@ -208,6 +245,7 @@ private class FakeEnv : SplitEnv {
             }
             Chat.FAIL -> d.complete(ServerStatus(Role.CHAT, ServerState.FAILED, reason = "exited with code 1 during start"))
             Chat.HANG -> {}
+            Chat.THROW -> throw IllegalStateException("exec failed")
         }
         return d
     }
@@ -871,5 +909,189 @@ class SplitCoordinatorTest {
         awaitCall("running line") { env.activity.any { it == "set ${SplitCoordinator.ACTIVITY_OWNER} Running a large model with Phone B." } }
         assertTrue("the driver never touches the lending owner", env.activity.none { it.contains(RpcLender.ACTIVITY_OWNER) })
         assertTrue(SplitCoordinator.ACTIVITY_OWNER != RpcLender.ACTIVITY_OWNER)
+    }
+
+    // ---------- a resting state must not look like work: the released DEGRADED split ----------
+
+    @Test fun aDegradedSplitThatReleasedThePhoneSaysSoDoesNotHoldItAndPostsNoBanner() {
+        degradeByLosingC()
+        assertTrue("until the restore the paused split holds the phone", MemCloudLogic.holdsPhone(c.state.value))
+        val s = awaitState("released") { it.released }
+        assertEquals("the split stays DEGRADED so that a re-plan is still offered", Phase.DEGRADED, s.phase)
+        assertFalse(MemCloudLogic.holdsPhone(s))
+        assertNull(MemCloudLogic.activityText(s))
+        awaitCall("the paused banner is cleared and not posted again") { lastActivityIsClear() }
+        runBlocking { delay(100) }
+        assertTrue(lastActivityIsClear())
+    }
+
+    @Test fun aReplanAfterTheReleaseHoldsThePhoneAgainAndStopClearsTheFlag() {
+        degradeByLosingC()
+        awaitState("released") { it.released }
+        awaitCall("the release is over") { env.local[Role.CHAT]!!.state == ServerState.READY }
+        assertNull(c.replan())
+        val s = awaitState("READY again") { it.phase == Phase.READY && it.phones.size == 2 }
+        assertFalse(s.released)
+        assertTrue(MemCloudLogic.holdsPhone(s))
+        c.stop()
+        assertFalse(awaitState("IDLE") { it.phase == Phase.IDLE }.released)
+    }
+
+    @Test fun aBaselineFromAReleasedDegradedSplitDoesNotKeepTheFlag() {
+        degradeByLosingC()
+        awaitState("released") { it.released }
+        awaitCall("the release is over") { env.local[Role.CHAT]!!.state == ServerState.READY }
+        assertNull(c.baseline(5))
+        assertFalse("the phone is used by the baseline now", c.state.value.released)
+        val s = awaitState("baseline result") { it.phase == Phase.IDLE && it.baseline?.running == false }
+        assertFalse(s.released)
+    }
+
+    // ---------- the baseline always ends in IDLE with a result; Stop always reaches IDLE ----------
+
+    @Test fun aBaselineWhoseServerCannotBeStartedEndsInIdleWithAFailedResultAndPutsThisPhoneRight() {
+        env.chatMode = FakeEnv.Chat.THROW
+        assertNull(c.baseline(5, "model.gguf"))
+        val s = awaitState("baseline result") { it.phase == Phase.IDLE && it.baseline?.running == false }
+        assertEquals("FAILED", s.baseline!!.outcome)
+        assertTrue(s.baseline!!.detail.contains("exec failed"))
+        awaitCall("this phone restored") { env.count("restoreLocal chat small.gguf") == 1 && env.count("restoreLocal embed embed.gguf") == 1 }
+        assertNull("nothing is left marked as running", env.saved.last().baselinePending)
+        assertEquals("the small chat server is serving again", ServerState.READY, env.local[Role.CHAT]!!.state)
+        assertTrue(s.phones.isEmpty())
+        // and a second attempt is accepted and runs
+        env.chatMode = FakeEnv.Chat.READY
+        awaitCall("the next attempt is accepted") { c.baseline(5, "model.gguf") == null }
+        awaitState("second result") { it.phase == Phase.IDLE && it.baseline?.running == false && it.baseline?.outcome == "OK" }
+    }
+
+    @Test fun aBaselineWhoseCleanupFailsStillEndsInIdleAndSaysSo() {
+        env.restoreThrows = true
+        assertNull(c.baseline(5, "model.gguf"))
+        val s = awaitState("IDLE") { it.phase == Phase.IDLE && it.baseline?.running == false }
+        assertTrue(s.steps.any { it.contains("putting the models back failed") })
+    }
+
+    @Test fun stopReachesIdleEvenWhenGivingTheModelsBackThrows() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.restoreThrows = true
+        c.stop()
+        val s = awaitState("IDLE") { it.phase == Phase.IDLE }
+        assertTrue(s.steps.last().startsWith("Stopped, but putting the models back failed: restore failed"))
+        awaitCall("activity cleared") { lastActivityIsClear() }
+    }
+
+    // ---------- READY never overwrites DEGRADED ----------
+
+    @Test fun aSplitDegradedWhileTheFinalRefreshIsOutStaysDegraded() {
+        val gate = CompletableDeferred<Unit>()
+        env.firstStateGate.set(gate)
+        assertNull(start("Phone B"))
+        awaitCall("the final refresh is out") { env.stateParked.get() }
+        assertEquals(Phase.LOADING, c.state.value.phase)
+        env.peerList = env.peerList.map { if (it.nodeId == "b") it.copy(away = true) else it }
+        awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+        gate.complete(Unit) // the load job now writes its last step
+        runBlocking { delay(150) }
+        val s = c.state.value
+        assertEquals(Phase.DEGRADED, s.phase)
+        assertNull(s.loadMs)
+        assertTrue(s.steps.none { it.startsWith("Ready after") })
+    }
+
+    // ---------- a lender that shows FAILED is not back ----------
+
+    @Test fun aLenderWhoseModelsShowFailedGetsThemLoadedAgainWhenTheDriverGivesThemBack() {
+        env.diesAfterStop += "10.0.0.3:8787"
+        env.diedState = "FAILED" // its load was refused while rpc-server still held memory
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("FAILED") { it.phase == Phase.FAILED }
+        awaitCall("C loaded back") { env.count("loadModel 10.0.0.3:8787 chat small.gguf") == 1 && env.count("loadModel 10.0.0.3:8787 embed embed.gguf") == 1 }
+    }
+
+    @Test fun recoveryLoadsBackAServerThatShowsFailedOnThePeerAndOnThisPhone() {
+        env.persisted = Persisted(
+            restore = mapOf(
+                "self" to listOf(RestoreItem("chat", "small.gguf")),
+                "b" to listOf(RestoreItem("chat", "small.gguf")),
+            ),
+            peerAddrs = mapOf("b" to "10.0.0.2:8787"),
+        )
+        env.local[Role.CHAT] = LocalServer(ServerState.FAILED, "small.gguf", null)
+        env.peerRoles["10.0.0.2:8787"] = mapOf("chat" to RoleSnap("FAILED", "small.gguf", null), "embed" to RoleSnap("READY", "embed.gguf", 600))
+        runBlocking { c.onAppStart() }
+        assertEquals(1, env.count("loadModel 10.0.0.2:8787 chat small.gguf"))
+        assertEquals(1, env.count("restoreLocal chat small.gguf"))
+    }
+
+    // ---------- a second baseline while the first releases the lenders is refused ----------
+
+    @Test fun aSecondBaselineWhileTheFirstIsStillReleasingTheLendersIsRefused() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        val gate = CompletableDeferred<Unit>()
+        env.stopGate = gate // releasing Phone B takes a while
+        assertNull(c.baseline(5))
+        awaitCall("the release is out") { env.stopParked.isNotEmpty() }
+        val second = c.baseline(5)
+        assertTrue("$second", second != null && second.startsWith("busy: BASELINE"))
+        gate.complete(Unit)
+        awaitState("baseline result") { it.phase == Phase.IDLE && it.baseline?.running == false }
+        assertEquals("only one single-phone server was started", 1, env.calls.count { it.startsWith("startChat -ngl 0") })
+        assertEquals(1, env.count("rpcStop 10.0.0.2:8787"))
+        awaitCall("the next one is accepted") { c.baseline(5) == null }
+        awaitCall("and it runs") { env.calls.count { it.startsWith("startChat -ngl 0") } == 2 }
+    }
+
+    // ---------- a stop that could not be confirmed carries the loan's token, so a late retry cannot end a newer loan ----------
+
+    @Test fun aRetryThatIsOutWhileTheSamePhoneIsLentAgainDoesNotEndTheNewLoan() {
+        val c3 = "10.0.0.3:8787"
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        val first = env.currentLoan.getValue(c3)
+        env.unreachable += c3
+        c.stop()
+        awaitState("IDLE with a notice") { it.phase == Phase.IDLE && it.notices.isNotEmpty() }
+        assertEquals("the record keeps the loan's token", first, env.saved.last().peerLoans["c"])
+        // the lender's lease ran out while the phone was away; the phone answers again, and the retry's stop is out on the network
+        env.currentLoan.remove(c3)
+        val gate = CompletableDeferred<Unit>()
+        env.stopGateAddr = c3
+        env.stopGate = gate
+        env.unreachable -= c3
+        awaitCall("the retry's stop is out") { c3 in env.stopParked }
+        assertEquals("the retry names the loan it is about", "$c3 $first", env.stopsSent.last { it.startsWith(c3) })
+        // meanwhile this driver lends from the same phone again
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY again") { it.phase == Phase.READY }
+        val second = env.currentLoan.getValue(c3)
+        assertTrue("a new loan, a new token", second != first)
+        env.stopGate = null
+        gate.complete(Unit) // the old stop reaches the lender now
+        runBlocking { delay(200) }
+        assertEquals("the new loan was not ended", second, env.currentLoan[c3])
+        assertEquals(Phase.READY, c.state.value.phase)
+        assertEquals("the record of the new split is not settled by the old retry", 0, env.count("rpcStop $c3"))
+        c.stop()
+        awaitState("IDLE") { it.phase == Phase.IDLE && it.notices.isEmpty() }
+        assertEquals(second, env.stopLoans[c3])
+        assertEquals(1, env.count("rpcStop $c3"))
+    }
+
+    @Test fun aRestartedAppSendsTheTokenItSavedAndKeepsItWhenThePhoneIsStillAway() {
+        env.persisted = Persisted(
+            restore = mapOf("b" to listOf(RestoreItem("chat", "small.gguf"))),
+            peerAddrs = mapOf("b" to "10.0.0.2:8787"),
+            peerLoans = mapOf("b" to "saved-token"),
+        )
+        env.unreachable += "10.0.0.2:8787"
+        runBlocking { c.onAppStart() }
+        assertEquals("the record keeps its token", mapOf("b" to "saved-token"), env.saved.last().peerLoans)
+        env.unreachable -= "10.0.0.2:8787"
+        awaitState("record cleared") { it.notices.isEmpty() && it.pendingRestore.isEmpty() }
+        assertEquals("b's stop named the saved loan", "10.0.0.2:8787 saved-token", env.stopsSent.last())
+        assertEquals(Persisted(), env.saved.last())
     }
 }

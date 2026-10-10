@@ -106,8 +106,8 @@ object LlamaArgs {
      * Memory caps of the chat server's prompt cache. This llama.cpp keeps up to 32 context checkpoints per slot (`-ctxcp`, tools/server
      * README) and a host prompt cache of 8192 MiB (`-cram`, common/common.h cache_ram_mib); on a phone the chat server's resident
      * memory was seen growing from about 0.8 GB after load to 3.0-3.9 GB over a session. Six checkpoints and 1 GiB keep the
-     * repeat-question cache hit (never 0: 0 turns the cache off). Both flags exist in the shipped CPU and GPU builds. Whether the
-     * growth stops at these values is for a phone run to show.
+     * repeat-question cache hit (never 0: 0 turns the cache off). Both flags exist in the shipped CPU and GPU builds. A 45-minute phone
+     * run showed the growth stops: 1.1 to 1.6 GB (docs/benchmarks/2026-10-10-evening-checks.md, section 2).
      */
     const val CHAT_CTX_CHECKPOINTS = 6
     const val CHAT_CACHE_RAM_MIB = 1024

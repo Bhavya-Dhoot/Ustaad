@@ -214,6 +214,20 @@ class ModelsUiTest {
         assertFalse(canDelete(null, null))
     }
 
+    // a model whose load failed is not "loaded": the card offers Load and Delete again
+    @Test fun aModelWhoseServerFailedIsNotLoadedAndCanBeLoadedOrDeletedAgain() {
+        fun board(chat: ServerStatus) = mapOf(Role.CHAT to chat, Role.EMBED to st(Role.EMBED, ServerState.STOPPED), Role.RPC to st(Role.RPC, ServerState.STOPPED))
+        val file = "Qwen3.5-4B-Q4_K_M.gguf"
+        assertEquals(Role.CHAT, loadedAs(board(st(Role.CHAT, ServerState.READY, qwen)), file))
+        assertEquals(Role.CHAT, loadedAs(board(st(Role.CHAT, ServerState.STARTING, qwen)), file))
+        assertNull(loadedAs(board(st(Role.CHAT, ServerState.FAILED, qwen)), file))
+        assertNull(loadedAs(board(st(Role.CHAT, ServerState.STOPPED, qwen)), file))
+        assertNull("another file is not this one", loadedAs(board(st(Role.CHAT, ServerState.READY, "/data/models/other.gguf")), file))
+        val failed = loadedAs(board(st(Role.CHAT, ServerState.FAILED, qwen)), file)
+        assertEquals(CardAction.Load(Role.CHAT), cardAction(chatEntry, complete(file), null, failed))
+        assertTrue(canDelete(complete(file), failed))
+    }
+
     // ---- benchmark page ----
 
     private fun result(model: String = "Qwen3.5-4B-Q4_K_M") =

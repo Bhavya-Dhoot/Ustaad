@@ -83,7 +83,7 @@ object MemCloudLogic {
             Phase.PLANNING, Phase.STARTING_PEERS -> if (phones >= 2) "Preparing a large model across ${plural(phones, "phone")}." else "Preparing a large model across phones."
             Phase.LOADING -> "Loading a large model across ${plural(phones, "phone")} (${overallPercent(s.shares, s.phones)} percent)."
             Phase.READY -> "Running a large model with $peers."
-            Phase.DEGRADED -> "A large model is paused: ${s.lostPhone ?: "a phone"} stopped answering."
+            Phase.DEGRADED -> if (s.released) null else "A large model is paused: ${s.lostPhone ?: "a phone"} stopped answering."
             Phase.BASELINE -> "Trying a large model on this phone alone."
             Phase.IDLE, Phase.FAILED -> null
         }
@@ -131,10 +131,15 @@ object MemCloudLogic {
     fun canStart(phase: Phase): Boolean = phase != Phase.READY && phase != Phase.DEGRADED
 
     /**
-     * Whether MemoryCloud is using this phone's model servers or memory in [phase]. FAILED is not: a failed start or run ends
-     * with the same teardown as stop, and the phase then stays FAILED until the owner starts again.
+     * Whether MemoryCloud is using this phone's model servers or memory in state [s]. FAILED is not: a failed start or run ends
+     * with the same teardown as stop, and the phase then stays FAILED until the owner starts again. DEGRADED is not once it has
+     * [MemCloudState.released] the phone (the automatic restore ran the same teardown); a re-plan takes the phone again.
      */
-    fun holdsPhone(phase: Phase): Boolean = phase != Phase.IDLE && phase != Phase.FAILED
+    fun holdsPhone(s: MemCloudState): Boolean = when (s.phase) {
+        Phase.IDLE, Phase.FAILED -> false
+        Phase.DEGRADED -> !s.released
+        else -> true
+    }
 
     /** Buttons the screen offers in DEGRADED: re-plan needs at least one phone left besides this one. */
     fun canReplan(remainingPeers: Int): Boolean = remainingPeers >= 1

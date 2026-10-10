@@ -163,6 +163,14 @@ internal sealed interface CardAction {
     data object None : CardAction
 }
 
+/**
+ * The role whose server is loading or running the file [file], or null. A server in FAILED holds nothing: its model is offered
+ * for Load and Delete again (the `loadedAs` that [cardAction] and [canDelete] take).
+ */
+internal fun loadedAs(status: Map<Role, ServerStatus>, file: String): Role? = Role.entries.firstOrNull { r ->
+    status.getValue(r).let { (it.state == ServerState.READY || it.state == ServerState.STARTING) && it.modelPath?.endsWith("/$file") == true }
+}
+
 internal fun cardAction(entry: CatalogEntry?, present: PresentModel?, dl: DownloadState?, loadedAs: Role?): CardAction = when {
     dl is DownloadState.Downloading || dl == DownloadState.Verifying -> CardAction.None
     present != null && present.complete -> when {
