@@ -52,7 +52,8 @@ const val MAX_BODY_BYTES = 1L shl 20
 /** Response headers on every call: who answered and whether its app is in front. Read by [NodeClient]. */
 const val HEADER_FG = "X-Swarm-Fg"
 const val HEADER_REPLAY = "X-Swarm-Replay"
-const val IDLE_TIMEOUT_S = 3600
+/** A connection silent for this long is closed: 10 minutes covers a non-streamed model call (streams send pings) without keeping dead sockets for an hour. */
+const val IDLE_TIMEOUT_S = 600
 
 val SwarmHeadersPlugin = createApplicationPlugin("SwarmHeaders") {
     onCall { call ->
