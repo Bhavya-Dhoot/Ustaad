@@ -2,6 +2,9 @@ package com.swarmos.app.memcloud
 
 import kotlinx.serialization.Serializable
 
+@Serializable
+data class RestoreItem(val role: String, val file: String, val mb: Long? = null)
+
 /** PLANNING, STARTING_PEERS, LOADING, READY, DEGRADED(peer) and FAILED(reason) as in the brief; IDLE and BASELINE are the two resting states around them. */
 @Serializable
 enum class Phase { IDLE, PLANNING, STARTING_PEERS, LOADING, READY, DEGRADED, FAILED, BASELINE }
@@ -42,8 +45,10 @@ data class PhoneView(
     val loadFraction: Float = 0f,
     val thermalStatus: Int? = null,
     val ramAvailMb: Long? = null,
-    /** Heartbeat round trip from the driver, null for the driver itself and while the peer is away. */
+    /** Heartbeat round trip from the driver (an HTTP call), null for the driver itself and while the peer is away. */
     val rttMs: Double? = null,
+    /** Median TCP connect time from the driver to this phone's rpc-server port: one network round trip, no HTTP on top. */
+    val tcpRttMs: Double? = null,
     /** What was stopped here to make room, e.g. "chat Qwen3.5-4B-Q4_K_M, 5.3 GB". */
     val freed: List<String> = emptyList(),
     /** What comes back when the split is stopped. */
@@ -117,8 +122,10 @@ data class MemCloudState(
     val smallModel: SmallModelView? = null,
     /** Model servers MemoryCloud stopped to make room and has not restored yet, e.g. "Phone A: chat Qwen3.5-4B-Q4_K_M.gguf". */
     val pendingRestore: List<String> = emptyList(),
-    /** Mean heartbeat round trip over the peers in the split. */
+    /** Mean heartbeat round trip (HTTP) over the peers in the split. */
     val rttMs: Double? = null,
+    /** Mean TCP connect round trip to the peers' rpc-server ports; the number ExpertMesh uses. */
+    val tcpRttMs: Double? = null,
     val updatedAtMs: Long = 0,
 )
 
@@ -169,4 +176,6 @@ data class RpcStateDto(
     val args: List<String>,
     /** Name of the phone this one is lending memory to, null when not lending. */
     val lendingTo: String? = null,
+    /** Milliseconds until the loan ends unless the driver renews it, null when not lending. */
+    val leaseMsLeft: Long? = null,
 )

@@ -8,14 +8,15 @@ Build: base id `com.swarmos.app`, branch `worktree-agent-ac34ad0bc1b4ddd46`, lla
 
 ## Trust model for rpc-server
 
-llama.cpp's rpc-server has no authentication: whoever can open its port can read and write tensors on the phone. In this app (`memcloud/RpcWorker.kt`):
+llama.cpp's rpc-server has no authentication: whoever can open its port can read and write tensors on the phone. In this app (`memcloud/RpcLender.kt`, wired to the phone by `RpcWorker.kt`):
 
-1. It starts only on a signed `POST /v1/memcloud/rpc/start` (HMAC with the pairing secret), i.e. from a phone that holds the secret; the sender node id is recorded and shown.
-2. It binds to one address, the link address the driver reached the worker on (Direct group address when Direct is up, else the LAN address). The request is refused for `0.0.0.0`, `::`, `127.x`, or an address that is not a Wi-Fi/Direct interface of the phone. Measured: `-H 192.168.49.1` on A (rpc.log: `endpoint : 192.168.49.1:50052`).
-3. It stops on `POST /v1/memcloud/rpc/stop` when the split ends, and a watchdog stops it when the driver's heartbeat has been away for 10 s. When it stops, the model servers that were stopped to make room are restarted from the list the driver sent with the start request.
-4. While it listens the Memory tab and the phone-wide banner (PhoneActivity "memcloud") say "Phone A is lending memory to Phone C on the direct link (192.168.49.1)", with a Stop lending button.
+1. It starts only on a signed `POST /v1/memcloud/rpc/start` (HMAC with the pairing secret), i.e. from a phone that holds the secret; the sender node id is recorded and shown. One driver at a time holds the loan.
+2. It binds to one address, the link address the driver reached the worker on (Direct group address when Direct is up, else the LAN address), and that address must be in the link module's advertisable set (`LinkRoute.advertisable()`: Wi-Fi, hotspot and Direct interfaces; cellular and every other interface are refused). The request is also refused for `0.0.0.0`, `::` and `127.x`. Measured on a phone (first pass): `-H 192.168.49.1` on A (rpc.log: `endpoint : 192.168.49.1:50052`).
+3. **Lease**: the loan lasts `RpcLender.LEASE_MS` = 10 s and the driver renews it every 3 s (`POST /v1/memcloud/rpc/renew`, accepted only from the phone that started the loan). When the lease runs out the worker stops rpc-server and restarts its own chat and embedding servers from the list the driver sent with the start request, whatever the driver's heartbeat says (a driver that is online but idle, or dead, ends the loan the same way). The driver also stops renewing 60 s after DEGRADED, and `POST /rpc/stop` ends it at once when the split ends.
+4. The file names in that restore list are reduced to a file name (`File(name).name`), must be `.gguf` and must exist in the models folder; anything else is dropped.
+5. While it listens the Memory tab shows "Phone A is lending memory to Phone C on the direct link (192.168.49.1). It stops by itself 10 s after Phone C last renewed the loan." with a Stop lending button, and the phone-wide banner says "Lending memory to Phone C." (PhoneActivity owner `memcloud.lend`; the driver's line uses owner `memcloud.driver`, so neither clears the other's).
 
-Residual risk: any phone on the same link that knows the port can still talk to rpc-server while it listens. The window is the length of a split plus at most 10 s. Not verified on a phone: the 10 s watchdog (the force-stop test below killed the whole worker app, rpc-server included, so the watchdog never had to act).
+Residual risk: any phone on the same link that knows the port can still talk to rpc-server while it listens. The window is the length of a split plus at most 10 s after the driver goes quiet. **The lease, the renew route and the advertisable-address check are covered by unit tests with a fake clock and fake phones (`RpcLenderTest`, 11 tests) and were not run on a phone in the second pass (no phone use). The first-pass phone runs used the earlier heartbeat watchdog, which this lease replaces.**
 
 ## Exact arguments (from the state route `args` and `/proc/<pid>/cmdline`)
 
@@ -60,9 +61,11 @@ First run, 04:56, rpc-server with `-t 8`: READY in 40.3 s but **0.3 tok/s** (64 
 
 Only with two phones the re-plan has no phone to leave out: it reloads on the returned phone. With three phones it drops the lost one (unit-tested: `MemCloudLogicTest`, planner for 2 and 3 peers).
 
-## What the unit tests cover (417 tests in the app, 0 failures; 45 of them in memcloud)
+## What the unit tests cover (443 tests in the app, 0 failures; 71 of them in memcloud)
 
-GGUF header reader (against a synthetic file and, when present, the real 30B header: 48 layers, 128 experts, 8 used), planner for 2, 3 and 4 peers including flags vs llama.cpp's placement rule, untied head pinned to the driver, tied head counted on the remote phone, load-log parser, ExpertMesh arithmetic, DEGRADED and re-plan decisions for two and three phones, thread count, activity line.
+GGUF header reader (a synthetic file; the real 30B header when present: 48 layers, 128 experts, 8 used; corrupt headers with absurd counts give a clean `GgufFormatException`, never an out-of-memory), planner for 2, 3 and 4 peers including flags vs llama.cpp's placement rule, untied head pinned to the driver, tied head counted on the remote phone (so received bytes are compared with planned bytes including the embedding copy), load-log parser, ExpertMesh arithmetic, DEGRADED and re-plan decisions for two and three phones, thread count, activity line.
+
+`SplitCoordinatorTest` (14 tests) runs the whole coordinator against a fake phone: a successful split and stop; a failed rpc start on one of two peers; a llama-server that does not start; a cancelled load (by `stop()` and by cancelling the job); no peers; a lost phone and the 60 s renewal window; a re-plan that leaves the remaining worker running; the app restarting during a split (persisted restore list, peers, baseline); a killed baseline. Each failure path is asserted to send `/rpc/stop` to every touched peer, load back the servers of a peer that never got rpc-server running, restore this phone's chat and embedder exactly once, and clear the activity line. `RpcLenderTest` (11 tests) covers the lease, renewals, one driver at a time, address checks and restore-list sanitising.
 
 ## Not verified (plain list)
 
@@ -70,8 +73,9 @@ GGUF header reader (against a synthetic file and, when present, the real 30B hea
 - Three-phone split: not run; planner and state machine are unit-tested for it.
 - The screens were built and compile, but were **not inspected on a phone** (the link variant held the foreground on both phones, and nobody can touch the screens). Includes the on-screen "fits one phone, splitting is slower" sentence and the lending line.
 - Per-device layer assignment from the llama-server log: the server prints no `load_tensors` lines at default verbosity (observed: 21 lines, none of them buffers), so the parser works on synthetic lines only and the state's `log.buffers` stays empty. The placement is evidenced indirectly: A received 1640 MB, which is its layers (1052 MB by the GGUF) plus a copy of the embedding table for the tied output head.
-- 10 s driver-lost watchdog on a worker, the Stop lending button, PhoneActivity banner: not exercised.
+- The lease, `/rpc/renew`, the Stop lending button and the PhoneActivity banners: unit-tested only, never run on a phone.
 - ExpertMesh screen: not shown on a phone (needs an MoE file in the app's models folder; the 30B file is not there).
+- The ExpertMesh figures are **estimates of network wait only**, from the round trip of a TCP connect to the worker's rpc-server port (median of 3 connects, `AndroidSplitEnv.tcpRttMs`; one network round trip, unlike the HTTP heartbeat, which adds the server's handling). That measurement code was not run on a phone. The planning overhead (1.5 GB per phone for KV cache, buffers and the process) is a planning allowance, and the screen calls the resulting need an estimate.
 - Thermal after 5 minutes of generation, RAM high-water for a model that does not fit: not measured.
 
 ## Pending, ready to run: three phones, Qwen3-30B-A3B-Instruct-2507-Q4_K_M (needs A, B and C)
