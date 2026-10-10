@@ -54,6 +54,40 @@ data class PeerStatus(
 
 
 /**
+ * Holds the heartbeat of one path while a probe saturates it, so a busy link is not read as an absent peer. The hold
+ * ends by itself after [maxMs] (a probe can run for hours) and as soon as the probe reports its first error.
+ */
+class HeartbeatPause(private val maxMs: Long = MAX_PAUSE_MS, private val clock: () -> Long = System::currentTimeMillis) {
+    private var holders = 0
+    private var since = 0L
+    private var errored = false
+
+    @Synchronized
+    fun enter() {
+        if (holders++ == 0) { since = clock(); errored = false }
+    }
+
+    @Synchronized
+    fun exit() {
+        if (holders > 0) holders--
+        if (holders == 0) errored = false
+    }
+
+    /** A probe on this path hit an error: the link is not just busy, so the heartbeat runs again right away. */
+    @Synchronized
+    fun noteError() {
+        if (holders > 0) errored = true
+    }
+
+    @Synchronized
+    fun paused(): Boolean = holders > 0 && !errored && clock() - since < maxMs
+
+    companion object {
+        const val MAX_PAUSE_MS = 30_000L
+    }
+}
+
+/**
  * Pure state machine behind the 1 Hz heartbeat: [missesToAway] consecutive misses mark the peer away,
  * the next success brings it back. Both calls return true when the state changed.
  */

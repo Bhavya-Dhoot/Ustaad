@@ -22,7 +22,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 
 /** One heartbeat session: a peer reached over one link (LAN or DIRECT). */
 class PeerSession(initial: PeerStatus) {
@@ -31,7 +30,8 @@ class PeerSession(initial: PeerStatus) {
     val status: StateFlow<PeerStatus> = _status.asStateFlow()
 
     internal val tracker = HeartbeatTracker()
-    @PublishedApi internal val probing = AtomicInteger(0)
+    /** Holds the heartbeat while a probe saturates this path (at most 30 s, and not after a probe error). */
+    @PublishedApi internal val pause = HeartbeatPause()
     internal var job: Job? = null
     internal val listing = PathListing()
 
@@ -309,7 +309,7 @@ object PeerLinks {
         var next = System.nanoTime()
         var n = 0
         while (currentCoroutineContext().isActive) {
-            if (s.probing.get() == 0) beat(s, n++)
+            if (!s.pause.paused()) beat(s, n++)
             next += HEARTBEAT_MS * 1_000_000
             val wait = (next - System.nanoTime()) / 1_000_000
             if (wait > 0) delay(wait) else next = System.nanoTime()
@@ -475,13 +475,13 @@ object PeerLinks {
         syncRegistry(nodeId)
     }
 
-    /** Hold the heartbeat while a probe saturates the link, so a busy link is not read as an absent peer. */
+    /** Hold the heartbeat while a probe saturates the link, so a busy link is not read as an absent peer (30 s at most). */
     inline fun <T> pausing(s: PeerSession, block: () -> T): T {
-        s.probing.incrementAndGet()
+        s.pause.enter()
         try {
             return block()
         } finally {
-            s.probing.decrementAndGet()
+            s.pause.exit()
         }
     }
 
