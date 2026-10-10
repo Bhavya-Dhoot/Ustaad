@@ -1,0 +1,63 @@
+GPT-6 (Codex); 195 repository files read, some only searched for state flags.
+
+HIGH link/LinkRuntime.kt:327 - Display pairing payload A, then deliver a second pairing intent before the dialog recomposes and tap Pair: confirmPairing reads pending payload B, adopting a secret the displayed dialog never approved. Pass the displayed payload into confirmation and atomically reject confirmation if pending has changed.
+
+HIGH MainActivity.kt:99 - In a debug build, another app can launch the exported activity with an attacker-controlled swarmos://pair link and confirm=true; adoption then replaces the pairing secret without user confirmation. Remove this bypass from exported intents or protect it with a permission unavailable to ordinary apps.
+
+HIGH sched/JobExecutor.kt:143 - Cancel the last caller after the lazy job starts but before its body executes: runJob never enters its cleanup, leaving the reserved slot or waiter and an unresolved deduplication entry permanently behind. Attach idempotent reservation and result cleanup to job completion, including cancellation before execution.
+
+HIGH memcloud/RpcLender.kt:249 - Let release of loan A time out, then start loan B from the same driver while the old restoration retry is in flight: releasePeer discarded A’s token, so the delayed tokenless stop passes the owner check and terminates B. Persist generation tokens through release, retry and restart recovery, and send the original token on every retry.
+
+HIGH memcloud/SplitCoordinator.kt:341 - Stop cancels opJob without joining it or reserving the cleanup operation; a new start can see an inactive job while the cancelled operation’s NonCancellable teardown still runs, allowing that teardown to stop the new server or discard its restoration records. Reserve cleanup under the operation lock and join the previous operation before admitting another.
+
+HIGH memcloud/SplitCoordinator.kt:948 - Submit baseline twice while the first baseline waits for lender teardown: the phase remains READY or DEGRADED, so both calls pass the active-job exception and replace the tracked operation without cancelling its predecessor. Reject an active operation and reserve BASELINE synchronously before launching its work.
+
+HIGH llm/LlamaRuntime.kt:413 - With 5.2 GiB available, concurrently load two distinct compatible 3 GiB models into CHAT and EMBED: independent role locks let both pass the 5.1 GiB admission check before either allocates its weights, collectively overcommitting memory. Reserve memory across roles through loading, or serialize admission until the preceding load reaches READY.
+
+HIGH sched/SwarmLlm.kt:588 - With a READY local model at thermal status 4 and no eligible peer, start a chat stream: localMayStream explicitly permits local inference; at status 3 it also bypasses the cooler-peer preference. Apply the dispatch thermal eligibility rules to local streams and recheck thermal admission on the receiving node.
+
+MEDIUM memcloud/SplitCoordinator.kt:651 - Disable autoload, start a split, and kill the driver after stopLocal but before remember("self"): restart recovery has no record of the local models already stopped. Commit the complete local restoration list before stopping the first role.
+
+MEDIUM memcloud/SplitCoordinator.kt:476 - End a split at thermal status 4: teardown removes the local restoration record before firing asynchronous loads, which fail thermal admission; cooling down never retries them, and killing the app during those loads likewise loses the obligation. Retain the record until each requested model reaches READY, including during startup recovery.
+
+MEDIUM memcloud/SplitCoordinator.kt:493 - End a lender’s loan while it is critically hot: /rpc/stop acknowledges after scheduling restoration, the driver forgets the obligation, and the lender clears its own list before those loads fail; confirmPeerRestored also treats FAILED models as restored. Confirm the expected model files reach READY and retain failed or unfinished restores for retry.
+
+MEDIUM kb/KbEngine.kt:144 - Persist a new pairing secret and kill the app before Knowledge Bank observes it: restart has lost the old key and merely logs a fingerprint mismatch, leaving existing cards and tombstones sealed under the wrong secret; an I/O failure during rekey similarly consumes lastSecret before migration commits. Journal the secret transition durably and advance lastSecret only after successful migration.
+
+MEDIUM AppGraph.kt:100 - Start Choir with a real model while its chat slot is occupied, then stop that model: capacity-zero wakeup lets GatedLlmClient call the replacement FakeLlmClient and return a successful placeholder answer. Wire the existing RealModelGuard clients into internal gates and scheduler providers, preserving any intentional debug simulation separately.
+
+MEDIUM busy/BusyLoop.kt:143 - Start a slow filler job, then switch Hammer off, raise thermal status to 3, unplug below the battery threshold, or background the app without the required exemption: the watcher checks none of those conditions, so inference continues; a job lasting another 90 seconds consumes the entire cooldown without resting. Recheck pause and cooldown conditions during inference and cancel the filler immediately, with an overall generation deadline.
+
+MEDIUM busy/BusyApp.kt:76 - Complete filler prompts while the host prompt cache is full: the bundled native slot-selection code saves previous slot contents without consulting cache_prompt, allowing filler states to evict real cache entries; ordinary real requests can also select the supposedly isolated filler slot. Disable host-cache storage for uncached tasks and reserve the filler slot from real requests.
+
+MEDIUM llm/LlamaRuntime.kt:711 - Let a settled CPU chat server die during filler inference, then let the automatically restarted server die during real work within 120 seconds: filler already consumed the single restart, so the real job leaves the server FAILED. Track filler-owned failures and give them separate recovery accounting and backoff.
+
+MEDIUM memcloud/MemCloudLogic.kt:137 - Lose a lender and wait for DEGRADED’s automatic restoration: teardown releases the split and restores ordinary models, but the phase remains DEGRADED and holdsPhone remains true indefinitely, suppressing filler on an otherwise idle phone. Represent whether resources are still held separately, or transition to a resting phase after restoration finishes.
+
+MEDIUM sched/SwarmLlm.kt:441 - Make several eligible phones answer capability checks but time out generation: the supposed overall deadline is checked only when no endpoint is selected, while same-phone retries and subsequent phones each receive a fresh full attempt budget. Enforce one absolute deadline around dispatch and cap every attempt, retry and wait by its remaining time.
+
+MEDIUM sched/BatchRunner.kt:224 - Accept a batch and kill the coordinator before its coroutine reaches the first update, especially while slotCount waits for capabilities: no initial report was persisted, so the accepted batch ID returns 404 after restart instead of interrupted. Persist an initial running report successfully before acknowledging the batch.
+
+MEDIUM sched/BatchRunner.kt:264 - Slow one worker’s report write beyond one second, allowing another worker through the throttle: both write and rename the same temporary file without serialization, permitting corrupted JSON or an older snapshot to replace newer progress. Serialize snapshot selection and publication, using an atomic replacement with a unique temporary file.
+
+MEDIUM pdu/IndexRunner.kt:35 - Index a shared directory containing one file, delete that last file, and reindex successfully: the empty listing disables removal, retaining searchable and peer-served text indefinitely. Distinguish successful empty enumeration from failed enumeration and sweep after a complete empty listing.
+
+MEDIUM pdu/PduEngine.kt:264 - Use a document provider that stalls during directory enumeration, then press Stop: listing runs before the per-file timeout and before IndexControl tracks a cancellable job, leaving progress.running and indexLock held indefinitely. Bound enumeration, pass CancellationSignal to provider queries, and connect listing cancellation to Stop.
+
+MEDIUM choir/EvalSession.kt:99 - Complete at least one evaluation row, exhaust writable storage, then stop evaluation: saving the partial report throws inside the cancellation handler before running is cleared; the job disappears while the progress state remains running and further Stop calls do nothing. Clear terminal progress in finally and make partial-report persistence best effort.
+
+MEDIUM link/BleProtocol.kt:122 - Queue a signed Bluetooth request behind a slow transfer, or transmit enough fragments with callbacks below each three-second fragment timeout to exceed 30 seconds: the request timeout starts only after transmission, and the receiver rejects the stale signature. Bound queueing, transmission and response with one deadline, sign after acquiring the transmission lock, and drop partially transmitted channels on timeout.
+
+MEDIUM core/SwarmService.kt:208 - Start a swarm batch, then use Stop Ustaad while requests remain: teardown stops servers and locks but leaves Sched’s process-global scope alive, and unchanged registry entries still allow it to launch inference on peers through their saved IP addresses. Cancel and join service-owned feature work during teardown and recreate its scopes when the service restarts.
+
+MEDIUM llm/ModelStore.kt:232 - Cancel a large download during SHA-256 verification and immediately download it again: cancellation removes the owner immediately, but the old non-cancellable hash continues and can rename the shared .part file or overwrite the replacement job’s state. Keep ownership until termination, check cancellation during hashing and before publication, and guard callbacks by job generation.
+
+LOW llm/ModelStore.kt:239 - Fail a model load, then delete its file: FAILED is treated as actively using the model and deletion remains refused despite no child process; RpcWorker.clearCache applies the same incorrect predicate after RPC failure. Test for STARTING, READY or an actual live process instead of every state other than STOPPED.
+
+Fixes of 2026-10-10 that hold: 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 19, 20, 22, 23.
+
+Not examined
+Complete commit-by-commit diff since the first audit; the historical base object was packed and the available Git command could not run.
+Peripheral UI, camera, voice, formatting and helper implementations beyond relevant snippets and state-flag searches.
+Most native llama.cpp implementations, including RPC tensor allocation and cache internals; Android, vendor OS, Ktor and OCR library implementations.
+Tests, build scripts beyond app/app/build.gradle.kts, assets, and documentation other than the two requested audit files.
