@@ -19,6 +19,9 @@ object MemCloudLogic {
         return pool.filter { it in online }
     }
 
+    /** True when a refusal from a lender says its rpc port is still held ("port 50052 is still in use after two retries ..."). */
+    fun portInUse(reason: String?): Boolean = reason != null && reason.contains("in use", ignoreCase = true)
+
     /** Share (0..1) of a phone's planned weights that its rpc-server has received; null when nothing is known yet. */
     fun loadFraction(receivedMb: Long?, weightBytes: Long): Float? {
         if (receivedMb == null || weightBytes <= 0) return null

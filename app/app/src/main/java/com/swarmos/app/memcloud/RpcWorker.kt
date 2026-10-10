@@ -1,5 +1,6 @@
 package com.swarmos.app.memcloud
 
+import android.os.SystemClock
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.llm.LlamaRuntime
@@ -12,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
@@ -23,6 +25,7 @@ import java.io.File
 /** [LenderEnv] on the real phone. */
 object AndroidLenderEnv : LenderEnv {
     override fun nowMs() = System.currentTimeMillis()
+    override fun elapsedMs() = SystemClock.elapsedRealtime() // the lease must not shrink or grow when the wall clock is stepped
     override fun selfName() = AppGraph.registry.self.value.name
     override fun linkAddresses() = AndroidSplitEnv.linkAddresses()
     override fun peerName(nodeId: String?) = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == nodeId }?.info?.name
@@ -49,6 +52,17 @@ object AndroidLenderEnv : LenderEnv {
         ModelsModule.loadModelAsync(role, file)
     }
 
+    override fun ownModels(): List<RestoreItem> = listOf(Role.CHAT, Role.EMBED).mapNotNull { r ->
+        val st = LlamaRuntime.statusOf(r)
+        if (st.state == ServerState.STOPPED) null
+        else st.modelPath?.let { RestoreItem(r.tag, File(it).name, LlamaRuntime.rssKb(r)?.div(1024)) }
+    }
+
+    override fun stopOwn(role: Role) = LlamaRuntime.stop(role)
+
+    override fun memAvailMb() = AppGraph.health.state.value.ramAvailMb
+    override fun thermalStatus() = AppGraph.health.state.value.thermalStatus
+
     override fun setActivity(owner: String, text: String, onStop: () -> Unit) = PhoneActivity.set(owner, text, onStop)
     override fun clearActivity(owner: String) = PhoneActivity.clear(owner)
 
@@ -69,13 +83,16 @@ object RpcWorker {
     /** rpc-server's on-disk tensor cache: LlamaRuntime sets LLAMA_CACHE to filesDir/llama-cache and rpc-server adds /rpc. */
     fun cacheDir(): File = File(File(AppGraph.appContext.filesDir, "llama-cache"), "rpc")
 
-    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): RpcLender.StartResult {
-        val r = lender.start(req, viaAddress, fromNode)
-        if (r is RpcLender.StartResult.Ok && r.ready) ensureTicking()
-        return r
-    }
+    /** Runs in this object's own scope: a driver that gives up or is cut off must not abort a start half way, with this phone's servers already stopped. */
+    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): RpcLender.StartResult =
+        scope.async {
+            lender.start(req, viaAddress, fromNode).also { if (it is RpcLender.StartResult.Ok && it.ready) ensureTicking() }
+        }.await()
 
-    fun renew(fromNode: String?): RpcLender.RenewResult = lender.renew(fromNode)
+    fun renew(fromNode: String?, loan: String? = null): RpcLender.RenewResult = lender.renew(fromNode, loan)
+
+    /** The driver ends its loan; refused when the loan is another phone's or a newer one. */
+    fun stopFor(fromNode: String?, loan: String?): RpcLender.StopResult = lender.stopFrom(fromNode, loan, "stopped by the driver")
 
     fun stop(reason: String): RpcStateDto {
         lender.stop(reason)
@@ -96,7 +113,7 @@ object RpcWorker {
 
     internal fun bindOf(args: List<String>): String? = args.lastIndexOf("-H").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 
-    fun state(): RpcStateDto {
+    fun state(stopped: List<RestoreItem>? = null, loan: String? = null): RpcStateDto {
         val st = LlamaRuntime.statusOf(Role.RPC)
         val running = st.state != ServerState.STOPPED
         val cache = cacheStats()
@@ -119,12 +136,21 @@ object RpcWorker {
             args = st.args,
             lendingTo = lender.lending.value?.driverName,
             leaseMsLeft = lender.leaseMsLeft(),
+            stoppedOwn = stopped,
+            loan = loan,
         )
     }
 
-    private fun cacheStats(): Pair<Long, Int> {
-        val files = cacheDir().listFiles { f -> f.isFile } ?: return 0L to 0
-        return files.sumOf { it.length() } to files.size
+    private fun cacheStats(): Pair<Long, Int> = RpcCache.stats(cacheDir()).let { it.bytes to it.files }
+
+    /** Clears the tensor cache unless rpc-server is running (it may be reading those files) or this phone is lending. */
+    fun clearCache(): RpcCache.ClearResult {
+        val busy = when {
+            lender.lending.value != null -> "this phone is lending memory to ${lender.lending.value?.driverName}; stop the loan first"
+            LlamaRuntime.statusOf(Role.RPC).state != ServerState.STOPPED -> "rpc-server is running; stop it first"
+            else -> null
+        }
+        return RpcCache.clear(cacheDir(), busy)
     }
 
     private fun procKb(pid: Long, key: String): Long? = try {

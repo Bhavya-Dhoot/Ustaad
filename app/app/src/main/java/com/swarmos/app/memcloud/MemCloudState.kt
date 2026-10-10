@@ -122,6 +122,8 @@ data class MemCloudState(
     val smallModel: SmallModelView? = null,
     /** Model servers MemoryCloud stopped to make room and has not restored yet, e.g. "Phone A: chat Qwen3.5-4B-Q4_K_M.gguf". */
     val pendingRestore: List<String> = emptyList(),
+    /** Plain sentences the screen shows next to the status, e.g. "Phone B has not got its models back yet" while a restore is unconfirmed. */
+    val notices: List<String> = emptyList(),
     /** Mean heartbeat round trip (HTTP) over the peers in the split. */
     val rttMs: Double? = null,
     /** Mean TCP connect round trip to the peers' rpc-server ports; the number ExpertMesh uses. */
@@ -135,8 +137,13 @@ data class MemCloudState(
     val peers: List<String> = emptyList(),
     /** "equal" (default) or "ram". */
     val mode: String = "equal",
-    /** One layer count per phone (driver first); overrides [mode]. */
+    /**
+     * One layer count per phone, this phone first and then the other phones in name order (Phone A, B, C), overrides [mode].
+     * Each count is at least 1 and they add up to the model's layer count; the route answers 400 with the reason otherwise.
+     */
     val layers: List<Int>? = null,
+    /** Start even though the plan does not fit a phone's free memory (the deliberate "does not fit" demonstration). Default: refuse. */
+    val force: Boolean = false,
 )
 
 @Serializable data class ReplanRequest(val peers: List<String> = emptyList())
@@ -154,6 +161,16 @@ data class MemCloudState(
     val threads: Int? = null,
     /** Model servers the driver stopped on this phone; they are restarted when rpc-server stops, whoever stops it. */
     val restore: List<RestoreItem> = emptyList(),
+    /**
+     * True: this phone stops its own chat and embedding servers itself, as part of accepting the loan, after it has
+     * recorded [restore] and the lease. False (older drivers send no field): the driver has already stopped them.
+     */
+    val stopOwn: Boolean = false,
+    /**
+     * Megabytes the driver asks of this phone (its share of the weights plus the planning allowance). The phone refuses when its
+     * available memory, with the servers it is about to stop counted as free, is below this. Null: no check (older drivers, or [StartRequest.force]).
+     */
+    val needMb: Long? = null,
 )
 
 @Serializable
@@ -178,4 +195,15 @@ data class RpcStateDto(
     val lendingTo: String? = null,
     /** Milliseconds until the loan ends unless the driver renews it, null when not lending. */
     val leaseMsLeft: Long? = null,
+    /**
+     * Only in the answer to /rpc/start from a phone that understood [RpcStartRequest.stopOwn]: the servers it stopped itself
+     * (empty when none were running). Null from an older phone, which stops nothing and leaves that to the driver.
+     */
+    val stoppedOwn: List<RestoreItem>? = null,
+    /** Only in the answer to /rpc/start: the generation token of the loan, sent back as [LoanRef] on renew and stop. Null from an older phone. */
+    val loan: String? = null,
 )
+
+/** Optional body of /rpc/renew and /rpc/stop: which loan the call is about. Older drivers send no body, which is accepted from the loan's owner. */
+@Serializable
+data class LoanRef(val loan: String? = null)
