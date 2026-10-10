@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.swarmos.app.agent.AgentAccess
 import com.swarmos.app.choir.ChoirModule
 import com.swarmos.app.core.AuditLog
 import com.swarmos.app.core.HealthMonitor
@@ -114,6 +115,7 @@ object AppGraph {
                     secret = chosen
                     if (mustSave) prefs.setSecret(chosen)
                 }
+                AgentAccess.restore(p?.agentAccess ?: false, p?.agentKey) { on, key -> prefs.setAgent(on, key) }
                 audit.load()
                 health.start()
                 audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))
