@@ -1,0 +1,20 @@
+{
+ "pid": 12682,
+ "kill": "",
+ "first_change": null,
+ "after": {
+  "state": "READY",
+  "model": "Qwen3.5-4B-Q4_K_M",
+  "file": "Qwen3.5-4B-Q4_K_M.gguf",
+  "reason": null,
+  "pid": 12682,
+  "port": 8080,
+  "rssMb": 819,
+  "loadMs": 13391,
+  "structuredOutput": true,
+  "notice": "Restarted automatically after the server was killed.",
+  "restarts": 1,
+  "backend": "GPU",
+  "lastError": "0.00.023.772 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)\n0.00.023.836 I srv  init_listene: The UI is disabled\n0.00.023.842 I srv  init_listene: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable\n0.00.025.559 I srv    load_model: loading model '/storage/emulated/0/Android/data/com.swarmos.app/files/models/Qwen3.5-4B-Q4_K_M.gguf'\n0.10.136.718 I cmn          init: llama threadpool init, n_threads = 4\n0.11.937.149 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 4096, kv_unified = 'false'\n0.11.947.040 I srv  llama_server: model loaded\n0.11.947.071 I srv  llama_server: listening on http://127.0.0.1:8080\n0.11.947.071 W srv  llama_server: notice: server default port will be changed to :9931 in a future release (ref: https://github.com/ggml-org/llama.cpp/pull/26508)\n0.12.568.324 I slot get_availabl: id  1 | task -1 | selected slot by LRU, t_last = -1\n0.12.568.430 I slot launch_slot_: id  1 | task 0 | processing task, is_child = 0\n0.13.371.517 I slot print_timing: id  1 | task 0 | prompt eval time =     403.96 ms /    13 tokens (   31.07 ms per token,    32.18 tokens per second)\n0.13.371.550 I slot print_timing: id  1 | task 0 |        eval time =     399.09 ms /     8 tokens (   57.01 ms per token,    17.54 tokens per second)\n0.13.371.555 I slot print_timing: id  1 | task 0 |       total time =     803.05 ms /    21 tokens\n0.13.371.558 I slot print_timing: id  1 | task 0 |    graphs reused =          7\n0.13.371.674 I slot      release: id  1 | task 0 | stop processing: n_tokens = 20, truncated = 0\n0.13.529.605 I slot get_availabl: id  1 | task -1 | selected slot by LCP similarity, f_sim_best = 0.111 (> 0.100 thold), f_keep = 0.150\n0.13.583.035 I slot launch_slot_: id  1 | task 10 | processing task, is_child = 0\n0.19.583.912 I slot print_timing: id  1 | task 10 | n_gen =    100, tg =  17.65 t/s, tg_3s =  17.82 t/s\n[exit] killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer) after 19 s"
+ }
+}

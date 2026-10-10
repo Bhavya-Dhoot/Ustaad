@@ -152,6 +152,20 @@ Columns: Claim | Implemented | Evidence | Improvement over baseline | Verdict | 
 | AG9 | A key holder never sees files in private folders | yes: the route returns only what `PeerResponder.respond` allows | same file: the salary slip in Phone B's Private folder never came back, across the swarm or on Phone B itself, while the owner's own ask finds it; read-only review found no path to it | none | PROVEN WITH CAVEAT | One private file, two questions; reviewed and tested, not attacked |
 | AG10 | An app can run an agent loop on Ustaad: the model decides to search, the app searches, the model answers with the source | yes (the app runs the tool) | same file: 3 of 3 loops correct, about 9 to 10 s each | none | PROVEN WITH CAVEAT | Three questions; the test script was the "app" |
 
+### Hardening and keep busy (added 2026-10-10, gate 9)
+
+| ID | Claim | Implemented | Evidence | Improvement over baseline | Verdict | What to do |
+|---|---|---|---|---|---|---|
+| HD1 | The phones can be kept from idling without getting in the way of real work | yes, `busy/`, Settings switch, off by default | 2026-10-10-hardening-checks.md section 1: 16 minutes on two phones, 63 % and 84 % of the time generating, 0 failed filler jobs; 9 of 9 real requests answered with at most 0.59 s outside the model | before: no such mode | PROVEN WITH CAVEAT | 16 minutes, app in front, charging; the phone sits at thermal status 2 and real work then runs slower: say so |
+| HD2 | The app survives a model server that dies, freezes or is asked to load too much | yes, `llm/` | same file section 2: killed mid-answer, frozen, killed twice, oversized load, each on Phone C | before: a cut answer could pass as complete, a frozen server was never noticed, an oversized load thrashed the phone | PROVEN WITH CAVEAT | One phone, one run each; the frozen-server check failed on the first build of the fix |
+| HD3 | A phone that lends memory gets its own models back when the driver disappears | yes, `memcloud/` | same file section 3: driver app killed two seconds into a start, lender restored itself in 27 s | before: the lender could be left with no models | PROVEN WITH CAVEAT | Two phones, the small model; the large split was not repeated |
+| HD4 | A folder made private stays private across a kill | yes, one transaction plus a repair at start | same file section 4 | before: two writes with a window between them | PROVEN WITH CAVEAT | The kill landed after the call returned; the half-written case is unit-tested only |
+| HD5 | The GPU model server starts faster | yes, OpenCL program cache | same file section 2: 17.9 to 20.6 s before, 12.1 to 13.4 s after | about 5 s per start | PROVEN | Two phones |
+| HD6 | The scheduler adapts to heat, speed and phones joining or leaving | yes, `sched/` | unit tests; on phones: the faster of two phones took 18 of 32 jobs, and two phones reached 99.6 % of the sum of each alone in two runs | 85 % in the one earlier two-phone run (not a controlled comparison) | PROVEN WITH CAVEAT | Heat-based exclusion and mid-batch joining are unit-tested only |
+| HD7 | Fewer sources make Data Union answers start sooner without losing facts | yes, switch off by default | same file section 6: first token 5.09 s to 2.71 s median, 11 of 12 facts in both arms | 47 % on the median | PROVEN WITH CAVEAT | Not checked on the two-file question with three phones; it is off by default for that reason |
+| HD8 | Two model slots per phone, or tuned server settings, raise throughput | tried | 2026-10-10-slots-experiment.md (half the throughput), 2026-10-10-gpu-settings-sweep.md (within 2 %) | none | FALSE AS STATED | Do not claim; say they were measured and rejected |
+| HD9 | The system is production grade | partly | docs/review/2026-10-10-adversarial-audit.md lists what was found and fixed, what is deferred and why | large | UNPROVEN | Say "audited by seven independent reviews and hardened against the failures they found"; do not say production grade |
+
 ### MemoryCloud
 
 | ID | Claim | Implemented | Evidence | Improvement over baseline | Verdict | What to do |
@@ -290,10 +304,10 @@ Row verdicts in section 1 (counted from the tables):
 
 | Verdict | Rows |
 |---|---:|
-| PROVEN | 9 (LK1, LK2, SC2, SC3, CH1, MC2, MC6, UX4, X2) |
-| PROVEN WITH CAVEAT | 66 |
-| UNPROVEN | 22 |
-| FALSE AS STATED | 12 (LK7, LK14, RT4, CH2, CH3, CH5, DU5, DU8, EM3, PS2, PS9, X3) |
-| Total | 109 |
+| PROVEN | 10 (LK1, LK2, SC2, SC3, CH1, MC2, MC6, UX4, X2, HD5) |
+| PROVEN WITH CAVEAT | 72 |
+| UNPROVEN | 23 |
+| FALSE AS STATED | 13 (LK7, LK14, RT4, CH2, CH3, CH5, DU5, DU8, EM3, PS2, PS9, X3, HD8) |
+| Total | 118 |
 
-PS5 (UNPROVEN for the lease, PROVEN for the bind) is counted under its first verdict. Counts after the agent endpoint rows AG1 to AG6 (master df102b8; five PROVEN WITH CAVEAT, one UNPROVEN): 9, 62, 22, 12, total 105. Counts after rows AG7 to AG10 (master c2ca589, four PROVEN WITH CAVEAT): 9, 66, 22, 12, total 109. Counts after the third Knowledge Bank run and the ExpertMesh change (master 0a71f33; KB3, KB7 and EM1 moved from UNPROVEN to PROVEN WITH CAVEAT): 9, 57, 21, 12, total 99; before them, after the three-phone MemoryCloud run (master 3a55086): 9, 54, 24, 12, total 99; before that, after the second end-to-end run (master 1f514b6): 9, 53, 25, 12, total 99; before that: 7, 43, 29, 11, total 90. Rows marked PROVEN WITH CAVEAT are usable only with the limit written in the row.
+PS5 (UNPROVEN for the lease, PROVEN for the bind) is counted under its first verdict. Counts after the agent endpoint rows AG1 to AG6 (master df102b8; five PROVEN WITH CAVEAT, one UNPROVEN): 9, 62, 22, 12, total 105. Counts after rows AG7 to AG10 (master c2ca589, four PROVEN WITH CAVEAT): 9, 66, 22, 12, total 109. Counts after rows HD1 to HD9 (master b8b4777; one PROVEN, six PROVEN WITH CAVEAT, one UNPROVEN, one FALSE AS STATED): 10, 72, 23, 13, total 118. Counts after the third Knowledge Bank run and the ExpertMesh change (master 0a71f33; KB3, KB7 and EM1 moved from UNPROVEN to PROVEN WITH CAVEAT): 9, 57, 21, 12, total 99; before them, after the three-phone MemoryCloud run (master 3a55086): 9, 54, 24, 12, total 99; before that, after the second end-to-end run (master 1f514b6): 9, 53, 25, 12, total 99; before that: 7, 43, 29, 11, total 90. Rows marked PROVEN WITH CAVEAT are usable only with the limit written in the row.

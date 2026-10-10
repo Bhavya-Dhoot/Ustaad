@@ -1,0 +1,44 @@
+{
+ "baseline": [
+  200,
+  [
+   "IMG_3301_Electricity_Bill.jpg"
+  ],
+  0,
+  {
+   "Documents/SwarmDemo": false,
+   "Pictures/SwarmDemo": false
+  }
+ ],
+ "switch_and_kill": [
+  200,
+  {
+   "folder": "Pictures/SwarmDemo",
+   "shared": "false"
+  },
+  "",
+  0.18070125579833984
+ ],
+ "after_kill": [
+  200,
+  [],
+  1,
+  {
+   "Documents/SwarmDemo": false,
+   "Pictures/SwarmDemo": true
+  },
+  2.225644826889038
+ ],
+ "shared_again": [
+  200,
+  200,
+  [
+   "IMG_3301_Electricity_Bill.jpg"
+  ],
+  0,
+  {
+   "Documents/SwarmDemo": false,
+   "Pictures/SwarmDemo": false
+  }
+ ]
+}

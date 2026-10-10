@@ -1,0 +1,108 @@
+{
+ "status": 200,
+ "body": {
+  "node": "Phone C",
+  "roles": {
+   "chat": {
+    "state": "FAILED",
+    "model": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M",
+    "file": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf",
+    "reason": "Not enough free memory to load Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf: it needs about 22.2 GB free (the file is 17.3 GB; rule: 1.2 x file + 1.5 GB) and this phone has 10.0 GB available. Close other apps, choose a smaller model, or split it over phones with MemoryCloud.",
+    "pid": null,
+    "port": 8080,
+    "rssMb": null,
+    "loadMs": null,
+    "structuredOutput": true,
+    "notice": null,
+    "restarts": 0,
+    "backend": null,
+    "lastError": "Not enough free memory to load Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf: it needs about 22.2 GB free (the file is 17.3 GB; rule: 1.2 x file + 1.5 GB) and this phone has 10.0 GB available. Close other apps, choose a smaller model, or split it over phones with MemoryCloud."
+   },
+   "embed": {
+    "state": "READY",
+    "model": "embeddinggemma-300M-Q8_0",
+    "file": "embeddinggemma-300M-Q8_0.gguf",
+    "reason": null,
+    "pid": 11472,
+    "port": 8081,
+    "rssMb": 371,
+    "loadMs": 1397,
+    "structuredOutput": true,
+    "notice": null,
+    "restarts": 0,
+    "backend": null,
+    "lastError": null
+   },
+   "rpc": {
+    "state": "STOPPED",
+    "model": null,
+    "file": null,
+    "reason": null,
+    "pid": null,
+    "port": 50052,
+    "rssMb": null,
+    "loadMs": null,
+    "structuredOutput": true,
+    "notice": null,
+    "restarts": 0,
+    "backend": null,
+    "lastError": null
+   }
+  },
+  "present": [
+   {
+    "file": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf",
+    "bytes": 18556686752,
+    "complete": true,
+    "structuredOutput": true
+   },
+   {
+    "file": "Qwen3.5-4B-Q4_K_M.gguf",
+    "bytes": 2740937888,
+    "complete": true,
+    "structuredOutput": true
+   },
+   {
+    "file": "embeddinggemma-300M-Q8_0.gguf",
+    "bytes": 333590944,
+    "complete": true,
+    "structuredOutput": true
+   },
+   {
+    "file": "gemma-4-E4B_q4_0-it.gguf",
+    "bytes": 5154941280,
+    "complete": true,
+    "structuredOutput": false
+   }
+  ],
+  "wanBytes": 0,
+  "lastDecodeTokPerSec": null,
+  "lastPrefillTokPerSec": null,
+  "bench": null,
+  "benchRunning": false,
+  "thermalStatus": 0,
+  "thermal": "NONE",
+  "benchBlockedReason": null,
+  "sustained": [],
+  "autoload": true,
+  "selftestRunning": false,
+  "useGpu": true
+ },
+ "role": {
+  "state": "FAILED",
+  "model": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M",
+  "file": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf",
+  "reason": "Not enough free memory to load Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf: it needs about 22.2 GB free (the file is 17.3 GB; rule: 1.2 x file + 1.5 GB) and this phone has 10.0 GB available. Close other apps, choose a smaller model, or split it over phones with MemoryCloud.",
+  "pid": null,
+  "port": 8080,
+  "rssMb": null,
+  "loadMs": null,
+  "structuredOutput": true,
+  "notice": null,
+  "restarts": 0,
+  "backend": null,
+  "lastError": "Not enough free memory to load Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf: it needs about 22.2 GB free (the file is 17.3 GB; rule: 1.2 x file + 1.5 GB) and this phone has 10.0 GB available. Close other apps, choose a smaller model, or split it over phones with MemoryCloud."
+ },
+ "seconds": 0.4283912181854248,
+ "mem": "MemAvailable:    6142248 kB"
+}

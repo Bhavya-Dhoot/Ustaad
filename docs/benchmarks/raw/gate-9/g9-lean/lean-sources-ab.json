@@ -1,0 +1,618 @@
+[
+ {
+  "run": 1,
+  "lean": false,
+  "q": "When is my electricity bill due and how much is it?",
+  "status": 200,
+  "ttft": 4242,
+  "total": 7329,
+  "sources": 2,
+  "ok": true,
+  "incomplete": true,
+  "answer": "Your electricity bill is due on 24-Sep-2026 and amounts to INR 2,410.00 [1].",
+  "thermal": "1",
+  "titles": [
+   [
+    "Phone C",
+    "IMG_3301_Electricity_Bill.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2232_Grocery_Receipt.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": false,
+  "q": "What was the total on the restaurant bill?",
+  "status": 200,
+  "ttft": 6875,
+  "total": 11143,
+  "sources": 4,
+  "ok": false,
+  "incomplete": true,
+  "answer": "The total on the restaurant bill from Spice Alley Kitchen was 960.00. This is found in source [1], which lists the bill details including items like paneer tikka and veg biryani.",
+  "thermal": "1",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2233_Restaurant_Bill.jpg"
+   ],
+   [
+    "Phone C",
+    "IMG_3304_Pharmacy_Receipt.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2232_Grocery_Receipt.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2231.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": false,
+  "q": "When is the yoga class?",
+  "status": 200,
+  "ttft": 6353,
+  "total": 11688,
+  "sources": 5,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The yoga class schedule is at Lotus Loft Studio on Mondays and Wednesdays at 6:30 am for beginners, Tuesdays and Thursdays at 7:00 pm for flow, and Saturdays at 8:00 am for stretching. [1]",
+  "thermal": "1",
+  "titles": [
+   [
+    "Phone B",
+    "Yoga_Class_Schedule.txt"
+   ],
+   [
+    "Phone C",
+    "Meeting_Notes_Q4_Planning.txt"
+   ],
+   [
+    "Phone C",
+    "IMG_3302_Hindi_Note.jpg"
+   ],
+   [
+    "Phone B",
+    "Weekend_Trek_Packing_List.txt"
+   ],
+   [
+    "Phone C",
+    "Pet_Vaccination_Record.txt"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": false,
+  "q": "How much was the cab ride?",
+  "status": 200,
+  "ttft": 1902,
+  "total": 8802,
+  "sources": 1,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The cab ride cost INR 312.00. This is from a receipt for RideWave Cabs dated September 14, 2026, showing a distance of 11.4 km and a trip time of 38 minutes. The source explicitly states this is synthetic demo data and not a real document [1].",
+  "thermal": "1",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2234_Cab_Receipt.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": false,
+  "q": "दूध वाले को कितने रुपये देने हैं?",
+  "status": 200,
+  "ttft": 1922,
+  "total": 3581,
+  "sources": 1,
+  "ok": true,
+  "incomplete": true,
+  "answer": "दूध वाले को 1200 रुपये देने हैं। [1]",
+  "thermal": "1",
+  "titles": [
+   [
+    "Phone C",
+    "IMG_3302_Hindi_Note.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": false,
+  "q": "Where is the warranty bill for my laptop?",
+  "status": 200,
+  "ttft": 5979,
+  "total": 13139,
+  "sources": 3,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The warranty bill for your laptop is in source [1]. It is titled \"WARRANTY BILL - LAPTOP\" and was purchased on March 14, 2025, for a Kestrel Aero 14 Laptop. The document includes the invoice number, shop details, and a 12-month standard warranty valid from the purchase date.",
+  "thermal": "1",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2231.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2238_Washing_Machine_Warranty_Card.jpg"
+   ],
+   [
+    "Phone B",
+    "(private file on this phone)"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": true,
+  "q": "When is my electricity bill due and how much is it?",
+  "status": 200,
+  "ttft": 3468,
+  "total": 6548,
+  "sources": 2,
+  "ok": true,
+  "incomplete": true,
+  "answer": "Your electricity bill is due on 24-Sep-2026 and amounts to INR 2,410.00 [1].",
+  "thermal": "1",
+  "titles": [
+   [
+    "Phone C",
+    "IMG_3301_Electricity_Bill.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2232_Grocery_Receipt.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": true,
+  "q": "What was the total on the restaurant bill?",
+  "status": 200,
+  "ttft": 4525,
+  "total": 10588,
+  "sources": 4,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The total on the restaurant bill from SPICE ALLEY KITCHEN was 1056.00. This is found in the receipt dated September 21, 2026, which lists items like Paneer tikka and Veg biryani along with a service charge. [1]",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2233_Restaurant_Bill.jpg"
+   ],
+   [
+    "Phone C",
+    "IMG_3304_Pharmacy_Receipt.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2232_Grocery_Receipt.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2231.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": true,
+  "q": "When is the yoga class?",
+  "status": 200,
+  "ttft": 1861,
+  "total": 7020,
+  "sources": 5,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The yoga classes at Lotus Loft Studio are held on Mondays and Wednesdays at 6:30 am for beginners, Tuesdays and Thursdays at 7:00 pm for flow, and Saturdays at 8:00 am for stretching. [1]",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "Yoga_Class_Schedule.txt"
+   ],
+   [
+    "Phone C",
+    "Meeting_Notes_Q4_Planning.txt"
+   ],
+   [
+    "Phone C",
+    "IMG_3302_Hindi_Note.jpg"
+   ],
+   [
+    "Phone B",
+    "Weekend_Trek_Packing_List.txt"
+   ],
+   [
+    "Phone C",
+    "Pet_Vaccination_Record.txt"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": true,
+  "q": "How much was the cab ride?",
+  "status": 200,
+  "ttft": 1851,
+  "total": 3407,
+  "sources": 1,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The cab ride cost INR 312.00 [1].",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2234_Cab_Receipt.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": true,
+  "q": "दूध वाले को कितने रुपये देने हैं?",
+  "status": 200,
+  "ttft": 1870,
+  "total": 3528,
+  "sources": 1,
+  "ok": true,
+  "incomplete": true,
+  "answer": "दूध वाले को 1200 रुपये देने हैं। [1]",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone C",
+    "IMG_3302_Hindi_Note.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 1,
+  "lean": true,
+  "q": "Where is the warranty bill for my laptop?",
+  "status": 200,
+  "ttft": 4011,
+  "total": 11838,
+  "sources": 3,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The warranty bill for your laptop is located in source [1]. It is titled \"WARRANTY BILL - LAPTOP\" and was purchased on March 14, 2025, for a Kestrel Aero 14 Laptop. The document includes the invoice number, shop details, customer name (Rhea Testerman), item specifics, serial number, and total amount in INR.",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2231.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2238_Washing_Machine_Warranty_Card.jpg"
+   ],
+   [
+    "Phone B",
+    "(private file on this phone)"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": false,
+  "q": "When is my electricity bill due and how much is it?",
+  "status": 200,
+  "ttft": 601,
+  "total": 3700,
+  "sources": 2,
+  "ok": true,
+  "incomplete": true,
+  "answer": "Your electricity bill is due on 24-Sep-2026 and amounts to INR 2,410.00 [1].",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone C",
+    "IMG_3301_Electricity_Bill.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2232_Grocery_Receipt.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": false,
+  "q": "What was the total on the restaurant bill?",
+  "status": 200,
+  "ttft": 6791,
+  "total": 9050,
+  "sources": 4,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The total on the restaurant bill from Spice Alley Kitchen was 1056.00. [1]",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2233_Restaurant_Bill.jpg"
+   ],
+   [
+    "Phone C",
+    "IMG_3304_Pharmacy_Receipt.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2232_Grocery_Receipt.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2231.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": false,
+  "q": "When is the yoga class?",
+  "status": 200,
+  "ttft": 6298,
+  "total": 12300,
+  "sources": 5,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The yoga class is scheduled on Mondays and Wednesdays at 6:30 am for beginners, Tuesdays and Thursdays at 7:00 pm for flow, and Saturdays at 8:00 am for stretching. This information is from a demo schedule for Lotus Loft Studio [1].",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "Yoga_Class_Schedule.txt"
+   ],
+   [
+    "Phone C",
+    "Meeting_Notes_Q4_Planning.txt"
+   ],
+   [
+    "Phone C",
+    "IMG_3302_Hindi_Note.jpg"
+   ],
+   [
+    "Phone B",
+    "Weekend_Trek_Packing_List.txt"
+   ],
+   [
+    "Phone C",
+    "Pet_Vaccination_Record.txt"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": false,
+  "q": "How much was the cab ride?",
+  "status": 200,
+  "ttft": 1895,
+  "total": 4770,
+  "sources": 1,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The cab ride cost INR 312.00 [1]. This receipt is labeled as synthetic demo data and not a real document.",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2234_Cab_Receipt.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": false,
+  "q": "दूध वाले को कितने रुपये देने हैं?",
+  "status": 200,
+  "ttft": 1914,
+  "total": 3549,
+  "sources": 1,
+  "ok": true,
+  "incomplete": true,
+  "answer": "दूध वाले को 1200 रुपये देने हैं। [1]",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone C",
+    "IMG_3302_Hindi_Note.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": false,
+  "q": "Where is the warranty bill for my laptop?",
+  "status": 200,
+  "ttft": 5938,
+  "total": 12430,
+  "sources": 3,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The warranty bill for your laptop is in source [1]. It is titled \"WARRANTY BILL - LAPTOP\" and belongs to the Kestrel Aero 14 Laptop purchased on March 14, 2025, with a total amount of INR 74,990.00.",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2231.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2238_Washing_Machine_Warranty_Card.jpg"
+   ],
+   [
+    "Phone B",
+    "(private file on this phone)"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": true,
+  "q": "When is my electricity bill due and how much is it?",
+  "status": 200,
+  "ttft": 3508,
+  "total": 6776,
+  "sources": 2,
+  "ok": true,
+  "incomplete": true,
+  "answer": "Your electricity bill is due on 24-Sep-2026 and the amount payable is INR 2,410.00 [1].",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone C",
+    "IMG_3301_Electricity_Bill.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2232_Grocery_Receipt.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": true,
+  "q": "What was the total on the restaurant bill?",
+  "status": 200,
+  "ttft": 3633,
+  "total": 5799,
+  "sources": 4,
+  "ok": false,
+  "incomplete": true,
+  "answer": "The total on the restaurant bill from Spice Alley Kitchen was 960.00. [1]",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2233_Restaurant_Bill.jpg"
+   ],
+   [
+    "Phone C",
+    "IMG_3304_Pharmacy_Receipt.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2232_Grocery_Receipt.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2231.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": true,
+  "q": "When is the yoga class?",
+  "status": 200,
+  "ttft": 1893,
+  "total": 6704,
+  "sources": 5,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The yoga classes are held on Mondays and Wednesdays at 6:30 am for beginners, Tuesdays and Thursdays at 7:00 pm for flow, and Saturdays at 8:00 am for stretching. [1]",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "Yoga_Class_Schedule.txt"
+   ],
+   [
+    "Phone C",
+    "Meeting_Notes_Q4_Planning.txt"
+   ],
+   [
+    "Phone C",
+    "IMG_3302_Hindi_Note.jpg"
+   ],
+   [
+    "Phone B",
+    "Weekend_Trek_Packing_List.txt"
+   ],
+   [
+    "Phone C",
+    "Pet_Vaccination_Record.txt"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": true,
+  "q": "How much was the cab ride?",
+  "status": 200,
+  "ttft": 1827,
+  "total": 5415,
+  "sources": 1,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The cab ride cost INR 312.00 [1]. This receipt is labeled as \"SYNTHETIC DEMO DATA\" and is not a real document.",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2234_Cab_Receipt.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": true,
+  "q": "दूध वाले को कितने रुपये देने हैं?",
+  "status": 200,
+  "ttft": 1955,
+  "total": 3607,
+  "sources": 1,
+  "ok": true,
+  "incomplete": true,
+  "answer": "दूध वाले को 1200 रुपये देने हैं। [1]",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone C",
+    "IMG_3302_Hindi_Note.jpg"
+   ]
+  ]
+ },
+ {
+  "run": 2,
+  "lean": true,
+  "q": "Where is the warranty bill for my laptop?",
+  "status": 200,
+  "ttft": 3993,
+  "total": 9697,
+  "sources": 3,
+  "ok": true,
+  "incomplete": true,
+  "answer": "The warranty bill for your laptop is located in source [1]. It is titled \"WARRANTY BILL - LAPTOP\" and details a purchase of a Kestrel Aero 14 Laptop with a 12-month standard warranty valid from March 14, 2025.",
+  "thermal": "2",
+  "titles": [
+   [
+    "Phone B",
+    "IMG_2231.jpg"
+   ],
+   [
+    "Phone B",
+    "IMG_2238_Washing_Machine_Warranty_Card.jpg"
+   ],
+   [
+    "Phone B",
+    "(private file on this phone)"
+   ]
+  ]
+ }
+]

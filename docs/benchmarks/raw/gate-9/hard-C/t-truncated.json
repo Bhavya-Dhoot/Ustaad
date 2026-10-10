@@ -1,0 +1,8 @@
+{
+ "status": 500,
+ "body": {
+  "error": "EOFException"
+ },
+ "pid": 12559,
+ "kill": ""
+}

@@ -1,0 +1,87 @@
+{
+ "loop1": {
+  "first": [
+   200,
+   {
+    "id": "chatcmpl-0c763246926c43f298508e32",
+    "object": "chat.completion",
+    "created": 1791626709,
+    "model": "ustaad-local",
+    "system_fingerprint": "ustaad:Phone C",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_efbff1ad122c452085890024",
+         "type": "function",
+         "function": {
+          "name": "search_files",
+          "arguments": "{\"query\":\"electricity bill due date amount\"}"
+         }
+        }
+       ]
+      },
+      "finish_reason": "tool_calls"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 217,
+     "completion_tokens": 26,
+     "total_tokens": 243
+    }
+   }
+  ],
+  "search": [
+   200,
+   {
+    "object": "list",
+    "data": [
+     {
+      "phone": "Phone C",
+      "title": "IMG_3301_Electricity_Bill.jpg",
+      "date": "2026-09-20",
+      "kind": "photo",
+      "snippet": "SUNRISE POWER DISTRIBUTION (DEMO) ELECTRICITY BILL 09/2026 Account ID: 8829104921 Meter : 48821 Units used : 312 Due date : 24-Sep-202 6 Amount payable INR 2,410.00 Status: PAID via UPI SYNTHETIC DEMO DATA - not a real document"
+     }
+    ],
+    "scope": "phone",
+    "incomplete": false,
+    "phones": [
+     {
+      "name": "Phone C",
+      "status": "ok"
+     }
+    ]
+   }
+  ],
+  "final": [
+   200,
+   {
+    "id": "chatcmpl-ae294a6850c743bab92f32cc",
+    "object": "chat.completion",
+    "created": 1791626717,
+    "model": "ustaad-local",
+    "system_fingerprint": "ustaad:Phone C",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "Your electricity bill is due on September 24, 2026, and the amount payable is INR 2,410.00. This information comes from the file \"IMG_3301_Electricity_Bill.jpg\" on Phone C."
+      },
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 167,
+     "completion_tokens": 59,
+     "total_tokens": 226
+    }
+   }
+  ]
+ }
+}

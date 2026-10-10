@@ -1,0 +1,55 @@
+{"t": 0, "thermal": "0", "enabled": true, "state": "paused_model_restarted", "jobsDone": 0, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 0, "secondsGenerating": 0.0, "share60s": 0.0}
+{"t": 15, "thermal": "0", "enabled": true, "state": "paused_model_restarted", "jobsDone": 0, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 0, "secondsGenerating": 0.0, "share60s": 0.0}
+{"t": 30, "thermal": "0", "enabled": true, "state": "paused_model_restarted", "jobsDone": 0, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 0, "secondsGenerating": 0.0, "share60s": 0.0}
+{"t": 45, "thermal": "0", "enabled": true, "state": "paused_model_restarted", "jobsDone": 0, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 0, "secondsGenerating": 0.0, "share60s": 0.0}
+{"t": 61, "thermal": "0", "enabled": true, "state": "paused_model_restarted", "jobsDone": 0, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 0, "secondsGenerating": 0.0, "share60s": 0.0}
+{"t": 76, "thermal": "0", "enabled": true, "state": "paused_model_restarted", "jobsDone": 0, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 0, "secondsGenerating": 0.0, "share60s": 0.0}
+{"t": 91, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 6, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 109, "secondsGenerating": 11.702, "share60s": 0.195}
+{"t": 106, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 10, "jobsCancelled": 1, "jobsFailed": 0, "tokens": 171, "secondsGenerating": 18.564, "share60s": 0.309}
+{"t": 121, "thermal": "0", "enabled": true, "state": "waiting_for_idle", "jobsDone": 17, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 320, "secondsGenerating": 31.303, "share60s": 0.522}
+{"t": 136, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 22, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 435, "secondsGenerating": 41.519, "share60s": 0.692}
+{"t": 151, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 25, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 486, "secondsGenerating": 48.582, "share60s": 0.608}
+{"t": 166, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 31, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 604, "secondsGenerating": 63.614, "share60s": 0.743}
+{"t": 182, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 38, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 738, "secondsGenerating": 78.684, "share60s": 0.79}
+{"t": 197, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 43, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 871, "secondsGenerating": 93.801, "share60s": 0.862}
+{"t": 212, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 48, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1019, "secondsGenerating": 108.886, "share60s": 0.996}
+{"t": 227, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 54, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1135, "secondsGenerating": 123.915, "share60s": 0.996}
+{"t": 242, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 61, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1265, "secondsGenerating": 138.967, "share60s": 0.995}
+{"t": 257, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 67, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1391, "secondsGenerating": 154.059, "share60s": 0.995}
+{"t": 272, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 72, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1506, "secondsGenerating": 169.119, "share60s": 0.995}
+{"t": 288, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 78, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1620, "secondsGenerating": 184.167, "share60s": 0.995}
+{"t": 303, "thermal": "0", "enabled": true, "state": "running", "jobsDone": 84, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1740, "secondsGenerating": 199.186, "share60s": 0.995}
+{"t": 318, "thermal": "1", "enabled": true, "state": "running", "jobsDone": 90, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1864, "secondsGenerating": 214.225, "share60s": 0.995}
+{"t": 333, "thermal": "1", "enabled": true, "state": "running", "jobsDone": 94, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 1978, "secondsGenerating": 229.275, "share60s": 0.996}
+{"t": 348, "thermal": "1", "enabled": true, "state": "running", "jobsDone": 99, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2118, "secondsGenerating": 244.441, "share60s": 0.996}
+{"t": 364, "thermal": "1", "enabled": true, "state": "running", "jobsDone": 104, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2228, "secondsGenerating": 259.985, "share60s": 0.996}
+{"t": 386, "thermal": "2", "enabled": true, "state": "running", "jobsDone": 109, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2322, "secondsGenerating": 282.154, "share60s": 0.997}
+{"t": 402, "thermal": "2", "enabled": true, "state": "half_duty", "jobsDone": 113, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2391, "secondsGenerating": 293.119, "share60s": 0.917}
+{"t": 417, "thermal": "2", "enabled": true, "state": "half_duty", "jobsDone": 116, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2451, "secondsGenerating": 300.362, "share60s": 0.787}
+{"t": 432, "thermal": "2", "enabled": true, "state": "half_duty", "jobsDone": 119, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2517, "secondsGenerating": 309.1, "share60s": 0.681}
+{"t": 447, "thermal": "2", "enabled": true, "state": "half_duty", "jobsDone": 121, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2581, "secondsGenerating": 316.467, "share60s": 0.552}
+{"t": 462, "thermal": "2", "enabled": true, "state": "half_duty", "jobsDone": 123, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2624, "secondsGenerating": 323.443, "share60s": 0.497}
+{"t": 477, "thermal": "1", "enabled": true, "state": "half_duty", "jobsDone": 126, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2670, "secondsGenerating": 331.151, "share60s": 0.513}
+{"t": 492, "thermal": "1", "enabled": true, "state": "running", "jobsDone": 130, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2746, "secondsGenerating": 342.697, "share60s": 0.56}
+{"t": 508, "thermal": "1", "enabled": true, "state": "running", "jobsDone": 135, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2856, "secondsGenerating": 357.741, "share60s": 0.688}
+{"t": 523, "thermal": "1", "enabled": true, "state": "running", "jobsDone": 141, "jobsCancelled": 3, "jobsFailed": 0, "tokens": 2964, "secondsGenerating": 372.77, "share60s": 0.815}
+{"t": 562, "thermal": "?", "_err": "ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host"}
+{"t": 580, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 598, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 616, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 634, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 652, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 673, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 693, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 711, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 731, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 750, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 769, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 788, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 808, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 834, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 854, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 873, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+{"t": 894, "thermal": "?", "_err": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"}
+
+[exited with code 0]

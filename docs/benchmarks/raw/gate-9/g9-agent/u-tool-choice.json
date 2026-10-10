@@ -1,0 +1,187 @@
+{
+ "required": [
+  200,
+  {
+   "id": "chatcmpl-cde6bb8ba0da418d920ed785",
+   "object": "chat.completion",
+   "created": 1791626665,
+   "model": "ustaad-local",
+   "system_fingerprint": "ustaad:Phone C",
+   "choices": [
+    {
+     "index": 0,
+     "message": {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "call_a07f50915fb2445489a16ed4",
+        "type": "function",
+        "function": {
+         "name": "search_files",
+         "arguments": "{\"query\":\"capital of France\"}"
+        }
+       }
+      ]
+     },
+     "finish_reason": "tool_calls"
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 236,
+    "completion_tokens": 19,
+    "total_tokens": 255
+   }
+  }
+ ],
+ "none": [
+  200,
+  {
+   "id": "chatcmpl-e4bbd510c43949f8bcd15e9f",
+   "object": "chat.completion",
+   "created": 1791626677,
+   "model": "ustaad-local",
+   "system_fingerprint": "ustaad:Phone C",
+   "choices": [
+    {
+     "index": 0,
+     "message": {
+      "role": "assistant",
+      "content": "I don't have access to real-time data, so I can't tell you the current weather in Bengaluru.\n\nTo get the most accurate and up-to-date forecast, please check a reliable weather service like:\n*   **Google Search** (just type \"weather Bengaluru\")\n*   **AccuWeather**\n*   **Weather.com**\n*   **IMD India** (India Meteorological Department)\n\nThese sources will provide you with the current temperature, humidity, wind speed, and any immediate rain alerts for the city."
+     },
+     "finish_reason": "stop"
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 22,
+    "completion_tokens": 113,
+    "total_tokens": 135
+   }
+  }
+ ],
+ "named": [
+  200,
+  {
+   "id": "chatcmpl-de78d85a29064b29a898c994",
+   "object": "chat.completion",
+   "created": 1791626682,
+   "model": "ustaad-local",
+   "system_fingerprint": "ustaad:Phone C",
+   "choices": [
+    {
+     "index": 0,
+     "message": {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "call_f1da405c28a44a32a6a0fef3",
+        "type": "function",
+        "function": {
+         "name": "set_alarm",
+         "arguments": "{\"time\":\"19:00\",\"label\":\"Reminder\"}"
+        }
+       }
+      ]
+     },
+     "finish_reason": "tool_calls"
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 137,
+    "completion_tokens": 25,
+    "total_tokens": 162
+   }
+  }
+ ],
+ "unknown_named": [
+  400,
+  {
+   "error": {
+    "message": "`tool_choice.function.name` \"nope\" is not one of the declared tools.",
+    "type": "invalid_request_error",
+    "code": "invalid_value"
+   }
+  }
+ ],
+ "duplicate": [
+  400,
+  {
+   "error": {
+    "message": "`tools[3].function.name` \"get_weather\" is declared twice.",
+    "type": "invalid_request_error",
+    "code": "invalid_value"
+   }
+  }
+ ],
+ "with_response_format": [
+  400,
+  {
+   "error": {
+    "message": "`response_format` cannot be used together with `tools`: both constrain the answer.",
+    "type": "invalid_request_error",
+    "code": "unsupported_parameter"
+   }
+  }
+ ],
+ "two_step_final": [
+  200,
+  {
+   "id": "chatcmpl-98980fe74d564232a2bc6177",
+   "object": "chat.completion",
+   "created": 1791626690,
+   "model": "ustaad-local",
+   "system_fingerprint": "ustaad:Phone C",
+   "choices": [
+    {
+     "index": 0,
+     "message": {
+      "role": "assistant",
+      "content": "The current weather in Bengaluru is 24°C with light rain."
+     },
+     "finish_reason": "stop"
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 42,
+    "completion_tokens": 16,
+    "total_tokens": 58
+   }
+  }
+ ],
+ "two_step_first": [
+  200,
+  {
+   "id": "chatcmpl-a0977002b8074783be9b7c94",
+   "object": "chat.completion",
+   "created": 1791626687,
+   "model": "ustaad-local",
+   "system_fingerprint": "ustaad:Phone C",
+   "choices": [
+    {
+     "index": 0,
+     "message": {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "call_54d9088ee42248369629c86a",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"city\":\"Bengaluru\",\"unit\":\"celsius\"}"
+        }
+       }
+      ]
+     },
+     "finish_reason": "tool_calls"
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 186,
+    "completion_tokens": 31,
+    "total_tokens": 217
+   }
+  }
+ ]
+}

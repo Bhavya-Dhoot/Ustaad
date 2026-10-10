@@ -1,0 +1,215 @@
+[
+ {
+  "prompt": "What's the weather in Bengaluru right now?",
+  "want": "get_weather",
+  "got": "get_weather",
+  "args": {
+   "city": "Bengaluru",
+   "unit": "celsius"
+  },
+  "content": null,
+  "finish": "tool_calls",
+  "seconds": 6.92,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 336,
+   "completion_tokens": 31,
+   "total_tokens": 367
+  }
+ },
+ {
+  "prompt": "Is it raining in Mumbai?",
+  "want": "get_weather",
+  "got": "get_weather",
+  "args": {
+   "city": "Mumbai",
+   "unit": "celsius"
+  },
+  "content": null,
+  "finish": "tool_calls",
+  "seconds": 3.64,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 18,
+   "completion_tokens": 29,
+   "total_tokens": 47
+  }
+ },
+ {
+  "prompt": "How hot is it in Delhi, in fahrenheit?",
+  "want": "get_weather",
+  "got": "get_weather",
+  "args": {
+   "city": "Delhi",
+   "unit": "fahrenheit"
+  },
+  "content": null,
+  "finish": "tool_calls",
+  "seconds": 3.66,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 23,
+   "completion_tokens": 29,
+   "total_tokens": 52
+  }
+ },
+ {
+  "prompt": "Wake me up at 6:30 tomorrow morning.",
+  "want": "set_alarm",
+  "got": "set_alarm",
+  "args": {
+   "time": "06:30",
+   "label": "Wake up tomorrow"
+  },
+  "content": null,
+  "finish": "tool_calls",
+  "seconds": 4.05,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 24,
+   "completion_tokens": 33,
+   "total_tokens": 57
+  }
+ },
+ {
+  "prompt": "Set an alarm for 21:15 called medicine.",
+  "want": "set_alarm",
+  "got": "set_alarm",
+  "args": {
+   "time": "21:15",
+   "label": "medicine"
+  },
+  "content": null,
+  "finish": "tool_calls",
+  "seconds": 3.81,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 25,
+   "completion_tokens": 31,
+   "total_tokens": 56
+  }
+ },
+ {
+  "prompt": "Find my laptop warranty bill.",
+  "want": "search_files",
+  "got": "search_files",
+  "args": {
+   "query": "laptop warranty bill"
+  },
+  "content": null,
+  "finish": "tool_calls",
+  "seconds": 3.12,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 18,
+   "completion_tokens": 24,
+   "total_tokens": 42
+  }
+ },
+ {
+  "prompt": "Where did I save the electricity bill?",
+  "want": "search_files",
+  "got": "search_files",
+  "args": {
+   "query": "electricity bill"
+  },
+  "content": null,
+  "finish": "tool_calls",
+  "seconds": 3.08,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 20,
+   "completion_tokens": 23,
+   "total_tokens": 43
+  }
+ },
+ {
+  "prompt": "Look in my files for the yoga class schedule.",
+  "want": "search_files",
+  "got": "search_files",
+  "args": {
+   "query": "yoga class schedule"
+  },
+  "content": null,
+  "finish": "tool_calls",
+  "seconds": 3.16,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 22,
+   "completion_tokens": 24,
+   "total_tokens": 46
+  }
+ },
+ {
+  "prompt": "What is 12 times 12?",
+  "want": null,
+  "got": null,
+  "args": null,
+  "content": "12 times 12 is 144.",
+  "finish": "stop",
+  "seconds": 2.14,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 22,
+   "completion_tokens": 13,
+   "total_tokens": 35
+  }
+ },
+ {
+  "prompt": "Say hello in Hindi.",
+  "want": null,
+  "got": null,
+  "args": null,
+  "content": "नमस्ते! (Namaste!)",
+  "finish": "stop",
+  "seconds": 1.8,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 17,
+   "completion_tokens": 10,
+   "total_tokens": 27
+  }
+ },
+ {
+  "prompt": "What is the capital of France?",
+  "want": null,
+  "got": null,
+  "args": null,
+  "content": "The capital of France is **Paris**.",
+  "finish": "stop",
+  "seconds": 1.73,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 19,
+   "completion_tokens": 9,
+   "total_tokens": 28
+  }
+ },
+ {
+  "prompt": "Write a two-line poem about the sea.",
+  "want": null,
+  "got": null,
+  "args": null,
+  "content": "The sea whispers secrets to the wind,\nA boundless blue where dreams begin.",
+  "finish": "stop",
+  "seconds": 2.59,
+  "tool_ok": true,
+  "arg_ok": true,
+  "usage": {
+   "prompt_tokens": 21,
+   "completion_tokens": 18,
+   "total_tokens": 39
+  }
+ }
+]
