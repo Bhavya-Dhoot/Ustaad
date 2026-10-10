@@ -476,13 +476,13 @@ private fun RunSection(r: RunTrace, now: Long) {
 private fun LaneCard(lane: LaneTrace) {
     val tokens = (lane.r1?.tokens ?: 0) + (lane.r2?.tokens ?: 0)
     val wall = lane.latest?.wallMs
-    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY || lane.status == LaneStatus.NO_MODEL
+    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY || lane.status == LaneStatus.NO_MODEL || lane.status == LaneStatus.NO_VALID_ANSWER
     val streaming = lane.status == LaneStatus.SOLVING || lane.status == LaneStatus.REVISING || lane.status == LaneStatus.JUDGING
     Lane(
         name = lane.name,
         role = roleLabel(lane.role),
         trailing = {
-            if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; LaneStatus.NO_MODEL -> "No model"; else -> "Error" }, caution = true, small = true)
+            if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; LaneStatus.NO_MODEL -> "No model"; LaneStatus.NO_VALID_ANSWER -> "No answer"; else -> "Error" }, caution = true, small = true)
             else {
                 Text("$tokens tok", style = Mono11Dim)
                 Spacer(Modifier.width(8.dp))

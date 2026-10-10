@@ -19,13 +19,13 @@ enum class CheckResult { VERIFIED, REFUTED, NOT_CHECKABLE }
 enum class PickMethod { TOOL, MAJORITY, CONFIDENCE, JUDGE, ABSTAIN }
 
 @Serializable
-enum class LaneStatus { WAITING, SOLVING, ANSWERED, REVISING, REVISED, JUDGING, TIMED_OUT, ERROR, AWAY, NO_MODEL }
+enum class LaneStatus { WAITING, SOLVING, ANSWERED, REVISING, REVISED, JUDGING, TIMED_OUT, ERROR, AWAY, NO_MODEL, NO_VALID_ANSWER }
 
 object ChoirLimits {
     const val WIRE_MAX_BYTES = 1024
     const val PROBLEM_MAX_CHARS = 640
     const val ANSWER_MAX_CHARS = 60
-    const val STEP_MAX_CHARS = 80
+    const val STEP_MAX_CHARS = 100
     const val MAX_STEPS = 3
     const val REASON_MAX_CHARS = 120
 }
@@ -129,6 +129,8 @@ data class NodeAnswer(
     val tokens: Int = 0,
     val ms: Long = 0,
     val error: String? = null,
+    /** The first reply had no valid answer, so the node asked once more with a shorter instruction (tokens count both). */
+    val retried: Boolean = false,
 )
 
 @Serializable

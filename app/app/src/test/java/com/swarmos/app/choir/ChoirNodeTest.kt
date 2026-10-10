@@ -55,7 +55,7 @@ class ChoirNodeTest {
         assertEquals("test-model", a.model)
         assertFalse(a.fake)
         val req = llm.requests.single()
-        assertEquals(ChoirPrompts.SOLVE_SCHEMA, req.jsonSchema)
+        assertEquals(ChoirPrompts.solveSchema(Kind.MATH, listOf('A', 'B', 'C', 'D')), req.jsonSchema)
         assertEquals(300, req.maxTokens)
         assertEquals(ChoirPrompts.TEMP_SOLVER, req.temperature, 1e-9)
         assertEquals(5, req.seed)
@@ -75,7 +75,7 @@ class ChoirNodeTest {
     }
 
     @Test fun schemaIsValidJsonWithTheThreeFieldsAndAtMostThreeSteps() {
-        val root = com.swarmos.app.core.SwarmJson.parseToJsonElement(ChoirPrompts.SOLVE_SCHEMA) as kotlinx.serialization.json.JsonObject
+        val root = com.swarmos.app.core.SwarmJson.parseToJsonElement(ChoirPrompts.solveSchema(Kind.MATH)) as kotlinx.serialization.json.JsonObject
         val props = root["properties"] as kotlinx.serialization.json.JsonObject
         assertEquals(setOf("key_steps", "answer", "confidence"), props.keys)
         assertEquals("3", ((props["key_steps"] as kotlinx.serialization.json.JsonObject)["maxItems"]).toString())
@@ -123,8 +123,8 @@ class ChoirNodeTest {
         assertEquals(150, req.maxTokens)
         val user = req.messages.last().content
         assertTrue(user.contains("six times seven"))
-        assertTrue(user.contains("Your earlier answer: 42"))
-        assertTrue(user.contains("36 (6*6=36)"))
+        assertTrue(user, user.contains("Your earlier answer. Answer: 42"))
+        assertTrue(user, user.contains("1. Answer: 36\n   Steps: 6*6=36"))
         assertFalse(user.contains("Phone"))   // no author names
         assertNotNull(node(llm).revise(ReviseRequest("never-seen", listOf(Candidate("1")))).error)
     }
