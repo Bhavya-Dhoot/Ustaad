@@ -1,0 +1,378 @@
+{
+ "id": "d359c637c0f4497d",
+ "mode": "local",
+ "state": "done",
+ "total": 32,
+ "done": 32,
+ "failed": 0,
+ "wallMs": 128194.030108,
+ "totalTokens": 1332,
+ "aggTokPerSec": 10.390499455222884,
+ "fake": false,
+ "models": [
+  "Qwen3.5-4B-Q4_K_M"
+ ],
+ "perPhone": [
+  {
+   "nodeId": "82d2676d",
+   "jobs": 32,
+   "tokens": 1332,
+   "tokPerSec": 10.390499455222884,
+   "decodeTokPerSec": 11.903942689486728
+  }
+ ],
+ "items": [
+  {
+   "index": 0,
+   "jobId": "d359c637c0f4497d-0",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **lighthouse** is a tower, building, or other type of structure designed to emit a light (and often a sound or color signal) to warn ships of dangerous coastal areas, such as rocks, reefs, or shallow waters,",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3625.028,
+   "error": null
+  },
+  {
+   "index": 1,
+   "jobId": "d359c637c0f4497d-1",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a special type of whole number that has exactly **two distinct positive divisors**: the number **1** and itself.\n\nIn simpler terms, a prime number cannot be divided evenly by any other number except for",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3607.982,
+   "error": null
+  },
+  {
+   "index": 2,
+   "jobId": "d359c637c0f4497d-2",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Moon is Earth's only natural satellite, a rocky body that orbits our planet and reflects sunlight to illuminate our night sky.",
+   "promptTokens": 4,
+   "completionTokens": 26,
+   "genMs": 1946.248,
+   "error": null
+  },
+  {
+   "index": 3,
+   "jobId": "d359c637c0f4497d-3",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3672.029,
+   "error": null
+  },
+  {
+   "index": 4,
+   "jobId": "d359c637c0f4497d-4",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **transistor** is a semiconductor device used to amplify or switch electronic signals and electrical power. It is one of the basic building blocks of modern electronics, forming the foundation of all digital devices like computers, smartphones, and televisions.",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3622.111,
+   "error": null
+  },
+  {
+   "index": 5,
+   "jobId": "d359c637c0f4497d-5",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has **exactly two distinct positive divisors**: 1 and itself.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3595.969,
+   "error": null
+  },
+  {
+   "index": 6,
+   "jobId": "d359c637c0f4497d-6",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Silk Road was a vast network of trade routes connecting East Asia to the Mediterranean that facilitated the exchange of goods, culture, and ideas between civilizations.",
+   "promptTokens": 4,
+   "completionTokens": 31,
+   "genMs": 2330.778,
+   "error": null
+  },
+  {
+   "index": 7,
+   "jobId": "d359c637c0f4497d-7",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3609.837,
+   "error": null
+  },
+  {
+   "index": 8,
+   "jobId": "d359c637c0f4497d-8",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A compiler is a program that translates source code written in a high-level programming language into machine code that a computer can directly execute.",
+   "promptTokens": 4,
+   "completionTokens": 27,
+   "genMs": 2019.901,
+   "error": null
+  },
+  {
+   "index": 9,
+   "jobId": "d359c637c0f4497d-9",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. It is \"",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3686.489,
+   "error": null
+  },
+  {
+   "index": 10,
+   "jobId": "d359c637c0f4497d-10",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The printing press is a mechanical device that allows for the rapid and mass production of printed materials like books and newspapers.",
+   "promptTokens": 4,
+   "completionTokens": 24,
+   "genMs": 1802.793,
+   "error": null
+  },
+  {
+   "index": 11,
+   "jobId": "d359c637c0f4497d-11",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3581.753,
+   "error": null
+  },
+  {
+   "index": 12,
+   "jobId": "d359c637c0f4497d-12",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **printing press** is a device used to reproduce text and images, and it revolutionized the world by making the mass production of books and other printed materials possible.\n\nHere is a breakdown of its key aspects:\n\n*   **",
+   "promptTokens": 18,
+   "completionTokens": 48,
+   "genMs": 3596.791,
+   "error": null
+  },
+  {
+   "index": 13,
+   "jobId": "d359c637c0f4497d-13",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3675.747,
+   "error": null
+  },
+  {
+   "index": 14,
+   "jobId": "d359c637c0f4497d-14",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Coral reefs are vibrant underwater ecosystems built by tiny marine animals called coral polyps that secrete calcium carbonate to form hard structures.",
+   "promptTokens": 4,
+   "completionTokens": 27,
+   "genMs": 2024.599,
+   "error": null
+  },
+  {
+   "index": 15,
+   "jobId": "d359c637c0f4497d-15",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3572.873,
+   "error": null
+  },
+  {
+   "index": 16,
+   "jobId": "d359c637c0f4497d-16",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4428.981,
+   "error": null
+  },
+  {
+   "index": 17,
+   "jobId": "d359c637c0f4497d-17",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you try",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4411.769,
+   "error": null
+  },
+  {
+   "index": 18,
+   "jobId": "d359c637c0f4497d-18",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Bread yeast is a single-celled fungus used in baking to ferment dough by converting sugars into carbon dioxide and alcohol.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 2377.152,
+   "error": null
+  },
+  {
+   "index": 19,
+   "jobId": "d359c637c0f4497d-19",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4463.634,
+   "error": null
+  },
+  {
+   "index": 20,
+   "jobId": "d359c637c0f4497d-20",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you try",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4464.555,
+   "error": null
+  },
+  {
+   "index": 21,
+   "jobId": "d359c637c0f4497d-21",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The heart is a muscular organ that pumps blood throughout the body to deliver oxygen and nutrients.",
+   "promptTokens": 17,
+   "completionTokens": 19,
+   "genMs": 1747.678,
+   "error": null
+  },
+  {
+   "index": 22,
+   "jobId": "d359c637c0f4497d-22",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4407.354,
+   "error": null
+  },
+  {
+   "index": 23,
+   "jobId": "d359c637c0f4497d-23",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4449.871,
+   "error": null
+  },
+  {
+   "index": 24,
+   "jobId": "d359c637c0f4497d-24",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **Pythagorean theorem** is a fundamental principle in geometry that describes the relationship between the three sides of a **right-angled triangle**.\n\nIt states that the square of the length of the hypotenuse (the side opposite the",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4438.98,
+   "error": null
+  },
+  {
+   "index": 25,
+   "jobId": "d359c637c0f4497d-25",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Ganges is a major river in India and Bangladesh that holds immense religious significance for Hindus.",
+   "promptTokens": 4,
+   "completionTokens": 20,
+   "genMs": 1827.048,
+   "error": null
+  },
+  {
+   "index": 26,
+   "jobId": "d359c637c0f4497d-26",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a simple error-detecting code used to verify the integrity of data. It works by taking a block of data (such as a file, a message, or a network packet) and performing a mathematical calculation on",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4441.841,
+   "error": null
+  },
+  {
+   "index": 27,
+   "jobId": "d359c637c0f4497d-27",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **Pythagorean theorem** is a fundamental principle in geometry that describes the relationship between the three sides of a right-angled triangle. It states that the square of the length of the hypotenuse (the side opposite the right angle",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4451.243,
+   "error": null
+  },
+  {
+   "index": 28,
+   "jobId": "d359c637c0f4497d-28",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **rainbow** is a natural optical phenomenon that appears as a multicolored circular arc in the sky. It is created when sunlight is refracted (bent), reflected, and dispersed by water droplets in the atmosphere, such",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4476.327,
+   "error": null
+  },
+  {
+   "index": 29,
+   "jobId": "d359c637c0f4497d-29",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **Pythagorean theorem** (often misspelled as \"Pythagorean\") is a fundamental principle in geometry that describes the relationship between the three sides of a **right-angled triangle**.\n\nIt states that the square of the",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4472.048,
+   "error": null
+  },
+  {
+   "index": 30,
+   "jobId": "d359c637c0f4497d-30",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Tea is a hot beverage made by steeping dried leaves or buds of the *Camellia sinensis* plant in hot water.",
+   "promptTokens": 4,
+   "completionTokens": 29,
+   "genMs": 2676.943,
+   "error": null
+  },
+  {
+   "index": 31,
+   "jobId": "d359c637c0f4497d-31",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **Pythagorean theorem** is a fundamental principle in geometry that describes the relationship between the three sides of a right-angled triangle. It states that the square of the length of the hypotenuse (the side opposite the right angle",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 4389.348,
+   "error": null
+  }
+ ]
+}

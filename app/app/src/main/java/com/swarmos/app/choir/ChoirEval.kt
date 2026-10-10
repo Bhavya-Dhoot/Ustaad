@@ -25,6 +25,8 @@ data class EvalRow(
     val choirCorrect: Boolean = false,
     val choirMs: Long = 0,
     val rounds: Int = 1,
+    /** "unanimous", "majority" or "": why round 2 did not run (see RunTrace.round2Skip). */
+    val round2Skip: String = "",
     val tokens: Int = 0,
     val nodesAnswered: Int = 0,
     val nodesTotal: Int = 0,
@@ -89,6 +91,8 @@ data class EvalReport(
     val rows: List<EvalRow>,
     /** Stopped from the phone before the last problem: the rows are what was finished. */
     val stopped: Boolean = false,
+    /** The run used the majority policy for round 2 (pref `choir_majority_skips_round2`); false is today's policy. */
+    val majoritySkipsRound2: Boolean = false,
 )
 
 @Serializable
@@ -140,6 +144,7 @@ object ChoirEval {
             choirCorrect = t.choirCorrect == true,
             choirMs = t.totals.wallMs,
             rounds = t.totals.rounds,
+            round2Skip = t.round2Skip,
             tokens = t.totals.tokens,
             nodesAnswered = t.lanes.count { it.latest != null },
             nodesTotal = t.lanes.size,

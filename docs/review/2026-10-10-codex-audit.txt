@@ -1,0 +1,74 @@
+GPT-6 (Codex); 88 repository files read.
+Kotlin paths below are relative to app/app/src/main/java/com/swarmos/app/. Static inspection only.
+
+BLOCKER llm/LlamaServerClient.kt:63 - Clean EOF before [DONE] still produces a successful completion at line 77; truncated text can be cached and signed as complete - require parser.done before publishing success.
+
+BLOCKER sched/RemoteLlmClient.kt:51 - A valid 1024-token answer at the measured hot speed of 6.8 tokens/s needs roughly 150 seconds, but remote HTTP expires after 60 seconds; SwarmLlm also limits attempts to 75 seconds - give generation its own explicit budget, separate from liveness detection.
+
+BLOCKER sched/BatchRunner.kt:138 - Killing the coordinator destroys batch inputs, progress and completed results; restarting cannot resume the returned batch ID, and surviving phones cannot take over - journal inputs and completed job IDs/results before acknowledging progress; support checkpoint-based resumption.
+
+HIGH sched/SwarmLlm.kt:319 - If eligible phones remain occupied, dispatch loops forever without an overall deadline or FIFO admission; another coordinator can continuously win newly freed slots - bound outstanding requests and total waiting time, and queue them fairly.
+
+HIGH pdu/PduStore.kt:136 - Kill between the folder update and chunk update: the folder appears private, but peer search reads the old public flag from chunks at line 227 and continues returning snippets - update both tables in one transaction.
+
+HIGH kb/KbService.kt:131 - Kill after marking a shared card revoked but before inserting its tombstone: subsequent revoke says “Already revoked,” so remote copies remain usable. Receiving a tombstone has the reverse crash window at lines 221–222 - transact tombstone and card revocation together; repair inconsistent rows on startup.
+
+HIGH memcloud/SplitCoordinator.kt:393 - The driver stops lenders’ models before establishing their RPC leases at line 398. Driver death between those calls leaves stopped models with no lender-side expiry or restore record - make lender preparation one leased operation, recording restoration state before stopping models.
+
+HIGH memcloud/RpcLender.kt:92 - Concurrent drivers can both observe no loan before startRpc suspends, then both receive success. Additionally, MemCloudModule.kt:48 accepts stop without checking the current owner, so an old driver’s delayed stop can kill a replacement loan - reserve ownership before suspension and require a lease-generation token on renew/stop.
+
+HIGH link/NodeClient.kt:76 - Bluetooth-only hostFor returns bt:<nodeId>, but substringBefore(':') passes “bt” to nodeAt; candidates become empty and execution falls into an invalid HTTP URL - pass the complete transport address to nodeAt and explicitly reject unsupported bulk requests over Bluetooth.
+
+HIGH sched/Scheduler.kt:17 - Status 2 receives no thermal penalty despite HealthMonitor’s declared policy; statuses 3–6 remain eligible when every phone is hot. Local streaming also bypasses ranking in SwarmLlm.kt:140 - use the moderate threshold for steering and enforce severe-status admission locally, with hysteresis before reopening capacity.
+
+HIGH memcloud/SplitCoordinator.kt:282 - A plan explicitly estimated not to fit merely adds warnings, then stops models and loads anyway. Ordinary LlamaRuntime loads also perform no RAM admission check - reject clearly oversized plans before teardown and reserve conservative load-peak headroom; retain an explicit experimental override.
+
+HIGH sched/BatchRunner.kt:152 - Starting a ninth batch evicts the first batch’s status even if it is running; its coroutine keeps consuming resources and its ID returns 404. Concurrent batch count is unlimited - evict completed reports only and reject excess active batches before launching workers.
+
+HIGH core/Signer.kt:25 - The MAC excludes X-Swarm-Node and X-Swarm-Req, although NodeServer.kt:170 trusts both as the deduplication key. A captured valid mutation can be replayed within 30 seconds with changed headers, bypassing deduplication or claiming another identity - bind both headers into a versioned request MAC.
+
+HIGH pdu/Extractors.kt:78 - The advertised 2 MB text limit is applied after readBytes reads the entire file; selecting a very large text file can exhaust the app heap - cap bytes while reading, before allocation and decoding.
+
+HIGH memcloud/RpcWorker.kt:25 - Lease durations use wall-clock time. A forward clock correction expires a healthy loan; a backward correction followed by driver death can retain RPC memory and stopped local models far beyond ten seconds - use elapsedRealtime for lease deadlines and watchdog durations.
+
+MEDIUM sched/SwarmLlm.kt:343 - Lose the response just after a phone finishes: retry runs the same job ID on another phone, whose volatile, node-local cache knows nothing about that completion. Inference can run twice and return a different answer - describe execution as at-least-once; reconcile uncertain results before reassignment and persist one accepted result.
+
+MEDIUM AppGraph.kt:156 - Two overlapping secret changes publish RAM state immediately but launch independent persistence jobs; an older write can finish last, restoring the wrong pairing secret after restart - serialize publication and persistence through one writer.
+
+MEDIUM core/AuditLog.kt:201 - Kill after deleting an archive but before writing audit.pruned: verification subsequently reports unexplained chain removal, and startup does not recover the missing anchor - durably record prune intent/anchor before deleting archives and finish interrupted pruning on startup.
+
+MEDIUM kb/KbService.kt:209 - Rehosting normally rotates the pairing secret, but stored cards and tombstones retain their old MACs. After all phones re-pair, previously unsynced records still fail validation; old revocations can remain unapplied - migrate authenticated local records to the new key generation or retain explicit verification generations.
+
+MEDIUM memcloud/SplitCoordinator.kt:470 - Replanning from three healthy phones to two changes participants but retains the excluded lender in rpcStarted; renewals continue indefinitely, keeping its memory occupied and models stopped - stop and remove lenders excluded from the new plan before loading it.
+
+THROUGHPUT
+The reported 75% is decode time, not total model activity: BatchRunner.kt:59 drops promptMs. Single-phone runs have approximately the same fraction. The 85% two-phone result has only one valid run; cold-load attribution remains unproven.
+
+1. SwarmLlm.kt:236 - Move capability network calls outside the shared dispatch mutex and refresh peers independently. Expected: remove up to 1.5 seconds of dispatch blockage from one slow peer. Measure mutex wait and completion-to-next-request gaps, including one deliberately slow peer.
+
+2. LlamaServerClient.kt:56,84 - Verify loopback connection reuse, then use a persistent cancellable transport if disconnect defeats reuse (inferred). Expected: a small short-job improvement. Measure accepted TCP connections per batch and request setup time; NodeClient’s Ktor client is already persistent.
+
+3. LlamaServerClient.kt:100 - Whole-result jobs still parse token-by-token SSE before serializing a complete peer response. Use a cancellable non-streaming path for these jobs. Expected: lower parsing/allocation overhead, especially under concurrent work. Compare app CPU, allocations and wall time with identical outputs.
+
+4. SwarmLlm.kt:323 - Preserve phone affinity for repeated conversational prefixes when capacity permits; cache_prompt is already enabled. Expected: reduced prefill for long reused prefixes, with no assured bench32 gain. Measure prompt_n, prompt_ms and TTFT per phone.
+
+5. BatchRunner.kt:32 - Recalculate worker capacity when phones join or models become ready. Expected: newly available phones contribute immediately instead of remaining constrained by the startup worker count. Start with one ready phone, add two during a long batch, and measure utilization and completion time.
+
+6. SwarmLlm.kt:77,84,428 - Replace synchronized busy retries with jitter and wake waiting dispatchers on verified slot releases. Expected: fewer 429 collisions and shorter idle gaps under competing coordinators; own-job completion already wakes dispatchers. Measure 429s and slot-release-to-admission delay across simultaneous batches.
+
+7. Scheduler.kt:17 - Steer load at thermal status 2 and shed heavy work at severe status. Expected: better sustained useful throughput while cooler capacity exists. Compare ten-minute runs from equal temperatures, recording completed tokens, thermal transitions, decode speed and rejected work.
+
+HOLDS
+- Within one live executor, repeated identical job IDs share execution/results; cancellation paths release counted slots.
+- Allocation uses measured decode speed, queue depth and battery state; it is not static round-robin.
+- Remote streams reject missing or incorrect final MACs; streaming failover stops once content has reached the caller.
+- Raw query strings and response bodies are authenticated; wrong secrets and clock skew exceeding 30 seconds fail closed.
+- One-second heartbeat request deadlines have substantial headroom over the documented 40–60 ms LAN round trips.
+- Caller cancellation closes the local llama connection; runtime epochs prevent stale starts from overriding Stop.
+- GPU startup and warmup failures have CPU fallback; RPC thread counts follow the allowed CPU set.
+- Indexing captures the embedder, checks batches, retains pending document references and commits each document with its FTS rows transactionally.
+- Modified Knowledge Bank content is rejected; normally completed tombstone-before-card delivery preserves revocation.
+- The agent listener requires loopback addressing and a bearer key; file access is checked again before returning results.
+
+Codex session ID: 01a124c9-fc9f-72c0-a10f-05c8c47d5861
+Resume in Codex: codex resume 01a124c9-fc9f-72c0-a10f-05c8c47d5861

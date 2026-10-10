@@ -103,6 +103,19 @@ object SharePolicy {
     /** The privacy a chunk gets: the folder's stored choice, forced to private for a Private folder. */
     fun effectivePrivate(folder: String, stored: Boolean): Boolean = stored || mustStayPrivate(folder)
 
+    /**
+     * The folders among [publicChunkFolders] (folders that still hold public chunks) whose chunks must be forced private: the folder's
+     * stored choice is private, it has no stored choice (a new folder starts private), or its path has a Private segment.
+     */
+    fun foldersToForce(publicChunkFolders: Collection<String>, storedPrivate: Map<String, Boolean>): List<String> =
+        publicChunkFolders.distinct().filter { effectivePrivate(it, storedPrivate[it] ?: startsPrivate(it)) }
+
+    /**
+     * The privacy a document gets when it lands in [folder] without being read again (a photo moved in the gallery): the folder's stored
+     * choice, private when this is the first time the folder is seen, and always private for a Private folder.
+     */
+    fun privacyAfterMove(folder: String, storedChoice: Boolean?): Boolean = effectivePrivate(folder, storedChoice ?: startsPrivate(folder))
+
     fun isShareable(c: Candidate): Boolean = !c.isPrivate && !mustStayPrivate(c.folder)
 
     class PeerSelection(val shared: List<Candidate>, val withheldPrivate: Int)
@@ -188,8 +201,33 @@ object PromptBuilder {
     fun sourceLine(n: Int, deviceName: String, hit: PduHit): String =
         "[$n] $deviceName · ${hit.title} · ${day(hit.dateMs)}: ${hit.snippet.replace(Regex("\\s+"), " ")}"
 
-    fun build(question: String, sources: List<MergedHit>): ChatRequest {
-        val body = sources.mapIndexed { i, m -> sourceLine(i + 1, m.deviceName, m.hit) }.joinToString("\n")
+    /** Lean sources: a source stays only if its score is at least this share of the best score. */
+    const val LEAN_SCORE_SHARE = 0.6
+
+    /** Lean sources: at most this many, saved answers (knowledge bank cards) included. */
+    const val LEAN_MAX_SOURCES = 4
+
+    /**
+     * Which of [sources] the model is given when lean sources are on, with each one's place in [sources] (its [IndexedValue.index];
+     * the number printed for the model stays index + 1, so the citations still match the list on the screen). A source with no
+     * snippet (the owner's private-file placeholder) is left out, a source whose score is under [LEAN_SCORE_SHARE] of the best score
+     * among the others is left out, at most [LEAN_MAX_SOURCES] are kept in their original order, and a saved answer's text is cut
+     * to the snippet maximum like every other source.
+     */
+    fun leanSelect(sources: List<MergedHit>): List<IndexedValue<MergedHit>> {
+        val usable = sources.withIndex().filter { it.value.hit.snippet.isNotBlank() }
+        val top = usable.maxOfOrNull { it.value.hit.score } ?: return emptyList()
+        return usable.filter { it.value.hit.score >= LEAN_SCORE_SHARE * top }.take(LEAN_MAX_SOURCES).map { iv ->
+            val h = iv.value.hit
+            if (h.kind == "kb" && h.snippet.length > Snippets.MAX) {
+                IndexedValue(iv.index, iv.value.copy(hit = h.copy(snippet = h.snippet.take(Snippets.MAX - 1).trimEnd() + "\u2026")))
+            } else iv
+        }
+    }
+
+    fun build(question: String, sources: List<MergedHit>, lean: Boolean = false): ChatRequest {
+        val chosen = if (lean) leanSelect(sources) else sources.withIndex().toList()
+        val body = chosen.joinToString("\n") { sourceLine(it.index + 1, it.value.deviceName, it.value.hit) }
         return ChatRequest(
             messages = listOf(
                 ChatMessage("system", SYSTEM),

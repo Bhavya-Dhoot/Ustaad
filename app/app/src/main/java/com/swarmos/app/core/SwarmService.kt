@@ -35,6 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -47,8 +48,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Foreground service (connectedDevice): keeps the process alive and runs the node server and the model servers.
- * The wake lock and the low-latency Wi-Fi lock are held only while the app is in front or a peer is online
- * ([ServicePolicy]). "Stop Ustaad" (notification or settings) stops the server, the models and the locks; starting
+ * The wake lock and the low-latency Wi-Fi lock are held only while the app is in front, a peer is online, or model work
+ * runs on this phone ([ServicePolicy]); the wake lock has a timeout that is renewed while that holds. "Stop Ustaad" (notification or settings) stops the server, the models and the locks; starting
  * again is [start]. All start-up and shut-down work runs off the main thread.
  */
 class SwarmService : Service() {
@@ -122,16 +123,29 @@ class SwarmService : Service() {
         }
     }
 
-    /** Locks follow [ServicePolicy.holdLocks]: app in front or a peer online. */
+    /**
+     * Locks follow [ServicePolicy.holdLocks]: app in front, a peer online, or model work running on this phone. The wake lock
+     * has a timeout and is renewed every [ServicePolicy.WAKE_LOCK_RENEW_MS] for as long as the condition holds.
+     */
     private suspend fun holdLocksWhileNeeded() {
         combine(
             AppGraph.foreground,
             AppGraph.registry.peers.map { ServicePolicy.onlinePeers(it) },
-        ) { front, peers -> ServicePolicy.holdLocks(front, peers) }
+            LlamaRuntime.working,
+        ) { front, peers, working -> ServicePolicy.holdLocks(front, peers, working) }
             .distinctUntilChanged()
-            .collect { hold ->
-                if (hold) acquireLocks() else releaseLocks()
-                AppGraph.audit.append("service.locks", JsonObject(mapOf("held" to JsonPrimitive(hold))))
+            .collectLatest { hold ->
+                if (!hold) {
+                    releaseLocks()
+                    AppGraph.audit.append("service.locks", JsonObject(mapOf("held" to JsonPrimitive(false))))
+                    return@collectLatest
+                }
+                acquireLocks()
+                AppGraph.audit.append("service.locks", JsonObject(mapOf("held" to JsonPrimitive(true))))
+                while (true) { // cancelled by collectLatest when the condition ends
+                    delay(ServicePolicy.WAKE_LOCK_RENEW_MS)
+                    renewWakeLock()
+                }
             }
     }
 
@@ -163,7 +177,7 @@ class SwarmService : Service() {
         if (wakeLock == null) {
             wakeLock = applicationContext.getSystemService(PowerManager::class.java)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "swarmos:service")
-                .apply { setReferenceCounted(false); acquire() }
+                .apply { setReferenceCounted(false); acquire(ServicePolicy.WAKE_LOCK_TIMEOUT_MS) }
         }
         if (wifiLock == null) {
             // the Wi-Fi lock is managed by link/WifiLocks (low latency while in front with a swarm, high perf otherwise);
@@ -171,6 +185,12 @@ class SwarmService : Service() {
             com.swarmos.app.link.WifiLocks.start(applicationContext)
             wifiLock = true
         }
+    }
+
+    /** Pushes the wake lock's timeout out again (a non-reference-counted lock restarts its timer on every acquire). */
+    @Synchronized
+    private fun renewWakeLock() {
+        wakeLock?.acquire(ServicePolicy.WAKE_LOCK_TIMEOUT_MS)
     }
 
     @Synchronized
@@ -186,6 +206,7 @@ class SwarmService : Service() {
         if (!tornDown.compareAndSet(false, true)) return
         releaseLocks()
         LlamaRuntime.onServiceStopped()
+        AppGraph.health.stop() // the 2 s sampler runs only while the service does (start() calls AppGraph.health.start() again)
         server?.stop()
         server = null
         agent?.stop()

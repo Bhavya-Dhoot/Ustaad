@@ -37,11 +37,16 @@ data class IndexReport(
     val errors: List<String> = emptyList(),
     val error: String? = null,
     val devanagariRuns: Int = 0,
+    /** Files that sat in another folder than the one stored and were moved (their privacy was decided again for the new folder). */
+    val moved: Int = 0,
+    /** Files removed from the index: gone from the phone, or not in the finished run's listing. */
+    val removed: Int = 0,
 )
 
 /** Mutable counters for one run. */
 class IndexStats(val label: String) {
     var seen = 0; var indexed = 0; var unchanged = 0; var noText = 0; var failed = 0; var chunks = 0; var devanagariRuns = 0
+    var moved = 0; var removed = 0
     var embedMs = 0L; var totalMs = 0L
     val ocrMs = ArrayList<Long>()
     val files = ArrayList<String>()
@@ -50,7 +55,7 @@ class IndexStats(val label: String) {
     fun report() = IndexReport(
         label, seen, indexed, unchanged, noText, failed, chunks, ocrMs.size,
         if (ocrMs.isEmpty()) 0 else ocrMs.sum() / ocrMs.size, ocrMs.toList(), embedMs, totalMs, files.toList(), errors.toList(),
-        devanagariRuns = devanagariRuns,
+        devanagariRuns = devanagariRuns, moved = moved, removed = removed,
     )
 }
 
@@ -101,14 +106,15 @@ object PduIndexer {
         fun walk(parentId: String, path: String) {
             class Kid(val id: String, val name: String, val mime: String, val modified: Long)
             val kids = ArrayList<Kid>()
-            ctx.contentResolver.query(
+            // a folder that cannot be listed fails the run: a partial listing would make the sweep after it remove what it did not see
+            (ctx.contentResolver.query(
                 DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId),
                 arrayOf(
                     DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
                     DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_LAST_MODIFIED,
                 ),
                 null, null, null,
-            )?.use { c ->
+            ) ?: throw java.io.IOException("cannot list $path")).use { c ->
                 while (c.moveToNext()) kids += Kid(c.getString(0), c.getString(1) ?: "", c.getString(2) ?: "", c.getLong(3))
             }
             for (k in kids) {
@@ -162,48 +168,112 @@ object PduIndexer {
 
     // ---- ingest -------------------------------------------------------------------------------------------
 
+    /** What the first step of a file produced; see [prepare] and [commit]. */
+    sealed interface Prepared
+
+    /** This exact version is already stored. [moveTo] is the new folder when the file now sits in another one. */
+    class Unchanged(val docId: String, val moveTo: String?) : Prepared
+
+    /** The file was read and cut into chunks; nothing is embedded or stored yet. */
+    class Ready(
+        val docId: String,
+        val doc: DocRecord,
+        val bodies: List<String>,
+        val textChars: Int,
+        val ocrMs: List<Long>,
+        val devanagari: Boolean,
+    ) : Prepared
+
     /**
-     * Read, chunk, embed and store one file. Skips it when this uri + lastModified is already indexed (not on an owner-forced
-     * re-index, which reads everything again). Throws [EmbedderStopped] when the embedder went away: the file is not stored.
+     * Step one of a file: skip it when this uri + lastModified is already indexed (not on an owner-forced re-index, which reads
+     * everything again), otherwise read it, OCR it if needed and cut it into chunks. Touches neither the embedder nor the store's
+     * rows, so it can run while the file before it is being embedded. Throws when the file cannot be read.
      */
-    suspend fun ingest(ctx: Context, store: PduStore, ref: DocRef, stats: IndexStats, run: IndexRun, preText: String? = null) {
-        stats.seen++
+    suspend fun prepare(ctx: Context, store: PduStore, ref: DocRef, rereadAll: Boolean): Prepared {
         val docId = PduStore.docIdOf(ref.uri)
-        if (!run.rereadAll && store.isIndexed(docId, ref.lastModified)) { stats.unchanged++; return }
-        val doc = DocRecord(docId, ref.uri, ref.title, ref.kind, ref.folder, ref.lastModified, ref.dateMs)
-        try {
-            var ocrMsHere = -1L
-            val text = when (ref.kind) {
-                "text" -> Extractors.plainText(ctx, ref.uri)
-                "docx" -> Extractors.docx(ctx, ref.uri)
-                "pdf" -> Extractors.pdf(ctx, ref.uri) { ms -> stats.ocrMs += ms; ocrMsHere = ms }.first
-                else -> if (preText != null) preText else { // photo, scan
-                    val bmp = Ocr.decode(ctx, ref.uri)
+        if (!rereadAll) store.indexedFolder(docId, ref.lastModified)?.let { stored ->
+            return Unchanged(docId, ref.folder.takeIf { it != stored })
+        }
+        val ocr = ArrayList<Long>()
+        var devanagari = false
+        val text = when (ref.kind) {
+            "text" -> Extractors.plainText(ctx, ref.uri)
+            "docx" -> Extractors.docx(ctx, ref.uri)
+            "pdf" -> Extractors.pdf(ctx, ref.uri) { ms -> ocr += ms }.first
+            else -> { // photo
+                val bmp = Ocr.decode(ctx, ref.uri)
+                try {
                     val t0 = System.nanoTime()
                     val r = Ocr.recognizeAll(bmp)
-                    if (r.devanagari != null) stats.devanagariRuns++
-                    val t = r.text
-                    ocrMsHere = (System.nanoTime() - t0) / 1_000_000
-                    stats.ocrMs += ocrMsHere
-                    bmp.recycle()
-                    t
-                }
+                    if (r.devanagari != null) devanagari = true
+                    ocr += (System.nanoTime() - t0) / 1_000_000
+                    r.text
+                } finally { bmp.recycle() }
             }
-            val isImage = ref.kind == "photo" || ref.kind == "scan"
-            val bodies = if (isImage && text.trim().length < MIN_OCR_CHARS) emptyList() else Chunker.split(text)
-            val rows = embed(run, bodies.map { PduEmbedConfig.document(ref.title, it) }, stats).mapIndexed { i, e -> ChunkRow(bodies[i], e) }
-            run.beforeStore(embedded = rows.isNotEmpty())
-            store.putDoc(doc, rows)
-            if (rows.isEmpty()) stats.noText++ else { stats.indexed++; stats.chunks += rows.size }
-            val shown = if (store.doc(docId)?.isPrivate == true) "(private file)" else ref.title
-            stats.files += "$shown ${ref.kind} chars=${text.trim().length} chunks=${rows.size}" +
-                (if (ocrMsHere >= 0) " ocrMs=$ocrMsHere" else "")
-        } catch (t: Throwable) {
-            if (t is kotlinx.coroutines.CancellationException || t is EmbedderStopped) throw t
-            stats.failed++
-            val shown = if (SharePolicy.mustStayPrivate(ref.folder)) "(private file)" else ref.title
-            stats.errors += "$shown: ${t.javaClass.simpleName} ${t.message}".take(200)
         }
+        val isImage = ref.kind == "photo" || ref.kind == "scan"
+        val bodies = if (isImage && text.trim().length < MIN_OCR_CHARS) emptyList() else Chunker.split(text)
+        val doc = DocRecord(docId, ref.uri, ref.title, ref.kind, ref.folder, ref.lastModified, ref.dateMs)
+        return Ready(docId, doc, bodies, text.trim().length, ocr, devanagari)
+    }
+
+    /**
+     * Step two: embed and store, in the order of the listing. Throws [EmbedderStopped] when the embedder went away and [IndexFull]
+     * at the chunk cap; in both cases nothing of this file is stored.
+     */
+    suspend fun commit(store: PduStore, ref: DocRef, p: Prepared, stats: IndexStats, run: IndexRun) {
+        when (p) {
+            is Unchanged -> {
+                stats.unchanged++
+                if (p.moveTo != null) { store.moveDoc(p.docId, p.moveTo); stats.moved++ }
+            }
+            is Ready -> {
+                // checked before the embedding, so a full index does not spend minutes on a file it cannot take
+                val current = if (run.wipePending) 0 else store.chunkCount
+                if (!ChunkCap.fits(current, store.chunksOf(p.docId), p.bodies.size)) throw IndexFull()
+                val rows = embed(run, p.bodies.map { PduEmbedConfig.document(ref.title, it) }, stats).mapIndexed { i, e -> ChunkRow(p.bodies[i], e) }
+                run.beforeStore(embedded = rows.isNotEmpty())
+                store.putDoc(p.doc, rows)
+                stats.ocrMs += p.ocrMs
+                if (p.devanagari) stats.devanagariRuns++
+                if (rows.isEmpty()) stats.noText++ else { stats.indexed++; stats.chunks += rows.size }
+                val shown = if (store.doc(p.docId)?.isPrivate == true) "(private file)" else ref.title
+                stats.files += "$shown ${ref.kind} chars=${p.textChars} chunks=${rows.size}" +
+                    (if (p.ocrMs.isNotEmpty()) " ocrMs=${p.ocrMs.last()}" else "")
+            }
+        }
+    }
+
+    /**
+     * A file that could not be read or timed out: counted, named (a file in a Private folder only as "(private file)"), and its row
+     * dealt with. A file that can no longer be opened is deleted from the index; one that waited for a re-read becomes a skipped
+     * file, so "Continue re-index" can finish.
+     */
+    fun recordFailure(store: PduStore, ref: DocRef, t: Throwable, stats: IndexStats) {
+        stats.failed++
+        val shown = if (SharePolicy.mustStayPrivate(ref.folder)) "(private file)" else ref.title
+        stats.errors += "$shown: ${t.javaClass.simpleName} ${t.message}".take(200)
+        runCatching {
+            val docId = PduStore.docIdOf(ref.uri)
+            if (isGone(t)) { store.removeDocs(listOf(docId)); stats.removed++ } else store.markFailed(docId)
+        }
+    }
+
+    /** The file is not there (any more): deleted, or its permission was taken back. */
+    fun isGone(t: Throwable): Boolean {
+        var e: Throwable? = t
+        repeat(4) {
+            val c = e ?: return false
+            if (c is java.io.FileNotFoundException || c is SecurityException) return true
+            if (c is IllegalStateException && c.message?.startsWith("cannot open") == true) return true
+            e = c.cause
+        }
+        return false
+    }
+
+    /** Takes a scan image back out of the gallery (an indexing that failed after the page was saved). */
+    fun deleteScan(ctx: Context, uri: String) {
+        runCatching { ctx.contentResolver.delete(Uri.parse(uri), null, null) }
     }
 
     private suspend fun embed(run: IndexRun, texts: List<String>, stats: IndexStats): List<FloatArray> {
@@ -212,5 +282,31 @@ object PduIndexer {
         val out = run.embed(texts).map(PduStore::fit)
         stats.embedMs += (System.nanoTime() - t0) / 1_000_000
         return out
+    }
+
+    /**
+     * A scanned page whose text is already known: embed first, and only then save the image to the gallery and store the page, so a
+     * refusal or a failure leaves nothing behind and a retry cannot duplicate the image. If the store refuses after the image was
+     * saved, the image is taken out again.
+     */
+    suspend fun ingestScan(
+        ctx: Context, store: PduStore, title: String, folder: String, text: String, stats: IndexStats, run: IndexRun,
+        save: () -> Pair<String, Long>, savedHere: Boolean,
+    ) {
+        stats.seen++
+        val bodies = if (text.trim().length < MIN_OCR_CHARS) emptyList() else Chunker.split(text)
+        val current = if (run.wipePending) 0 else store.chunkCount
+        if (!ChunkCap.fits(current, 0, bodies.size)) throw IndexFull()
+        val rows = embed(run, bodies.map { PduEmbedConfig.document(title, it) }, stats).mapIndexed { i, e -> ChunkRow(bodies[i], e) }
+        run.beforeStore(embedded = rows.isNotEmpty())
+        val (uri, modified) = save()
+        try {
+            store.putDoc(DocRecord(PduStore.docIdOf(uri), uri, title, "scan", folder, modified, System.currentTimeMillis()), rows)
+        } catch (t: Throwable) {
+            if (savedHere) deleteScan(ctx, uri)
+            throw t
+        }
+        if (rows.isEmpty()) stats.noText++ else { stats.indexed++; stats.chunks += rows.size }
+        stats.files += "${if (store.doc(PduStore.docIdOf(uri))?.isPrivate == true) "(private file)" else title} scan chars=${text.trim().length} chunks=${rows.size}"
     }
 }

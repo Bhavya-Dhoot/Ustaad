@@ -69,20 +69,29 @@ internal class StatusBoard {
      * and no restart follows a stop.
      * @param failedStatus builds the FAILED status from the status it replaces
      * @param wait the backoff sleep (injected so tests can interleave a stop with it)
-     * @param restart starts the server again; called at most once
+     * @param restart starts the server again; called at most once. Its argument is true when the restart must use the CPU build (a GPU chat server that died twice)
+     * @param backend the build the dead server ran on ([RestartPolicy.decide])
      */
     suspend fun reportUnexpectedExit(
         role: Role, epoch: Int, wasReady: Boolean, serviceUp: () -> Boolean, aliveMs: Long, extraArgs: List<String>, what: String,
         failedStatus: (ServerStatus) -> ServerStatus,
         wait: suspend (Long) -> Unit,
-        restart: suspend () -> Unit,
+        restart: suspend (cpuFallback: Boolean) -> Unit,
+        backend: Backend? = null,
     ) {
         var restartsUsed = 0
         if (!setIfCurrent(role, epoch) { restartsUsed = it.restarts; failedStatus(it) }) return
-        when (val d = RestartPolicy.decide(role, wasReady, serviceUp(), restartsUsed, aliveMs, extraArgs)) {
+        when (val d = RestartPolicy.decide(role, wasReady, serviceUp(), restartsUsed, aliveMs, extraArgs, backend)) {
             RestartPolicy.Decision.Ignore -> {}
             RestartPolicy.Decision.GiveUp -> setIfCurrent(role, epoch) {
                 it.copy(notice = "The server was killed again ($what), so it is not restarted. Tap Load to start it.")
+            }
+            is RestartPolicy.Decision.CpuFallback -> {
+                // the same banner a GPU start that did not get READY shows, then one start on the CPU build
+                val announced = setIfCurrent(role, epoch) { it.copy(state = ServerState.STARTING, notice = BackendPlan.fallbackNote(what)) }
+                if (!announced) return
+                wait(d.delayMs)
+                if (serviceUp() && isCurrent(role, epoch)) restart(true)
             }
             is RestartPolicy.Decision.Restart -> {
                 val announced = setIfCurrent(role, epoch) {
@@ -94,7 +103,7 @@ internal class StatusBoard {
                 }
                 if (!announced) return
                 wait(d.delayMs)
-                if (serviceUp() && isCurrent(role, epoch)) restart()
+                if (serviceUp() && isCurrent(role, epoch)) restart(false)
             }
         }
     }

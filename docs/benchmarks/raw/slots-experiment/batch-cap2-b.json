@@ -1,0 +1,378 @@
+{
+ "id": "d8e0253ed55f40ba",
+ "mode": "local",
+ "state": "done",
+ "total": 32,
+ "done": 32,
+ "failed": 0,
+ "wallMs": 255034.466517,
+ "totalTokens": 1391,
+ "aggTokPerSec": 5.454164760539451,
+ "fake": false,
+ "models": [
+  "Qwen3.5-4B-Q4_K_M"
+ ],
+ "perPhone": [
+  {
+   "nodeId": "82d2676d",
+   "jobs": 32,
+   "tokens": 1391,
+   "tokPerSec": 5.454164760539451,
+   "decodeTokPerSec": 2.8793334426293256
+  }
+ ],
+ "items": [
+  {
+   "index": 0,
+   "jobId": "d8e0253ed55f40ba-0",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **lighthouse** is a tower, building, or other type of structure designed to emit a light (and often sound or color) to warn ships of dangerous coastal areas, such as rocks, reefs, or shallow waters.\n\nHere",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 16961.192,
+   "error": null
+  },
+  {
+   "index": 1,
+   "jobId": "d8e0253ed55f40ba-1",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a special type of whole number that has exactly **two distinct positive divisors**: the number **1** and itself.\n\nIn simpler terms, a prime number cannot be divided evenly by any other number except for",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 16957.634,
+   "error": null
+  },
+  {
+   "index": 2,
+   "jobId": "d8e0253ed55f40ba-2",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Moon is Earth's only natural satellite, a rocky body that orbits our planet and reflects sunlight to illuminate our night sky.",
+   "promptTokens": 4,
+   "completionTokens": 26,
+   "genMs": 9158.123,
+   "error": null
+  },
+  {
+   "index": 3,
+   "jobId": "d8e0253ed55f40ba-3",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17168.226,
+   "error": null
+  },
+  {
+   "index": 4,
+   "jobId": "d8e0253ed55f40ba-4",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings distinct wet and dry seasons to large regions of the world, particularly in South Asia, East Asia, and parts of Africa.\n\nHere is a breakdown of how it works:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17392.464,
+   "error": null
+  },
+  {
+   "index": 5,
+   "jobId": "d8e0253ed55f40ba-5",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly **two distinct positive divisors**: 1 and itself.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17133.756,
+   "error": null
+  },
+  {
+   "index": 6,
+   "jobId": "d8e0253ed55f40ba-6",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that drastically changes weather patterns, primarily bringing heavy rainfall to large parts of Asia, Africa, and Europe.\n\nHere is a brief breakdown of its key aspects:\n\n*   **Origin",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17333.519,
+   "error": null
+  },
+  {
+   "index": 7,
+   "jobId": "d8e0253ed55f40ba-7",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17049.886,
+   "error": null
+  },
+  {
+   "index": 8,
+   "jobId": "d8e0253ed55f40ba-8",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a whole number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a number is prime if it cannot be divided evenly by any other number except ",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17090.169,
+   "error": null
+  },
+  {
+   "index": 9,
+   "jobId": "d8e0253ed55f40ba-9",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. It is \"",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17003.278,
+   "error": null
+  },
+  {
+   "index": 10,
+   "jobId": "d8e0253ed55f40ba-10",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a number is prime if it cannot be divided evenly by any other number except ",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17340.033,
+   "error": null
+  },
+  {
+   "index": 11,
+   "jobId": "d8e0253ed55f40ba-11",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17074.602,
+   "error": null
+  },
+  {
+   "index": 12,
+   "jobId": "d8e0253ed55f40ba-12",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A magnet is a material or object that produces a magnetic field, which allows it to attract other magnetic materials or exert a magnetic force.",
+   "promptTokens": 4,
+   "completionTokens": 28,
+   "genMs": 9945.984,
+   "error": null
+  },
+  {
+   "index": 13,
+   "jobId": "d8e0253ed55f40ba-13",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17115.248,
+   "error": null
+  },
+  {
+   "index": 14,
+   "jobId": "d8e0253ed55f40ba-14",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings distinct wet and dry seasons to large regions of the world, most notably South Asia, Southeast Asia, and East Africa.\n\nHere is how it works:\n\n*   **",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17299.889,
+   "error": null
+  },
+  {
+   "index": 15,
+   "jobId": "d8e0253ed55f40ba-15",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17253.109,
+   "error": null
+  },
+  {
+   "index": 16,
+   "jobId": "d8e0253ed55f40ba-16",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The speed of light is the maximum speed at which all conventional matter and information in the universe can travel, approximately 299,792,458 meters per second in a vacuum.",
+   "promptTokens": 19,
+   "completionTokens": 42,
+   "genMs": 15147.684,
+   "error": null
+  },
+  {
+   "index": 17,
+   "jobId": "d8e0253ed55f40ba-17",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you try",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 16991.558,
+   "error": null
+  },
+  {
+   "index": 18,
+   "jobId": "d8e0253ed55f40ba-18",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Bread yeast is a single-celled fungus used in baking to ferment dough by converting sugars into carbon dioxide and alcohol.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 8803.454,
+   "error": null
+  },
+  {
+   "index": 19,
+   "jobId": "d8e0253ed55f40ba-19",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a form of error-detecting code used in computers and other digital devices to detect errors in data transmission or storage.\n\nHere is a simple breakdown of how it works:\n\n1.  **The Concept**:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17246.973,
+   "error": null
+  },
+  {
+   "index": 20,
+   "jobId": "d8e0253ed55f40ba-20",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you try",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17048.8,
+   "error": null
+  },
+  {
+   "index": 21,
+   "jobId": "d8e0253ed55f40ba-21",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Origami is the traditional Japanese art of paper folding that transforms simple sheets into intricate shapes through precise creases.",
+   "promptTokens": 4,
+   "completionTokens": 23,
+   "genMs": 8125.973,
+   "error": null
+  },
+  {
+   "index": 22,
+   "jobId": "d8e0253ed55f40ba-22",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17092.613,
+   "error": null
+  },
+  {
+   "index": 23,
+   "jobId": "d8e0253ed55f40ba-23",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a form of error-detecting code that is calculated from a block of data. It acts like a digital fingerprint or a mathematical \"hash\" of the information.\n\nHere is how it works:\n1.",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17490.906,
+   "error": null
+  },
+  {
+   "index": 24,
+   "jobId": "d8e0253ed55f40ba-24",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **Pythagorean theorem** is a fundamental principle in geometry that describes the relationship between the three sides of a **right-angled triangle**.\n\nIt states that the square of the length of the hypotenuse (the side opposite the",
+   "promptTokens": 20,
+   "completionTokens": 48,
+   "genMs": 16913.546,
+   "error": null
+  },
+  {
+   "index": 25,
+   "jobId": "d8e0253ed55f40ba-25",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Ganges is a major river in India and Bangladesh that holds immense religious significance for Hindus.",
+   "promptTokens": 4,
+   "completionTokens": 20,
+   "genMs": 6957.638,
+   "error": null
+  },
+  {
+   "index": 26,
+   "jobId": "d8e0253ed55f40ba-26",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a number is a prime (or has a prime checksum) if it cannot be",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17292.96,
+   "error": null
+  },
+  {
+   "index": 27,
+   "jobId": "d8e0253ed55f40ba-27",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **Pythagorean theorem** is a fundamental principle in geometry that describes the relationship between the three sides of a right-angled triangle. It states that the square of the length of the hypotenuse (the side opposite the right angle",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17121.875,
+   "error": null
+  },
+  {
+   "index": 28,
+   "jobId": "d8e0253ed55f40ba-28",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Chess openings are the initial moves made by both players to develop their pieces, control the center, and prepare for a strategic plan.",
+   "promptTokens": 4,
+   "completionTokens": 27,
+   "genMs": 9598.136,
+   "error": null
+  },
+  {
+   "index": 29,
+   "jobId": "d8e0253ed55f40ba-29",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **Pythagorean theorem** (often misspelled as \"Pythagorean\") is a fundamental principle in geometry that describes the relationship between the three sides of a **right-angled triangle**.\n\nIt states that the square of the",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17098.584,
+   "error": null
+  },
+  {
+   "index": 30,
+   "jobId": "d8e0253ed55f40ba-30",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you try",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 17273.003,
+   "error": null
+  },
+  {
+   "index": 31,
+   "jobId": "d8e0253ed55f40ba-31",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **Pythagorean theorem** is a fundamental principle in geometry that describes the relationship between the three sides of a right-angled triangle. It states that the square of the length of the hypotenuse (the side opposite the right angle",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3617.106,
+   "error": null
+  }
+ ]
+}

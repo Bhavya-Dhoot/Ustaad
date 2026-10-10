@@ -29,6 +29,7 @@ object MemCloud {
     fun onlinePeers(selection: List<String> = emptyList()): List<PeerInfo> = coordinator.onlinePeers(selection)
     fun previewPlan(file: String, peers: List<String>, mode: SplitMode, manual: List<Int>? = null, emptyMeansNone: Boolean = false): SplitPlan = coordinator.previewPlan(file, peers, mode, manual, emptyMeansNone)
     suspend fun refreshPeers() = coordinator.refreshPeers()
+    fun validateStart(req: StartRequest): String? = coordinator.validateStart(req)
     fun start(req: StartRequest): String? = coordinator.start(req)
     fun replan(peers: List<String> = emptyList()): String? = coordinator.replan(peers)
     fun stop() = coordinator.stop()

@@ -2,7 +2,9 @@ package com.swarmos.app.choir
 
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
+import com.swarmos.app.core.AuditScope
 import com.swarmos.app.core.Ports
+import com.swarmos.app.core.SwarmPrefs
 import com.swarmos.app.link.ConnectResult
 import com.swarmos.app.link.NodeClient
 import com.swarmos.app.link.PeerLinks
@@ -12,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -29,7 +32,10 @@ class RemoteParticipant(
     private val client: NodeClient,
     override val away: Boolean = false,
     override val noModel: Boolean = false,
+    /** The live answer to "is this phone away now", read again while a round runs. */
+    private val awayNow: () -> Boolean = { away },
 ) : ChoirParticipant {
+    override fun isAway(): Boolean = awayNow()
     override suspend fun solve(req: SolveRequest): NodeAnswer = client.post<NodeAnswer, SolveRequest>(host, "/choir/solve", req)
     override suspend fun revise(req: ReviseRequest): NodeAnswer = client.post<NodeAnswer, ReviseRequest>(host, "/choir/revise", req)
     override suspend fun judge(req: JudgeRequest): JudgeAnswer = client.post<JudgeAnswer, JudgeRequest>(host, "/choir/judge", req)
@@ -51,7 +57,8 @@ class EvalRefused(message: String) : RunRefused(message)
  * Everything below the coordinator is plain Kotlin and covered by JVM tests.
  */
 object ChoirController {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // an exception nobody caught is one audit entry, not the end of the process
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + AuditScope.handler("choir") { AppGraph.audit })
     private val gate = Mutex()
 
     /** The built-in problem set (assets/choir/problems.json). */
@@ -88,9 +95,12 @@ object ChoirController {
     private fun remotePeers(): List<RemoteParticipant> =
         // phones whose link heartbeat says away stay in the list so the run shows them as away lanes; they are never asked
         AppGraph.registry.peers.value.map {
+            val id = it.info.nodeId
             RemoteParticipant(
-                it.info.nodeId, it.info.name, it.info.ip, AppGraph.nodeClient, away = it.away,
+                id, it.info.name, it.info.ip, AppGraph.nodeClient, away = it.away,
                 noModel = !BuildConfig.DEBUG && !ChoirReadiness.peerHasRealModel(it.info.chatModel),
+                // read again during a round: a phone that drops out of the registry or is flagged away leaves the round at once
+                awayNow = { AppGraph.registry.peers.value.firstOrNull { p -> p.info.nodeId == id }?.away ?: true },
             )
         }
 
@@ -111,22 +121,51 @@ object ChoirController {
     ): RunTrace = gate.withLock {
         refusal()?.let { throw RunRefused(it) }
         _busy.value = true
+        val opts = options.copy(majoritySkipsRound2 = majoritySkipsRound2())
         val peers = remotePeers()
         // fake per-node answers exist in debug builds only
         val scripts = if (BuildConfig.DEBUG) scripts else emptyMap()
         try {
             if (scripts.isNotEmpty()) applyScripts(scripts, peers)
             ChoirActivity.during(ChoirActivity.asking(1 + peers.count { !it.away && !it.noModel })) {
-                coordinator.run(problem, newTaskId(), selfParticipant(), peers, options) { _run.value = it }.also { _run.value = it }
+                coordinator.run(problem, newTaskId(), selfParticipant(), peers, opts) { _run.value = it }.also { _run.value = it }
             }
+        } catch (t: Throwable) {
+            // a run that ends in an exception must not leave the screen showing a snapshot that looks as if it were still solving
+            if (t !is RunRefused) failRun(t)
+            throw t
         } finally {
             if (scripts.isNotEmpty() && !keepScripts) clearScripts(peers)
             _busy.value = false
         }
     }
 
+    /** Closes the run on the screen: DONE, with the reason, keeping every lane and vote it had. */
+    private fun failRun(t: Throwable) {
+        val why = if (t is CancellationException) "run stopped" else "run failed: ${t.javaClass.simpleName}: ${t.message}".take(200)
+        _run.update { if (it != null && it.phase != "DONE") it.copy(phase = "DONE", error = it.error ?: why) else it }
+    }
+
+    /** Whether the majority policy for round 2 is on (pref `choir_majority_skips_round2`, off by default). */
+    private suspend fun majoritySkipsRound2(): Boolean = runCatching { SwarmPrefs(AppGraph.appContext).choirMajoritySkipsRound2() }.getOrDefault(false)
+
+    /** Debug builds set it with the intent extra `choirMajority`. */
+    fun setMajoritySkipsRound2(on: Boolean) {
+        scope.launch { SwarmPrefs(AppGraph.appContext).setChoirMajoritySkipsRound2(on) }
+    }
+
     fun startRun(problem: Problem, options: RunOptions = RunOptions()) {
-        scope.launch { runCatching { runProblem(problem, options) } }
+        scope.launch {
+            try {
+                runProblem(problem, options)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RunRefused) {
+                // shown by the screen from refusal()
+            } catch (t: Throwable) {
+                AppGraph.audit.append("choir.run_error", JsonObject(mapOf("error" to kotlinx.serialization.json.JsonPrimitive("${t.javaClass.simpleName}: ${t.message}".take(200)))))
+            }
+        }
     }
 
     /** Runs the built-in set (or the given ids) one after another; stores filesDir/choir-eval-<ts>.json. Stop (see [cancelEval]) keeps the finished rows. */
@@ -140,6 +179,7 @@ object ChoirController {
             throw EvalRefused(reason)
         }
         val list = if (ids == null) problems else ids.mapNotNull { id -> problems.firstOrNull { it.id == id } }
+        val opts = options.copy(majoritySkipsRound2 = majoritySkipsRound2())
         _busy.value = true
         var fake = false
         val nodes = mutableSetOf<String>()
@@ -147,7 +187,7 @@ object ChoirController {
             evalSession.run(
                 list,
                 runOne = { p ->
-                    coordinator.run(p, newTaskId(), selfParticipant(), if (withPeers) remotePeers() else emptyList(), options) { _run.value = it }.also {
+                    coordinator.run(p, newTaskId(), selfParticipant(), if (withPeers) remotePeers() else emptyList(), opts) { _run.value = it }.also {
                         _run.value = it
                         fake = fake || it.fake
                         it.lanes.forEach { l -> nodes.add(l.name) }
@@ -165,6 +205,7 @@ object ChoirController {
                         deadlineMs = ChoirConfig().deadlineMs,
                         summary = ChoirEval.summarize(rows),
                         rows = rows,
+                        majoritySkipsRound2 = opts.majoritySkipsRound2,
                     )
                 },
                 dir = AppGraph.appContext.filesDir,

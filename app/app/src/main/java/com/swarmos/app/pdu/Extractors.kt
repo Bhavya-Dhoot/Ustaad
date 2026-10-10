@@ -75,7 +75,7 @@ object Extractors {
         else ctx.contentResolver.openInputStream(Uri.parse(uri)) ?: error("cannot open $uri")
 
     fun plainText(ctx: Context, uri: String): String =
-        open(ctx, uri).use { it.readBytes() }.let { b -> String(b, 0, minOf(b.size, MAX_TEXT_BYTES), Charsets.UTF_8) }
+        open(ctx, uri).use { CappedRead.bytes(it, MAX_TEXT_BYTES) }.let { b -> String(b, Charsets.UTF_8) }
 
     fun docx(ctx: Context, uri: String): String = open(ctx, uri).use { DocxText.extract(it) }
 

@@ -10,6 +10,11 @@ object AnswerNotes {
     const val GAVE_UP = "Gave up waiting for the model after ${ModelWait.MAX_WAIT_MS / 1000} s, showing sources only"
     const val NOTHING_FOUND = "Nothing relevant found on any phone."
 
+    const val STOPPED = "Stopped, showing what was found so far"
+
+    /** The stream gave no token for [idleMs]: a frozen model server, not a slow model. */
+    fun quiet(idleMs: Long) = "The model went quiet for ${idleMs / 1000} s, showing what it wrote so far"
+
     fun stopped(reason: String) = "The model stopped before it finished ($reason), showing what it wrote so far"
 }
 

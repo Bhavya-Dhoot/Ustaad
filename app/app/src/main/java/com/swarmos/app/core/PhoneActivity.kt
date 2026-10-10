@@ -30,6 +30,10 @@ object PhoneActivity {
         _current.value = entries.lastOrNull()
     }
 
+    /** True while [owner] has an entry, whether or not it is the one on show (the shown entry is only the newest). */
+    @Synchronized
+    fun isActive(owner: String): Boolean = entries.any { it.owner == owner }
+
     @Synchronized
     fun clear(owner: String) {
         entries = entries.filterNot { it.owner == owner }

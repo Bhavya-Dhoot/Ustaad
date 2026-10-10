@@ -16,6 +16,7 @@ import com.swarmos.app.core.AuditLog
 import com.swarmos.app.core.HealthMonitor
 import com.swarmos.app.core.NodeInfo
 import com.swarmos.app.core.NodeRegistry
+import com.swarmos.app.core.OrderedWriter
 import com.swarmos.app.core.PairingSecret
 import com.swarmos.app.core.SwarmPrefs
 import com.swarmos.app.core.followSelf
@@ -113,8 +114,8 @@ object AppGraph {
                 setupDone = p?.setupDone ?: false
                 removeAnimations = p?.removeAnimations ?: false
                 PairingSecret.afterLoad(p?.secret, BuildConfig.DEBUG, ::randomSecret).let { (chosen, mustSave) ->
-                    secret = chosen
-                    if (mustSave) prefs.setSecret(chosen)
+                    // through the writer when it must be stored, so a secret changed by the user meanwhile is stored after it, not before
+                    if (mustSave) secretWriter.set(chosen) else secret = chosen
                 }
                 AgentAccess.restore(p?.agentAccess ?: false, p?.agentKey, p?.agentFiles ?: false) { on, key, files -> prefs.setAgent(on, key, files) }
                 audit.load()
@@ -152,10 +153,12 @@ object AppGraph {
         audit.append("node.rename", JsonObject(mapOf("name" to JsonPrimitive(clean))))
     }
 
+    /** The one writer of the pairing secret: it is published in memory and stored through this, so the last one set is the last one stored. */
+    private val secretWriter by lazy { OrderedWriter<String>(ioScope, { secret = it }, { prefs.setSecret(it) }) }
+
     fun setPairingSecret(newSecret: String) {
         require(newSecret.isNotEmpty())
-        secret = newSecret
-        ioScope.launch { prefs.setSecret(newSecret) }
+        secretWriter.set(newSecret)
         audit.append("pairing.secret_set") // the secret itself is never logged
     }
 

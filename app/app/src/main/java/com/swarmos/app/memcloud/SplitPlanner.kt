@@ -104,6 +104,17 @@ object SplitPlanner {
     }
 
     /**
+     * Why an explicit layer split in a start request is not acceptable, in plain words, or null when it is: one count per phone
+     * ([nPhones], this phone first, then the other phones in name order), each at least 1, adding up to the model's [nLayers].
+     */
+    fun checkLayers(layers: List<Int>, nLayers: Int, nPhones: Int): String? = when {
+        layers.size != nPhones -> "layers needs $nPhones counts (this phone first, then the other phones in name order), got ${layers.size}: $layers"
+        layers.any { it < 1 } -> "every phone needs at least one layer, got $layers"
+        layers.sum() != nLayers -> "the layer counts $layers add up to ${layers.sum()} but the model has $nLayers layers"
+        else -> null
+    }
+
+    /**
      * [devices] must start with the driver. [manual] (one count per device, summing to the layer count) overrides [mode];
      * [mode] EQUAL gives every phone the same number of layers, RAM weights them by free memory.
      */

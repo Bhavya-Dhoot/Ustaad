@@ -125,9 +125,15 @@ object Snippets {
         var s = 0
         while (s < flat.length) {
             val e = minOf(s + budget, flat.length)
-            val window = lower.substring(s, e)
-            // distinct query words first, then how many times they occur
-            val score = terms.count { it in window } * 1000 + terms.sumOf { t -> window.windowed(t.length).count { it == t } }
+            // distinct query words first, then how many times they occur; counted in place, no substring per window
+            var distinct = 0
+            var total = 0
+            for (t in terms) {
+                val n = hits(lower, t, s, e)
+                if (n > 0 || t.isEmpty()) distinct++
+                total += n
+            }
+            val score = distinct * 1000 + total
             if (score > bestScore) { bestScore = score; bestStart = s }
             if (e == flat.length) break
             s = nextWordStart(flat, s + 40)
@@ -141,6 +147,20 @@ object Snippets {
         return (if (bestStart > 0) "…" else "") + body + (if (end < flat.length) "…" else "")
     }
 
+    /** How many times [t] occurs inside text[from, to), overlapping occurrences included. */
+    private fun hits(text: String, t: String, from: Int, to: Int): Int {
+        if (t.isEmpty()) return 0
+        val c0 = t[0]
+        val last = to - t.length
+        var n = 0
+        var i = from
+        while (i <= last) {
+            if (text[i] == c0 && text.startsWith(t, i)) n++
+            i++
+        }
+        return n
+    }
+
     private fun nextWordStart(t: String, from: Int): Int {
         var i = from
         while (i < t.length && !t[i].isWhitespace()) i++
@@ -149,13 +169,32 @@ object Snippets {
     }
 }
 
+/** Reads at most a cap of bytes from a stream: a file bigger than the cap is not read whole just to be cut afterwards. */
+object CappedRead {
+    fun bytes(s: InputStream, cap: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream(minOf(cap, 64 * 1024))
+        val buf = ByteArray(16 * 1024)
+        var left = cap
+        while (left > 0) {
+            val n = s.read(buf, 0, minOf(buf.size, left))
+            if (n < 0) break
+            out.write(buf, 0, n)
+            left -= n
+        }
+        return out.toByteArray()
+    }
+}
+
 /** .docx text: unzip word/document.xml and strip tags. */
 object DocxText {
+    /** The XML of a document is much longer than its text; a bigger one (or a zip bomb) is read up to this and cut. */
+    const val MAX_XML_BYTES = 8_000_000
+
     fun extract(stream: InputStream): String {
         ZipInputStream(stream).use { zip ->
             while (true) {
                 val e = zip.nextEntry ?: return ""
-                if (e.name == "word/document.xml") return fromXml(zip.readBytes().toString(Charsets.UTF_8))
+                if (e.name == "word/document.xml") return fromXml(CappedRead.bytes(zip, MAX_XML_BYTES).toString(Charsets.UTF_8))
             }
         }
     }

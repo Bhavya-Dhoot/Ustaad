@@ -40,6 +40,13 @@ data class PeerView(
     val missesTotal: Int = 0,
     val awayCount: Int = 0,
     val maxGapMs: Long = 0,
+    /** Node protocol version the peer reports (1 = a build from before the field existed). */
+    val protocol: Int = 1,
+    /** Signed heartbeat answers that could not be read, three in a row set [incompatible]; neither is a miss. */
+    val decodeErrors: Int = 0,
+    val incompatible: Boolean = false,
+    /** "Phone X runs an older version" / "... an incompatible version", else null. */
+    val versionNote: String? = null,
 )
 
 @Serializable
@@ -134,6 +141,7 @@ fun peerViews(now: Long = System.currentTimeMillis()): List<PeerView> = PeerLink
         if (p.lastSeenMs > 0) now - p.lastSeenMs else -1, p.misses,
         p.health?.thermalStatus, p.health?.batteryPct, p.health?.linkStandard, p.health?.linkSpeedMbps,
         p.beats, p.missesTotal, p.awayCount, p.maxGapMs,
+        p.info.protocol, p.decodeErrors, p.incompatible, p.versionNote,
     )
 }
 

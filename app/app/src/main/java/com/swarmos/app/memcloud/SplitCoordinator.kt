@@ -6,7 +6,9 @@ import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.Role
 import com.swarmos.app.llm.ServerState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -25,6 +27,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /** Cancels a load because a re-plan replaces it: the peers stay prepared, so the cleanup of a cancelled load is skipped. */
 private class ReplanCancel : CancellationException("re-plan")
@@ -32,9 +35,11 @@ private class ReplanCancel : CancellationException("re-plan")
 /**
  * MemoryCloud coordinator: this phone drives one model whose layers live on several phones.
  *
- * Flow: PLANNING (read the GGUF header, size the split) -> STARTING_PEERS (each peer stops its own chat and embedding
- * servers through /v1/models/stop and starts rpc-server through /v1/memcloud/rpc/start; this phone stops its own too)
- * -> LOADING (llama-server with --rpc starts; progress is the bytes each peer's rpc-server has received) -> READY.
+ * Flow: PLANNING (read the GGUF header, size the split; a plan that does not fit is refused unless forced) -> STARTING_PEERS
+ * (each peer gets /v1/memcloud/rpc/start first, which carries the restore list and starts the lease; a peer on this build stops
+ * its own chat and embedding servers as it accepts, one on the older build has them stopped through /v1/models/stop right after;
+ * this phone stops its own too) -> LOADING (llama-server with --rpc starts; progress is the bytes each peer's rpc-server has
+ * received) -> READY.
  * While a split is loading or serving, a renew job extends every worker's lease every few seconds (a worker whose lease
  * runs out stops rpc-server and restores its own servers, whatever this phone does), and a 1 s watch compares the
  * peers' heartbeats and the server process: a lost phone gives DEGRADED naming it, the stream stops and the server is
@@ -56,6 +61,19 @@ class SplitCoordinator(
         val degradedRenewMs: Long = 60_000,
         val loadTimeoutMs: Long = 40L * 60_000,
         val settleMs: Long = 200,
+        /** How often a peer that has not confirmed it got its servers back is tried again. */
+        val restoreRetryMs: Long = 5_000,
+        /** A lender whose rpc port is still held is stopped, waited for this long and asked again, this many times. */
+        val portRetries: Int = 2,
+        val portRetryDelayMs: Long = 2_000,
+        /** A split answer that has produced no token for this long (120 s before the first token, 30 s after) has stopped. */
+        val firstTokenStallMs: Long = 120_000,
+        val tokenStallMs: Long = 30_000,
+        val stallPollMs: Long = 1_000,
+        /** A serving split is degraded when a participant's rpc-server fails this many state checks in a row. */
+        val probeFailLimit: Int = 3,
+        /** A split that stays DEGRADED this long with no re-plan gives this phone's own chat and embedding models back. */
+        val degradedRestoreMs: Long = 120_000,
     )
 
     companion object {
@@ -80,12 +98,32 @@ class SplitCoordinator(
     /** True while the CHAT server on this phone is the one this coordinator started (split or baseline). */
     @Volatile private var ownsChat = false
 
+    /** True when the running split was started past the memory check (a re-plan keeps the choice). */
+    @Volatile private var forced = false
+
     /** What each phone was running before MemoryCloud stopped it ("self" is this phone). Survives an app restart. */
     private val restore = ConcurrentHashMap<String, List<RestoreItem>>()
 
     /** Peers that were sent any command (they get /rpc/stop on every way out), and those whose rpc-server answered READY. */
     private val touched = ConcurrentHashMap<String, PeerInfo>()
     private val rpcStarted = ConcurrentHashMap<String, PeerInfo>()
+
+    /** The generation token each lender returned from /rpc/start (node id to token); sent back on renew and stop. A lender on the older build gives none. */
+    private val loans = ConcurrentHashMap<String, String>()
+
+    /**
+     * Peers whose stopped servers are not confirmed back: node id to Node API address. Their items stay in [restore] and in the
+     * persisted record until a call to the peer succeeds (the peer was unreachable, or refused).
+     */
+    private val unconfirmed = ConcurrentHashMap<String, String>()
+    private var retryJob: Job? = null
+
+    /** Consecutive failed rpc-server state checks per participant while serving. */
+    private val probeFailures = ConcurrentHashMap<String, Int>()
+
+    /** Waits [Timing.degradedRestoreMs] in DEGRADED, then restores; [degradedNote] says so in the state. */
+    private var degradedJob: Job? = null
+    @Volatile private var degradedNote: String? = null
 
     @Volatile private var baselinePending: String? = null
 
@@ -137,10 +175,11 @@ class SplitCoordinator(
             coroutineScope {
                 for ((nodeId, addr) in p.peerAddrs) {
                     launch {
-                        runCatching { env.peerRpcStop(addr) }
-                        val snap = runCatching { env.peerModels(addr) }.getOrNull()
-                        for (i in p.restore[nodeId] ?: emptyList()) {
-                            if (snap?.get(i.role)?.state == "STOPPED") runCatching { env.peerLoadModel(addr, i.role, i.file) }
+                        val items = p.restore[nodeId] ?: emptyList()
+                        // a peer that cannot be reached keeps its record: the driver still owes it those servers
+                        if (!confirmPeerRestored(addr, items) && items.isNotEmpty()) {
+                            restore[nodeId] = items
+                            unconfirmed[nodeId] = addr
                         }
                     }
                 }
@@ -149,12 +188,46 @@ class SplitCoordinator(
                 val role = Role.parse(i.role) ?: continue
                 if (env.local(role).state == ServerState.STOPPED) env.restoreLocal(role, i.file)
             }
-            _state.update { it.copy(steps = it.steps + "The app restarted during a split: workers stopped, servers restored") }
+            _state.update {
+                it.copy(steps = it.steps + if (unconfirmed.isEmpty()) "The app restarted during a split: workers stopped, servers restored" else "The app restarted during a split: ${unconfirmed.keys.joinToString { k -> peerName(k) }} could not be reached, its servers are still owed")
+            }
         }
         baselinePending = null
-        env.save(Persisted())
+        persist()
+        publishPending()
+        startRestoreRetry()
         env.clearActivity(ACTIVITY_OWNER)
     }
+
+    /**
+     * Brings a peer back to how it was: rpc-server stopped (a lender restores its own servers when that happens), and every server in
+     * [items] that is still stopped is loaded again. False when the peer could not be reached or refused, so the caller keeps the record.
+     */
+    private suspend fun stopRpcOn(addr: String, loan: String? = null): Boolean = try {
+        env.peerRpcStop(addr, loan)
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: LoanNotOurs) {
+        true // the loan is another phone's or a newer one: there is nothing of ours left to end
+    } catch (e: Exception) {
+        false
+    }
+
+    private suspend fun confirmPeerRestored(addr: String, items: List<RestoreItem>, loan: String? = null): Boolean = try {
+        env.peerRpcStop(addr, loan)
+        val snap = env.peerModels(addr)
+        for (i in items) if (snap[i.role]?.state == "STOPPED") env.peerLoadModel(addr, i.role, i.file)
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: LoanNotOurs) {
+        true // another phone holds this lender now (or a newer loan of ours): whatever we stopped came back when ours ended
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun peerName(nodeId: String): String = env.peers().firstOrNull { it.nodeId == nodeId }?.name ?: nodeId
 
     // ---------- planning (also used by the screen before anything is started) ----------
 
@@ -213,6 +286,23 @@ class SplitCoordinator(
 
     // ---------- start / replan / stop ----------
 
+    /**
+     * Why [req] cannot be accepted whatever the phones do, or null: today only an explicit [StartRequest.layers] that is wrong for the
+     * model and the phones online now (see [SplitPlanner.checkLayers]). Reads the GGUF header, so call it off the main thread.
+     * The route answers 400 with this text; [start] itself would fail the load with the same words.
+     */
+    fun validateStart(req: StartRequest): String? {
+        val layers = req.layers ?: return null
+        val file = env.modelFile(req.file)?.name ?: return null // start() says there is no such file
+        val peers = onlinePeers(req.peers)
+        if (peers.isEmpty()) return null // start() says no other phone is online
+        return try {
+            SplitPlanner.checkLayers(layers, header(file).blockCount, peers.size + 1)
+        } catch (e: Exception) {
+            e.message ?: e.toString()
+        }
+    }
+
     /** Returns null when the load was started, else the reason it was refused. */
     fun start(req: StartRequest): String? = synchronized(lock) {
         val ph = _state.value.phase
@@ -220,7 +310,7 @@ class SplitCoordinator(
         if (!MemCloudLogic.canStart(ph)) return "a split is $ph; stop it or re-plan first"
         val f = env.modelFile(req.file) ?: return "no such model file in the models folder: ${req.file}"
         val mode = if (req.mode.equals("ram", true)) SplitMode.RAM else SplitMode.EQUAL
-        opJob = scope.launch { onAppStart(); runLoad(f.name, req.peers, mode, req.layers) }
+        opJob = scope.launch { onAppStart(); runLoad(f.name, req.peers, mode, req.layers, req.force) }
         null
     }
 
@@ -239,7 +329,7 @@ class SplitCoordinator(
         opJob = scope.launch {
             old?.cancel(ReplanCancel())
             teardownSplit()
-            runLoad(file, keep, SplitMode.EQUAL, null)
+            runLoad(file, keep, SplitMode.EQUAL, null, forced)
         }
         null
     }
@@ -250,25 +340,32 @@ class SplitCoordinator(
                 onAppStart()
                 val old = synchronized(lock) { opJob }
                 old?.cancel()
+                degradedJob?.cancel()
+                degradedNote = null
                 teardownAll()
-                _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, steps = it.steps.takeLast(30) + "Stopped; chat and embedding servers restored", updatedAtMs = env.nowMs()) }
+                _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = it.steps.takeLast(30) + if (unconfirmed.isEmpty()) "Stopped; chat and embedding servers restored" else "Stopped; ${unconfirmed.keys.sorted().joinToString { k -> peerName(k) }} did not answer, its servers will be restored when it does", updatedAtMs = env.nowMs()) }
             } finally {
                 env.clearActivity(ACTIVITY_OWNER)
             }
         }
     }
 
-    private suspend fun runLoad(file: String, sel: List<String>, mode: SplitMode, manual: List<Int>?) {
+    private suspend fun runLoad(file: String, sel: List<String>, mode: SplitMode, manual: List<Int>?, force: Boolean) {
         val t0 = env.nowMs()
         stopWatch()
         cancelGeneration()
         val prev = _state.value
         loadParser = LoadLogParser()
-        _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
+        probeFailures.clear()
+        degradedJob?.cancel()
+        degradedNote = null
+        _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
             val peers = onlinePeers(sel)
             if (peers.isEmpty()) return fail("No other phone is online. The model needs ${gb(info.fileBytes)} and one phone cannot hold it.")
+            manual?.let { SplitPlanner.checkLayers(it, info.blockCount, peers.size + 1) }?.let { return fail(it) }
+            releaseExcluded(peers)
             step("Asking ${peers.joinToString { it.name }} what it is running")
             val snaps = coroutineScope { peers.map { p -> async { p to runCatching { env.peerModels(p.addr) } } }.awaitAll() }
             snaps.firstOrNull { it.second.isFailure }?.let { (p, r) -> return fail("${p.name} did not answer: ${r.exceptionOrNull()?.message}") }
@@ -279,7 +376,11 @@ class SplitCoordinator(
             if (!SplitPlanner.argsMatchPlan(sp, args)) return fail("Internal error: the llama-server flags do not place the layers as planned: $args")
             plan = sp
             participants = peers
-            val warnings = sp.fits().filter { !it.ok }.map { "${it.device.name} has ${mb(it.haveMb)} free and the planning estimate is ${mb(it.needMb)}" }
+            forced = force
+            val misfits = sp.fits().filter { !it.ok }
+            val warnings = misfits.map { "${it.device.name} has ${mb(it.haveMb)} free and the planning estimate is ${mb(it.needMb)}" }
+            // refuse before anything is stopped or sent; `force` is the explicit way to run the "does not fit" demonstration
+            if (misfits.isNotEmpty() && !force) return fail("The plan does not fit: ${warnings.joinToString("; ")}. Nothing was started or stopped. Give a phone fewer layers, add a phone, or start with force to try anyway.")
             val moe = if (info.isMoe) info.moeLayers else 0
             _state.update {
                 it.copy(
@@ -292,10 +393,17 @@ class SplitCoordinator(
             }
 
             // memory hygiene: peers first, in parallel, then this phone. The leases are renewed from the first command on.
+            // The 48-token run of this phone's small chat model (about 4 s) goes on while the lenders prepare, so it is not part of the wait;
+            // it uses only this phone's CPU and its own server, and it has finished (or been dropped) before prepSelf stops that server.
             startRenew()
-            val prepared = coroutineScope { peers.map { p -> async { p to runCatching { prepPeer(p, snaps.first { it.first === p }.second.getOrThrow()) } } }.awaitAll() }
+            val prepared = coroutineScope {
+                val measuring = async { try { measureSmallModel() } catch (e: CancellationException) { throw e } catch (e: Exception) { /* a missing scale is not a failure */ } }
+                val results = peers.map { p -> async { p to runCatching { prepPeer(p, snaps.first { it.first === p }.second.getOrThrow()) } } }.awaitAll()
+                if (results.any { it.second.isFailure }) measuring.cancel() // the split cannot go ahead: do not wait for the number
+                measuring.join()
+                results
+            }
             prepared.firstOrNull { it.second.isFailure }?.let { (p, r) -> return fail("${p.name}: ${r.exceptionOrNull()?.message}") }
-            measureSmallModel()
             prepSelf(file)
 
             // is every rpc-server reachable from this phone?
@@ -353,19 +461,16 @@ class SplitCoordinator(
         if (ownsChat) { env.stopLocal(Role.CHAT); ownsChat = false }
         if (peers) {
             stopRenew()
-            val targets = touched.values.toList()
+            // peers of this split, and peers an earlier release could not confirm (a second call picks up what the first left)
+            val targets = LinkedHashMap<String, Pair<String, Boolean>>() // node id to (address, rpc-server ran)
             val started = rpcStarted.keys.toSet()
-            touched.clear()
+            for (k in touched.keys.toList()) touched.remove(k)?.let { targets[k] = it.addr to (k in started) }
+            for (k in unconfirmed.keys.toList()) unconfirmed.remove(k)?.let { if (k !in targets) targets[k] = it to false }
             rpcStarted.clear()
             coroutineScope {
-                for (p in targets) {
-                    launch {
-                        runCatching { env.peerRpcStop(p.addr) }
-                        if (p.nodeId !in started) for (i in restore[p.nodeId] ?: emptyList()) runCatching { env.peerLoadModel(p.addr, i.role, i.file) }
-                    }
-                }
+                for ((nodeId, t) in targets) launch { releasePeer(nodeId, t.first, t.second) }
             }
-            restore.keys.filter { it != "self" }.forEach { restore.remove(it) }
+            restore.keys.filter { it != "self" && !unconfirmed.containsKey(it) }.forEach { restore.remove(it) }
         }
         if (local) {
             val items = restore.remove("self") ?: emptyList()
@@ -373,7 +478,82 @@ class SplitCoordinator(
             env.clearActivity(ACTIVITY_OWNER)
         }
         persist()
-        _state.update { it.copy(pendingRestore = pendingText()) }
+        publishPending()
+        startRestoreRetry()
+    }
+
+    /**
+     * Gives a peer back what the split took. [rpcRan]: its rpc-server ran, so it restores its own servers when told to stop; any other
+     * peer is asked what it runs and gets what is still stopped loaded. A peer that does not answer keeps its record ([restore] and
+     * [unconfirmed]) and is retried by [startRestoreRetry] instead of being forgotten.
+     */
+    private suspend fun releasePeer(nodeId: String, addr: String, rpcRan: Boolean) {
+        val items = restore[nodeId] ?: emptyList()
+        val loan = loans.remove(nodeId)
+        val ok = if (rpcRan) stopRpcOn(addr, loan) else confirmPeerRestored(addr, items, loan)
+        if (ok || items.isEmpty()) {
+            restore.remove(nodeId)
+        } else {
+            unconfirmed[nodeId] = addr
+            step("${peerName(nodeId)} did not answer: its servers are still owed and will be retried")
+        }
+    }
+
+    /**
+     * A re-plan on fewer phones: the lenders of the previous plan that the new one does not use are stopped and their servers restored
+     * before the new load starts, so their lease is no longer renewed and their memory is no longer held. A lender that is away is not
+     * called (its lease runs out by itself); its record stays and is retried when it answers.
+     */
+    private suspend fun releaseExcluded(keep: List<PeerInfo>) {
+        val keepIds = keep.map { it.nodeId }.toSet()
+        val dropped = touched.keys.toList().filter { it !in keepIds }
+        if (dropped.isEmpty()) return
+        step("Releasing ${dropped.joinToString { peerName(it) }}: not in the new plan")
+        val online = env.peers().filter { !it.away }.map { it.nodeId }.toSet()
+        coroutineScope {
+            for (k in dropped) {
+                val p = touched.remove(k) ?: continue
+                val rpcRan = rpcStarted.remove(k) != null
+                if (k in online) {
+                    launch { releasePeer(k, p.addr, rpcRan) }
+                } else {
+                    loans.remove(k)
+                    if ((restore[k] ?: emptyList()).isNotEmpty()) unconfirmed[k] = p.addr else restore.remove(k)
+                }
+            }
+        }
+        persist()
+        publishPending()
+        startRestoreRetry()
+    }
+
+    /** [MemCloudState.pendingRestore] and [MemCloudState.notices] from what is still owed. */
+    private fun publishPending() {
+        _state.update { it.copy(pendingRestore = pendingText(), notices = noticesText()) }
+    }
+
+    private fun noticesText(): List<String> =
+        unconfirmed.keys.sorted().map { "${peerName(it)} has not got its models back yet" } + listOfNotNull(degradedNote)
+
+    /** Calls every peer that has not confirmed, every [Timing.restoreRetryMs], until all have. Skips a peer that is in a split being started or is away. */
+    private fun startRestoreRetry() {
+        if (unconfirmed.isEmpty() || retryJob?.isActive == true) return
+        retryJob = scope.launch {
+            while (isActive && unconfirmed.isNotEmpty()) {
+                delay(timing.restoreRetryMs)
+                if (synchronized(lock) { opJob?.isActive == true }) continue
+                for ((nodeId, addr) in unconfirmed.entries.toList()) {
+                    if (touched.containsKey(nodeId) || env.peers().firstOrNull { it.nodeId == nodeId }?.away != false) continue
+                    if (confirmPeerRestored(addr, restore[nodeId] ?: emptyList())) {
+                        unconfirmed.remove(nodeId)
+                        restore.remove(nodeId)
+                        step("${peerName(nodeId)} has its models back")
+                    }
+                }
+                persist()
+                publishPending()
+            }
+        }
     }
 
     // ---------- memory hygiene ----------
@@ -383,22 +563,66 @@ class SplitCoordinator(
         val items = listOf("chat", "embed").mapNotNull { r ->
             snap[r]?.takeIf { it.state != "STOPPED" && it.file != null }?.let { RestoreItem(r, it.file!!, it.rssMb) }
         }
-        remember(p.nodeId, items)
-        val freed = ArrayList<String>()
-        for (r in listOf("chat", "embed")) {
-            val role = snap[r] ?: continue
-            if (role.state == "STOPPED") continue
-            setPhone(p.nodeId) { it.copy(step = "Stopping its $r server (${role.file}) to free memory") }
-            step("${p.name}: stopping $r server ${role.file}${role.rssMb?.let { " (${mb(it)})" } ?: ""}")
-            env.peerStopRole(p.addr, r)
-            freed += "$r ${role.file}${role.rssMb?.let { ", ${mb(it)}" } ?: ""}"
-        }
-        setPhone(p.nodeId) { it.copy(step = "Starting rpc-server", freed = freed, restore = restoreText(p.nodeId)) }
+        remember(p.nodeId, items) // on disk before anything is sent to the peer
+
+        // The loan comes first: /rpc/start carries the restore list, and the lease runs from there. A new build stops its own chat and
+        // embedding servers as part of accepting, after it has recorded that list. An older build ignores that field and keeps them
+        // running: the driver stops them below, when the lease and the list already exist on the peer.
+        setPhone(p.nodeId) { it.copy(step = "Starting rpc-server", restore = restoreText(p.nodeId)) }
         step("${p.name}: starting rpc-server on ${p.host}:${Ports.RPC} with the tensor cache")
-        val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList()))
-        if (st.state != "READY") throw IllegalStateException("rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}")
-        rpcStarted[p.nodeId] = p
-        setPhone(p.nodeId) { it.copy(step = "rpc-server listening, waiting for weights") }
+        val st = startRpcOn(p)
+        rpcStarted[p.nodeId] = p // from here the renew job extends its lease
+        val token = st.loan
+        if (token != null) loans[p.nodeId] = token else loans.remove(p.nodeId)
+
+        val freed = ArrayList<String>()
+        val own = st.stoppedOwn
+        if (own != null) {
+            remember(p.nodeId, own) // what the peer really stopped, which may differ from the snapshot taken a moment ago
+            for (m in own) {
+                step("${p.name}: stopped ${m.role} server ${m.file}${m.mb?.let { " (${mb(it)})" } ?: ""}")
+                freed += "${m.role} ${m.file}${m.mb?.let { ", ${mb(it)}" } ?: ""}"
+            }
+        } else {
+            for (r in listOf("chat", "embed")) {
+                val role = snap[r] ?: continue
+                if (role.state == "STOPPED") continue
+                setPhone(p.nodeId) { it.copy(step = "Stopping its $r server (${role.file}) to free memory") }
+                step("${p.name}: stopping $r server ${role.file}${role.rssMb?.let { " (${mb(it)})" } ?: ""}")
+                env.peerStopRole(p.addr, r)
+                freed += "$r ${role.file}${role.rssMb?.let { ", ${mb(it)}" } ?: ""}"
+            }
+        }
+        setPhone(p.nodeId) { it.copy(step = "rpc-server listening, waiting for weights", freed = freed, restore = restoreText(p.nodeId)) }
+    }
+
+    /** What this phone asks of [p]: its planned share and the allowance; null past the memory check (force), so the lender does not refuse what the driver was told to try. */
+    private fun needMbFor(p: PeerInfo): Long? =
+        if (forced) null else plan?.fits()?.firstOrNull { it.device.nodeId == p.nodeId }?.needMb
+
+    /**
+     * /rpc/start on [p]. A lender whose rpc port is still held (the earlier rpc-server has not gone yet; seen once on a phone:
+     * "port 50052 is still in use after two retries") is told to stop, given [Timing.portRetryDelayMs], and asked again, up to
+     * [Timing.portRetries] times, before the split fails. Any other refusal fails at once.
+     */
+    private suspend fun startRpcOn(p: PeerInfo): RpcStateDto {
+        var retries = 0
+        while (true) {
+            val failure: String = try {
+                val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList(), stopOwn = true, needMb = needMbFor(p)))
+                if (st.state == "READY") return st
+                "rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.message ?: e.toString()
+            }
+            if (retries >= timing.portRetries || !MemCloudLogic.portInUse(failure)) throw IllegalStateException(failure)
+            retries++
+            step("${p.name}: port ${Ports.RPC} is still in use; stopping its rpc-server and trying again ($retries of ${timing.portRetries})")
+            stopRpcOn(p.addr)
+            delay(timing.portRetryDelayMs)
+        }
     }
 
     /** A 48-token answer from the small chat model that is about to be stopped: its tok/s is the scale for the split's number. */
@@ -447,7 +671,7 @@ class SplitCoordinator(
     private fun restoreText(key: String): List<String> = (restore[key] ?: emptyList()).map { "${it.role} ${it.file}" }
 
     private fun persist() {
-        runCatching { env.save(Persisted(restore.toMap(), touched.mapValues { it.value.addr }, baselinePending)) }
+        runCatching { env.save(Persisted(restore.toMap(), touched.mapValues { it.value.addr } + unconfirmed, baselinePending)) }
     }
 
     // ---------- leases, watching ----------
@@ -467,7 +691,7 @@ class SplitCoordinator(
                     Phase.IDLE, Phase.FAILED, Phase.BASELINE -> return@launch
                     else -> degradedSince = 0L
                 }
-                for (p in rpcStarted.values.toList()) launch { runCatching { env.peerRpcRenew(p.addr) } }
+                for (p in rpcStarted.values.toList()) launch { runCatching { env.peerRpcRenew(p.addr, loans[p.nodeId]) } }
             }
         }
     }
@@ -494,6 +718,10 @@ class SplitCoordinator(
                     return@launch
                 }
                 refreshLive(final = false, rpcEvery = if (ph == Phase.LOADING) 1 else 2, tick = tick)
+                participants.firstOrNull { (probeFailures[it.nodeId] ?: 0) >= timing.probeFailLimit }?.let { p ->
+                    degrade(p, "its rpc-server failed ${timing.probeFailLimit} state checks in a row")
+                    return@launch
+                }
             }
         }
     }
@@ -519,15 +747,57 @@ class SplitCoordinator(
     /** Which peer a llama-server failure is about, judging by the endpoint named in its log. */
     private fun attribute(text: String): PeerInfo? = participants.firstOrNull { text.contains(it.host) }
 
-    private fun degrade(p: PeerInfo, reason: String) {
+    private fun degrade(p: PeerInfo, reason: String) = degrade(p.nodeId, p.name, reason)
+
+    /**
+     * The answer stopped coming from the split model. A phone that can be named is named (heartbeat gone, or rpc-server not answering);
+     * a hung rpc-server answers its state route like a healthy one, so then the split model as a whole is blamed.
+     */
+    private suspend fun stalled(idleMs: Long, beforeFirstToken: Boolean) {
+        val culprit = if (_state.value.phase == Phase.READY) lostPeer()?.first ?: unresponsivePeer() else null
+        val name = culprit?.name ?: "the split model"
+        _state.update { it.copy(generation = it.generation?.copy(running = false, error = "$name stopped answering")) }
+        if (_state.value.phase != Phase.READY) return
+        val reason = "no ${if (beforeFirstToken) "first " else ""}token for ${idleMs / 1000} s"
+        if (culprit != null) degrade(culprit, reason) else degrade("", name, reason)
+    }
+
+    private fun degrade(nodeId: String, name: String, reason: String) {
         val changed = synchronized(lock) {
-            val next = MemCloudLogic.degraded(_state.value, p.nodeId, p.name, reason, env.nowMs())
+            val next = MemCloudLogic.degraded(_state.value, nodeId, name, reason, env.nowMs())
             if (next != null) _state.value = next
             next != null
         }
         if (!changed) return
         cancelGeneration()
         if (ownsChat) { env.stopLocal(Role.CHAT); ownsChat = false }
+        startDegradedRestore()
+    }
+
+    /**
+     * DEGRADED leaves this phone's own chat and embedding models stopped so that a re-plan is quick. If nobody acts for
+     * [Timing.degradedRestoreMs], the phone gets them back by itself (the same release as Stop) and the state says so; the split stays
+     * DEGRADED, and a re-plan after that stops them again. The release is the running operation, so a re-plan has to wait for it.
+     */
+    private fun startDegradedRestore() {
+        degradedJob?.cancel()
+        degradedJob = scope.launch {
+            delay(timing.degradedRestoreMs)
+            val run = synchronized(lock) {
+                if (_state.value.phase != Phase.DEGRADED || opJob?.isActive == true) return@synchronized null
+                scope.launch(start = CoroutineStart.LAZY) {
+                    withContext(NonCancellable) { teardownAll() } // a Stop during the release must not leave a peer half released
+                    if (_state.value.phase == Phase.DEGRADED) {
+                        val minutes = timing.degradedRestoreMs / 60_000.0
+                        val after = if (minutes >= 1) "%.0f minutes".format(minutes) else "${timing.degradedRestoreMs / 1000} seconds"
+                        val note = "${env.selfName()}'s own chat and embedding models were restored automatically after $after in DEGRADED with no re-plan."
+                        degradedNote = note
+                        _state.update { it.copy(notices = noticesText(), steps = (it.steps + note).takeLast(60), updatedAtMs = env.nowMs()) }
+                    }
+                }.also { opJob = it }
+            }
+            run?.start()
+        }
     }
 
     /** Refreshes the per-phone numbers (and the log view) in [state]. */
@@ -539,6 +809,12 @@ class SplitCoordinator(
             if (final || tick % rpcEvery == 0) coroutineScope {
                 participants.map { p -> async { p.nodeId to Probe(runCatching { env.peerRpcState(p.addr) }.getOrNull(), env.tcpRttMs(p.host, Ports.RPC)) } }.awaitAll().toMap()
             } else emptyMap()
+        // a serving split counts state checks that fail or do not say READY; while loading, a busy link may make a check slow, so only the heartbeat decides
+        if (_state.value.phase == Phase.READY) {
+            for ((nodeId, probe) in probes) {
+                if (probe.rpc?.state == "READY") probeFailures.remove(nodeId) else probeFailures.merge(nodeId, 1, Int::plus)
+            }
+        }
         val reg = env.peers()
         val ownHealth = env.selfHealth()
         val own = env.local(Role.CHAT)
@@ -602,25 +878,53 @@ class SplitCoordinator(
     private suspend fun generate(prompt: String, maxTokens: Int) {
         _state.update { it.copy(generation = GenerationView(prompt)) }
         val t0 = System.nanoTime()
-        var first = 0L
+        val firstNs = AtomicLong(0)
+        val lastNs = AtomicLong(t0) // when anything last arrived from the stream (a token, or the end)
         var chunks = 0
         val text = StringBuilder()
         try {
             val llm = env.llm
             check(llm.modelName != "FAKE") { "the chat server is not running" }
-            llm.chatStream(ChatRequest(listOf(ChatMessage("user", prompt)), maxTokens = maxTokens, temperature = 0.7)).collect { c ->
-                if (c.delta.isNotEmpty()) {
-                    val n = System.nanoTime()
-                    if (first == 0L) first = n
-                    chunks++
-                    text.append(c.delta)
-                    val rate = if (n > first) (chunks - 1) * 1e9 / (n - first) else null
-                    _state.update { it.copy(generation = it.generation?.copy(text = text.toString(), ttftMs = (first - t0) / 1_000_000, decodeTokPerSec = rate, tokens = chunks)) }
-                }
-                c.stats?.let { s ->
-                    _state.update { it.copy(generation = it.generation?.copy(decodeTokPerSec = s.decodeTokPerSec.takeIf { v -> v > 0 }, tokens = s.completionTokens)) }
+            // The stream is read in its own job so that a stream that goes quiet can be abandoned: a hung rpc-server leaves the heartbeat
+            // fine, rpc-server READY, and the socket open for its full timeout. No token for the stall limit means the split has stopped.
+            val done = CompletableDeferred<Unit>()
+            val reader = scope.launch {
+                try {
+                    llm.chatStream(ChatRequest(listOf(ChatMessage("user", prompt)), maxTokens = maxTokens, temperature = 0.7)).collect { c ->
+                        lastNs.set(System.nanoTime())
+                        if (c.delta.isNotEmpty()) {
+                            val n = lastNs.get()
+                            firstNs.compareAndSet(0, n)
+                            val first = firstNs.get()
+                            chunks++
+                            text.append(c.delta)
+                            val rate = if (n > first) (chunks - 1) * 1e9 / (n - first) else null
+                            _state.update { it.copy(generation = it.generation?.copy(text = text.toString(), ttftMs = (first - t0) / 1_000_000, decodeTokPerSec = rate, tokens = chunks)) }
+                        }
+                        c.stats?.let { s ->
+                            _state.update { it.copy(generation = it.generation?.copy(decodeTokPerSec = s.decodeTokPerSec.takeIf { v -> v > 0 }, tokens = s.completionTokens)) }
+                        }
+                    }
+                    done.complete(Unit)
+                } catch (e: Throwable) {
+                    done.completeExceptionally(e)
                 }
             }
+            var idleMs: Long? = null
+            try {
+                while (withTimeoutOrNull(timing.stallPollMs) { done.join() } == null) {
+                    val limit = if (firstNs.get() == 0L) timing.firstTokenStallMs else timing.tokenStallMs
+                    val idle = (System.nanoTime() - lastNs.get()) / 1_000_000
+                    if (idle > limit) { idleMs = idle; break }
+                }
+            } finally {
+                reader.cancel()
+            }
+            if (idleMs != null) {
+                stalled(idleMs, firstNs.get() == 0L)
+                return
+            }
+            done.await() // the stream's own failure, if it ended with one, goes to the handlers below
             _state.update { it.copy(generation = it.generation?.copy(running = false)) }
         } catch (e: CancellationException) {
             _state.update { it.copy(generation = it.generation?.copy(running = false)) }

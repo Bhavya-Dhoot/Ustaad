@@ -60,6 +60,23 @@ class SwarmPrefs(private val ctx: Context) {
         ctx.swarmStore.edit { it[keepBusyKey] = v }
     }
 
+    private val pduLeanSourcesKey = booleanPreferencesKey("pdu_lean_sources")
+    private val choirMajorityKey = booleanPreferencesKey("choir_majority_skips_round2")
+
+    /** Data Union: give the model fewer, better sources. Off by default; changes what the model is given, so it waits for a phone measurement. */
+    suspend fun pduLeanSources(): Boolean = ctx.swarmStore.data.first()[pduLeanSourcesKey] ?: false
+
+    suspend fun setPduLeanSources(v: Boolean) {
+        ctx.swarmStore.edit { it[pduLeanSourcesKey] = v }
+    }
+
+    /** Agent Choir: when every phone answered round 1 and a majority agrees, skip round 2. Off by default. */
+    suspend fun choirMajoritySkipsRound2(): Boolean = ctx.swarmStore.data.first()[choirMajorityKey] ?: false
+
+    suspend fun setChoirMajoritySkipsRound2(v: Boolean) {
+        ctx.swarmStore.edit { it[choirMajorityKey] = v }
+    }
+
     /** The agent endpoint switch, its key and the file search switch, written together; a null [key] removes the stored one. */
     suspend fun setAgent(on: Boolean, key: String?, files: Boolean) {
         ctx.swarmStore.edit {

@@ -112,6 +112,24 @@ class Downloader(
     }
 
     companion object {
+        /** Free space that must remain after the download, so the phone does not end up full (1 GB). */
+        const val SPARE_BYTES = 1024L * 1024 * 1024
+
+        /**
+         * The refusal text when the models folder cannot take [totalBytes] of [fileName] (of which [partBytes] are already on disk from an
+         * earlier try) plus [SPARE_BYTES], or null when it can. [freeBytes] null (StatFs failed) and [totalBytes] 0 (size not pinned)
+         * allow the download: the check must never be the reason a working phone cannot download.
+         */
+        fun spaceRefusal(fileName: String, totalBytes: Long, partBytes: Long, freeBytes: Long?): String? {
+            if (freeBytes == null || totalBytes <= 0) return null
+            val remaining = (totalBytes - partBytes).coerceAtLeast(0)
+            if (freeBytes >= remaining + SPARE_BYTES) return null
+            return "Not enough free space to download $fileName: it needs ${gb(remaining)} more plus ${gb(SPARE_BYTES)} to spare, " +
+                "and this phone has ${gb(freeBytes)} free. Delete a model or free up storage, then try again."
+        }
+
+        private fun gb(bytes: Long): String = String.format(java.util.Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024))
+
         /** `bytes 100-199/1234` -> 1234 */
         fun contentRangeTotal(header: String?): Long? =
             header?.substringAfterLast('/')?.trim()?.toLongOrNull()

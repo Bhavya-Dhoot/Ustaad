@@ -18,7 +18,8 @@ import io.ktor.server.routing.post
  * MemoryCloud: one phone drives a model whose layers sit on several phones (llama.cpp rpc-server), and the
  * Memory tab shows where every layer lives. Routes under /v1/memcloud/ (all signed):
  *
- * Worker: POST /rpc/start {port, cache, bind, threads, restore}, POST /rpc/renew, POST /rpc/stop, GET /rpc/state.
+ * Worker: POST /rpc/start {port, cache, bind, threads, restore, stopOwn, needMb}, POST /rpc/renew, POST /rpc/stop, GET /rpc/state
+ * (reports cachedBytes and cachedFiles of the tensor cache), POST /rpc/cache/clear.
  * Coordinator: POST /start {file, peers, mode, layers}, POST /replan {peers}, POST /stop, POST /ask {prompt, maxTokens},
  * POST /baseline {timeoutSec}, GET /state, GET /plan?file=&peers=&mode=. Long operations answer 202 at once
  * (the node server drops a connection idle for 45 s); poll GET /state.
@@ -34,18 +35,33 @@ object MemCloudModule : SwarmModule {
             val via = runCatching { call.request.local.localAddress }.getOrNull()
             val from = call.request.headers[Signer.HEADER_NODE]
             when (val r = RpcWorker.start(req, via, from)) {
-                is RpcLender.StartResult.Ok -> call.respond(if (r.ready) HttpStatusCode.OK else HttpStatusCode.Conflict, RpcWorker.state())
+                is RpcLender.StartResult.Ok -> call.respond(if (r.ready) HttpStatusCode.OK else HttpStatusCode.Conflict, RpcWorker.state(r.stopped, r.loan))
                 is RpcLender.StartResult.Refused -> call.respond(HttpStatusCode.BadRequest, ErrorBody(r.message))
             }
         }
         // the driver extends the loan every few seconds; without a renewal it ends by itself after RpcLender.LEASE_MS
         post("/rpc/renew") {
-            when (val r = RpcWorker.renew(call.request.headers[Signer.HEADER_NODE])) {
+            val ref = body<LoanRef>() // the loan token; an older driver sends no body
+            when (val r = RpcWorker.renew(call.request.headers[Signer.HEADER_NODE], ref?.loan)) {
                 is RpcLender.RenewResult.Ok -> call.respond(RpcWorker.state())
                 is RpcLender.RenewResult.Refused -> call.respond(HttpStatusCode.Conflict, ErrorBody(r.message))
             }
         }
-        post("/rpc/stop") { call.respond(RpcWorker.stop("stopped by the driver")) }
+        // only the phone that holds the loan, and only for the loan it holds, can end it (409 otherwise)
+        post("/rpc/stop") {
+            val ref = body<LoanRef>()
+            when (val r = RpcWorker.stopFor(call.request.headers[Signer.HEADER_NODE], ref?.loan)) {
+                is RpcLender.StopResult.Ok -> call.respond(RpcWorker.state())
+                is RpcLender.StopResult.Refused -> call.respond(HttpStatusCode.Conflict, ErrorBody(r.message))
+            }
+        }
+        // the tensor cache has no cap and the warm load depends on it, so it is cleared only on request (the state route reports its size)
+        post("/rpc/cache/clear") {
+            when (val r = RpcWorker.clearCache()) {
+                is RpcCache.ClearResult.Cleared -> call.respond(RpcCacheDto(r.removed.files, r.removed.bytes, r.remaining.files, r.remaining.bytes))
+                is RpcCache.ClearResult.Refused -> call.respond(HttpStatusCode.Conflict, ErrorBody(r.message))
+            }
+        }
         get("/rpc/state") { call.respond(RpcWorker.state()) }
 
         get("/state") { call.respond(MemCloud.state.value) }
@@ -66,6 +82,8 @@ object MemCloudModule : SwarmModule {
         post("/start") {
             val req = body<StartRequest>()
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("""body must be {"file":"<name>.gguf","peers":["Phone B"],"mode":"equal|ram","layers":[..]}"""))
+            // a layer split that cannot be right for this model and these phones is a bad request, not a busy one
+            MemCloud.validateStart(req)?.let { return@post call.respond(HttpStatusCode.BadRequest, ErrorBody(it)) }
             val refused = MemCloud.start(req)
             if (refused != null) call.respond(HttpStatusCode.Conflict, ErrorBody(refused)) else call.respond(HttpStatusCode.Accepted, MemCloud.state.value)
         }

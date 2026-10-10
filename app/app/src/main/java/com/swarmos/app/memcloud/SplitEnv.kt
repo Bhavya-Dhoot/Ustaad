@@ -1,10 +1,13 @@
 package com.swarmos.app.memcloud
 
 import android.content.Context
+import android.os.Looper
+import android.util.Log
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.LinkRoute
 import com.swarmos.app.link.LinkType
+import com.swarmos.app.link.NodeHttpException
 import com.swarmos.app.link.PeerLinks
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.LlmClient
@@ -80,8 +83,11 @@ interface SplitEnv {
     suspend fun peerStopRole(addr: String, role: String)
     suspend fun peerLoadModel(addr: String, role: String, file: String)
     suspend fun peerRpcStart(addr: String, req: RpcStartRequest): RpcStateDto
-    suspend fun peerRpcRenew(addr: String): RpcStateDto
-    suspend fun peerRpcStop(addr: String)
+    /** [loan] is the token /rpc/start returned; null for a lender on the older build, which gave none. */
+    suspend fun peerRpcRenew(addr: String, loan: String? = null): RpcStateDto
+
+    /** Ends the loan. Throws [LoanNotOurs] when the lender answers that the loan is another phone's or a newer one. */
+    suspend fun peerRpcStop(addr: String, loan: String? = null)
     suspend fun peerRpcState(addr: String): RpcStateDto
     fun reachable(host: String, port: Int): Boolean
 
@@ -152,11 +158,18 @@ object AndroidSplitEnv : SplitEnv {
     override suspend fun peerRpcStart(addr: String, req: RpcStartRequest): RpcStateDto =
         SwarmJson.decodeFromString(AppGraph.nodeClient.raw(HttpMethod.Post, addr, "/memcloud/rpc/start", SwarmJson.encodeToString(req), 60_000))
 
-    override suspend fun peerRpcRenew(addr: String): RpcStateDto =
-        SwarmJson.decodeFromString(AppGraph.nodeClient.raw(HttpMethod.Post, addr, "/memcloud/rpc/renew", "", 3_000))
+    private fun loanBody(loan: String?) = if (loan == null) "" else SwarmJson.encodeToString(LoanRef(loan))
 
-    override suspend fun peerRpcStop(addr: String) {
-        AppGraph.nodeClient.raw(HttpMethod.Post, addr, "/memcloud/rpc/stop", "", 10_000)
+    override suspend fun peerRpcRenew(addr: String, loan: String?): RpcStateDto =
+        SwarmJson.decodeFromString(AppGraph.nodeClient.raw(HttpMethod.Post, addr, "/memcloud/rpc/renew", loanBody(loan), 3_000))
+
+    override suspend fun peerRpcStop(addr: String, loan: String?) {
+        try {
+            AppGraph.nodeClient.raw(HttpMethod.Post, addr, "/memcloud/rpc/stop", loanBody(loan), 10_000)
+        } catch (e: NodeHttpException) {
+            if (e.status == 409) throw LoanNotOurs(e.body)
+            throw e
+        }
     }
 
     override suspend fun peerRpcState(addr: String): RpcStateDto =
@@ -207,12 +220,21 @@ object AndroidSplitEnv : SplitEnv {
         e.putString("restore", SwarmJson.encodeToString(p.restore))
         e.putString("peers", SwarmJson.encodeToString(p.peerAddrs))
         if (p.baselinePending == null) e.remove("baseline_pending") else e.putString("baseline_pending", p.baselinePending)
-        e.apply()
+        // The record of what is owed to other phones must be on disk when this returns, not queued: commit() waits for the write, so it
+        // runs only off the main thread (every caller is on the coordinator's IO scope); on the main thread apply() is the fallback.
+        if (Looper.myLooper() == Looper.getMainLooper()) e.apply()
+        else if (!e.commit()) {
+            Log.w("MemCloud", "the restore record was not written; trying once more")
+            if (!e.commit()) Log.e("MemCloud", "the restore record could not be written")
+        }
     }
 
     /** Link addresses a worker may bind rpc-server to: Wi-Fi, hotspot and Direct interfaces only (the link module's advertisable set), never cellular. */
     fun linkAddresses(): List<LinkAddr> = LinkRoute.advertisable().map { LinkAddr(it.address, it.type == LinkType.DIRECT) }
 }
+
+/** The lender refused a stop (HTTP 409): its loan belongs to another phone or to a newer loan of this one, so there is nothing of ours left to end. */
+class LoanNotOurs(message: String) : Exception(message)
 
 data class LinkAddr(val address: String, val direct: Boolean)
 

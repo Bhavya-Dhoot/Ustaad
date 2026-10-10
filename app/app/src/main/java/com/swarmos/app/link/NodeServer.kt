@@ -52,7 +52,8 @@ const val MAX_BODY_BYTES = 1L shl 20
 /** Response headers on every call: who answered and whether its app is in front. Read by [NodeClient]. */
 const val HEADER_FG = "X-Swarm-Fg"
 const val HEADER_REPLAY = "X-Swarm-Replay"
-const val IDLE_TIMEOUT_S = 3600
+/** A connection silent for this long is closed: 10 minutes covers a non-streamed model call (streams send pings) without keeping dead sockets for an hour. */
+const val IDLE_TIMEOUT_S = 600
 
 val SwarmHeadersPlugin = createApplicationPlugin("SwarmHeaders") {
     onCall { call ->
@@ -159,6 +160,8 @@ class NodeServer {
         if (!Signer.verify(AppGraph.pairingSecret, req.httpMethod.value, req.uri, ts, body, sig)) {
             return reject("bad signature")
         }
+        // a verified request is proof of life: it counts as a heartbeat on the path it came over
+        runCatching { PeerLinks.noteInbound(node, req.origin.remoteAddress, req.path()) }
 
         // a request that carries an id runs at most once: a retry (same id, another path) gets the stored response
         val reqId = req.header(HEADER_REQ)
@@ -170,6 +173,11 @@ class NodeServer {
             val key = "$node/$reqId"
             when (val b = NodeDedup.cache.begin(key)) {
                 RequestDedup.Begin.Run -> call.attributes.put(NodeDedup.ID, key)
+                RequestDedup.Begin.Busy -> {
+                    // the first run of this request is still going: do not hold this connection for ever
+                    call.respond(HttpStatusCode.Conflict, ErrorBody("the same request (X-Swarm-Req) is still running"))
+                    finish()
+                }
                 is RequestDedup.Begin.Replay -> {
                     call.response.headers.append(HEADER_REPLAY, "1")
                     call.respondBytes(b.stored.body, b.stored.contentTypeOrJson(), HttpStatusCode.fromValue(b.stored.status))

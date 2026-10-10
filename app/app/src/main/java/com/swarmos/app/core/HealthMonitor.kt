@@ -32,15 +32,21 @@ enum class ThermalLevel(val word: String, private val firstStatus: Int) {
     Hot("Hot", 2),
     Severe("Severe", 3);
 
-    /** Status 2 (MODERATE) or more: the scheduler prefers other phones. */
+    /**
+     * Status 2 (MODERATE) or more: shown in bold in the throughput table. The scheduler does NOT use this threshold: it prefers
+     * other phones from status 3 ([tooHot], sched/Scheduler.kt isDegraded).
+     */
     val degraded: Boolean get() = firstStatus >= DEGRADED_FROM
 
-    /** Status 3 (SEVERE) or more: benchmarks and heavy generation are refused and the status strip shows the HOT stamp. */
+    /** Status 3 (SEVERE) or more: benchmarks and heavy generation are refused, the scheduler prefers other phones, and the status strip shows the HOT stamp. */
     val tooHot: Boolean get() = firstStatus >= TOO_HOT_FROM
 
     companion object {
         const val DEGRADED_FROM = 2
         const val TOO_HOT_FROM = 3
+
+        /** Status 4 (CRITICAL) or more: [ThermalGate] refuses every new piece of work. */
+        const val SHED_FROM = 4
 
         fun of(status: Int): ThermalLevel = when {
             status <= 0 -> Cool
@@ -54,6 +60,9 @@ enum class ThermalLevel(val word: String, private val firstStatus: Int) {
 
         /** [ThermalLevel.tooHot] straight from a raw status. */
         fun isTooHot(status: Int): Boolean = status >= TOO_HOT_FROM
+
+        /** True from status 4 (CRITICAL): the phone takes on no new work at all ([ThermalGate]). */
+        fun isShedding(status: Int): Boolean = status >= SHED_FROM
 
         /** The word for a stored PowerManager name ("NONE", "LIGHT", "MODERATE", "SEVERE" and worse); an unknown text is returned as it is. */
         fun wordForName(name: String): String = when (name.uppercase()) {

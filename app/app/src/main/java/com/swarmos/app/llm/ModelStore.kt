@@ -1,7 +1,9 @@
 package com.swarmos.app.llm
 
 import android.content.Context
+import android.os.StatFs
 import com.swarmos.app.AppGraph
+import com.swarmos.app.BuildConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -147,12 +149,30 @@ object ModelStore {
     /** "Use GPU for chat" (default on): the chat server starts on the OpenCL build and falls back to the CPU build if that fails. Applies from the next load. */
     val useGpu: StateFlow<Boolean> get() = _useGpu
 
+    /** Setting the switch (either way) is the owner's "try the GPU again": it also forgets a remembered GPU failure ([GpuFailureMemory]). */
     fun setUseGpu(on: Boolean) {
-        prefs().edit().putBoolean(KEY_GPU, on).apply()
+        prefs().edit().putBoolean(KEY_GPU, on).remove(KEY_GPU_FAILED).apply()
         _useGpu.value = on
     }
 
     private const val KEY_GPU = "use_gpu"
+    private const val KEY_GPU_FAILED = "gpu_failed_stamp"
+
+    /** Identifies this install: version name, version code and the time of the last install or update (a dev build keeps its version name). */
+    @Suppress("DEPRECATION")
+    fun appStamp(): String {
+        val ctx = AppGraph.appContext
+        val updated = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime }.getOrDefault(0L)
+        return "${BuildConfig.VERSION_NAME}/${BuildConfig.VERSION_CODE}/$updated"
+    }
+
+    /** The install stamp stored with the last GPU failure that the CPU build had to take over from, or null. */
+    fun gpuFailedStamp(): String? = prefs().getString(KEY_GPU_FAILED, null)
+
+    /** Remembers that the GPU build failed on this install while the CPU build served the same model. */
+    fun markGpuFailed() {
+        prefs().edit().putString(KEY_GPU_FAILED, appStamp()).apply()
+    }
 
     private fun prefs() = AppGraph.appContext.getSharedPreferences("swarm_llm", Context.MODE_PRIVATE)
 
@@ -164,6 +184,13 @@ object ModelStore {
         if (jobs[entry.file]?.isActive == true) return
         setState(entry.file, DownloadState.Downloading(0, entry.bytes, 0))
         jobs[entry.file] = scope.launch {
+            // free space first: a download that cannot fit would fill the phone and fail at the end (StatFs runs here, off the main thread)
+            val free = runCatching { StatFs(modelsDir().path).availableBytes }.getOrNull()
+            val part = File(fileOf(entry.file).path + ".part").length()
+            Downloader.spaceRefusal(entry.file, entry.bytes, part, free)?.let {
+                setState(entry.file, DownloadState.Failed(it))
+                return@launch
+            }
             var lastBytes = 0L
             var lastNs = System.nanoTime()
             var rate = 0L

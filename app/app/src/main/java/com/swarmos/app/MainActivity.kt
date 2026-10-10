@@ -113,6 +113,10 @@ class MainActivity : ComponentActivity() {
         if (i?.hasExtra(EXTRA_AGENT_FILES) == true) AgentAccess.setFiles(i.getBooleanExtra(EXTRA_AGENT_FILES, false))
         // `--ez keepBusy true` turns the "Keep busy" mode on (false turns it off); persisted like the Settings switch
         if (i?.hasExtra(EXTRA_KEEP_BUSY) == true) BusyMode.setEnabled(i.getBooleanExtra(EXTRA_KEEP_BUSY, false))
+        // `--ez leanSources true` gives the Data Union model fewer, better sources (false restores today's prompt); persisted in the pref pdu_lean_sources
+        if (i?.hasExtra(EXTRA_LEAN_SOURCES) == true) com.swarmos.app.pdu.PduEngine.setLeanSources(i.getBooleanExtra(EXTRA_LEAN_SOURCES, false))
+        // `--ez choirMajority true` lets a majority in round 1 skip round 2 (false restores today's policy); persisted in the pref choir_majority_skips_round2
+        if (i?.hasExtra(EXTRA_CHOIR_MAJORITY) == true) com.swarmos.app.choir.ChoirController.setMajoritySkipsRound2(i.getBooleanExtra(EXTRA_CHOIR_MAJORITY, false))
         // `--es activity 'Running a check (7 of 20).'` shows that line in the banner and the notification, with a Stop action; `--es activity ''` clears it
         if (i?.hasExtra(EXTRA_ACTIVITY) == true) {
             val line = i.getStringExtra(EXTRA_ACTIVITY).orEmpty()
@@ -131,6 +135,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_GPU = "gpu"
         const val EXTRA_ACTIVITY = "activity"
         const val EXTRA_AGENT_ACCESS = "agentAccess"
+        const val EXTRA_LEAN_SOURCES = "leanSources"
+        const val EXTRA_CHOIR_MAJORITY = "choirMajority"
         const val EXTRA_AGENT_KEY = "agentKey"
         const val EXTRA_AGENT_FILES = "agentFiles"
         const val EXTRA_KEEP_BUSY = "keepBusy"

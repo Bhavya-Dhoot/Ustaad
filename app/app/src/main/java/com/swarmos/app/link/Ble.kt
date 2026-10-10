@@ -31,6 +31,7 @@ import com.swarmos.app.core.Ports
 import com.swarmos.app.core.SwarmJson
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,8 +95,13 @@ object BleLink : SmallTransport {
     private var advCallback: AdvertiseCallback? = null
     private var scanCallback: ScanCallback? = null
     private var advFlags = -1
+    private var scanStartedMs = 0L
 
-    private class Seen(val device: BluetoothDevice, var rssi: Int, var flags: Int, var atMs: Long, var actedMs: Long = 0)
+    /** A paired phone heard on the air. [device] is replaced on every sighting: a peer's Bluetooth address rotates. */
+    private class Seen(@Volatile var device: BluetoothDevice, var rssi: Int, var flags: Int, var atMs: Long, var actedMs: Long = 0) {
+        /** Paces re-dials of this peer: 2 s up to 30 s while dials do not end in a working channel. */
+        val dial = DialBackoff()
+    }
     private val seen = ConcurrentHashMap<String, Seen>()
 
     /** One open channel to a peer, as central (we connected) or peripheral (it connected to our server). */
@@ -106,9 +112,14 @@ object BleLink : SmallTransport {
         var rpc: BleRpc? = null
         @Volatile var notifyOn = false
         @Volatile var ready = false
+        @Volatile var handshake: Job? = null
         val sendLock = Mutex()
         val writeDone = Channel<Int>(Channel.CONFLATED)
-        val reasm = BleReassembler { rpc?.onMessage(it) }
+        // a length prefix no sender produces means a fragment was lost and the stream cannot be read on: drop the channel, it is dialled again
+        val reasm = BleReassembler(onReject = { len ->
+            Log.w(TAG, "ble ${device.address}: frame length $len is not valid, dropping the channel")
+            BleLink.dropChan(this)
+        }) { rpc?.onMessage(it) }
     }
 
     private val chans = ConcurrentHashMap<String, Chan>()          // by device address
@@ -166,7 +177,8 @@ object BleLink : SmallTransport {
             if (ok && !radioUp) startRadio() else if (!ok && radioUp) stopRadio()
             if (radioUp) {
                 val flags = currentFlags()
-                if (flags != advFlags || n % 20 == 0) restartAdvertising() // 20 x 3 s: the tag rotates every minute
+                if (flags != advFlags || n % 20 == 0) restartAdvertising() // 20 x 3 s: the tag rotates every minute; a failed start resets advFlags, so it is retried on the next tick
+                if (scanning && BlePolicy.scanRestartDue(scanStartedMs, System.currentTimeMillis())) restartScan()
                 if (!scanning) startScan()
                 maintainConnections()
             }
@@ -224,7 +236,11 @@ object BleLink : SmallTransport {
             .addServiceData(ADV_DATA, BleAdv.encode(AppGraph.pairingSecret, selfId, flags)).build()
         val cb = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) { advertising = true; lastError = null; publish() }
-            override fun onStartFailure(errorCode: Int) { advertising = false; lastError = "advertise failed: $errorCode"; Log.w(TAG, "ble advertise failed $errorCode"); publish() }
+            override fun onStartFailure(errorCode: Int) {
+                advertising = false
+                if (advCallback === this) advFlags = -1 // so the next supervise tick starts it again instead of waiting a minute
+                lastError = "advertise failed: $errorCode"; Log.w(TAG, "ble advertise failed $errorCode"); publish()
+            }
         }
         advCallback = cb
         advFlags = flags
@@ -242,7 +258,16 @@ object BleLink : SmallTransport {
         }
         scanCallback = cb
         scanning = true
+        scanStartedMs = System.currentTimeMillis()
         runCatching { sc.startScan(filters, settings, cb) }.onFailure { scanning = false; lastError = "scan: $it" }
+    }
+
+    /** A scan that has run for [BlePolicy.SCAN_RESTART_MS] is stopped; the supervise loop starts a fresh one right after. */
+    private fun restartScan() {
+        scanCallback?.let { cb -> runCatching { adapter?.bluetoothLeScanner?.stopScan(cb) } }
+        scanCallback = null
+        scanning = false
+        Log.i(TAG, "ble scan restarted (periodic)")
     }
 
     private fun onSeen(r: ScanResult) {
@@ -250,7 +275,7 @@ object BleLink : SmallTransport {
         val s = BleAdv.decode(AppGraph.pairingSecret, payload) ?: return // not paired with us
         if (s.nodeId == selfId) return
         val now = System.currentTimeMillis()
-        val e = seen.compute(s.nodeId) { _, old -> old?.also { it.rssi = r.rssi; it.flags = s.flags; it.atMs = now } ?: Seen(r.device, r.rssi, s.flags, now) }!!
+        val e = seen.compute(s.nodeId) { _, old -> old?.also { it.device = r.device; it.rssi = r.rssi; it.flags = s.flags; it.atMs = now } ?: Seen(r.device, r.rssi, s.flags, now) }!!
         if (now - e.actedMs < 2_000) return
         e.actedMs = now
         scope.launch { onPeerHeard(s.nodeId, e) }
@@ -258,7 +283,12 @@ object BleLink : SmallTransport {
 
     /** A paired phone is in range: open the channel if we are the initiator, and let the Direct rendezvous react. */
     private suspend fun onPeerHeard(nodeId: String, e: Seen) {
-        if (selfId < nodeId && !byNode.containsKey(nodeId) && !chans.containsKey(e.device.address)) connectTo(e.device, nodeId)
+        val now = System.currentTimeMillis()
+        val device = e.device
+        if (selfId < nodeId && !byNode.containsKey(nodeId) && !chans.containsKey(device.address) && e.dial.due(now)) {
+            e.dial.onDial(now) // the next dial of this peer waits 2 s, then 4 s, 8 s ... 30 s unless a handshake succeeds
+            connectTo(device, nodeId)
+        }
         DirectRendezvous.onPairedPeerHeard(nodeId, hostsDirect = e.flags and BleAdv.FLAG_DIRECT_HOST != 0)
     }
 
@@ -370,6 +400,11 @@ object BleLink : SmallTransport {
         chan.rpc = BleRpc(
             scope, send = { bytes -> sendMessage(chan, bytes) }, handler = ::handleIncoming,
             onIdentity = { id -> onIdentity(chan, id) },
+            onStalled = {
+                // two requests in a row got no answer: a fragment was probably lost and the stream is out of step
+                Log.w(TAG, "ble channel ${chan.peerId ?: chan.device.address} is not answering; dropping it to dial again")
+                dropChan(chan)
+            },
         )
         // the central already knows who it dialled (node id from the advertisement); a notification that arrives before its
         // own descriptor write completes would be lost, so it does not wait for the peripheral's identity message
@@ -385,9 +420,32 @@ object BleLink : SmallTransport {
         byNode[node]?.takeIf { it !== chan }?.let { dropChan(it) } // a stale channel for the same phone
         byNode[node] = chan
         publish()
-        scope.launch {
-            val r = PeerLinks.connectBt(node, id.nm)
-            Log.i(TAG, "ble handshake with $node: $r")
+        startHandshake(chan, node, id.nm)
+    }
+
+    /**
+     * Runs the trust handshake until it works: retried every 5 s while the channel is up, and after 3 failures the channel
+     * is dropped so the next advertisement dials it again (it used to run once, be logged, and leave a listed channel
+     * with no working path). A handshake loop that is already running also covers a second identity message.
+     */
+    private fun startHandshake(chan: Chan, node: String, nameHint: String?) {
+        synchronized(chan) {
+            if (chan.handshake?.isActive == true) return
+            chan.handshake = scope.launch {
+                val ok = BlePolicy.handshake(
+                    isUp = { chan.ready && byNode[node] === chan },
+                    attempt = {
+                        val r = PeerLinks.connectBt(node, nameHint)
+                        Log.i(TAG, "ble handshake with $node: $r")
+                        r is ConnectResult.Ok
+                    },
+                    onGiveUp = {
+                        Log.w(TAG, "ble handshake with $node failed ${BlePolicy.HANDSHAKE_MAX_FAILURES} times; dropping the channel")
+                        dropChan(chan)
+                    },
+                )
+                if (ok) seen[node]?.dial?.onSuccess()
+            }
         }
     }
 
@@ -395,6 +453,7 @@ object BleLink : SmallTransport {
         chans.remove(chan.device.address, chan)
         chan.peerId?.let { byNode.remove(it, chan) }
         connecting.remove(chan.device.address)
+        chan.handshake?.cancel()
         chan.rpc?.close()
         chan.rpc = null
         runCatching { chan.gatt?.disconnect(); chan.gatt?.close() }
