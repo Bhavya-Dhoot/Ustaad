@@ -199,7 +199,8 @@ if "f" in STEPS:  # criterion 6: one model call at a time
 
 if "g" in STEPS:  # refusals
     out = {}
-    out["tools"] = call("/v1/chat/completions", {**chat_body(), "tools": [{"type": "function", "function": {"name": "x", "parameters": {}}}]})[:2]
+    # version 2 accepts `tools`; the old `functions` field stays refused
+    out["tools"] = call("/v1/chat/completions", {**chat_body(), "functions": [{"name": "x", "parameters": {"type": "object"}}]})[:2]
     out["unknown_model"] = call("/v1/chat/completions", chat_body(model="gpt-4o"))[:2]
     out["n2"] = call("/v1/chat/completions", {**chat_body(), "n": 2})[:2]
     out["image"] = call("/v1/chat/completions", {"model": "ustaad-local", "messages": [{"role": "user", "content": [

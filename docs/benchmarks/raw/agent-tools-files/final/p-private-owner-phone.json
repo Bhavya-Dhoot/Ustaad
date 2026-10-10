@@ -1,0 +1,40 @@
+{
+ "salary_question": [
+  200,
+  {
+   "object": "list",
+   "data": [],
+   "scope": "phone",
+   "incomplete": false,
+   "phones": [
+    {
+     "name": "Phone B",
+     "status": "ok"
+    }
+   ]
+  }
+ ],
+ "salary_slip": [
+  200,
+  {
+   "object": "list",
+   "data": [
+    {
+     "phone": "Phone B",
+     "title": "IMG_2237_Shopping_List_Handwritten.jpg",
+     "date": "2026-10-05",
+     "kind": "photo",
+     "snippet": "Shopping list - rice and dal - light bulbs (2) birthday card for Meena - phone cover - coriander SYNTHETIC DEMO DATA - not a real document"
+    }
+   ],
+   "scope": "phone",
+   "incomplete": false,
+   "phones": [
+    {
+     "name": "Phone B",
+     "status": "ok"
+    }
+   ]
+  }
+ ]
+}

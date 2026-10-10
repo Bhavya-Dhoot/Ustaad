@@ -1,0 +1,22 @@
+{
+ "large_bound": [
+  400,
+  {
+   "error": {
+    "message": "`tools[0].function.parameters` has `maxItems` 100000; at most 64 is accepted.",
+    "type": "invalid_request_error",
+    "code": "limit_exceeded"
+   }
+  }
+ ],
+ "external_ref": [
+  400,
+  {
+   "error": {
+    "message": "`tools[0].function.parameters` has a `$ref` that points outside the schema; only references that start with # are accepted.",
+    "type": "invalid_request_error",
+    "code": "unsupported_parameter"
+   }
+  }
+ ]
+}

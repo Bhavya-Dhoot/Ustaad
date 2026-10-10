@@ -1,0 +1,18 @@
+{
+ "text": "Here are three common uses for a phone when it has no internet connection:\n\n1.  **Making and Receiving Calls**\n    This is the primary function of a mobile phone. You can place voice calls to other cellular devices or landlines, and receive incoming calls from anyone within your network coverage area.\n\n2.  **Using Offline Maps and Navigation**\n    Modern smartphones allow you",
+ "usage": {
+  "completion_tokens": 80,
+  "prompt_tokens": 22,
+  "total_tokens": 102,
+  "completion_tokens_details": null,
+  "prompt_tokens_details": null
+ },
+ "seconds": 7.276468276977539,
+ "stream_first": 0.7696166038513184,
+ "stream_chunks": 53,
+ "embedding_dims": 256,
+ "models": [
+  "ustaad-local",
+  "ustaad-swarm"
+ ]
+}

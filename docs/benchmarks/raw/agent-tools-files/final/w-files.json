@@ -1,0 +1,171 @@
+{
+ "phone_electricity": [
+  200,
+  {
+   "object": "list",
+   "data": [
+    {
+     "phone": "Phone C",
+     "title": "IMG_3301_Electricity_Bill.jpg",
+     "date": "2026-09-20",
+     "kind": "photo",
+     "snippet": "SUNRISE POWER DISTRIBUTION (DEMO) ELECTRICITY BILL 09/2026 Account ID: 8829104921 Meter : 48821 Units used : 312 Due date : 24-Sep-202 6 Amount payable INR 2,410.00 Status: PAID via UPI SYNTHETIC DEMO DATA - not a real document"
+    }
+   ],
+   "scope": "phone",
+   "incomplete": false,
+   "phones": [
+    {
+     "name": "Phone C",
+     "status": "ok"
+    }
+   ]
+  }
+ ],
+ "swarm_warranty": [
+  200,
+  {
+   "object": "list",
+   "data": [
+    {
+     "phone": "Phone A",
+     "title": "Laptop_Extended_Warranty_Certificate.pdf",
+     "date": "2025-03-16",
+     "kind": "pdf",
+     "snippet": "Laptop extended warranty certificate Brightwell Assurance Co (DEMO) - Extended Warranty Programme Policy number: EW-2025-90871 Policyholder: Rhea Testerman Product: Kestrel Aero 14 Laptop (16 GB / 512 GB) Serial number: KA14-7731-QX09 Purchase bill: ZEH/25-26/004417 dated 14-Mar-2025, Zorbik Electronics Hub Coverage Extended warranty of 24 months begins when the standard 12-month warranty ends.…"
+    },
+    {
+     "phone": "Phone B",
+     "title": "IMG_2231.jpg",
+     "date": "2025-03-14",
+     "kind": "photo",
+     "snippet": "…/ WARRANTY BILL - LAPTOP Invoice No : ZEH/25-26/004417 Shop 12, Imaginary Arcade, Fictional Nagar Bengaluru 560000 GSTIN 00DEMO000020Z0 Customer Rate : 14-Mar-2025 : Rhea Testerman Item : Kestrel Aero 14 Laptop 16 GB RAM / 512 GB SSD Serial: KA14-7731-QX09 GST 18% incl. TOTAL AMOUNT INR 74,990.00 11,439.15 74,990.00 Warranty : 12 months standard warranty from date of purchase Valid until…"
+    },
+    {
+     "phone": "Phone C",
+     "title": "Pet_Vaccination_Record.txt",
+     "date": "2026-10-03",
+     "kind": "text",
+     "snippet": "Pet vaccination record - Biscuit (beagle, invented) Rabies booster 12-Aug-2026, next due 12-Aug-2027. Deworming 3-Oct-2026. Vet: Pawfield Clinic (DEMO). SYNTHETIC DEMO DATA - not a real document"
+    },
+    {
+     "phone": "Phone B",
+     "title": "IMG_2238_Washing_Machine_Warranty_Card.jpg",
+     "date": "2024-06-02",
+     "kind": "photo",
+     "snippet": "TIDALWASH APPLIANCES (DEMO) WARRANTY CARD Product : TidalWash 7 kg front loader Model : TW-7F-2100 Serial : TW7EF-5521-LM44 Bought : 02-Jun-2024 from Bubble Home Store Warranty: 24 months on the machine, 60 months on the motor SYNTHETIC DEMO DATA - not a real document"
+    }
+   ],
+   "scope": "swarm",
+   "incomplete": false,
+   "phones": [
+    {
+     "name": "Phone C",
+     "status": "ok"
+    },
+    {
+     "name": "Phone A",
+     "status": "ok"
+    },
+    {
+     "name": "Phone B",
+     "status": "ok"
+    }
+   ]
+  }
+ ],
+ "swarm_salary": [
+  200,
+  {
+   "object": "list",
+   "data": [
+    {
+     "phone": "Phone C",
+     "title": "Society_AGM_Minutes.docx",
+     "date": "2026-09-15",
+     "kind": "docx",
+     "snippet": "Annual general meeting minutes Held on 14 September 2026 at the community hall, Sunflower Residency (DEMO). Agreed: repaint the lobby, install two more charging points, revise the visitor parking rule. Next AGM in September 2027. SYNTHETIC DEMO DATA - not a real document"
+    },
+    {
+     "phone": "Phone A",
+     "title": "Society_Maintenance_Notice_Oct2026.pdf",
+     "date": "2026-10-03",
+     "kind": "pdf",
+     "snippet": "Maintenance notice - October 2026 Sunflower Residency Welfare Association (DEMO) Quarterly maintenance of INR 4,500 per flat is due by 31-Oct-2026. Water tank cleaning on Sunday 18-Oct-2026, supply off 9 am to 1 pm. Pay at the office or by UPI to the society account. SYNTHETIC DEMO DATA - not a real document"
+    },
+    {
+     "phone": "Phone A",
+     "title": "IMG_1046_Mobile_Bill_Sept.jpg",
+     "date": "2026-10-02",
+     "kind": "photo",
+     "snippet": "PINGLINE MOBILE (DEMO) Monthly bill September 2026 Plan: 2 GB per day, 84 days Bill amount INR 599.00 Due date 12-Oct-2 026 SYNTHETIC DEMO DATA - not a real document P1an: 2 GB per day। ৪4 days"
+    },
+    {
+     "phone": "Phone A",
+     "title": "Rental_Agreement_Summary.docx",
+     "date": "2026-01-02",
+     "kind": "docx",
+     "snippet": "Rental agreement summary Landlord: Mr Demo Kulkarni (invented). Tenant: Rhea Testerman. Monthly rent INR 18,500, security deposit INR 55,500. Lease runs 1-Jan-2026 to 30-Nov-2026 with a one-month notice period. Rent is due on the 5th of every month. SYNTHETIC DEMO DATA - not a real document"
+    }
+   ],
+   "scope": "swarm",
+   "incomplete": false,
+   "phones": [
+    {
+     "name": "Phone C",
+     "status": "ok"
+    },
+    {
+     "name": "Phone A",
+     "status": "ok"
+    },
+    {
+     "name": "Phone B",
+     "status": "ok"
+    }
+   ]
+  }
+ ],
+ "limits": [
+  [
+   400,
+   {
+    "error": {
+     "message": "`query` must not be empty.",
+     "type": "invalid_request_error",
+     "code": "invalid_value"
+    }
+   }
+  ],
+  [
+   400,
+   {
+    "error": {
+     "message": "`query` is 1001 characters; at most 1000 are accepted.",
+     "type": "invalid_request_error",
+     "code": "limit_exceeded"
+    }
+   }
+  ],
+  [
+   400,
+   {
+    "error": {
+     "message": "`scope` must be \"phone\" or \"swarm\".",
+     "type": "invalid_request_error",
+     "code": "invalid_value"
+    }
+   }
+  ],
+  [
+   400,
+   {
+    "error": {
+     "message": "`max_results` must be 1 to 10.",
+     "type": "invalid_request_error",
+     "code": "limit_exceeded"
+    }
+   }
+  ]
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "id": "chatcmpl-3d9ac28fcb6a4885a94b349c",
+ "object": "chat.completion",
+ "created": 1791618038,
+ "model": "ustaad-swarm",
+ "system_fingerprint": "ustaad:Phone C",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "A heat pump moves heat rather than generating it. In winter, it extracts thermal energy from the cold outdoor air and transfers it indoors using a refrigerant cycle. Conversely, in summer, it reverses the process to pull heat from inside the home and release it outside. By circulating this refrigerant through a compressor and expansion valve, the system efficiently heats or cools spaces, often achieving higher energy efficiency than traditional electric resistance heaters."
+   },
+   "finish_reason": "stop"
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 4,
+  "completion_tokens": 87,
+  "total_tokens": 91
+ }
+}

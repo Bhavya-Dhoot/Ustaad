@@ -1,0 +1,27 @@
+{
+ "first": [
+  200,
+  {
+   "id": "chatcmpl-87a2b7c1277d4a0e8cc01c99",
+   "object": "chat.completion",
+   "created": 1791615943,
+   "model": "ustaad-local",
+   "system_fingerprint": "ustaad:Phone C",
+   "choices": [
+    {
+     "index": 0,
+     "message": {
+      "role": "assistant",
+      "content": "I don't have access to your personal files or documents. To find your warranty bill, please check your email, the original packaging, or the manufacturer's website using your laptop's serial number."
+     },
+     "finish_reason": "stop"
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 197,
+    "completion_tokens": 44,
+    "total_tokens": 241
+   }
+  }
+ ]
+}

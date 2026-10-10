@@ -1,0 +1,344 @@
+{
+ "loop1": {
+  "first": [
+   200,
+   {
+    "id": "chatcmpl-64cdbaa9729a4a828ea1aecd",
+    "object": "chat.completion",
+    "created": 1791617905,
+    "model": "ustaad-local",
+    "system_fingerprint": "ustaad:Phone C",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_fa168772d06e466680c58c19",
+         "type": "function",
+         "function": {
+          "name": "search_files",
+          "arguments": "{\"query\":\"laptop warranty bill\"}"
+         }
+        }
+       ]
+      },
+      "finish_reason": "tool_calls"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 214,
+     "completion_tokens": 24,
+     "total_tokens": 238
+    }
+   }
+  ],
+  "search": [
+   200,
+   {
+    "object": "list",
+    "data": [
+     {
+      "phone": "Phone A",
+      "title": "Laptop_Extended_Warranty_Certificate.pdf",
+      "date": "2025-03-16",
+      "kind": "pdf",
+      "snippet": "Laptop extended warranty certificate Brightwell Assurance Co (DEMO) - Extended Warranty Programme Policy number: EW-2025-90871 Policyholder: Rhea Testerman Product: Kestrel Aero 14 Laptop (16 GB / 512 GB) Serial number: KA14-7731-QX09 Purchase bill: ZEH/25-26/004417 dated 14-Mar-2025, Zorbik Electronics Hub Coverage Extended warranty of 24 months begins when the standard 12-month warranty ends.…"
+     },
+     {
+      "phone": "Phone B",
+      "title": "IMG_2231.jpg",
+      "date": "2025-03-14",
+      "kind": "photo",
+      "snippet": "…/ WARRANTY BILL - LAPTOP Invoice No : ZEH/25-26/004417 Shop 12, Imaginary Arcade, Fictional Nagar Bengaluru 560000 GSTIN 00DEMO000020Z0 Customer Rate : 14-Mar-2025 : Rhea Testerman Item : Kestrel Aero 14 Laptop 16 GB RAM / 512 GB SSD Serial: KA14-7731-QX09 GST 18% incl. TOTAL AMOUNT INR 74,990.00 11,439.15 74,990.00 Warranty : 12 months standard warranty from date of purchase Valid until…"
+     },
+     {
+      "phone": "Phone B",
+      "title": "IMG_2238_Washing_Machine_Warranty_Card.jpg",
+      "date": "2024-06-02",
+      "kind": "photo",
+      "snippet": "TIDALWASH APPLIANCES (DEMO) WARRANTY CARD Product : TidalWash 7 kg front loader Model : TW-7F-2100 Serial : TW7EF-5521-LM44 Bought : 02-Jun-2024 from Bubble Home Store Warranty: 24 months on the machine, 60 months on the motor SYNTHETIC DEMO DATA - not a real document"
+     }
+    ],
+    "scope": "swarm",
+    "incomplete": false,
+    "phones": [
+     {
+      "name": "Phone C",
+      "status": "ok"
+     },
+     {
+      "name": "Phone A",
+      "status": "ok"
+     },
+     {
+      "name": "Phone B",
+      "status": "ok"
+     }
+    ]
+   }
+  ],
+  "final": [
+   200,
+   {
+    "id": "chatcmpl-c4b2af5ab28b41b69141f922",
+    "object": "chat.completion",
+    "created": 1791617911,
+    "model": "ustaad-local",
+    "system_fingerprint": "ustaad:Phone C",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "The warranty bill for your laptop is on **Phone B** in the file titled \"IMG_2231.jpg\". It shows an invoice for the Kestrel Aero 14 Laptop with a 12-month standard warranty from Zorbik Electronics Hub."
+      },
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 559,
+     "completion_tokens": 55,
+     "total_tokens": 614
+    }
+   }
+  ]
+ },
+ "loop2": {
+  "first": [
+   200,
+   {
+    "id": "chatcmpl-e6abeb95a7ca43ec80d55520",
+    "object": "chat.completion",
+    "created": 1791617913,
+    "model": "ustaad-local",
+    "system_fingerprint": "ustaad:Phone C",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_c7c5a60e3e9442c2a9d10f86",
+         "type": "function",
+         "function": {
+          "name": "search_files",
+          "arguments": "{\"query\":\"electricity bill due date amount\"}"
+         }
+        }
+       ]
+      },
+      "finish_reason": "tool_calls"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 24,
+     "completion_tokens": 26,
+     "total_tokens": 50
+    }
+   }
+  ],
+  "search": [
+   200,
+   {
+    "object": "list",
+    "data": [
+     {
+      "phone": "Phone C",
+      "title": "IMG_3301_Electricity_Bill.jpg",
+      "date": "2026-09-20",
+      "kind": "photo",
+      "snippet": "SUNRISE POWER DISTRIBUTION (DEMO) ELECTRICITY BILL 09/2026 Account ID: 8829104921 Meter : 48821 Units used : 312 Due date : 24-Sep-202 6 Amount payable INR 2,410.00 Status: PAID via UPI SYNTHETIC DEMO DATA - not a real document"
+     },
+     {
+      "phone": "Phone A",
+      "title": "IMG_1046_Mobile_Bill_Sept.jpg",
+      "date": "2026-10-02",
+      "kind": "photo",
+      "snippet": "PINGLINE MOBILE (DEMO) Monthly bill September 2026 Plan: 2 GB per day, 84 days Bill amount INR 599.00 Due date 12-Oct-2 026 SYNTHETIC DEMO DATA - not a real document P1an: 2 GB per day। ৪4 days"
+     },
+     {
+      "phone": "Phone B",
+      "title": "IMG_2231.jpg",
+      "date": "2025-03-14",
+      "kind": "photo",
+      "snippet": "Date ZORBIK ELECTRONICS HUB (DEMO) TAX INVOICE / WARRANTY BILL - LAPTOP Invoice No : ZEH/25-26/004417 Shop 12, Imaginary Arcade, Fictional Nagar Bengaluru 560000 GSTIN 00DEMO000020Z0 Customer Rate : 14-Mar-2025 : Rhea Testerman Item : Kestrel Aero 14 Laptop 16 GB RAM / 512 GB SSD Serial: KA14-7731-QX09 GST 18% incl. TOTAL AMOUNT INR 74,990.00 11,439.15 74,990.00 Warranty : 12 months standard…"
+     },
+     {
+      "phone": "Phone A",
+      "title": "Library_Fine_Notice_Scanned.pdf",
+      "date": "2026-09-30",
+      "kind": "pdf",
+      "snippet": "CITY CENTRAL LIBRARY (DEMO) OVERDUE NOTICE Member: Rhea Testerman Card 20417 Book: A Map of Sma ll Rivers Due 12-Sep-2026 Returned 30-Sep-202 6 Fine for 18 days: INR 36 SYNTHETIC DEMO DATA - not a real document"
+     }
+    ],
+    "scope": "swarm",
+    "incomplete": false,
+    "phones": [
+     {
+      "name": "Phone C",
+      "status": "ok"
+     },
+     {
+      "name": "Phone A",
+      "status": "ok"
+     },
+     {
+      "name": "Phone B",
+      "status": "ok"
+     }
+    ]
+   }
+  ],
+  "final": [
+   200,
+   {
+    "id": "chatcmpl-9735ff2ccb9a4c37b2d2e0eb",
+    "object": "chat.completion",
+    "created": 1791617921,
+    "model": "ustaad-local",
+    "system_fingerprint": "ustaad:Phone C",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "Your electricity bill for September 2026 is due on **24-Sep-2026** and the amount payable is **INR 2,410.00**. This information is found in the file `IMG_3301_Electricity_Bill.jpg` on **Phone C**."
+      },
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 649,
+     "completion_tokens": 68,
+     "total_tokens": 717
+    }
+   }
+  ]
+ },
+ "loop3": {
+  "first": [
+   200,
+   {
+    "id": "chatcmpl-4dbd68df2107463f9a6b8de7",
+    "object": "chat.completion",
+    "created": 1791617923,
+    "model": "ustaad-local",
+    "system_fingerprint": "ustaad:Phone C",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_bbe3cdb30fd448f399276dfc",
+         "type": "function",
+         "function": {
+          "name": "search_files",
+          "arguments": "{\"query\":\"yoga class schedule time\"}"
+         }
+        }
+       ]
+      },
+      "finish_reason": "tool_calls"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 18,
+     "completion_tokens": 25,
+     "total_tokens": 43
+    }
+   }
+  ],
+  "search": [
+   200,
+   {
+    "object": "list",
+    "data": [
+     {
+      "phone": "Phone B",
+      "title": "Yoga_Class_Schedule.txt",
+      "date": "2026-09-03",
+      "kind": "text",
+      "snippet": "Yoga class schedule at Lotus Loft Studio (DEMO) Mon and Wed 6:30 am beginners, Tue and Thu 7:00 pm flow, Sat 8:00 am stretch. Monthly fee INR 2,400, first class free. Mats provided. SYNTHETIC DEMO DATA - not a real document"
+     },
+     {
+      "phone": "Phone A",
+      "title": "IMG_1045_Gym_Timetable.jpg",
+      "date": "2026-09-01",
+      "kind": "photo",
+      "snippet": "Mon Wed Fri Sat IRONLEAF FITNESS (DEMO) Strength 6 am Cardio 6 am Timetable Core and mobility 7 am Open floor 8 to 11 am SYNTHETIC DEMO DATA - not a real document Cardi০ 6 a। ुi.metab1e"
+     },
+     {
+      "phone": "Phone C",
+      "title": "Meeting_Notes_Q4_Planning.txt",
+      "date": "2026-10-02",
+      "kind": "text",
+      "snippet": "Meeting notes - Q4 planning, 2 Oct 2026 Attendees: Tara, Ravi, Meena, Rhea. Decisions: launch the dashboard on 20 Nov, freeze features on 6 Nov, Ravi owns the data migration. Actions: Tara to share mock-ups by Friday, Meena to book the review room, Rhea to update the roadmap. Risks: vendor API change could slip the migration by one week. SYNTHETIC DEMO DATA - not a real document"
+     },
+     {
+      "phone": "Phone C",
+      "title": "IMG_3302_Hindi_Note.jpg",
+      "date": "2026-10-06",
+      "kind": "photo",
+      "snippet": "Meeting 28-0ct 5 pm SYNTHETIC DEMO DATA - not a real document घर के काम लाइट का भुगतान 25 तारीख तक करना है। दूध वाले को 1200 रूपये देने हैं। सीमा जी को फोन करना है"
+     },
+     {
+      "phone": "Phone A",
+      "title": "IMG_1042_Whiteboard_Sprint.jpg",
+      "date": "2026-09-28",
+      "kind": "photo",
+      "snippet": "SPRINT PLANNING login screen export report - fix upload bug (Ravi) (Tara) (Meena) Demo on Friday 3 pm SYNTHETIC DEMO DATA - not a real document"
+     }
+    ],
+    "scope": "swarm",
+    "incomplete": false,
+    "phones": [
+     {
+      "name": "Phone C",
+      "status": "ok"
+     },
+     {
+      "name": "Phone A",
+      "status": "ok"
+     },
+     {
+      "name": "Phone B",
+      "status": "ok"
+     }
+    ]
+   }
+  ],
+  "final": [
+   200,
+   {
+    "id": "chatcmpl-c60819ca668f42f19d6f4c97",
+    "object": "chat.completion",
+    "created": 1791617931,
+    "model": "ustaad-local",
+    "system_fingerprint": "ustaad:Phone C",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "The yoga class is held at Lotus Loft Studio on Mondays and Wednesdays at 6:30 am for beginners, Tuesdays and Thursdays at 7:00 pm for flow, and Saturdays at 8:00 am for stretching. This information is found in the file \"Yoga_Class_Schedule.txt\" on Phone B."
+      },
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 611,
+     "completion_tokens": 72,
+     "total_tokens": 683
+    }
+   }
+  ]
+ }
+}
