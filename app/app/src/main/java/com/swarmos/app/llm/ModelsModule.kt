@@ -256,8 +256,9 @@ object ModelsModule : SwarmModule {
     /**
      * Loads [file] as [role]. Only the catalog defaults load at service start, whatever was loaded by hand before.
      * [args] and [env] come only from a debug build's load request ([DebugLoad]); with them the memory preflight is skipped, like any load with extra arguments.
+     * [automatic]: the app puts a model back by itself (MemoryCloud giving a phone its models back), not the owner: a refused load is tried again.
      */
-    internal fun loadModelAsync(role: Role, file: String, args: List<String> = emptyList(), env: Map<String, String> = emptyMap()): Deferred<ServerStatus> = scope.async {
-        LlamaRuntime.start(role, ModelStore.fileOf(file).absolutePath, extraArgs = args, env = env)
+    internal fun loadModelAsync(role: Role, file: String, args: List<String> = emptyList(), env: Map<String, String> = emptyMap(), automatic: Boolean = false): Deferred<ServerStatus> = scope.async {
+        LlamaRuntime.start(role, ModelStore.fileOf(file).absolutePath, extraArgs = args, env = env, automatic = automatic)
     }
 }
