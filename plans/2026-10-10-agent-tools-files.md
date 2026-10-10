@@ -1,0 +1,44 @@
+# Agent endpoint version 2: tool calling and file search for other apps (gate 8)
+
+Founder instruction, 2026-10-10: "yes build file search and tool calling for other apps". Version 1 (gate 7, plans/2026-10-10-agent-endpoint.md, docs/AGENT-API.md) gives other apps the model. Version 2 adds the two things an agent needs besides a model: a way to call tools, and a way to search the owner's files. File search opens the owner's files to whoever holds the key, so it has its own switch, off by default, and it hands out exactly what a paired phone would get and nothing more.
+
+## Contract
+
+### A. Tool calling (function calling in the OpenAI format; the calling app runs the tools)
+- `POST /v1/chat/completions` accepts `tools` (entries of type `function`: `name` matching `^[A-Za-z0-9_-]{1,64}$`, `description` up to 1024 characters, `parameters` as a JSON Schema object), at most 16 tools, all tool definitions together at most 16 KiB. `tool_choice`: `"auto"` (default), `"none"`, `"required"`, or `{"type":"function","function":{"name":...}}`. `parallel_tool_calls` (default true): at most 4 calls in one answer; false: at most 1.
+- `messages` may contain assistant messages with `tool_calls` (content may be null) and `role: "tool"` messages with `tool_call_id` and text content. They are rendered into the prompt in order.
+- Answer when the model calls tools: `choices[0].message` has `content: null` and `tool_calls: [{"id":"call_<random>","type":"function","function":{"name":"...","arguments":"<JSON text>"}}]`, `finish_reason: "tool_calls"`. Otherwise an ordinary answer with `finish_reason: "stop"` (or `"length"`).
+- How: no dependence on the chat template. The tools are described to the model in a system message, and the output is constrained with the existing JSON Schema path (`ChatRequest.jsonSchema`) to one of two shapes: `{"content": "<text>"}` or `{"tool_calls":[{"name": <one of the tool names>, "arguments": <object matching that tool's parameters>}]}`. `tool_choice` narrows the schema: `none` sends no schema and no tool text; `required` allows only the second shape; a named function allows only that tool. The endpoint parses the constrained output and builds the OpenAI answer. Arguments are therefore always valid JSON for the declared schema.
+- Streaming with tools: the constrained answer is buffered and then sent as events (one chunk carrying the whole `tool_calls` delta, or the content in one or a few chunks), then the final chunk with `finish_reason` and `usage`, then `[DONE]`. Without `tools` streaming is unchanged.
+- Works for both models (`ustaad-local`, `ustaad-swarm`), through the same gate as before.
+- Refusals (400 naming the field): `tools` together with `response_format`; a tool of a type other than `function`; duplicate or badly formed names; more than 16 tools or over 16 KiB; a `tool_choice` naming an unknown tool; a `tool` message without `tool_call_id`. If the model server rejects the schema (a parameters schema the grammar converter cannot handle): 400 with code `unsupported_schema`, never a 500. The old `functions` and `function_call` fields stay refused.
+
+### B. File search (the owner's shared files, for a key holder)
+- A second switch in Settings under Agent access: "File search for other apps", off by default, usable only while Agent access is on. Text beside it, in plain words: apps that hold the key can search the files you share with the swarm, on this phone and (when they ask for it) on your paired phones, and read short snippets of them; files in private folders are never included.
+- `POST /v1/files/search` with `{"query": "<text, 1 to 1000 characters>", "scope": "phone" | "swarm" (default "phone"), "max_results": 1 to 10 (default 5)}`.
+- Answer: `{"object":"list","data":[{"phone":"<name>","title":"...","date":"YYYY-MM-DD" or null,"kind":"...","score":<number>,"snippet":"<at most 400 characters>"}],"scope":"...","incomplete":<bool>,"phones":[{"name":"...","status":"ok"|"offline"|"error"}]}`. No file paths, no URIs or hashes of them, no file bytes, no embeddings, and no count of withheld private files.
+- What it may return is decided by the existing peer rule and by nothing new: for this phone, the result of `PeerResponder.respond` on the local candidates (`SharePolicy.forPeer`), the same call that serves a paired phone; for `"swarm"`, in addition the answers of the online paired phones to the same signed `PduQuery` the Data Union already sends, each of which applies its own rule. The owner's private files, and the "(private file on this phone)" placeholder the owner sees in the Ask screen, never appear.
+- Needs a real, ready embedder and an index: otherwise 503 `index_unavailable`. Switch off: 403 `file_search_off`. At most 2 searches at once (429 beyond that).
+- Audit: one `agent.files` entry per search with scope, query length, number of results, per-phone counts and milliseconds. Follow the existing convention for what a peer query records (`pdu.served`): if that convention records no query text, record none here either.
+- `GET /v1/models` is unchanged. The search is a plain route; an app that wants the model to decide when to search declares its own function tool (for example `search_files(query)`), and runs this route when the model calls it. docs/AGENT-API.md shows that loop.
+- Debug builds only: intent extra `agentFiles` (boolean) on MainActivity sets the switch, with the same rule as the other extras (applied only on a fresh start or a new intent).
+
+### Not in version 2
+Server-side tool execution, the Knowledge Bank for other apps, opening or downloading a file, the large split model, access from other devices, any change to what a paired phone gets.
+
+## Success criteria (checked on a phone before the gate closes)
+1. A request with tools where a tool is needed returns `tool_calls` with a declared name and arguments that parse and match the schema; a request where no tool is needed returns content. Measured on a fixed set of 12 prompts (8 need a tool, 4 do not): the count that picked the right tool, the count with the right key argument, and the count that answered directly, as measured.
+2. `tool_choice` `required`, `none` and a named function each behave as specified. A two-step conversation (tool call, tool result, final answer) completes.
+3. Streaming with tools yields a well-formed event sequence that the unmodified OpenAI Python client turns into a tool call.
+4. File search off: 403. On: results for a query whose file is shared; nothing for a file in a private folder (the salary slip in Phone B's Private folder, asked on Phone B itself with scope phone and from Phone C with scope swarm); scope swarm from Phone C returns the bill photo on Phone B and the certificate on Phone A.
+5. No path, URI hash or withheld count in any answer (checked by reading the raw JSON).
+6. The whole loop from another process: the model is given a `search_files` tool, calls it, the client runs `/v1/files/search`, sends the result back, and the model answers naming the right file. Time for the whole loop recorded.
+7. Version 1 checks a to j of scripts/agent-check.py still pass. Unit suite green (830 before), debug and demo APKs build.
+
+## Plan
+Constraint: correctness at the trust boundary, now with the owner's files behind it. The search must reuse the peer rule by calling the same function, not by re-implementing it.
+Failure modes: private files leak through the new route (caught by criterion 4 on the phones with the real private file, by a unit test that feeds private candidates through the route, and by the read-only review); the constrained tool output is valid JSON but a poor choice (criterion 1 measures it; the number is reported whatever it is); a schema the grammar converter rejects turns into a 500 (unit test with a stand-in server, criterion 2 on a phone); the new switch survives where it should not (unit test: turning Agent access off turns file search off); the worker reports success that is not real (the orchestrator runs every criterion itself).
+Ledger: implementation by one Sonnet builder in its own worktree (bounded by this contract, verifiable by tests and the phone checks); review of the file-search path by one read-only Sonnet reviewer; acceptance script, all phone checks, merge, benchmark note and gate artifact by the orchestrator; the decision to include paired phones behind an explicit `scope` value under the same owner switch is recorded here for the founder to overrule.
+
+## Deliverables
+Code in the `agent` package plus the smallest hooks needed in `pdu` (calling existing functions; no change to the peer rule), Settings rows, debug extra, tests, docs/AGENT-API.md updated to version 2 with the tool loop example; then docs/benchmarks/2026-10-10-agent-tools-files.md and gates/gate-8-agent-tools-files.md (orchestrator).
