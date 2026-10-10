@@ -4,6 +4,7 @@ import com.swarmos.app.pdu.Coverage
 import com.swarmos.app.pdu.HybridRanker
 import com.swarmos.app.pdu.PduHit
 import com.swarmos.app.pdu.QueryUi
+import com.swarmos.app.pdu.SourceUi
 
 /** A card that matched a question. [cosine] is null when this phone has no usable embedding for the card or the question. */
 data class KbHit(val entry: KbEntry, val cosine: Float?, val coverage: Double, val score: Double)
@@ -50,6 +51,11 @@ object KbSearch {
         rank = rank,
     )
 
+    /** A saved answer's cited files in the shape the ask report and the screen use for live sources, numbered as the saved text numbers them. */
+    fun sourcesOf(card: KbCard): List<SourceUi> = card.sources.mapIndexed { i, s ->
+        SourceUi(i + 1, "", s.phone, false, PduHit(s.title, "", "saved", s.dateMs, "", 0.0, i + 1), localPrivate = s.priv)
+    }
+
     /** "just now", "5 min", "3 h", "2 days": how old a saved answer is. */
     fun age(createdMs: Long, nowMs: Long): String {
         val s = ((nowMs - createdMs) / 1000).coerceAtLeast(0)
@@ -61,6 +67,16 @@ object KbSearch {
             else -> "${s / 86_400} days"
         }
     }
+}
+
+/** Whether a source belongs to a private file of this phone. Decided from the phone's own index, not from what a caller says. */
+object KbPrivacy {
+    /** What the ask report and the screen show instead of the title of a private file of the owner. */
+    const val PLACEHOLDER = "(private file on this phone)"
+
+    /** [localDocIsPrivate]: some file on this phone with that title is private (its folder is not shared, or it is a Private folder). */
+    fun isPrivate(s: KbSource, selfName: String, localDocIsPrivate: (title: String) -> Boolean): Boolean =
+        s.priv || s.title == PLACEHOLDER || (s.phone == selfName && localDocIsPrivate(s.title))
 }
 
 /** When "Save to knowledge bank" is offered, and what the card would contain. */
@@ -79,12 +95,23 @@ object KbDraft {
         val cited = cited(q.answer, q.sources.size)
         if (cited.isEmpty()) return null
         val sources = cited.map { n -> q.sources[n - 1].let { KbSource(it.deviceName, it.hit.title, it.hit.dateMs, priv = it.localPrivate) } }
-        return Draft(q.text.trim().take(KbLimits.MAX_QUESTION), clip(q.answer), sources.take(KbLimits.MAX_SOURCES), q.answer.trim().length > KbLimits.MAX_ANSWER)
+        val text = renumber(q.answer, cited)
+        return Draft(q.text.trim().take(KbLimits.MAX_QUESTION), clip(text), sources.take(KbLimits.MAX_SOURCES), text.length > KbLimits.MAX_ANSWER)
     }
 
     /** The source numbers the answer cites, within the sources actually shown. */
     fun cited(answer: String, sourceCount: Int): List<Int> =
         Marker.findAll(answer).map { it.groupValues[1].toInt() }.filter { it in 1..sourceCount }.distinct().sorted().toList()
+
+    /**
+     * The card keeps only the cited sources, numbered 1..k in the order of their original numbers, so the markers in the
+     * saved text are renumbered to match that list. A marker that points at no cited source is dropped.
+     */
+    fun renumber(answer: String, cited: List<Int>): String =
+        Marker.replace(answer) { m ->
+            val i = cited.indexOf(m.groupValues[1].toInt())
+            if (i >= 0) "[${i + 1}]" else ""
+        }.replace(Regex(" {2,}"), " ").replace(" .", ".").trim()
 
     /** Answer text for the card: at most [KbLimits.MAX_ANSWER] characters, cut with an ellipsis when longer. */
     fun clip(answer: String): String {

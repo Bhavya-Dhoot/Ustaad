@@ -172,16 +172,18 @@ class ChoirNode(
         scripted: String?, fake: () -> String, round: Int, taskId: String, nodeId: String,
     ): Generated {
         val t0 = clock()
+        // a number leaves here rounded to 6 places (486.0000000000000644 is 486), so voting, scoring and display all see one form
+        fun tidy(p: Parsed) = if (kind == Kind.MATH) Normalizer.roundedDecimal(p.answer)?.let { p.copy(answer = it) } ?: p else p
         val first = call(budgetMs, build(false), scripted, fake, round, taskId, nodeId)
         if (first.error != null) return Generated(first, null, false)
         val p1 = parseSolve(first.text)
-        if (p1 != null && AnswerCheck.isValid(kind, p1.answer, letters, problem)) return Generated(first, p1, false)
+        if (p1 != null && AnswerCheck.isValid(kind, p1.answer, letters, problem)) return Generated(first, tidy(p1), false)
         val left = budgetMs - (clock() - t0)
         if (left < MIN_RETRY_MS) return Generated(first, null, false)
         val second = call(left, build(true), scripted, fake, round, taskId, nodeId)
         val both = Outcome(second.text, first.tokens + second.tokens, second.model, second.fake, second.error)
         if (second.error != null) return Generated(both, null, true)
-        val p2 = parseSolve(second.text)?.takeIf { AnswerCheck.isValid(kind, it.answer, letters, problem) }
+        val p2 = parseSolve(second.text)?.takeIf { AnswerCheck.isValid(kind, it.answer, letters, problem) }?.let { tidy(it) }
         return Generated(both, p2, true)
     }
 

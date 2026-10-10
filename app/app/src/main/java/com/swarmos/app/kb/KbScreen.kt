@@ -240,12 +240,14 @@ fun SavedAnswerBlock(h: KbHit, onAskAgain: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         SectionTitle("Answer")
         Spacer(Modifier.width(10.dp))
-        Tag("saved answer, ${KbSearch.age(c.createdMs, System.currentTimeMillis())} old")
+        Tag("saved, ${KbSearch.age(c.createdMs, System.currentTimeMillis())} old")
     }
     SwarmCard {
         Text(c.answer, style = SwarmType.body)
         Spacer(Modifier.height(6.dp))
-        Text("Saved by ${c.authorName}. No phone was searched for this; the files may have changed since.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+        // the [n] in the text are the numbered sources listed below this block
+        Text("Saved answer from ${c.authorName}, ${PromptBuilder.day(c.createdMs)}", style = SwarmType.label)
+        Text("No phone was searched for this; the files may have changed since.", style = SwarmType.label.copy(color = SwarmColors.graphite))
     }
     SecondaryButton("Ask again", onAskAgain, Modifier.fillMaxWidth())
 }

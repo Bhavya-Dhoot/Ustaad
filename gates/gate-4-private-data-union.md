@@ -19,7 +19,17 @@ Gate criterion: Private Data Union demo end to end on two phones. Met with real 
 
 Query embedding 25 to 57 ms, local search 1 to 12 ms, peer round trip 54 to 232 ms. Before sharing, Phone C withheld its match and nothing from C reached A; a Private folder inside a shared folder stayed withheld.
 
+## Second run, 2026-10-10 08:22 to 08:33 (GPU chat on all three phones, master 5569e36)
+Evidence: docs/benchmarks/2026-10-10-e2e2-data-union.md. Phone B asked, phones C and A answered as peers, 231 signed answers checked with 0 wrong.
+- The PRD acceptance pair ran: "Where is the warranty bill for my laptop?" cited Phone B's bill photo (IMG_2231.jpg) first and Phone A's extended warranty certificate second. First ask 5.3 s to first token and 11.5 s total; the repeat 0.55 s and 5.3 s.
+- First-time questions, n = 9: median 4.2 s to first token (1.4 to 5.8 s), median 6.6 s total (2.7 to 12.9 s). The 2 s target is met by 2 of 9, the 6 s target by 4 of 9. Same question on both builds: electricity 5.8 s on GPU against 12.4 s on CPU; salary 2.6 s against 11.8 s.
+- Retrieval is not the cost: embedding 23 to 50 ms, local search 1 to 7 ms, slowest peer round trip 71 to 116 ms. The time is the model reading 3 to 6 sources and writing the answer.
+- Privacy held: with Phone B's folder set private, Phone C got "withheld 3" and no file of B; B's salary slip in its Private folder was withheld from a peer's ask. With Phone C's app stopped the ask was flagged incomplete and C reported unreachable.
+- Hindi: the milkman note was answered from Devanagari OCR in 1.4 s to first token. The Hindi warranty answer named the certificate on Phone A as "the bill" and did not name the bill photo on Phone B (partly wrong; the source list was right).
+- Not re-tested: private-by-default on a fresh install (the sharing choices from the first run were still stored).
+
 ## Deltas from plan
+- Latency target still missed on new questions after the GPU fix (see the second run above); the lines below describe the first run.
 - PRD target "first visible text within 2 s, full answer within 6 s" is met only when a question repeats. New questions took 3.2 to 12.4 s to the first token because the prompt is processed on the CPU. The GPU chat backend (4 times the prefill in standalone tests) failed to start from inside the app during this run; the fix is in progress and this table must be retaken with it.
 - The PRD acceptance pair (bill photo on Phone B, certificate on Phone A) was not run: Phone B is reserved. The equivalent pair across A and C was run.
 - Source cards appear immediately (34 to 56 ms), before the model writes.

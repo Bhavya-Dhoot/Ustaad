@@ -58,6 +58,18 @@ object Normalizer {
         return v?.takeIf { it.isFinite() }
     }
 
+    private val PLAIN_DECIMAL = Regex("""^[-+]?\d+(?:\.\d+)?$""")
+
+    /**
+     * A plain decimal rounded to 6 places with trailing zeros stripped (486.0000000000000644 gives 486, 164.5 stays 164.5), or
+     * null when [raw] is not a plain decimal (units, commas and fractions are left to [parseNumberStrict]).
+     */
+    fun roundedDecimal(raw: String): String? {
+        val t = raw.trim()
+        if (!PLAIN_DECIMAL.matches(t)) return null
+        return java.math.BigDecimal(t).setScale(6, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+    }
+
     fun sameNumber(a: Double, b: Double): Boolean = abs(a - b) <= max(ABS_TOL, REL_TOL * max(abs(a), abs(b)))
 
     /** The MCQ option letter in [raw] ("B", "b)", "(B) 42", "Option B", "The answer is B"), or null. */

@@ -6,6 +6,7 @@ import com.swarmos.app.BuildConfig
 import com.swarmos.app.choir.VoiceInput
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
+import com.swarmos.app.kb.KbPrivacy
 import com.swarmos.app.kb.KbTier
 import com.swarmos.app.link.ErrorBody
 import io.ktor.http.HttpStatusCode
@@ -57,6 +58,9 @@ data class AskReport(
     /** Id of the knowledge-bank card that answered at once (no live search ran), and the ids of every card that matched. */
     val fromCard: String? = null,
     val cardIds: List<String> = emptyList(),
+    /** For a saved answer: the phone that saved it and when. Its cited files are in [sources], numbered as the saved text numbers them. */
+    val savedBy: String? = null,
+    val savedAtMs: Long? = null,
 )
 
 @Serializable
@@ -83,7 +87,7 @@ fun QueryUi.toReport(): AskReport = AskReport(
     sources = sources.map {
         AskSource(
             it.n, it.deviceName, it.deviceId, it.local, if (it.localPrivate) "" else it.hit.uriHash,
-            if (it.localPrivate) "(private file on this phone)" else it.hit.title, it.hit.kind, it.hit.dateMs,
+            if (it.localPrivate) KbPrivacy.PLACEHOLDER else it.hit.title, it.hit.kind, it.hit.dateMs,
             if (it.localPrivate) "" else it.hit.snippet, it.hit.score,
         )
     },
@@ -96,6 +100,7 @@ fun QueryUi.toReport(): AskReport = AskReport(
     timings = AskTimings(timings.embedMs, timings.localSearchMs, timings.firstCardsMs, timings.ttftMs, timings.totalMs),
     note = note,
     fromCard = savedAnswer?.entry?.card?.id, cardIds = cards.map { it.entry.card.id },
+    savedBy = savedAnswer?.entry?.card?.authorName, savedAtMs = savedAnswer?.entry?.card?.createdMs,
 )
 
 /**

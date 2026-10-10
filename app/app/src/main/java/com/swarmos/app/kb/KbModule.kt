@@ -3,10 +3,12 @@ package com.swarmos.app.kb
 import androidx.compose.runtime.Composable
 import com.swarmos.app.BuildConfig
 import com.swarmos.app.SwarmModule
+import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
 import com.swarmos.app.pdu.PduEngine
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.header
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -69,7 +71,7 @@ fun Route.kbRoutes() {
 
     post("/cards") {
         val c = SwarmJson.decodeFromString<KbCards>(call.receiveText())
-        val r = KbEngine.service.handleCards(c)
+        val r = KbEngine.service.handleCards(c, call.request.header(Signer.HEADER_NODE) ?: "unknown")
         if (r.accepted > 0) {
             KbEngine.refresh()
             PduEngine.scope.launch { KbEngine.embedMissing() }

@@ -32,7 +32,12 @@ private class Phone(val id: String, val name: String, secret: String = SECRET) {
     var now = 1_760_000_100_000L
     val store = MemoryKb()
     val audit = ArrayList<Pair<String, String>>()
-    val svc = KbService(store, { secret }, { id }, { name }, { kind, p -> audit += kind to p.toString(); "audit-hash-${audit.size}" }, { now })
+    var changes = 0                                         // how often the service asked for a sync right now
+    var isPrivate: (KbSource) -> Boolean = { false }        // what this phone's own index says about a source
+    val svc = KbService(
+        store, { secret }, { id }, { name }, { kind, p -> audit += kind to p.toString(); "audit-hash-${audit.size}" }, { now },
+        isPrivateSource = { isPrivate(it) }, onChange = { changes++ },
+    )
 
     fun save(q: String, a: String, share: Boolean, vararg sources: KbSource): KbEntry =
         (svc.save(q, a, sources.toList().ifEmpty { listOf(KbSource(name, "file.pdf", 1_000, false)) }, share) as KbSave.Saved).entry
@@ -112,6 +117,70 @@ class KbCardTest {
 class KbSyncTest {
     private val a = Phone("node-a", "Phone A")
     private val b = Phone("node-b", "Phone B")
+
+    @Test fun aSharedSaveAndTheRevocationOfASharedCardAskForAnImmediateSync() {
+        a.save("kept?", "a [1]", share = false)
+        assertEquals(0, a.changes)                                    // nothing to tell anyone
+        val shared = a.save("open?", "a [1]", share = true)
+        assertEquals(1, a.changes)                                    // a shared save is pushed at once
+        assertNull(a.svc.setShared(shared.card.id, false))
+        assertEquals(1, a.changes)                                    // stopping to share cannot be pushed
+        assertNull(a.svc.setShared(shared.card.id, true))
+        assertEquals(2, a.changes)
+        assertNull(a.svc.revoke(shared.card.id))
+        assertEquals(3, a.changes)                                    // a revocation of a shared card is pushed at once
+        val neverShared = a.save("private?", "a [1]", share = false)
+        assertNull(a.svc.revoke(neverShared.card.id))
+        assertEquals(3, a.changes)                                    // no tombstone exists for it, so nothing to push
+    }
+
+    @Test fun theReceivingPhoneAuditsASyncWithCountsOnly() {
+        val card = a.save("where is the secret warranty?", "In the blue folder [1]", share = true).card
+        assertTrue(b.audit.isEmpty())
+        val reply = b.svc.handleCards(KbCards(cards = listOf(card)), from = "node-a")
+        assertEquals(1, reply.accepted)
+        val line = b.audit.single()
+        assertEquals("kb.sync", line.first)
+        assertTrue(line.second.contains("\"side\":\"received\""))
+        assertTrue(line.second.contains("\"peer\":\"node-a\""))
+        assertTrue(line.second.contains("\"got\":1"))
+        assertFalse(line.second.contains("warranty"))                  // no card text in the log
+        assertFalse(line.second.contains("blue folder"))
+        // an exchange that stores nothing writes nothing
+        b.svc.handleCards(KbCards(want = listOf(card.id)), from = "node-a")
+        assertEquals(1, b.audit.size)
+        // a refused card is logged as a refusal
+        b.svc.handleCards(KbCards(cards = listOf(card.copy(answer = "changed"))), from = "node-a")
+        assertEquals(2, b.audit.size)
+        assertTrue(b.audit[1].second.contains("\"rejected\":1"))
+    }
+
+    @Test fun privacyIsDecidedFromThePhonesOwnFilesNotFromTheCallersFlag() {
+        a.isPrivate = { it.title == "Salary_Slip.pdf" }
+        val claimedPublic = KbSource("Phone A", "Salary_Slip.pdf", 1_000, priv = false)
+        // the caller says priv=false; this phone knows better
+        assertTrue((a.svc.save("pay?", "10 [1]", listOf(claimedPublic), share = true) as KbSave.Refused).reason.contains("private folder"))
+        val kept = (a.svc.save("pay?", "10 [1]", listOf(claimedPublic), share = false) as KbSave.Saved).entry
+        assertTrue(kept.card.sources.single().priv)                    // recorded as private under the MAC
+        assertTrue(a.svc.setShared(kept.card.id, true)!!.contains("private folder"))
+        assertEquals(KbTier.PRIVATE, a.store.cards.getValue(kept.card.id).tier)
+        // the caller can make a source more private, never less
+        a.isPrivate = { false }
+        assertTrue(a.svc.save("pay?", "10 [1]", listOf(claimedPublic.copy(priv = true)), share = true) is KbSave.Refused)
+        // a folder that became private after the save also stops a later share
+        val later = a.save("other?", "x [1]", share = false, KbSource("Phone A", "Notes.txt", 1_000, false))
+        a.isPrivate = { it.title == "Notes.txt" }
+        assertTrue(a.svc.setShared(later.card.id, true)!!.contains("private folder"))
+    }
+
+    @Test fun thePlaceholderTitleAndTheOwnersFilesAreRecognisedAsPrivate() {
+        fun priv(s: KbSource, self: String = "Phone B", index: (String) -> Boolean = { false }) = KbPrivacy.isPrivate(s, self, index)
+        assertTrue(priv(KbSource("Phone B", KbPrivacy.PLACEHOLDER, 1, false)))              // what the ask report shows for a private file
+        assertTrue(priv(KbSource("Phone B", "Notes.txt", 1, false)) { it == "Notes.txt" })   // this phone's index says private
+        assertFalse(priv(KbSource("Phone B", "Notes.txt", 1, false)) { false })
+        assertFalse(priv(KbSource("Phone C", "Notes.txt", 1, false)) { true })               // another phone's file is not this phone's to judge
+        assertTrue(priv(KbSource("Phone C", "x", 1, true)))                                   // an explicit flag always counts
+    }
 
     @Test fun savingAppendsAnAuditEntryAndStoresItsHashInTheCard() {
         val e = a.save("q?", "answer [1]", share = false)
@@ -330,6 +399,26 @@ class KbSearchTest {
 }
 
 class KbDraftTest {
+    @Test fun markersInTheSavedTextAreRenumberedToTheCardsSourceList() {
+        // the answer cited sources 1 and 3 of the live list; the card keeps those two as [1] and [2]
+        assertEquals("A [1] and B [2].", KbDraft.renumber("A [1] and B [3].", listOf(1, 3)))
+        assertEquals("Only [1] [1].", KbDraft.renumber("Only [3] [3].", listOf(3)))
+        assertEquals("Fact.", KbDraft.renumber("Fact [7].", listOf(1)))                       // a marker with no cited source is dropped
+        val d = KbDraft.of(done("Pay is 10 [2] and tax is 2 [3].", sources = listOf(source(1), source(2), source(3))))!!
+        assertEquals("Pay is 10 [1] and tax is 2 [2].", d.answer)
+        assertEquals(listOf("File2.pdf", "File3.pdf"), d.sources.map { it.title })
+    }
+
+    @Test fun aSavedAnswerCarriesItsCitedFilesNumberedAsItsTextNumbersThem() {
+        val card = Phone("node-b", "Phone B").save("q?", "a [1] b [2]", false, KbSource("Phone B", "IMG_2231.jpg", 5_000, false), KbSource("Phone A", "Cert.pdf", 6_000, false)).card
+        val s = KbSearch.sourcesOf(card)
+        assertEquals(listOf(1, 2), s.map { it.n })
+        assertEquals(listOf("Phone B", "Phone A"), s.map { it.deviceName })
+        assertEquals(listOf("IMG_2231.jpg", "Cert.pdf"), s.map { it.hit.title })
+        assertEquals(listOf(5_000L, 6_000L), s.map { it.hit.dateMs })
+        assertTrue(s.all { it.hit.snippet.isEmpty() && it.hit.uriHash.isEmpty() }) // names and dates, never file text
+    }
+
     private fun source(n: Int, priv: Boolean = false) =
         SourceUi(n, "node-$n", "Phone $n", n == 1, PduHit("File$n.pdf", "h$n", "pdf", 1_000L * n, "text", 0.5, n), priv)
 
