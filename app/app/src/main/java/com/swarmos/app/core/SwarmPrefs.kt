@@ -18,9 +18,10 @@ data class PrefsSnapshot(
     val agentAccess: Boolean = false,
     val agentKey: String? = null,
     val agentFiles: Boolean = false,
+    val keepBusy: Boolean = false,
 )
 
-/** DataStore-backed settings: node name, pairing secret, first-run setup flag, the "remove animations" preference and the agent endpoint switches and key. */
+/** DataStore-backed settings: node name, pairing secret, first-run setup flag, the "remove animations" preference, the agent endpoint switches and key and the "Keep busy" switch. */
 class SwarmPrefs(private val ctx: Context) {
     private val nameKey = stringPreferencesKey("node_name")
     private val secretKey = stringPreferencesKey("pairing_secret")
@@ -29,11 +30,12 @@ class SwarmPrefs(private val ctx: Context) {
     private val agentAccessKey = booleanPreferencesKey("agent_access")
     private val agentKeyKey = stringPreferencesKey("agent_key")
     private val agentFilesKey = booleanPreferencesKey("agent_files")
+    private val keepBusyKey = booleanPreferencesKey("keep_busy")
 
     /** One read of all settings. Suspends; never call it from the main thread's startup path with runBlocking. */
     suspend fun snapshot(): PrefsSnapshot {
         val p = ctx.swarmStore.data.first()
-        return PrefsSnapshot(p[nameKey], p[secretKey], p[setupDoneKey] ?: false, p[removeAnimationsKey] ?: false, p[agentAccessKey] ?: false, p[agentKeyKey], p[agentFilesKey] ?: false)
+        return PrefsSnapshot(p[nameKey], p[secretKey], p[setupDoneKey] ?: false, p[removeAnimationsKey] ?: false, p[agentAccessKey] ?: false, p[agentKeyKey], p[agentFilesKey] ?: false, p[keepBusyKey] ?: false)
     }
 
     suspend fun setName(v: String) {
@@ -51,6 +53,11 @@ class SwarmPrefs(private val ctx: Context) {
 
     suspend fun setRemoveAnimations(v: Boolean) {
         ctx.swarmStore.edit { it[removeAnimationsKey] = v }
+    }
+
+    /** The "Keep busy" switch (off by default). */
+    suspend fun setKeepBusy(v: Boolean) {
+        ctx.swarmStore.edit { it[keepBusyKey] = v }
     }
 
     /** The agent endpoint switch, its key and the file search switch, written together; a null [key] removes the stored one. */
