@@ -13,11 +13,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -52,9 +54,17 @@ internal fun AuditPage(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var verify by remember { mutableStateOf<AuditVerify?>(null) }
     val fmt = remember { SimpleDateFormat("HH:mm:ss", Locale.US) }
+    val scroll = rememberScrollState()
+    // the CHAIN OK / CHAIN BROKEN stamp is the last thing on the page: bring it into view once it exists
+    LaunchedEffect(verify) {
+        if (verify != null) {
+            withFrameNanos { } // let the page lay out with the stamp before measuring how far there is to scroll
+            scroll.animateScrollTo(scroll.maxValue)
+        }
+    }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         PageHeader("Query audit", onBack)

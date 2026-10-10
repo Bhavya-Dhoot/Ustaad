@@ -14,7 +14,6 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -109,11 +107,10 @@ internal fun ScanPage(onBack: () -> Unit) {
         if (BuildConfig.DEBUG) PduEngine.debugScanFile?.let { PduEngine.debugScanFile = null; review(it) }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PageHeader("Scan document", onBack)
-
-        // the viewfinder: live preview, or the page that was just captured
-        Box(Modifier.fillMaxWidth().weight(1f, fill = true).border(1.5.dp, SwarmColors.ink, SwarmShape)) {
+    // the viewfinder: live preview, or the page that was just captured
+    @Composable
+    fun Viewfinder(modifier: Modifier) {
+        Box(modifier.fillMaxWidth().border(1.5.dp, SwarmColors.ink, SwarmShape)) {
             val file = shot
             if (file == null) {
                 if (!hasCamera) Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center) {
@@ -139,10 +136,15 @@ internal fun ScanPage(onBack: () -> Unit) {
                 bmp?.let { Image(it.asImageBitmap(), "captured page", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             }
             Corners()
-            if (shot == null && hasCamera) Box(Modifier.align(Alignment.TopEnd).padding(16.dp).background(SwarmColors.sheet, SwarmShape).padding(horizontal = 8.dp, vertical = 2.dp)) { Note("align edges", rotation = 3f) }
         }
+    }
 
-        if (shot == null) {
+    if (shot == null) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            PageHeader("Scan document", onBack)
+            // the hint is a handwritten note on the page, not a label on the camera picture
+            if (hasCamera) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Note("align the page edges with the corners", rotation = -2f) }
+            Viewfinder(Modifier.weight(1f, fill = true))
             if (hasCamera) PrimaryButton(
                 "Capture",
                 {
@@ -158,61 +160,65 @@ internal fun ScanPage(onBack: () -> Unit) {
                 },
                 Modifier.fillMaxWidth(),
             )
-        } else {
-            val text = recognised
-            val enough = text != null && text.trim().length >= PduIndexer.MIN_OCR_CHARS
-            // the bottom sheet
-            SwarmCard(Modifier.heightIn(max = 420.dp)) {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        SectionTitle("Text found")
-                        Spacer(Modifier.width(10.dp))
-                        if (text != null) Tag("${text.trim().length} characters")
-                    }
-                    Box(Modifier.fillMaxWidth().heightIn(max = 130.dp).border(1.dp, SwarmColors.smudge, SwarmShape).padding(10.dp)) {
-                        Column(Modifier.verticalScroll(rememberScrollState())) {
-                            Text(
-                                when {
-                                    text == null -> "reading text"
-                                    text.isBlank() -> "no text recognised"
-                                    else -> text
-                                },
-                                style = SwarmType.mono.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                            )
-                        }
-                    }
-                    if (text != null && !enough) Text("Fewer than ${PduIndexer.MIN_OCR_CHARS} characters found, nothing to index.", style = SwarmType.label)
-                    SwarmTextField(title, { title = it }, "Title", helper = "Saved on this phone only")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Share with the swarm", style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp))
-                            Text(if (share) "Other phones may be answered from this page" else "Off: this page stays on this phone", style = SwarmType.label.copy(color = SwarmColors.graphite))
-                        }
-                        InkSwitch(checked = share, onCheckedChange = { share = it })
-                    }
-                    if (!emb.ready) Text("Embedder not loaded: load the embedding model in Models before adding pages.", style = SwarmType.label)
-                    else if (reindexNeeded) Text("Re-index needed: rebuild the index in the library before adding pages.", style = SwarmType.label)
-                    PrimaryButton(
-                        "Add to index",
-                        {
-                            val file = shot ?: return@PrimaryButton
-                            status = "indexing"
-                            scope.launch {
-                                val rep = withContext(Dispatchers.IO) {
-                                    val (uri, modified) = PduIndexer.saveScan(ctx, file, share)
-                                    PduEngine.indexScan(uri, modified, title.trim(), share, text!!)
-                                }
-                                if (rep.error == null && rep.indexed > 0) { file.delete(); onBack() } else status = rep.error ?: "nothing was indexed"
-                            }
-                        },
-                        Modifier.fillMaxWidth(),
-                        enabled = enough && title.isNotBlank() && emb.ready && !reindexNeeded,
-                    )
-                    SecondaryButton("Retake", { shot?.delete(); shot = null; recognised = null; status = null }, Modifier.fillMaxWidth())
-                }
-            }
+            status?.let { Text(it, style = SwarmType.mono.copy(color = SwarmColors.graphite)) }
         }
-        status?.let { Text(it, style = SwarmType.mono.copy(color = SwarmColors.graphite)) }
+    } else {
+        // review: the page picture, then the form on the page itself (no card around it); the whole page scrolls
+        val text = recognised
+        val enough = text != null && text.trim().length >= PduIndexer.MIN_OCR_CHARS
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PageHeader("Scan document", onBack)
+            Viewfinder(Modifier.height(190.dp))
+
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle("Text found")
+                Spacer(Modifier.width(10.dp))
+                if (text != null) Tag("${text.trim().length} characters")
+            }
+            // the whole recognised text, every line complete: no inner scroll and no fixed height that could cut a line
+            SwarmCard {
+                Text(
+                    when {
+                        text == null -> "reading text"
+                        text.isBlank() -> "no text recognised"
+                        else -> text
+                    },
+                    style = SwarmType.mono.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                )
+            }
+            if (text != null && !enough) Text("Fewer than ${PduIndexer.MIN_OCR_CHARS} characters found, nothing to index.", style = SwarmType.label)
+            SwarmTextField(title, { title = it }, "Title", helper = "Saved on this phone only")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Share with the swarm", style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp))
+                    Text(if (share) "Other phones may be answered from this page" else "Off: this page stays on this phone", style = SwarmType.label.copy(color = SwarmColors.graphite))
+                }
+                InkSwitch(checked = share, onCheckedChange = { share = it })
+            }
+            if (!emb.ready) Text("Embedder not loaded: load the embedding model in Models before adding pages.", style = SwarmType.label)
+            else if (reindexNeeded) Text("Re-index needed: rebuild the index in the library before adding pages.", style = SwarmType.label)
+            PrimaryButton(
+                "Add to index",
+                {
+                    val file = shot ?: return@PrimaryButton
+                    status = "indexing"
+                    scope.launch {
+                        val rep = withContext(Dispatchers.IO) {
+                            val (uri, modified) = PduIndexer.saveScan(ctx, file, share)
+                            PduEngine.indexScan(uri, modified, title.trim(), share, text!!)
+                        }
+                        if (rep.error == null && rep.indexed > 0) { file.delete(); onBack() } else status = rep.error ?: "nothing was indexed"
+                    }
+                },
+                Modifier.fillMaxWidth(),
+                enabled = enough && title.isNotBlank() && emb.ready && !reindexNeeded,
+            )
+            SecondaryButton("Retake", { shot?.delete(); shot = null; recognised = null; status = null }, Modifier.fillMaxWidth())
+            status?.let { Text(it, style = SwarmType.mono.copy(color = SwarmColors.graphite)) }
+        }
     }
 }
 

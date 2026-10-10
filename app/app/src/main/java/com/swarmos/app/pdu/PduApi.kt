@@ -6,6 +6,7 @@ import com.swarmos.app.BuildConfig
 import com.swarmos.app.choir.VoiceInput
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
+import com.swarmos.app.kb.KbTier
 import com.swarmos.app.link.ErrorBody
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.header
@@ -53,6 +54,9 @@ data class AskReport(
     val withheldPrivate: Int, val sources: List<AskSource>, val devices: List<AskDevice>, val timings: AskTimings,
     /** Why the answer pane shows sources only, or what the model run said besides the answer; null when there is nothing to add. */
     val note: String? = null,
+    /** Id of the knowledge-bank card that answered at once (no live search ran), and the ids of every card that matched. */
+    val fromCard: String? = null,
+    val cardIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -67,7 +71,14 @@ data class StatusReport(
 
 /** Everything a caller of the signed debug routes may see about this phone's own private items is a count, never text. */
 fun QueryUi.toReport(): AskReport = AskReport(
-    qid = qid, question = text, answer = answer, model = model, incomplete = incomplete, lexicalOnly = lexicalOnly,
+    qid = qid, question = text,
+    // a card kept on this phone never shows its text through this route: any paired phone can call it
+    answer = when {
+        savedAnswer == null -> answer
+        savedAnswer.entry.tier == KbTier.SWARM -> savedAnswer.entry.card.answer
+        else -> "(saved answer kept on this phone)"
+    },
+    model = model, incomplete = incomplete, lexicalOnly = lexicalOnly,
     withheldPrivate = devices.sumOf { it.withheldPrivate },
     sources = sources.map {
         AskSource(
@@ -84,6 +95,7 @@ fun QueryUi.toReport(): AskReport = AskReport(
     },
     timings = AskTimings(timings.embedMs, timings.localSearchMs, timings.firstCardsMs, timings.ttftMs, timings.totalMs),
     note = note,
+    fromCard = savedAnswer?.entry?.card?.id, cardIds = cards.map { it.entry.card.id },
 )
 
 /**
@@ -119,7 +131,7 @@ fun Route.pduRoutes() {
         post("/ask") {
             val req = SwarmJson.decodeFromString<AskRequest>(call.receiveText())
             if (req.text.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("empty question"))
-            call.respond(PduEngine.ask(req.text, req.k, req.deadlineMs).toReport())
+            call.respond(PduEngine.ask(req.text, req.k, req.deadlineMs, req.useSaved).toReport())
         }
 
         // stands in for the camera shutter: same OCR, MediaStore save and indexing as "Scan a document" (needs all-files access for the path)
