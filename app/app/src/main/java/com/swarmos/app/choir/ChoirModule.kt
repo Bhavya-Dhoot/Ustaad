@@ -83,8 +83,10 @@ object ChoirModule : SwarmModule {
             val useCheck = (body["useProblemCheck"] as? JsonPrimitive)?.booleanOrNull ?: false
             // "samples": false skips the one-phone-three-samples arm (it roughly doubles the run time)
             val withSamples = (body["samples"] as? JsonPrimitive)?.booleanOrNull ?: true
+            // "peers": false keeps the run on this phone, whatever other phones are online
+            val withPeers = (body["peers"] as? JsonPrimitive)?.booleanOrNull ?: true
             try {
-                call.respondJson(ChoirController.runEval(ids, RunOptions(useCheck), withSamples))
+                call.respondJson(ChoirController.runEval(ids, RunOptions(useCheck), withSamples, withPeers))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RunRefused) {
