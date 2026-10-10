@@ -119,6 +119,10 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                     .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HammerButton()
+                    Text(HAMMER_HELPER_LINE, style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite))
+                }
                 ScreenHeader("Settings") {
                     // wordmark and version on one line: a separate version row pushed the Save button out of reach after Verify
                     Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
@@ -149,6 +153,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                 AgentAccessRows()
                 AuditLogCard()
                 StopStartRow()
+                HammerButton()
             }
             // pinned below the scroll area: it is always fully visible, however tall the content grows (after Verify, for one)
             PrimaryButton(
@@ -249,6 +254,19 @@ private fun SwitchRow(title: String, helper: String, checked: Boolean, onChange:
         }
         InkSwitch(checked, onCheckedChange = null) // the whole row is the toggle
     }
+}
+
+/**
+ * The Hammer button: Keep busy at full duty also when the phone is warm. It is placed at the top and again at the bottom of the
+ * sheet; both read and change the same switch. Ink fill while it is on, outline while it is off. Turning it on turns Keep busy on;
+ * turning it off starts a short rest, then Keep busy carries on as before.
+ */
+@Composable
+private fun HammerButton() {
+    val on by BusyMode.hammer.collectAsStateWithLifecycle()
+    val text = hammerButtonText(on)
+    val toggle = { BusyMode.setHammer(!on) }
+    if (on) PrimaryButton(text, toggle, Modifier.fillMaxWidth()) else SecondaryButton(text, toggle, Modifier.fillMaxWidth())
 }
 
 /** "Keep busy": the switch, and while it is on the state and the counters (re-read every second). */

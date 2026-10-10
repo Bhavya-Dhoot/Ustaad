@@ -35,6 +35,16 @@ fun nearbyPermissions(sdkInt: Int): List<String> = buildList {
 fun keepBusyScreenOffLine(batteryExempt: Boolean): String =
     if (batteryExempt) "Also runs with the screen off while charging." else "Runs only while Ustaad is on screen."
 
+/** The Hammer button in Settings: what it says now, so that either copy of it shows whether Hammer is on. */
+fun hammerButtonText(on: Boolean): String = if (on) "Hammer is on. Tap to stop." else "Hammer: maximum usage"
+
+/** The line under the Hammer button at the top of Settings. */
+const val HAMMER_HELPER_LINE =
+    "Keeps this phone generating all the time it can, even when it is warm. Answers get slower and the phone gets hot. " +
+        "It pauses while the phone is too hot and carries on when it has cooled. " +
+        "After you stop it the phone rests for 90 seconds, then normal Keep busy continues. " +
+        "Hammer is off again whenever Ustaad restarts."
+
 /** The "Allow background start" row is only shown on vivo and iQOO phones, whose OriginOS stops background apps. */
 fun isVivoFamily(manufacturer: String, brand: String): Boolean =
     listOf(manufacturer, brand).any { it.trim().lowercase() in setOf("vivo", "iqoo") }

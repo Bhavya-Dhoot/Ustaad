@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -101,9 +102,11 @@ class BusyModeTest {
     private val audit = CopyOnWriteArrayList<Pair<String, JsonObject>>()
     private val saved = ConcurrentLinkedQueue<Boolean>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var now = 0L   // the clock BusyMode takes the moment Hammer is switched off from
 
     @Before fun setUp() {
         BusyMode.restore(false, { saved += it }, { k, p -> audit += k to p })
+        BusyMode.clock = { now }
     }
 
     @After fun tearDown() {
@@ -127,6 +130,85 @@ class BusyModeTest {
         assertEquals("the last value stored is the final state", false, saved.last())
         assertEquals(listOf("busy.on", "busy.off"), audit.map { it.first })
         assertTrue("busy.off carries the counts", audit[1].second.containsKey("jobsDone"))
+    }
+
+    @Test fun hammerIsOffAfterARestoreWhateverKeepBusyWas() {
+        BusyMode.setHammer(true)
+        BusyMode.restore(true, { saved += it }, { k, p -> audit += k to p })
+        assertTrue("Keep busy comes back as stored", BusyMode.enabled.value)
+        assertFalse("Hammer is never stored: off at every start", BusyMode.hammer.value)
+        assertNull(BusyMode.hammerOffAtMs)
+        assertFalse(BusyMode.report().hammer)
+    }
+
+    @Test fun turningHammerOnTurnsKeepBusyOn() = runBlocking {
+        assertFalse(BusyMode.hammer.value)
+        BusyMode.setHammer(true)
+        BusyMode.setHammer(true)   // no change, no second entry
+        assertTrue(BusyMode.hammer.value)
+        assertTrue("Keep busy follows", BusyMode.enabled.value)
+        assertTrue(BusyMode.report().hammer)
+        withTimeout(2_000) { while (saved.isEmpty()) delay(5) }
+        assertEquals(true, saved.last())
+        assertEquals(listOf("busy.on", "busy.hammer_on"), audit.map { it.first })
+    }
+
+    @Test fun turningHammerOffLeavesKeepBusyOnAndNotesTheMoment() {
+        now = 5_000
+        BusyMode.setHammer(true)
+        assertNull("no cool-down while Hammer is on", BusyMode.hammerOffAtMs)
+        now = 7_000
+        BusyMode.setHammer(false)
+        assertFalse(BusyMode.hammer.value)
+        assertTrue(BusyMode.enabled.value)
+        assertFalse(BusyMode.report().hammer)
+        assertEquals("the moment on the clock the loop uses", 7_000L, BusyMode.hammerOffAtMs)
+        assertEquals(7_000L, BusyMode.clock())
+        now = 9_000
+        BusyMode.setHammer(false)   // already off: the cool-down does not start again
+        assertEquals(7_000L, BusyMode.hammerOffAtMs)
+        assertEquals(listOf("busy.on", "busy.hammer_on", "busy.hammer_off"), audit.map { it.first })
+    }
+
+    @Test fun switchingHammerOnAgainEndsTheCooldownAtOnce() {
+        now = 1_000
+        BusyMode.setHammer(true)
+        now = 2_000
+        BusyMode.setHammer(false)
+        assertEquals(2_000L, BusyMode.hammerOffAtMs)
+        now = 3_000
+        BusyMode.setHammer(true)
+        assertNull(BusyMode.hammerOffAtMs)
+        now = 4_000
+        BusyMode.setHammer(false)
+        assertEquals("a new cool-down from the new switch-off", 4_000L, BusyMode.hammerOffAtMs)
+    }
+
+    @Test fun turningKeepBusyOffTurnsHammerOffWithoutACooldown() {
+        BusyMode.setHammer(true)
+        BusyMode.setEnabled(false)
+        assertFalse(BusyMode.enabled.value)
+        assertFalse(BusyMode.hammer.value)
+        assertNull("switching Keep busy off does not count as stopping Hammer", BusyMode.hammerOffAtMs)
+        BusyMode.setEnabled(true)
+        assertFalse("Hammer does not come back with Keep busy", BusyMode.hammer.value)
+        assertNull(BusyMode.hammerOffAtMs)
+        assertEquals(listOf("busy.on", "busy.hammer_on", "busy.off", "busy.hammer_off", "busy.on"), audit.map { it.first })
+    }
+
+    @Test fun hammerOffWhileKeepBusyIsOffChangesNothing() {
+        BusyMode.setHammer(false)
+        assertFalse(BusyMode.hammer.value)
+        assertFalse(BusyMode.enabled.value)
+        assertNull(BusyMode.hammerOffAtMs)
+        assertTrue(audit.isEmpty())
+    }
+
+    @Test fun hammerIsNeverWrittenToTheStore() = runBlocking {
+        BusyMode.setHammer(true)
+        BusyMode.setHammer(false)
+        delay(150)
+        assertEquals("only the Keep busy switch is stored", listOf(true), saved.toList())
     }
 
     @Test fun turningItOnStartsTheCountersAgain() {

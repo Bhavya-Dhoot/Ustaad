@@ -59,6 +59,17 @@ class BusyRouteTest {
         assertEquals(0.62, got.share60s, 1e-9)
     }
 
+    @Test fun theBusyRouteCarriesHammerAsFalseAndTrue() = runBlocking {
+        val client = NodeClient({ "secret" }, { "me" })
+        val off = client.get<BusyReport>("127.0.0.1:$port", "/sched/busy")
+        assertEquals(false, off.hammer)
+        assertTrue("false is in the answer too, for scripts that read it", SwarmJson.encodeToString(BusyReport.serializer(), off).contains("\"hammer\":false"))
+        report = report.copy(hammer = true)
+        val on = client.get<BusyReport>("127.0.0.1:$port", "/sched/busy")
+        assertEquals(true, on.hammer)
+        assertEquals(report, on)
+    }
+
     @Test fun theOldCapsRouteIsUnchanged() = runBlocking {
         val caps = NodeClient({ "secret" }, { "me" }).get<Caps>("127.0.0.1:$port", "/sched/caps")
         assertEquals("peer", caps.nodeId)

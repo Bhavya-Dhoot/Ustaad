@@ -63,6 +63,67 @@ class BusyPolicyTest {
         assertEquals(BusyState.HalfDuty, state(ok.copy(thermalStatus = 2)))
     }
 
+    @Test fun hammerKeepsFullDutyAtThermalStatusTwoWithNoRest() {
+        val hammer = ok.copy(thermalStatus = 2, hammer = true)
+        assertEquals(BusyState.Running, state(hammer))
+        assertEquals(0L, BusyPolicy.restAfterMs(state(hammer), 3_200L))
+        assertEquals("hammer off is the half duty rule as before", BusyState.HalfDuty, state(hammer.copy(hammer = false)))
+        assertEquals("hammer on changes nothing when cool", BusyState.Running, state(ok.copy(hammer = true)))
+    }
+
+    @Test fun hammerStillPausesForHeatFromStatusThree() {
+        for (s in 3..6) assertEquals("status $s", BusyState.PausedHot, state(ok.copy(thermalStatus = s, hammer = true)))
+    }
+
+    @Test fun hammerDoesNotSkipTheBatteryFloorIdleWaitBackgroundOrModelSettle() {
+        val warm = ok.copy(thermalStatus = 2, hammer = true)
+        assertEquals(BusyState.PausedBattery, state(warm.copy(batteryPct = 29)))
+        assertEquals("charging passes the floor", BusyState.Running, state(warm.copy(batteryPct = 5, charging = true)))
+        assertEquals(BusyState.WaitingForIdle, state(warm.copy(idleMs = 4_999)))
+        assertEquals(BusyState.PausedBackground, state(warm.copy(appInFront = false)))
+        assertEquals(BusyState.PausedModelRestarted, state(warm.copy(modelReadyForMs = 119_999L)))
+        assertEquals(BusyState.NoModel, state(warm.copy(modelReady = false)))
+        assertEquals(BusyState.Off, state(warm.copy(switchOn = false)))
+        assertEquals("heat beats the battery as before", BusyState.PausedHot, state(warm.copy(thermalStatus = 3, batteryPct = 10)))
+    }
+
+    @Test fun hammerOnPausesAtStatusThreeAndCarriesOnByItselfOnceCooled() {
+        val hot = ok.copy(hammer = true, thermalStatus = 3)
+        assertEquals(BusyState.PausedHot, state(hot))
+        assertEquals("the same conditions one step cooler run at full duty", BusyState.Running, state(hot.copy(thermalStatus = 2)))
+    }
+
+    @Test fun afterHammerIsSwitchedOffNoFillerForNinetySecondsThenTheNormalRule() {
+        assertEquals(90_000L, BusyPolicy.HAMMER_COOLDOWN_MS)
+        assertEquals(BusyState.HammerCooldown, state(ok.copy(sinceHammerOffMs = 0)))
+        assertEquals(BusyState.HammerCooldown, state(ok.copy(sinceHammerOffMs = 89_999)))
+        assertEquals("90 s is enough", BusyState.Running, state(ok.copy(sinceHammerOffMs = 90_000)))
+        assertEquals("then the normal rule: half duty when warm", BusyState.HalfDuty, state(ok.copy(sinceHammerOffMs = 90_000, thermalStatus = 2)))
+    }
+
+    @Test fun noCooldownWhenHammerWasNeverSwitchedOff() {
+        assertEquals(Long.MAX_VALUE, ok.sinceHammerOffMs)
+        assertEquals(BusyState.Running, state(ok))
+        assertEquals(BusyState.HalfDuty, state(ok.copy(thermalStatus = 2)))
+    }
+
+    @Test fun switchingHammerOnAgainDuringTheCooldownRunsAtOnce() {
+        assertEquals(BusyState.Running, state(ok.copy(hammer = true, sinceHammerOffMs = 1_000)))
+        assertEquals(BusyState.Running, state(ok.copy(hammer = true, sinceHammerOffMs = 1_000, thermalStatus = 2)))
+    }
+
+    @Test fun theCooldownComesAfterIdleWaitingAndBeforeTheHeatAndBatteryPauses() {
+        val resting = ok.copy(sinceHammerOffMs = 10_000)
+        assertEquals(BusyState.WaitingForIdle, state(resting.copy(idleMs = 100)))
+        assertEquals(BusyState.HammerCooldown, state(resting.copy(thermalStatus = 3)))
+        assertEquals(BusyState.HammerCooldown, state(resting.copy(batteryPct = 10)))
+        assertEquals(BusyState.HammerCooldown, state(resting.copy(thermalStatus = 2)))
+        assertEquals(BusyState.PausedBackground, state(resting.copy(appInFront = false)))
+        assertEquals(BusyState.PausedModelRestarted, state(resting.copy(modelReadyForMs = 0)))
+        assertEquals(BusyState.NoModel, state(resting.copy(modelReady = false)))
+        assertEquals(BusyState.Off, state(resting.copy(switchOn = false)))
+    }
+
     @Test fun thermalStatusThreeAndAbovePauseForHeat() {
         for (s in 3..6) assertEquals("status $s", BusyState.PausedHot, state(ok.copy(thermalStatus = s)))
     }
@@ -101,6 +162,7 @@ class BusyPolicyTest {
         assertEquals("paused hot", BusyState.PausedHot.stripWord)
         assertEquals("paused battery", BusyState.PausedBattery.stripWord)
         assertEquals("paused model", BusyState.PausedModelRestarted.stripWord)
+        assertEquals("resting", BusyState.HammerCooldown.stripWord)
         assertNull(BusyState.Off.stripWord)
         assertNull(BusyState.WaitingForIdle.stripWord)
         assertNull(BusyState.NoModel.stripWord)

@@ -55,6 +55,10 @@ class BusyLoop(
     private val externalBusy: () -> Boolean = { false },
     /** Called before a job; the function it returns is called after the job, before the slot is given back. Undoes shared numbers a stream writes. */
     private val protect: () -> () -> Unit = { {} },
+    /** The owner's Hammer switch, read before every job: full duty also when the phone is warm (status 2). */
+    private val hammer: () -> Boolean = { false },
+    /** When Hammer was last switched off, on the same clock as [clock]; null if it was not (no filler for [BusyPolicy.HAMMER_COOLDOWN_MS] after that). */
+    private val hammerOffAtMs: () -> Long? = { null },
 ) {
     private var next = 0
     private var lastExternalMs = -1L
@@ -86,13 +90,15 @@ class BusyLoop(
                 thermalStatus = h?.thermalStatus ?: 0,
                 batteryPct = h?.batteryPct ?: -1,
                 charging = h?.charging ?: true,
+                hammer = hammer(),
+                sinceHammerOffMs = hammerOffAtMs()?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE,
             ),
         )
         publish(state)
         return when (state) {
             BusyState.Off -> OFF_POLL_MS
             BusyState.NoModel -> NO_MODEL_POLL_MS
-            BusyState.PausedModelRestarted, BusyState.PausedBackground -> SETTLE_POLL_MS
+            BusyState.PausedModelRestarted, BusyState.PausedBackground, BusyState.HammerCooldown -> SETTLE_POLL_MS
             BusyState.WaitingForIdle -> (BusyPolicy.IDLE_BEFORE_MS - idle).coerceIn(MIN_POLL_MS, MAX_POLL_MS)
             BusyState.PausedHot, BusyState.PausedBattery -> BusyPolicy.PAUSE_RECHECK_MS
             BusyState.Running, BusyState.HalfDuty -> {

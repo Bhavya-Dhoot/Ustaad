@@ -40,6 +40,9 @@ object BusyApp {
         health = { AppGraph.health.state.value },
         chat = ::chatServer,
         enabled = { BusyMode.enabled.value },
+        hammer = { BusyMode.hammer.value },
+        hammerOffAtMs = { BusyMode.hammerOffAtMs },
+        clock = { BusyMode.clock() },   // the cool-down after Hammer is measured on the clock BusyMode took the switch-off moment from
         counters = BusyMode.counters,
         publish = BusyMode::publish,
         appInFront = { AppGraph.foreground.value },
