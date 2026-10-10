@@ -49,6 +49,18 @@ private class FakeEnv : SplitEnv {
     val failingRpcStart = mutableSetOf<String>()
     val deadRpc = mutableSetOf<String>()
 
+    /** Peers on the older build: they ignore stopOwn, stop nothing themselves and answer /rpc/start without stoppedOwn. */
+    val oldLenders = mutableSetOf<String>()
+
+    /** Peers no call reaches (switched off, out of range). */
+    val unreachable = mutableSetOf<String>()
+
+    /** Peers that stop their servers on /rpc/start and then drop the connection. */
+    val diesAfterStop = mutableSetOf<String>()
+
+    /** What the driver had saved to disk at the moment each peer received /rpc/start. */
+    val recordAtStart = java.util.concurrent.ConcurrentHashMap<String, Persisted>()
+
     val local = mutableMapOf(
         Role.CHAT to LocalServer(ServerState.READY, "small.gguf", 5000),
         Role.EMBED to LocalServer(ServerState.READY, "embed.gguf", 600),
@@ -91,16 +103,31 @@ private class FakeEnv : SplitEnv {
     override fun modelFile(name: String): File? = ModelFiles.clean(name)?.takeIf { it in existing }?.let { File(dir, it).also { f -> f.writeText("x") } }
     override fun readHeader(file: File) = GgufInfo(file.name, 3_000_000_000, "qwen35", "Test 4B", 32, 2560, 4096, 0, 0, 0, List(32) { 70_000_000L }, 500_000_000, 10_000_000, 0)
 
-    override suspend fun peerModels(addr: String): Map<String, RoleSnap> = peerRoles.getValue(addr)
-    override suspend fun peerStopRole(addr: String, role: String) { calls += "stopRole $addr $role" }
-    override suspend fun peerLoadModel(addr: String, role: String, file: String) { calls += "loadModel $addr $role $file" }
+    private fun reach(addr: String) { if (addr in unreachable) throw java.io.IOException("$addr does not answer") }
+
+    override suspend fun peerModels(addr: String): Map<String, RoleSnap> { reach(addr); return peerRoles.getValue(addr) }
+    override suspend fun peerStopRole(addr: String, role: String) { reach(addr); calls += "stopRole $addr $role" }
+    override suspend fun peerLoadModel(addr: String, role: String, file: String) { reach(addr); calls += "loadModel $addr $role $file" }
     override suspend fun peerRpcStart(addr: String, req: RpcStartRequest): RpcStateDto {
-        calls += "rpcStart $addr restore=${req.restore.joinToString(",") { it.role + ":" + it.file }}"
+        reach(addr)
+        calls += "rpcStart $addr restore=${req.restore.joinToString(",") { it.role + ":" + it.file }} stopOwn=${req.stopOwn}"
+        recordAtStart[addr] = saved.lastOrNull() ?: Persisted()
+        if (addr in diesAfterStop) { // stopped its servers, then the connection or the phone was lost
+            peerRoles[addr] = peerRoles.getValue(addr).mapValues { RoleSnap("STOPPED", null, null) }
+            throw IllegalStateException("connection lost")
+        }
         if (addr in failingRpcStart) throw IllegalStateException("rpc-server failed to start")
+        if (req.stopOwn && addr !in oldLenders) {
+            // a new build records the list and the lease, then stops its own servers, then starts rpc-server
+            val running = peerRoles.getValue(addr).filterValues { it.state != "STOPPED" }
+            calls += "lenderStopsOwn $addr ${running.keys.sorted().joinToString(",")}"
+            peerRoles[addr] = peerRoles.getValue(addr).mapValues { RoleSnap("STOPPED", null, null) }
+            return dto("READY").copy(stoppedOwn = running.map { (r, s) -> RestoreItem(r, s.file!!, s.rssMb) })
+        }
         return dto("READY")
     }
     override suspend fun peerRpcRenew(addr: String): RpcStateDto { calls += "rpcRenew $addr"; return dto("READY") }
-    override suspend fun peerRpcStop(addr: String) { calls += "rpcStop $addr" }
+    override suspend fun peerRpcStop(addr: String) { reach(addr); calls += "rpcStop $addr" }
     override suspend fun peerRpcState(addr: String): RpcStateDto {
         if (addr in deadRpc) throw IllegalStateException("no answer")
         return dto("READY")
@@ -182,10 +209,11 @@ class SplitCoordinatorTest {
         assertNull(start("Phone B"))
         val s = awaitState("READY") { it.phase == Phase.READY }
         assertEquals(listOf("Phone A", "Phone B"), s.phones.map { it.name })
-        // memory hygiene: the peer's chat and embedding servers stopped, rpc-server started with the restore list
-        assertEquals(1, env.count("stopRole 10.0.0.2:8787 chat"))
-        assertEquals(1, env.count("stopRole 10.0.0.2:8787 embed"))
-        assertTrue(env.calls.any { it.startsWith("rpcStart 10.0.0.2:8787 restore=chat:small.gguf,embed:embed.gguf") })
+        // memory hygiene: rpc-server is started with the restore list and the instruction to stop its own servers; the driver stops none itself
+        assertEquals(0, env.count("stopRole"))
+        assertEquals(1, env.count("lenderStopsOwn 10.0.0.2:8787 chat,embed"))
+        assertTrue(env.calls.any { it.startsWith("rpcStart 10.0.0.2:8787 restore=chat:small.gguf,embed:embed.gguf stopOwn=true") })
+        assertEquals(listOf("chat small.gguf, 4.9 GB", "embed embed.gguf, 600 MB"), s.phones.first { it.name == "Phone B" }.freed)
         // and this phone's own servers
         assertEquals(1, env.count("stopLocal chat"))
         assertEquals(1, env.count("stopLocal embed"))
@@ -210,8 +238,8 @@ class SplitCoordinatorTest {
         val s = awaitState("FAILED") { it.phase == Phase.FAILED }
         assertTrue(s.failReason!!.contains("Phone C"))
         awaitCall("cleanup") { env.count("rpcStop 10.0.0.2:8787") == 1 && env.count("rpcStop 10.0.0.3:8787") == 1 }
-        // Phone C never got rpc-server running, so nobody told it to restore: the driver loads its stopped servers back
-        awaitCall("C restored") { env.count("loadModel 10.0.0.3:8787 chat small.gguf") == 1 }
+        // Phone C never got rpc-server running and its servers were never stopped (the start failed before that): nothing to load
+        assertEquals(0, env.count("loadModel 10.0.0.3:8787"))
         // Phone B was running rpc-server, so it restores itself (it holds the list); the driver does not do it twice
         assertEquals(0, env.count("loadModel 10.0.0.2:8787"))
         // no llama-server was started, and the activity line is cleared
@@ -377,6 +405,65 @@ class SplitCoordinatorTest {
         assertEquals(3, c.previewPlan("model.gguf", emptyList(), SplitMode.EQUAL).shares.size)                           // empty = all online peers
         assertEquals(1, c.previewPlan("model.gguf", emptyList(), SplitMode.EQUAL, null, emptyMeansNone = true).shares.size) // every switch off
         assertEquals(2, c.previewPlan("model.gguf", listOf("Phone B"), SplitMode.EQUAL, null, emptyMeansNone = true).shares.size)
+    }
+
+    // ---------- finding 1: the loan and the restore list exist on a lender before its servers are stopped ----------
+
+    @Test fun aNewLenderGetsTheLoanAndTheRestoreListBeforeItStopsItsServers() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        val rpcStart = env.calls.indexOfFirst { it.startsWith("rpcStart 10.0.0.2:8787") }
+        val stops = env.calls.indexOfFirst { it.startsWith("lenderStopsOwn 10.0.0.2:8787") }
+        assertTrue("no server is stopped before /rpc/start, which carries the list and the lease", rpcStart in 0 until stops)
+        assertEquals("the driver stops nothing on the peer itself", 0, env.count("stopRole"))
+        // and the driver's own record of what is owed was on disk before the peer was asked
+        val onDisk = env.recordAtStart.getValue("10.0.0.2:8787")
+        assertEquals(listOf("chat", "embed"), onDisk.restore.getValue("b").map { it.role })
+        assertEquals("10.0.0.2:8787", onDisk.peerAddrs["b"])
+    }
+
+    @Test fun anOlderLenderIsAskedToStopItsServersOnlyAfterTheLoanExists() {
+        env.oldLenders += "10.0.0.2:8787"
+        assertNull(start("Phone B"))
+        val s = awaitState("READY") { it.phase == Phase.READY }
+        val rpcStart = env.calls.indexOfFirst { it.startsWith("rpcStart 10.0.0.2:8787") }
+        val stopChat = env.calls.indexOf("stopRole 10.0.0.2:8787 chat")
+        val stopEmbed = env.calls.indexOf("stopRole 10.0.0.2:8787 embed")
+        assertTrue("an older build keeps its servers until the driver stops them, after /rpc/start", rpcStart in 0 until stopChat && rpcStart in 0 until stopEmbed)
+        assertEquals(0, env.count("lenderStopsOwn"))
+        assertEquals(listOf("chat small.gguf, 4.9 GB", "embed embed.gguf, 600 MB"), s.phones.first { it.name == "Phone B" }.freed)
+        // the lease is already being renewed while the servers are stopped
+        awaitCall("renewals") { env.count("rpcRenew 10.0.0.2:8787") >= 1 }
+    }
+
+    @Test fun aLenderThatStoppedItsServersAndDiedHalfWayGetsThemLoadedBackByTheDriver() {
+        env.diesAfterStop += "10.0.0.3:8787"
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("FAILED") { it.phase == Phase.FAILED }
+        // the snapshot says stopped, so the driver loads what its record says was running
+        awaitCall("C loaded back") { env.count("loadModel 10.0.0.3:8787 chat small.gguf") == 1 && env.count("loadModel 10.0.0.3:8787 embed embed.gguf") == 1 }
+    }
+
+    @Test fun recoveryKeepsTheRecordOfAPeerItCannotReach() {
+        env.persisted = Persisted(
+            restore = mapOf(
+                "self" to listOf(RestoreItem("chat", "small.gguf")),
+                "b" to listOf(RestoreItem("chat", "small.gguf")),
+                "c" to listOf(RestoreItem("chat", "small.gguf")),
+            ),
+            peerAddrs = mapOf("b" to "10.0.0.2:8787", "c" to "10.0.0.3:8787"),
+        )
+        env.local[Role.CHAT] = LocalServer(ServerState.STOPPED, null, null)
+        env.unreachable += "10.0.0.2:8787"
+        env.peerRoles["10.0.0.3:8787"] = mapOf("chat" to RoleSnap("STOPPED", null, null), "embed" to RoleSnap("READY", "embed.gguf", 600))
+        runBlocking { c.onAppStart() }
+        val rec = env.saved.last()
+        assertEquals("only the unreachable peer stays on record", mapOf("b" to listOf(RestoreItem("chat", "small.gguf"))), rec.restore)
+        assertEquals(mapOf("b" to "10.0.0.2:8787"), rec.peerAddrs)
+        assertEquals(listOf("Phone B: chat small.gguf"), c.state.value.pendingRestore)
+        // the reachable peer and this phone were put right
+        assertEquals(1, env.count("loadModel 10.0.0.3:8787 chat small.gguf"))
+        assertEquals(1, env.count("restoreLocal chat small.gguf"))
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {

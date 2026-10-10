@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
@@ -49,6 +50,14 @@ object AndroidLenderEnv : LenderEnv {
         ModelsModule.loadModelAsync(role, file)
     }
 
+    override fun ownModels(): List<RestoreItem> = listOf(Role.CHAT, Role.EMBED).mapNotNull { r ->
+        val st = LlamaRuntime.statusOf(r)
+        if (st.state == ServerState.STOPPED) null
+        else st.modelPath?.let { RestoreItem(r.tag, File(it).name, LlamaRuntime.rssKb(r)?.div(1024)) }
+    }
+
+    override fun stopOwn(role: Role) = LlamaRuntime.stop(role)
+
     override fun setActivity(owner: String, text: String, onStop: () -> Unit) = PhoneActivity.set(owner, text, onStop)
     override fun clearActivity(owner: String) = PhoneActivity.clear(owner)
 
@@ -69,11 +78,11 @@ object RpcWorker {
     /** rpc-server's on-disk tensor cache: LlamaRuntime sets LLAMA_CACHE to filesDir/llama-cache and rpc-server adds /rpc. */
     fun cacheDir(): File = File(File(AppGraph.appContext.filesDir, "llama-cache"), "rpc")
 
-    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): RpcLender.StartResult {
-        val r = lender.start(req, viaAddress, fromNode)
-        if (r is RpcLender.StartResult.Ok && r.ready) ensureTicking()
-        return r
-    }
+    /** Runs in this object's own scope: a driver that gives up or is cut off must not abort a start half way, with this phone's servers already stopped. */
+    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): RpcLender.StartResult =
+        scope.async {
+            lender.start(req, viaAddress, fromNode).also { if (it is RpcLender.StartResult.Ok && it.ready) ensureTicking() }
+        }.await()
 
     fun renew(fromNode: String?): RpcLender.RenewResult = lender.renew(fromNode)
 
@@ -96,7 +105,7 @@ object RpcWorker {
 
     internal fun bindOf(args: List<String>): String? = args.lastIndexOf("-H").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 
-    fun state(): RpcStateDto {
+    fun state(stopped: List<RestoreItem>? = null): RpcStateDto {
         val st = LlamaRuntime.statusOf(Role.RPC)
         val running = st.state != ServerState.STOPPED
         val cache = cacheStats()
@@ -119,6 +128,7 @@ object RpcWorker {
             args = st.args,
             lendingTo = lender.lending.value?.driverName,
             leaseMsLeft = lender.leaseMsLeft(),
+            stoppedOwn = stopped,
         )
     }
 

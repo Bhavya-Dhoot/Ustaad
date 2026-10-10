@@ -27,6 +27,7 @@ private class FakeLender : LenderEnv {
     override fun threads() = 6
     override suspend fun startRpc(bind: String, port: Int, threads: Int, cache: Boolean): Boolean {
         calls += "startRpc $bind:$port t=$threads cache=$cache"
+        if (throwOnStartRpc) throw IllegalStateException("exec failed")
         if (startFails) return false
         ready = true; this.bind = bind; this.port = port
         return true
@@ -37,6 +38,18 @@ private class FakeLender : LenderEnv {
     override fun stopRpc() { calls += "stopRpc"; ready = false }
     override fun modelFileExists(file: String) = file in models
     override fun restoreLocal(role: Role, file: String) { calls += "restore ${role.tag} $file" }
+
+    /** The chat and embedding servers that run on this phone until the lender stops them. */
+    val own = mutableListOf(RestoreItem("chat", "small.gguf", 5000), RestoreItem("embed", "embed.gguf", 600))
+    var throwOnStartRpc = false
+    var restoringAtStop = mutableListOf<List<RestoreItem>>()
+    lateinit var lender: RpcLender
+    override fun ownModels() = own.toList()
+    override fun stopOwn(role: Role) {
+        calls += "stopOwn ${role.tag}"
+        restoringAtStop += lender.restoring // what a lease expiry would bring back at the moment the server is stopped
+        own.removeAll { it.role == role.tag }
+    }
     override fun setActivity(owner: String, text: String, onStop: () -> Unit) { calls += "set $owner $text" }
     override fun clearActivity(owner: String) { calls += "clear $owner" }
     override fun audit(kind: String, vararg kv: Pair<String, String>) { calls += "audit $kind" }
@@ -44,11 +57,11 @@ private class FakeLender : LenderEnv {
 
 class RpcLenderTest {
     private val env = FakeLender()
-    private val lender = RpcLender(env)
+    private val lender = RpcLender(env).also { env.lender = it }
     private val restore = listOf(RestoreItem("chat", "small.gguf"), RestoreItem("embed", "embed.gguf"))
 
-    private fun start(bind: String? = "192.168.49.1", from: String? = "c", restore: List<RestoreItem> = this.restore) =
-        runBlocking { lender.start(RpcStartRequest(bind = bind, restore = restore), null, from) }
+    private fun start(bind: String? = "192.168.49.1", from: String? = "c", restore: List<RestoreItem> = this.restore, stopOwn: Boolean = false) =
+        runBlocking { lender.start(RpcStartRequest(bind = bind, restore = restore, stopOwn = stopOwn), null, from) }
 
     @Test fun theBindAddressMustBeAnAdvertisableLinkAddress() {
         for (bad in listOf("0.0.0.0", "::", "127.0.0.1", "", "10.20.30.40" /* e.g. a cellular address */, "192.168.49.2" /* not ours */)) {
@@ -152,6 +165,48 @@ class RpcLenderTest {
         assertEquals(RpcLender.StartResult.Ok(false), r)
         assertNull(lender.lending.value)
         assertTrue(env.calls.none { it.startsWith("set ") })
+    }
+
+    // ---------- finding 1: the lender stops its own servers only after it holds the restore list ----------
+
+    @Test fun aLenderThatIsAskedToStopItsOwnServersRecordsTheListFirstAndStopsThemBeforeRpcServerStarts() {
+        val r = start(restore = emptyList(), stopOwn = true)
+        assertEquals(RpcLender.StartResult.Ok(true, listOf(RestoreItem("chat", "small.gguf", 5000), RestoreItem("embed", "embed.gguf", 600))), r)
+        assertEquals(listOf("stopOwn chat", "stopOwn embed"), env.calls.filter { it.startsWith("stopOwn") })
+        assertTrue("the servers are stopped before rpc-server starts", env.calls.indexOf("stopOwn embed") < env.calls.indexOfFirst { it.startsWith("startRpc") })
+        // when each server was stopped the list already named both of them
+        assertEquals(listOf("chat", "embed"), env.restoringAtStop.first().map { it.role })
+        assertEquals(listOf("chat", "embed"), env.restoringAtStop.last().map { it.role })
+    }
+
+    @Test fun theServersALenderStoppedItselfComeBackWhenTheLeaseRunsOutEvenIfTheDriverSentNoList() {
+        start(restore = emptyList(), stopOwn = true)
+        env.now += RpcLender.LEASE_MS + 1
+        lender.tick()
+        assertNull(lender.lending.value)
+        assertTrue(env.calls.contains("restore chat small.gguf"))
+        assertTrue(env.calls.contains("restore embed embed.gguf"))
+    }
+
+    @Test fun aStartThatFailsAfterTheServersWereStoppedBringsThemBackAtOnce() {
+        env.startFails = true
+        assertEquals(RpcLender.StartResult.Ok(false), start(stopOwn = true))
+        assertNull(lender.lending.value)
+        assertTrue(env.calls.contains("restore chat small.gguf"))
+        assertTrue(env.calls.contains("restore embed embed.gguf"))
+        assertTrue(lender.restoring.isEmpty())
+
+        env.calls.clear(); env.own.addAll(listOf(RestoreItem("chat", "small.gguf", 5000)))
+        env.startFails = false; env.throwOnStartRpc = true
+        try { start(stopOwn = true); org.junit.Assert.fail("the start error should reach the caller") } catch (e: IllegalStateException) { /* expected */ }
+        assertTrue(env.calls.contains("restore chat small.gguf"))
+    }
+
+    @Test fun aDriverThatDoesNotAskForItGetsTheOldBehaviour() {
+        val r = start()
+        assertEquals(RpcLender.StartResult.Ok(true), r)
+        assertTrue("nothing is stopped by the lender", env.calls.none { it.startsWith("stopOwn") })
+        assertEquals(listOf("chat", "embed"), lender.restoring.map { it.role })
     }
 
     @Test fun theLendingActivityOwnerIsNotTheDrivers() {

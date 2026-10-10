@@ -154,6 +154,11 @@ data class MemCloudState(
     val threads: Int? = null,
     /** Model servers the driver stopped on this phone; they are restarted when rpc-server stops, whoever stops it. */
     val restore: List<RestoreItem> = emptyList(),
+    /**
+     * True: this phone stops its own chat and embedding servers itself, as part of accepting the loan, after it has
+     * recorded [restore] and the lease. False (older drivers send no field): the driver has already stopped them.
+     */
+    val stopOwn: Boolean = false,
 )
 
 @Serializable
@@ -178,4 +183,9 @@ data class RpcStateDto(
     val lendingTo: String? = null,
     /** Milliseconds until the loan ends unless the driver renews it, null when not lending. */
     val leaseMsLeft: Long? = null,
+    /**
+     * Only in the answer to /rpc/start from a phone that understood [RpcStartRequest.stopOwn]: the servers it stopped itself
+     * (empty when none were running). Null from an older phone, which stops nothing and leaves that to the driver.
+     */
+    val stoppedOwn: List<RestoreItem>? = null,
 )

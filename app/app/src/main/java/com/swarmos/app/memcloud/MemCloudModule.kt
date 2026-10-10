@@ -34,7 +34,7 @@ object MemCloudModule : SwarmModule {
             val via = runCatching { call.request.local.localAddress }.getOrNull()
             val from = call.request.headers[Signer.HEADER_NODE]
             when (val r = RpcWorker.start(req, via, from)) {
-                is RpcLender.StartResult.Ok -> call.respond(if (r.ready) HttpStatusCode.OK else HttpStatusCode.Conflict, RpcWorker.state())
+                is RpcLender.StartResult.Ok -> call.respond(if (r.ready) HttpStatusCode.OK else HttpStatusCode.Conflict, RpcWorker.state(r.stopped))
                 is RpcLender.StartResult.Refused -> call.respond(HttpStatusCode.BadRequest, ErrorBody(r.message))
             }
         }

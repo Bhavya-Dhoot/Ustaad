@@ -87,6 +87,12 @@ class SplitCoordinator(
     private val touched = ConcurrentHashMap<String, PeerInfo>()
     private val rpcStarted = ConcurrentHashMap<String, PeerInfo>()
 
+    /**
+     * Peers whose stopped servers are not confirmed back: node id to Node API address. Their items stay in [restore] and in the
+     * persisted record until a call to the peer succeeds (the peer was unreachable, or refused).
+     */
+    private val unconfirmed = ConcurrentHashMap<String, String>()
+
     @Volatile private var baselinePending: String? = null
 
     /** Memory a peer would free by stopping its chat and embedding servers, from its last /v1/models/state. */
@@ -137,10 +143,11 @@ class SplitCoordinator(
             coroutineScope {
                 for ((nodeId, addr) in p.peerAddrs) {
                     launch {
-                        runCatching { env.peerRpcStop(addr) }
-                        val snap = runCatching { env.peerModels(addr) }.getOrNull()
-                        for (i in p.restore[nodeId] ?: emptyList()) {
-                            if (snap?.get(i.role)?.state == "STOPPED") runCatching { env.peerLoadModel(addr, i.role, i.file) }
+                        val items = p.restore[nodeId] ?: emptyList()
+                        // a peer that cannot be reached keeps its record: the driver still owes it those servers
+                        if (!confirmPeerRestored(addr, items) && items.isNotEmpty()) {
+                            restore[nodeId] = items
+                            unconfirmed[nodeId] = addr
                         }
                     }
                 }
@@ -149,12 +156,32 @@ class SplitCoordinator(
                 val role = Role.parse(i.role) ?: continue
                 if (env.local(role).state == ServerState.STOPPED) env.restoreLocal(role, i.file)
             }
-            _state.update { it.copy(steps = it.steps + "The app restarted during a split: workers stopped, servers restored") }
+            _state.update {
+                it.copy(steps = it.steps + if (unconfirmed.isEmpty()) "The app restarted during a split: workers stopped, servers restored" else "The app restarted during a split: ${unconfirmed.keys.joinToString { k -> peerName(k) }} could not be reached, its servers are still owed")
+            }
         }
         baselinePending = null
-        env.save(Persisted())
+        persist()
+        _state.update { it.copy(pendingRestore = pendingText()) }
         env.clearActivity(ACTIVITY_OWNER)
     }
+
+    /**
+     * Brings a peer back to how it was: rpc-server stopped (a lender restores its own servers when that happens), and every server in
+     * [items] that is still stopped is loaded again. False when the peer could not be reached or refused, so the caller keeps the record.
+     */
+    private suspend fun confirmPeerRestored(addr: String, items: List<RestoreItem>): Boolean = try {
+        env.peerRpcStop(addr)
+        val snap = env.peerModels(addr)
+        for (i in items) if (snap[i.role]?.state == "STOPPED") env.peerLoadModel(addr, i.role, i.file)
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun peerName(nodeId: String): String = env.peers().firstOrNull { it.nodeId == nodeId }?.name ?: nodeId
 
     // ---------- planning (also used by the screen before anything is started) ----------
 
@@ -360,8 +387,10 @@ class SplitCoordinator(
             coroutineScope {
                 for (p in targets) {
                     launch {
-                        runCatching { env.peerRpcStop(p.addr) }
-                        if (p.nodeId !in started) for (i in restore[p.nodeId] ?: emptyList()) runCatching { env.peerLoadModel(p.addr, i.role, i.file) }
+                        // A peer whose rpc-server ran restores its own servers when it stops. For any other peer the servers are either
+                        // untouched (the start was refused or failed) or stopped by a lender that died half way: ask what it runs, load what is stopped.
+                        if (p.nodeId in started) runCatching { env.peerRpcStop(p.addr) }
+                        else confirmPeerRestored(p.addr, restore[p.nodeId] ?: emptyList())
                     }
                 }
             }
@@ -383,22 +412,36 @@ class SplitCoordinator(
         val items = listOf("chat", "embed").mapNotNull { r ->
             snap[r]?.takeIf { it.state != "STOPPED" && it.file != null }?.let { RestoreItem(r, it.file!!, it.rssMb) }
         }
-        remember(p.nodeId, items)
-        val freed = ArrayList<String>()
-        for (r in listOf("chat", "embed")) {
-            val role = snap[r] ?: continue
-            if (role.state == "STOPPED") continue
-            setPhone(p.nodeId) { it.copy(step = "Stopping its $r server (${role.file}) to free memory") }
-            step("${p.name}: stopping $r server ${role.file}${role.rssMb?.let { " (${mb(it)})" } ?: ""}")
-            env.peerStopRole(p.addr, r)
-            freed += "$r ${role.file}${role.rssMb?.let { ", ${mb(it)}" } ?: ""}"
-        }
-        setPhone(p.nodeId) { it.copy(step = "Starting rpc-server", freed = freed, restore = restoreText(p.nodeId)) }
+        remember(p.nodeId, items) // on disk before anything is sent to the peer
+
+        // The loan comes first: /rpc/start carries the restore list, and the lease runs from there. A new build stops its own chat and
+        // embedding servers as part of accepting, after it has recorded that list. An older build ignores that field and keeps them
+        // running: the driver stops them below, when the lease and the list already exist on the peer.
+        setPhone(p.nodeId) { it.copy(step = "Starting rpc-server", restore = restoreText(p.nodeId)) }
         step("${p.name}: starting rpc-server on ${p.host}:${Ports.RPC} with the tensor cache")
-        val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList()))
+        val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList(), stopOwn = true))
         if (st.state != "READY") throw IllegalStateException("rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}")
-        rpcStarted[p.nodeId] = p
-        setPhone(p.nodeId) { it.copy(step = "rpc-server listening, waiting for weights") }
+        rpcStarted[p.nodeId] = p // from here the renew job extends its lease
+
+        val freed = ArrayList<String>()
+        val own = st.stoppedOwn
+        if (own != null) {
+            remember(p.nodeId, own) // what the peer really stopped, which may differ from the snapshot taken a moment ago
+            for (m in own) {
+                step("${p.name}: stopped ${m.role} server ${m.file}${m.mb?.let { " (${mb(it)})" } ?: ""}")
+                freed += "${m.role} ${m.file}${m.mb?.let { ", ${mb(it)}" } ?: ""}"
+            }
+        } else {
+            for (r in listOf("chat", "embed")) {
+                val role = snap[r] ?: continue
+                if (role.state == "STOPPED") continue
+                setPhone(p.nodeId) { it.copy(step = "Stopping its $r server (${role.file}) to free memory") }
+                step("${p.name}: stopping $r server ${role.file}${role.rssMb?.let { " (${mb(it)})" } ?: ""}")
+                env.peerStopRole(p.addr, r)
+                freed += "$r ${role.file}${role.rssMb?.let { ", ${mb(it)}" } ?: ""}"
+            }
+        }
+        setPhone(p.nodeId) { it.copy(step = "rpc-server listening, waiting for weights", freed = freed, restore = restoreText(p.nodeId)) }
     }
 
     /** A 48-token answer from the small chat model that is about to be stopped: its tok/s is the scale for the split's number. */
@@ -447,7 +490,7 @@ class SplitCoordinator(
     private fun restoreText(key: String): List<String> = (restore[key] ?: emptyList()).map { "${it.role} ${it.file}" }
 
     private fun persist() {
-        runCatching { env.save(Persisted(restore.toMap(), touched.mapValues { it.value.addr }, baselinePending)) }
+        runCatching { env.save(Persisted(restore.toMap(), touched.mapValues { it.value.addr } + unconfirmed, baselinePending)) }
     }
 
     // ---------- leases, watching ----------

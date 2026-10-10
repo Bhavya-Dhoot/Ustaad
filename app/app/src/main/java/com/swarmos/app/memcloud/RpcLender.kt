@@ -40,6 +40,10 @@ interface LenderEnv {
     fun modelFileExists(file: String): Boolean
     fun restoreLocal(role: Role, file: String)
 
+    /** The chat and embedding servers of this phone that are not stopped, with the file each serves and its resident memory. */
+    fun ownModels(): List<RestoreItem>
+    fun stopOwn(role: Role)
+
     fun setActivity(owner: String, text: String, onStop: () -> Unit)
     fun clearActivity(owner: String)
     fun audit(kind: String, vararg kv: Pair<String, String>)
@@ -65,7 +69,8 @@ class RpcLender(private val env: LenderEnv) {
     }
 
     sealed interface StartResult {
-        data class Ok(val ready: Boolean) : StartResult
+        /** [stopped]: the servers this phone stopped itself (only when the request asked it to), null otherwise. */
+        data class Ok(val ready: Boolean, val stopped: List<RestoreItem>? = null) : StartResult
         data class Refused(val message: String) : StartResult
     }
 
@@ -79,6 +84,9 @@ class RpcLender(private val env: LenderEnv) {
 
     @Volatile private var leaseUntilMs = 0L
     @Volatile private var restoreItems: List<RestoreItem> = emptyList()
+
+    /** What ending the loan would bring back right now (for tests and the state route). */
+    internal val restoring: List<RestoreItem> get() = restoreItems
 
     fun leaseMsLeft(): Long? = if (_lending.value == null) null else (leaseUntilMs - env.nowMs()).coerceAtLeast(0)
 
@@ -100,18 +108,36 @@ class RpcLender(private val env: LenderEnv) {
             val clean = ModelFiles.clean(i.file) ?: return@mapNotNull null
             if (role == Role.RPC || !env.modelFileExists(clean)) null else RestoreItem(role.tag, clean, i.mb)
         }
-        if (items.isNotEmpty()) restoreItems = items
 
         val sameBind = env.rpcReady() && env.rpcPort() == req.port && env.rpcBind() == bind
-        val ready = sameBind || env.startRpc(bind, req.port, req.threads ?: env.threads(), req.cache)
-        if (!ready) return StartResult.Ok(false)
+        var stopped: List<RestoreItem>? = null
+        if (req.stopOwn) {
+            // Order matters: the restore list is recorded first, then the servers are stopped, then rpc-server starts. A driver that
+            // disappears at any point after this leaves a loan whose end (lease, stop, a failed start) brings these servers back.
+            val own = env.ownModels()
+            restoreItems = (own + items + restoreItems).distinctBy { it.role }
+            for (m in own) Role.parse(m.role)?.let { env.stopOwn(it) }
+            stopped = own
+        } else if (items.isNotEmpty()) {
+            restoreItems = items
+        }
+        val ready = try {
+            sameBind || env.startRpc(bind, req.port, req.threads ?: env.threads(), req.cache)
+        } catch (e: Throwable) {
+            if (stopped != null) stop("rpc-server did not start")
+            throw e
+        }
+        if (!ready) {
+            if (stopped != null) stop("rpc-server did not start") // the servers this phone stopped for the loan come back now
+            return StartResult.Ok(false)
+        }
         val now = env.nowMs()
         leaseUntilMs = now + LEASE_MS
         val since = if (sameBind) cur?.sinceMs ?: now else now
         _lending.value = Lending(fromNode, driverName, env.selfName(), bind, where, since, LEASE_MS)
         env.setActivity(ACTIVITY_OWNER, "Lending memory to $driverName.") { stop("stopped from the banner") }
         if (!sameBind) env.audit("memcloud.rpc.start", "driver" to (fromNode ?: "?"), "bind" to bind, "link" to where)
-        return StartResult.Ok(true)
+        return StartResult.Ok(true, stopped)
     }
 
     /** The driver extends the loan; only the phone that started it may. */
