@@ -6,6 +6,7 @@ import com.swarmos.app.core.NodeHealth
 import com.swarmos.app.core.NodeInfo
 import com.swarmos.app.core.Ports
 import io.ktor.http.HttpMethod
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,7 +23,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 
 /** One heartbeat session: a peer reached over one link (LAN or DIRECT). */
 class PeerSession(initial: PeerStatus) {
@@ -31,7 +31,8 @@ class PeerSession(initial: PeerStatus) {
     val status: StateFlow<PeerStatus> = _status.asStateFlow()
 
     internal val tracker = HeartbeatTracker()
-    @PublishedApi internal val probing = AtomicInteger(0)
+    /** Holds the heartbeat while a probe saturates this path (at most 30 s, and not after a probe error). */
+    @PublishedApi internal val pause = HeartbeatPause()
     internal var job: Job? = null
     internal val listing = PathListing()
 
@@ -56,8 +57,16 @@ data class Rejected(val ip: String, val port: Int, val nodeId: String?, val name
 object PeerLinks {
     private const val TAG = "SwarmLink"
     const val HEARTBEAT_MS = 1000L
-    const val HEARTBEAT_TIMEOUT_MS = 1000L
+    /** Wi-Fi heartbeat request timeout; idle-LAN stalls of 1035 to 2080 ms were measured, so 1 s marked healthy phones away. */
+    const val HEARTBEAT_TIMEOUT_MS = 2500L
+    /** Bluetooth heartbeat request timeout (unchanged: the radio path answers in tens of ms or not at all). */
+    const val HEARTBEAT_BT_TIMEOUT_MS = 3000L
     const val HELLO_TIMEOUT_MS = 2500L
+    /** A path that is away is probed this often (a phone that is gone is not worth a request every second). */
+    const val AWAY_HEARTBEAT_MS = 5000L
+    const val ENDPOINT_TTL_MS = 10 * 60_000L
+
+    internal fun beatPeriodMs(state: LinkState): Long = if (state == LinkState.AWAY) AWAY_HEARTBEAT_MS else HEARTBEAT_MS
 
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, PeerSession>()
@@ -73,7 +82,12 @@ object PeerLinks {
     private class Endpoint(val host: String, val port: Int) {
         @Volatile var failures = 0
         @Volatile var lastTryMs = 0L
+        /** Last time something said this address is alive: remembered again, or a session answered there. */
+        @Volatile var touchedMs = System.currentTimeMillis()
     }
+
+    /** An endpoint with no session that nothing has vouched for this long is forgotten (discovery re-adds a live one). */
+    internal fun endpointExpired(touchedMs: Long, nowMs: Long): Boolean = nowMs - touchedMs > ENDPOINT_TTL_MS
 
     private val endpoints = ConcurrentHashMap<String, Endpoint>()
     private var retryJob: Job? = null
@@ -123,19 +137,30 @@ object PeerLinks {
         if (retryJob?.isActive == true) return
         retryJob = scope.launch {
             while (isActive) {
-                val now = System.currentTimeMillis()
-                for (ep in endpoints.values) {
-                    val has = sessions.values.any { it.status.value.ip == ep.host && it.status.value.port == ep.port }
-                    if (has) { ep.failures = 0; continue }
-                    val interval = if (ep.failures < 10) 3_000L else 30_000L
-                    if (now - ep.lastTryMs < interval) continue
-                    ep.lastTryMs = now
-                    launch {
-                        val r = connect(ep.host, ep.port)
-                        if (r is ConnectResult.Ok) ep.failures = 0 else ep.failures++
-                    }
+                try {
+                    retryEndpoints(this)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "endpoint retry failed, carrying on: $e") // one bad round must not end the loop for good
                 }
                 delay(1_000)
+            }
+        }
+    }
+
+    private fun retryEndpoints(loop: CoroutineScope) {
+        val now = System.currentTimeMillis()
+        for (ep in endpoints.values) {
+            val has = sessions.values.any { it.status.value.ip == ep.host && it.status.value.port == ep.port }
+            if (has) { ep.failures = 0; ep.touchedMs = now; continue }
+            if (endpointExpired(ep.touchedMs, now)) { endpoints.remove("${ep.host}:${ep.port}", ep); continue } // never answered for 10 minutes
+            val interval = if (ep.failures < 10) 3_000L else 30_000L
+            if (now - ep.lastTryMs < interval) continue
+            ep.lastTryMs = now
+            loop.launch {
+                val r = try { connect(ep.host, ep.port) } catch (e: CancellationException) { throw e } catch (e: Exception) { ConnectResult.Failed("$e") }
+                if (r is ConnectResult.Ok) { ep.failures = 0; ep.touchedMs = System.currentTimeMillis() } else ep.failures++
             }
         }
     }
@@ -166,7 +191,7 @@ object PeerLinks {
     fun remember(host: String, port: Int) {
         if (!LinkRoute.isLocalAddress(host) || port !in 1..65535) return
         val k = "$host:$port"
-        endpoints.compute(k) { _, old -> old?.also { it.failures = 0; it.lastTryMs = 0 } ?: Endpoint(host, port) }
+        endpoints.compute(k) { _, old -> old?.also { it.failures = 0; it.lastTryMs = 0; it.touchedMs = System.currentTimeMillis() } ?: Endpoint(host, port) }
     }
 
     /** The pairing secret changed: let every remembered endpoint try again right away. */
@@ -175,6 +200,12 @@ object PeerLinks {
     }
 
     fun session(key: String): PeerSession? = sessions[key]
+
+    /** Unit tests only: hold a session without a handshake or a heartbeat. */
+    internal fun putSessionForTest(s: PeerSession) { sessions[s.status.value.key] = s }
+
+    /** Unit tests only. */
+    internal fun clearSessionsForTest() { sessions.clear() }
 
     /** The session for a node: the given link, else DIRECT when online, else any. */
     fun find(nodeId: String, link: LinkType? = null): PeerSession? {
@@ -216,10 +247,11 @@ object PeerLinks {
             currentCoroutineContext().ensureActive()
             return ConnectResult.Failed("health: ${t.message ?: t::class.simpleName}")
         }
+        if (health.nodeId != info.nodeId) return ConnectResult.Failed("hello and health at $host came from different phones")
         _rejected.update { it.filterNot { r -> r.ip == host && r.port == port } }
 
         remember(host, port)
-        val (session, created) = upsert(info, health, host, port, LinkRoute.typeFor(host))
+        val (session, created) = upsert(info, health, host, port, LinkRoute.typeFor(host)) ?: return ConnectResult.Failed("SwarmLink was stopped while connecting")
         if (created && announce) scope.launch { announceTo(session) }
         return ConnectResult.Ok(session.status.value)
     }
@@ -245,21 +277,30 @@ object PeerLinks {
             currentCoroutineContext().ensureActive()
             return ConnectResult.Failed("health over bluetooth: ${t.message ?: t::class.simpleName}")
         }
-        val (session, _) = upsert(info, health, "bt:$nodeId", 0, LinkType.BT)
+        if (info.nodeId != nodeId || health.nodeId != nodeId) return ConnectResult.Failed("the Bluetooth channel for $nodeId answers as ${info.nodeId}")
+        val (session, _) = upsert(info, health, "bt:$nodeId", 0, LinkType.BT) ?: return ConnectResult.Failed("SwarmLink was stopped while connecting")
         return ConnectResult.Ok(session.status.value)
     }
 
     private val json get() = com.swarmos.app.core.SwarmJson
 
-    /** Create the heartbeat session for (node, link) or refresh it; returns it and whether it is new. */
-    private fun upsert(info: NodeInfo, health: NodeHealth, host: String, port: Int, link: LinkType): Pair<PeerSession, Boolean> {
+    /**
+     * Create the heartbeat session for (node, link) or refresh it; returns it and whether it is new. A refreshed session
+     * whose heartbeat job is not running is started again. Null when [stop] has run: a connect that finishes after the
+     * stop must not leave a session whose heartbeat never beats.
+     */
+    private fun upsert(info: NodeInfo, health: NodeHealth, host: String, port: Int, link: LinkType): Pair<PeerSession, Boolean>? {
         val key = "${info.nodeId}/${link.name}"
         val now = System.currentTimeMillis()
         val fresh = PeerStatus(info.nodeId, info.name, host, port, link, LinkState.ONLINE, null, now, 0, health, info, peerForeground = peerFg[info.nodeId])
         var created = false
+        var backOnline = false
+        var before: PeerStatus? = null
         val session: PeerSession
         synchronized(this) {
             val old = sessions[key]
+            before = old?.status?.value
+            if (!scope.isActive) return null
             if (old == null) {
                 created = true
                 session = PeerSession(fresh).also { s ->
@@ -269,7 +310,16 @@ object PeerLinks {
                 }
             } else {
                 session = old
-                old.update { it.copy(name = info.name, ip = host, port = port, info = info, health = health) }
+                if (old.job?.isActive != true) old.job = scope.launch { heartbeatLoop(old) }
+                val moved = old.status.value.ip != host || old.status.value.port != port
+                backOnline = old.tracker.onInbound(now) // the hello and signed health that got us here prove the peer is there
+                old.update {
+                    it.copy(
+                        name = info.name, ip = host, port = port, info = info, health = health,
+                        state = old.tracker.state, misses = 0, lastSeenMs = now, awayReason = if (backOnline) null else it.awayReason,
+                    )
+                }
+                if (moved) Log.i(TAG, "${info.name} ${link.name} moved from ${before?.ip} to $host:$port")
             }
         }
         publish()
@@ -277,6 +327,8 @@ object PeerLinks {
         if (created) {
             AppGraph.audit.append("peer.trusted", JsonObject(mapOf("node" to JsonPrimitive(info.nodeId), "ip" to JsonPrimitive(host), "link" to JsonPrimitive(link.name))))
             Log.i(TAG, "trusted ${info.name} ${info.nodeId} at $host:$port via $link")
+        } else if (backOnline) {
+            AppGraph.audit.append("peer.online", JsonObject(mapOf("node" to JsonPrimitive(info.nodeId), "link" to JsonPrimitive(link.name), "by" to JsonPrimitive("connect"))))
         }
         return session to created
     }
@@ -291,8 +343,17 @@ object PeerLinks {
         var next = System.nanoTime()
         var n = 0
         while (currentCoroutineContext().isActive) {
-            if (s.probing.get() == 0) beat(s, n++)
-            next += HEARTBEAT_MS * 1_000_000
+            if (!s.pause.paused()) {
+                try {
+                    beat(s, n++)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // an I/O or bookkeeping error in one beat must not end this peer's heartbeat for good
+                    Log.w(TAG, "heartbeat of ${s.status.value.name} ${s.status.value.link} failed, carrying on: $e")
+                }
+            }
+            next += beatPeriodMs(s.status.value.state) * 1_000_000
             val wait = (next - System.nanoTime()) / 1_000_000
             if (wait > 0) delay(wait) else next = System.nanoTime()
         }
@@ -302,8 +363,9 @@ object PeerLinks {
         val st = s.status.value
         val t0 = System.nanoTime()
         var failReason: String? = null
-        val h: NodeHealth? = try {
-            if (st.link == LinkType.BT) BleLink.health(st.nodeId, HEARTBEAT_TIMEOUT_MS * 3)
+        var decodeError = false
+        val answer: NodeHealth? = try {
+            if (st.link == LinkType.BT) BleLink.health(st.nodeId, HEARTBEAT_BT_TIMEOUT_MS)
             else AppGraph.nodeClient.getPinned<NodeHealth>(st.hostPort, "/health", HEARTBEAT_TIMEOUT_MS)
         } catch (e: NodeHttpException) {
             if (e.status == 401) failReason = reasonOf401(e)
@@ -311,15 +373,31 @@ object PeerLinks {
         } catch (e: UntrustedResponse) {
             failReason = "answer not authenticated (different pairing secret?)"
             null
+        } catch (e: kotlinx.serialization.SerializationException) {
+            // the answer was signed (so the phone is there) but we cannot read it: a different protocol, not an absence
+            decodeError = true
+            failReason = "answered, but the reply could not be read (incompatible version?)"
+            null
         } catch (t: Throwable) {
             currentCoroutineContext().ensureActive()
             null
         }
+        // the answer must come from the phone this path was made for: another phone at the same address is not a heartbeat
+        val wrongNode = answer != null && answer.nodeId != st.nodeId
+        if (wrongNode) failReason = "another phone (${answer.nodeId}) answers at ${st.hostPort}"
+        val h: NodeHealth? = if (wrongNode) null else answer
         val rtt = (System.nanoTime() - t0) / 1e6
         val now = System.currentTimeMillis()
-        val changed = if (h != null) s.tracker.onSuccess(rtt, now) else s.tracker.onMiss()
+        var nowIncompatible = false
+        val changed = when {
+            wrongNode -> s.tracker.onWrongNode()
+            h != null -> s.tracker.onSuccess(rtt, now)
+            decodeError -> { nowIncompatible = s.tracker.onDecodeError(); false } // counted apart from misses
+            else -> s.tracker.onMiss()
+        }
         s.update {
             it.copy(
+                decodeErrors = s.tracker.decodeErrors, incompatible = s.tracker.incompatible,
                 state = s.tracker.state, rttMs = s.tracker.rttMs, misses = s.tracker.misses,
                 lastSeenMs = if (h != null) now else it.lastSeenMs, health = h ?: it.health,
                 beats = s.tracker.beats, missesTotal = s.tracker.missesTotal, awayCount = s.tracker.awayCount, maxGapMs = s.tracker.maxGapMs,
@@ -343,12 +421,30 @@ object PeerLinks {
             Log.i(TAG, "${st.name} ${st.link} is now ${s.tracker.state}")
             AppGraph.audit.append("peer.${s.tracker.state.name.lowercase()}", JsonObject(mapOf("node" to JsonPrimitive(st.nodeId), "link" to JsonPrimitive(st.link.name))))
         }
+        if (nowIncompatible) {
+            Log.w(TAG, "${st.name} ${st.link} answers but its replies cannot be read: incompatible version")
+            AppGraph.audit.append("peer.incompatible", JsonObject(mapOf("node" to JsonPrimitive(st.nodeId), "link" to JsonPrimitive(st.link.name))))
+        }
         // refresh the peer's NodeInfo (model names change) every ~10 s
         if (h != null && n % 10 == 5 && st.link != LinkType.BT) {
             runCatching { AppGraph.nodeClient.getPinned<NodeInfo>(st.hostPort, "/hello", HEARTBEAT_TIMEOUT_MS) }.getOrNull()?.let { info ->
                 s.update { it.copy(name = info.name, info = info) }
                 syncRegistry(st.nodeId)
             }
+        }
+        if (wrongNode && st.link != LinkType.BT) scope.launch { replaceSession(s, st) }
+    }
+
+    /**
+     * Another phone answers at the address this session was made for (the phone came back under a new node id, or its
+     * address went to another phone). Meet the phone that is there now; once it has its own session this one is dropped,
+     * so the old id is not listed as online beside the new one. A phone that merely is away is never touched by this.
+     */
+    private suspend fun replaceSession(old: PeerSession, st: PeerStatus) {
+        val r = connect(st.ip, st.port)
+        if (r is ConnectResult.Ok && r.status.nodeId != st.nodeId && sessions[st.key] === old) {
+            Log.i(TAG, "${st.name} (${st.nodeId}) is replaced by ${r.status.name} (${r.status.nodeId}) at ${st.ip}")
+            forget(st.key)
         }
     }
 
@@ -372,6 +468,46 @@ object PeerLinks {
         return sessions.values.map { it.status.value }.firstOrNull { it.ip == ip }?.nodeId
     }
 
+    /**
+     * A verified signed request from [nodeId] reached our node server from [remote]. It proves the peer is there, so it
+     * counts as a heartbeat for the path it came over: three slow answers in a row no longer mark a healthy phone away.
+     */
+    fun noteInbound(nodeId: String, remote: String, path: String = "") {
+        if (nodeId == selfId || path == "/v1/link/bye") return // the bye request must not undo itself
+        val mine = sessions.values.map { it.status.value }.filter { it.nodeId == nodeId }
+        if (mine.isEmpty()) return
+        when (val a = Inbound.decide(mine, remote, Ports.NODE)) {
+            is InboundAction.Beat -> sessions[a.key]?.let { applyInbound(it, nodeId) }
+            is InboundAction.Reconnect -> if (reconnectGate.tryAcquire(nodeId)) {
+                // the phone got a new address: do not wait for discovery to find it (up to a minute), go to where it is
+                Log.i(TAG, "$nodeId reached us from ${a.host}, which none of its paths uses; reconnecting there")
+                scope.launch { runCatching { connect(a.host, a.port, announce = false) } }
+            }
+            InboundAction.Ignore -> {}
+        }
+    }
+
+    private val reconnectGate = RateGate(Inbound.RECONNECT_GAP_MS)
+
+    private fun applyInbound(s: PeerSession, nodeId: String) {
+        val now = System.currentTimeMillis()
+        val before = s.status.value
+        val changed = s.tracker.onInbound(now)
+        if (!changed && before.misses == 0 && now - before.lastSeenMs < 1_000) return // cheap on a busy link
+        s.update {
+            it.copy(
+                state = s.tracker.state, misses = 0, lastSeenMs = now, maxGapMs = s.tracker.maxGapMs,
+                awayReason = if (changed) null else it.awayReason,
+            )
+        }
+        if (changed) {
+            publish()
+            syncRegistry(nodeId)
+            Log.i(TAG, "${before.name} ${before.link} is online again (a request from it arrived)")
+            AppGraph.audit.append("peer.online", JsonObject(mapOf("node" to JsonPrimitive(nodeId), "link" to JsonPrimitive(before.link.name), "by" to JsonPrimitive("inbound"))))
+        }
+    }
+
     /** Peer said POST /link/bye: mark its sessions away at once instead of waiting for three misses. */
     fun byeFrom(nodeId: String) {
         sessions.values.filter { it.status.value.nodeId == nodeId }.forEach { s ->
@@ -382,13 +518,13 @@ object PeerLinks {
         syncRegistry(nodeId)
     }
 
-    /** Hold the heartbeat while a probe saturates the link, so a busy link is not read as an absent peer. */
+    /** Hold the heartbeat while a probe saturates the link, so a busy link is not read as an absent peer (30 s at most). */
     inline fun <T> pausing(s: PeerSession, block: () -> T): T {
-        s.probing.incrementAndGet()
+        s.pause.enter()
         try {
             return block()
         } finally {
-            s.probing.decrementAndGet()
+            s.pause.exit()
         }
     }
 
@@ -410,6 +546,19 @@ object PeerLinks {
 
     /** Keep AppGraph.registry in step: one entry per node, address = how we reach it, away only when every link is away. */
     private fun syncRegistry(nodeId: String) {
+        syncRegistryEntry(nodeId)
+        // one address is one phone: when two entries claim it, keep the one that answers (and stop beating the other's path)
+        val gone = AppGraph.registry.dropAddressConflicts()
+        if (gone.isNotEmpty()) {
+            val taken = AppGraph.registry.peers.value.map { it.info.ip.substringBefore(':') }.toSet()
+            gone.forEach { id ->
+                Log.i(TAG, "$id shared an address with a phone that answers; dropped from the registry")
+                sessions.values.map { it.status.value }.filter { it.nodeId == id && it.link != LinkType.BT && it.ip in taken }.forEach { forget(it.key) }
+            }
+        }
+    }
+
+    private fun syncRegistryEntry(nodeId: String) {
         val group = sessions.values.map { it.status.value }.filter { it.nodeId == nodeId }
         if (group.isEmpty()) return
         val online = group.filter { it.state == LinkState.ONLINE }

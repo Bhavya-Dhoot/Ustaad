@@ -73,10 +73,16 @@ class NodeClient(
     ): String {
         val id = reqId ?: java.util.UUID.randomUUID().toString()
         val hostPort = if (host.contains(':')) host else "$host:${Ports.NODE}"
-        val nodeId = if (pinned) null else PeerLinks.nodeAt(host.substringBefore(':'))
-        val cands = nodeId?.let { PeerLinks.candidates(it, Use.SMALL) }.orEmpty()
-            .filter { it.link != LinkType.BT || body.length <= BT_MAX_BODY }
-        if (cands.size < 2 && cands.firstOrNull()?.link != LinkType.BT) return httpOnce(hostPort, method, path, body, timeoutMs, id, null)
+        // "bt:<node id>" (from hostFor) names a phone that is reachable by Bluetooth only: keep the whole address, it is not ip:port
+        val btNode = btNodeOf(host)
+        val nodeId = btNode ?: if (pinned) null else PeerLinks.nodeAt(host.substringBefore(':'))
+        val all = nodeId?.let { PeerLinks.candidates(it, Use.SMALL) }.orEmpty()
+        val cands = usablePaths(all, body.length)
+        if (btNode != null && cands.isEmpty()) throw IOException(btRefusal(btNode, all, body.length))
+        if (cands.size < 2 && cands.firstOrNull()?.link != LinkType.BT) {
+            // a "bt:" address whose peer has meanwhile come up on Wi-Fi goes to that path's address
+            return httpOnce(if (btNode != null) cands.first().hostPort else hostPort, method, path, body, timeoutMs, id, null)
+        }
 
         val attempts = cands.mapIndexed { i, p ->
             val last = i == cands.lastIndex
@@ -122,7 +128,7 @@ class NodeClient(
                         requestTimeoutMillis = timeoutMs
                         socketTimeoutMillis = timeoutMs
                     }
-                    connectTimeoutMillis = connectMs ?: timeoutMs
+                    connectTimeoutMillis = connectMs ?: timeoutMs?.let { connectTimeoutFor(it) }
                 }
             }
             headers.forEach { (k, v) -> header(k, v) }
@@ -153,7 +159,7 @@ class NodeClient(
      * with the path policy's hysteresis, so it follows a path switch.
      */
     fun hostFor(nodeId: String, use: Use = Use.SMALL): String? =
-        PeerLinks.candidates(nodeId, use).firstOrNull()?.let { if (it.link == LinkType.BT || it.port == Ports.NODE) it.ip else it.hostPort }
+        hostOf(PeerLinks.candidates(nodeId, use), use, Ports.NODE)
 
     /** GET on exactly this address, no path selection or failover (heartbeat, hello, per-path probes). */
     suspend inline fun <reified T> getPinned(host: String, path: String, timeoutMs: Long? = null): T =
@@ -174,5 +180,33 @@ class NodeClient(
     companion object {
         /** Connect timeout for a path that has another path behind it, so a dead path fails over quickly. */
         const val FAILOVER_CONNECT_MS = 2_000L
+
+        /** Longest a connection attempt may take whatever the caller's overall timeout: a vanished address must not cost minutes. */
+        const val MAX_CONNECT_MS = 5_000L
+
+        /** Connect timeout for a request with overall timeout [callerMs]: the smaller of the two. */
+        fun connectTimeoutFor(callerMs: Long): Long = minOf(callerMs, MAX_CONNECT_MS)
+
+        /** The node id inside a "bt:<node id>" address ([hostFor] gives one when Bluetooth is all that is up), else null. */
+        fun btNodeOf(host: String): String? =
+            if (host.startsWith("bt:")) host.removePrefix("bt:").substringBefore(':').takeIf { it.isNotEmpty() } else null
+
+        /** True for a "bt:<node id>" address: it is not an IP, so a streaming or bulk client must not build a URL from it. */
+        fun isBluetoothAddress(host: String): Boolean = btNodeOf(host) != null
+
+        /** The paths a request of [bodyLen] bytes may use: Bluetooth only carries bodies up to [BT_MAX_BODY]. */
+        internal fun usablePaths(all: List<PeerStatus>, bodyLen: Int): List<PeerStatus> =
+            all.filter { it.link != LinkType.BT || bodyLen <= BT_MAX_BODY }
+
+        /** The address [hostFor] returns for the first of [candidates]; bulk never gets a Bluetooth address. */
+        internal fun hostOf(candidates: List<PeerStatus>, use: Use, nodePort: Int): String? =
+            candidates.firstOrNull { use != Use.BULK || it.link != LinkType.BT }
+                ?.let { if (it.link == LinkType.BT || it.port == nodePort) it.ip else it.hostPort }
+
+        /** A plain explanation for a request addressed "bt:<node id>" that has no usable path. */
+        internal fun btRefusal(nodeId: String, all: List<PeerStatus>, bodyLen: Int): String = when {
+            all.isEmpty() -> "no path to $nodeId: it is not reachable over Bluetooth or Wi-Fi right now"
+            else -> "a request of $bodyLen bytes cannot go over Bluetooth (limit $BT_MAX_BODY bytes) and $nodeId has no Wi-Fi path; bulk and streamed calls need Wi-Fi"
+        }
     }
 }

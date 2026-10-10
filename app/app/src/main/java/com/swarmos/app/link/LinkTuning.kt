@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,13 +22,12 @@ import kotlinx.serialization.Serializable
 object AppForeground {
     private val _foreground = MutableStateFlow(false)
     val foreground: StateFlow<Boolean> = _foreground.asStateFlow()
-    private var started = false
+    private var job: Job? = null
 
     @Synchronized
     fun start(ctx: Context, scope: CoroutineScope) {
-        if (started) return
-        started = true
-        scope.launch {
+        if (job?.isActive == true) return
+        job = scope.launch {
             while (isActive) {
                 val info = ActivityManager.RunningAppProcessInfo()
                 ActivityManager.getMyMemoryState(info)
@@ -41,6 +41,13 @@ object AppForeground {
                 delay(1_000)
             }
         }
+    }
+
+    /** Ends the polling loop; [start] begins a fresh one (LinkRuntime.stop, then start again). */
+    @Synchronized
+    fun stop() {
+        job?.cancel()
+        job = null
     }
 }
 

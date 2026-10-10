@@ -7,6 +7,7 @@ import com.swarmos.app.core.SwarmJson
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -203,6 +204,10 @@ object LinkRuntime {
         discovery?.stop(); discovery = null
         tputServer?.stop(); tputServer = null
         PeerLinks.stop()
+        // nothing launched by start() may outlive it: the next start() would add a second copy of each collector and loop
+        DirectLink.unwatch()
+        AppForeground.stop()
+        scope.coroutineContext[Job]?.children?.toList()?.forEach { it.cancel() }
     }
 
     /** Foreground changed: tell peers (best effort, a backgrounded app is frozen soon after) and, on return, re-join. */
@@ -372,7 +377,7 @@ object LinkRuntime {
                     val used: List<PeerSession> = if (paths != null) {
                         paths.map { l -> PeerLinks.find(peerNodeId, l)?.takeIf { it.status.value.state == LinkState.ONLINE } ?: throw java.io.IOException("no online $l path") }
                     } else listOf(session)
-                    used.forEach { it.probing.incrementAndGet() }
+                    used.forEach { it.pause.enter() }
                     try {
                         _progress.value = MeasureProgress(st.key, "rtt", 0, 0)
                         // OriginOS freezes a backgrounded app and resets its sockets; a peer that was just thawed
@@ -383,6 +388,7 @@ object LinkRuntime {
                             try {
                                 rtt = client.rtt(pings)
                             } catch (e: java.io.IOException) {
+                                used.forEach { it.pause.noteError() } // the link is not just busy: the heartbeat runs again at once
                                 if (++attempt >= 4) throw e
                                 Thread.sleep(1_500)
                             }
@@ -424,7 +430,7 @@ object LinkRuntime {
                         )
                         base
                     } finally {
-                        used.forEach { it.probing.decrementAndGet() }
+                        used.forEach { it.pause.exit() }
                     }
                 }
             } catch (t: Throwable) {
@@ -461,7 +467,7 @@ object LinkRuntime {
         )
         try {
             withContext(Dispatchers.IO) {
-                session?.probing?.incrementAndGet()
+                session?.pause?.enter()
                 try {
                     if (n > 0) {
                         val samples = LongArray(n)
@@ -478,7 +484,7 @@ object LinkRuntime {
                         report = report.copy(tcp = client.rtt(tcpPings))
                     }
                 } finally {
-                    session?.probing?.decrementAndGet()
+                    session?.pause?.exit()
                 }
             }
         } catch (t: Throwable) {

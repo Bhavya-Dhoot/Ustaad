@@ -27,13 +27,14 @@ suspend fun NodeRegistry.followSelf(models: Flow<Pair<String?, String?>>, ip: Fl
 
 /** This node plus the peers it has seen. All state is observable. */
 class NodeRegistry(initialSelf: NodeInfo) {
-    private val _self = MutableStateFlow(initialSelf)
+    // this node always advertises the protocol version of this build, whatever builds the NodeInfo
+    private val _self = MutableStateFlow(initialSelf.copy(protocol = PROTOCOL_VERSION))
     val self: StateFlow<NodeInfo> = _self.asStateFlow()
 
     private val _peers = MutableStateFlow<List<PeerState>>(emptyList())
     val peers: StateFlow<List<PeerState>> = _peers.asStateFlow()
 
-    fun updateSelf(transform: (NodeInfo) -> NodeInfo) = _self.update(transform)
+    fun updateSelf(transform: (NodeInfo) -> NodeInfo) = _self.update { transform(it).copy(protocol = PROTOCOL_VERSION) }
 
     /**
      * Brings this node's own ip and model names up to date: they change after start-up (a model finishes loading, the
@@ -71,4 +72,33 @@ class NodeRegistry(initialSelf: NodeInfo) {
     fun remove(nodeId: String) {
         _peers.update { list -> list.filter { it.info.nodeId != nodeId } }
     }
+
+    /**
+     * Two entries with one address cannot both be there (a phone came back under a new node id, or its address went to
+     * another phone). Keeps the entry that answers and removes the others; entries that merely are away and share no
+     * address with another phone stay. Returns the removed node ids.
+     */
+    fun dropAddressConflicts(): List<String> {
+        var dropped: Set<String> = emptySet()
+        _peers.update { list ->
+            dropped = addressLosers(list)
+            if (dropped.isEmpty()) list else list.filter { it.info.nodeId !in dropped }
+        }
+        return dropped.toList()
+    }
+}
+
+/**
+ * Of the entries that share one address, all but the one that answers (not away, latest seen). When none of them
+ * answers nothing is dropped: it cannot be told which one is gone.
+ */
+internal fun addressLosers(peers: List<PeerState>): Set<String> {
+    val losers = mutableSetOf<String>()
+    peers.filter { it.info.ip.isNotBlank() && it.info.ip != "0.0.0.0" && !it.info.ip.startsWith("bt:") }
+        .groupBy { it.info.ip }.values.filter { it.size > 1 }
+        .forEach { group ->
+            val winner = group.filter { !it.away }.maxByOrNull { it.lastSeenMs } ?: return@forEach
+            group.filter { it !== winner }.forEach { losers += it.info.nodeId }
+        }
+    return losers
 }

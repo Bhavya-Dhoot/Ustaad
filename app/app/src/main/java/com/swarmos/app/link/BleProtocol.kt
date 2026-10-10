@@ -34,7 +34,17 @@ object BleFrame {
     }
 }
 
-class BleReassembler(private val onMessage: (ByteArray) -> Unit) {
+/**
+ * Cuts the byte stream back into messages. A length prefix above [maxMessage] cannot come from a sender (it never frames
+ * more than [BleFrame.MAX_MESSAGE]): the stream has lost sync because a fragment was lost, and every later frame would be
+ * read from the wrong place. The buffer is cleared and [onReject] is told the declared length, so the owner can drop the
+ * channel and dial again (the frame has no marker to find the next message by).
+ */
+class BleReassembler(
+    private val maxMessage: Int = BleFrame.MAX_MESSAGE,
+    private val onReject: (declaredLength: Int) -> Unit = {},
+    private val onMessage: (ByteArray) -> Unit,
+) {
     private val buf = ByteArrayOutputStream()
     private var need = -1
 
@@ -46,6 +56,13 @@ class BleReassembler(private val onMessage: (ByteArray) -> Unit) {
             if (need < 0) {
                 if (bytes.size < 2) return
                 need = ((bytes[0].toInt() and 0xFF) shl 8) or (bytes[1].toInt() and 0xFF)
+                if (need > maxMessage) {
+                    val declared = need
+                    buf.reset()
+                    need = -1
+                    onReject(declared)
+                    return
+                }
             }
             if (bytes.size < 2 + need) return
             val msg = bytes.copyOfRange(2, 2 + need)
@@ -83,9 +100,15 @@ class BleRpc(
     private val send: suspend (ByteArray) -> Unit,
     private val handler: suspend (BleMsg) -> BleMsg,
     private val onIdentity: (BleMsg) -> Unit = {},
+    /** Called when [STALL_AFTER] calls in a row got no answer: the channel is not delivering, the owner drops it and dials again. */
+    private val onStalled: () -> Unit = {},
 ) {
     private val pending = ConcurrentHashMap<Int, CompletableDeferred<BleMsg>>()
     private val ids = AtomicInteger(1)
+    private val unanswered = AtomicInteger(0)
+
+    /** Calls in a row that failed to get an answer (timed out, or could not even be written); any response resets it. */
+    val consecutiveUnanswered: Int get() = unanswered.get()
 
     suspend fun sendIdentity(nodeId: String, name: String) =
         send(BleJson.encodeToString(BleMsg.serializer(), BleMsg(t = "id", n = nodeId, nm = name)).toByteArray())
@@ -95,17 +118,31 @@ class BleRpc(
         val d = CompletableDeferred<BleMsg>()
         pending[id] = d
         try {
-            send(BleJson.encodeToString(BleMsg.serializer(), request.copy(t = "req", id = id)).toByteArray())
-            return try { withTimeout(timeoutMs) { d.await() } } catch (e: TimeoutCancellationException) { throw IOException("bluetooth request timed out after $timeoutMs ms") }
+            try {
+                send(BleJson.encodeToString(BleMsg.serializer(), request.copy(t = "req", id = id)).toByteArray())
+            } catch (e: IOException) {
+                noteUnanswered() // a write that is refused or times out is a channel that is not delivering
+                throw e
+            }
+            return try {
+                withTimeout(timeoutMs) { d.await() }
+            } catch (e: TimeoutCancellationException) {
+                noteUnanswered()
+                throw IOException("bluetooth request timed out after $timeoutMs ms")
+            }
         } finally {
             pending.remove(id)
         }
     }
 
+    private fun noteUnanswered() {
+        if (unanswered.incrementAndGet() == STALL_AFTER) onStalled()
+    }
+
     fun onMessage(bytes: ByteArray) {
         val msg = runCatching { BleJson.decodeFromString(BleMsg.serializer(), String(bytes)) }.getOrNull() ?: return
         when (msg.t) {
-            "rsp" -> pending[msg.id]?.complete(msg)
+            "rsp" -> { unanswered.set(0); pending[msg.id]?.complete(msg) }
             "id" -> onIdentity(msg)
             "req" -> scope.launch {
                 val rsp = runCatching { handler(msg) }.getOrElse { BleMsg(t = "rsp", s = 500, b = """{"error":"${it.message?.replace('"', '\'')}"}""") }
@@ -119,6 +156,79 @@ class BleRpc(
         pending.values.forEach { it.completeExceptionally(IOException("bluetooth link closed")) }
         pending.clear()
     }
+
+    companion object {
+        /** Two unanswered calls in a row: one is bad luck, two is a channel that has lost a fragment or stalled. */
+        const val STALL_AFTER = 2
+    }
+}
+
+/**
+ * Pacing and retry rules of the Bluetooth link with no radio in them, so they can be tested.
+ */
+object BlePolicy {
+    const val HANDSHAKE_RETRY_MS = 5_000L
+    const val HANDSHAKE_MAX_FAILURES = 3
+    const val SCAN_RESTART_MS = 10 * 60_000L
+
+    /** The scan is restarted this often: a scan that was started once can go quiet on some Android versions. */
+    fun scanRestartDue(startedMs: Long, nowMs: Long, everyMs: Long = SCAN_RESTART_MS): Boolean = nowMs - startedMs >= everyMs
+
+    /**
+     * The trust handshake over an open channel. Runs [attempt] (true = trusted) while [isUp]; waits [retryMs] between
+     * tries; after [maxFailures] failures calls [onGiveUp] (the owner drops the channel so it is dialled again).
+     * Returns true when an attempt succeeded.
+     */
+    suspend fun handshake(
+        isUp: () -> Boolean,
+        attempt: suspend () -> Boolean,
+        onGiveUp: () -> Unit,
+        retryMs: Long = HANDSHAKE_RETRY_MS,
+        maxFailures: Int = HANDSHAKE_MAX_FAILURES,
+        pause: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+    ): Boolean {
+        var failures = 0
+        while (isUp()) {
+            if (attempt()) return true
+            if (++failures >= maxFailures) {
+                onGiveUp()
+                return false
+            }
+            pause(retryMs)
+        }
+        return false
+    }
+}
+
+/**
+ * Re-dial pacing for one peer: the first dial is allowed at once, each next one waits twice as long as the one before
+ * ([firstMs] 2 s, 4 s, 8 s, ... up to [maxMs] 30 s); a good handshake starts it over. A peer that is out of range or whose
+ * address rotated is not dialled every 2 s for ever.
+ */
+class DialBackoff(private val firstMs: Long = 2_000, private val maxMs: Long = 30_000) {
+    private var attempts = 0
+    private var nextAtMs = 0L
+
+    @Synchronized
+    fun due(nowMs: Long): Boolean = nowMs >= nextAtMs
+
+    /** A dial starts now. */
+    @Synchronized
+    fun onDial(nowMs: Long) {
+        nextAtMs = nowMs + delayAfter(attempts)
+        attempts++
+    }
+
+    @Synchronized
+    fun onSuccess() {
+        attempts = 0
+        nextAtMs = 0
+    }
+
+    @Synchronized
+    fun waitMs(nowMs: Long): Long = maxOf(0, nextAtMs - nowMs)
+
+    private fun delayAfter(attempt: Int): Long = if (attempt >= 20) maxMs else minOf(maxMs, firstMs shl attempt)
 }
 
 /**
