@@ -36,6 +36,15 @@ class HealthMonitorTest {
     }
 
     @Test
+    fun storedPowerManagerNamesBecomeTheSharedWords() {
+        assertEquals("Cool", ThermalLevel.wordForName("NONE"))
+        assertEquals("Warm", ThermalLevel.wordForName("light"))
+        assertEquals("Hot", ThermalLevel.wordForName("MODERATE"))
+        assertEquals("Severe", ThermalLevel.wordForName("CRITICAL"))
+        assertEquals("?", ThermalLevel.wordForName("?"))
+    }
+
+    @Test
     fun hotStampFromThermalStatusThreeUp() {
         assertFalse(HealthMonitor.isHot(0))
         assertFalse(HealthMonitor.isHot(2))

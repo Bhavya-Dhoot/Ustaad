@@ -249,7 +249,7 @@ private fun Topology(selfName: String, peers: List<PeerStatus>, results: List<Tp
                 val label = listOfNotNull(mbps?.let { "${fmt1(it)} Mbps" }, p.rttMs?.let { "${fmt1(it)} ms" }, if (p.state == LinkState.AWAY) "away" else null).joinToString("\n")
                 DoodleConnector(
                     selfC, peerC(i), Modifier.fillMaxSize(), label = label.ifEmpty { null }, dashed = p.state != LinkState.ONLINE,
-                    gap = 26.dp, startGap = 30.dp, labelAt = 0.62f, seed = 7 + i,
+                    gap = 26.dp, startGap = 30.dp, labelAt = 0.62f, seed = 7 + i, fromCaption = 36.dp,
                 )
             }
             Box(Modifier.offset(selfC.x - 45.dp, selfC.y - 17.dp).width(90.dp), contentAlignment = Alignment.TopCenter) { PhoneNode(selfName) }

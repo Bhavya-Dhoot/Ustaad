@@ -100,7 +100,6 @@ private fun ModelsPage(onBench: () -> Unit) {
     val wan by ModelStore.wanBytes.collectAsStateWithLifecycle()
     val tick by ModelStore.tick.collectAsStateWithLifecycle()
     val speed by LlamaRuntime.speed.collectAsStateWithLifecycle()
-    val autoload by ModelStore.autoload.collectAsStateWithLifecycle()
     val useGpu by ModelStore.useGpu.collectAsStateWithLifecycle()
     val benchRunning by Bench.running.collectAsStateWithLifecycle()
     val health by AppGraph.health.state.collectAsStateWithLifecycle()
@@ -173,10 +172,6 @@ private fun ModelsPage(onBench: () -> Unit) {
         )
         if (rpc.state != ServerState.STOPPED) ServerCard("RPC", rpc, rss[Role.RPC], null, null)
 
-        SettingRow(
-            "Load models at start", autoload,
-            "The chat and embedding models load when Ustaad starts.", "Models load only when you tap Load.",
-        ) { ModelStore.setAutoload(it) }
         SettingRow(
             "Use GPU for chat", useGpu,
             "The chat model runs on the phone's GPU and falls back to the CPU if that fails. Applies from the next load.",
