@@ -190,6 +190,24 @@ class MemCloudLogicTest {
 
     // 2026-10-10: a refused start left Phone C in FAILED and its keep-busy loop waited 26 minutes for "idle"
     @Test fun aFailedStartDoesNotCountAsWorkInProgress() {
-        assertEquals(setOf(Phase.IDLE, Phase.FAILED), Phase.entries.filterNot(MemCloudLogic::holdsPhone).toSet())
+        assertEquals(setOf(Phase.IDLE, Phase.FAILED), Phase.entries.filterNot { MemCloudLogic.holdsPhone(MemCloudState(phase = it)) }.toSet())
+    }
+
+    // 2026-10-11: a degraded split that had given the phone back (the automatic restore) still held it, so keep-busy never ran again
+    @Test fun aDegradedSplitThatHasReleasedThePhoneDoesNotHoldItAndPostsNoBanner() {
+        val degraded = MemCloudState(phase = Phase.DEGRADED, lostPhone = "Phone B")
+        assertTrue("until it is released, the paused split holds the phone", MemCloudLogic.holdsPhone(degraded))
+        assertEquals("A large model is paused: Phone B stopped answering.", MemCloudLogic.activityText(degraded))
+        val released = degraded.copy(released = true)
+        assertFalse(MemCloudLogic.holdsPhone(released))
+        assertNull(MemCloudLogic.activityText(released))
+        // the flag means nothing outside DEGRADED
+        assertTrue(MemCloudLogic.holdsPhone(MemCloudState(phase = Phase.READY, released = true)))
+        assertTrue(MemCloudLogic.holdsPhone(MemCloudState(phase = Phase.BASELINE, released = true)))
+    }
+
+    @Test fun aStateWrittenBeforeTheReleasedFieldStillLoadsAsNotReleased() {
+        val old = com.swarmos.app.core.SwarmJson.decodeFromString<MemCloudState>("""{"phase":"DEGRADED","lostPhone":"Phone B"}""")
+        assertFalse(old.released)
     }
 }

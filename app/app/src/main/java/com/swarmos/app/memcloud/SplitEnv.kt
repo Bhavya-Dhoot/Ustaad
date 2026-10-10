@@ -53,6 +53,8 @@ data class Persisted(
     /** node id to Node API address of every peer that was sent a command. */
     val peerAddrs: Map<String, String> = emptyMap(),
     val baselinePending: String? = null,
+    /** node id to the loan token the peer's /rpc/start returned, for the peers in [peerAddrs]; an older record has none and ends its loans without a token. */
+    val peerLoans: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -212,13 +214,15 @@ object AndroidSplitEnv : SplitEnv {
         val p = prefs()
         val restore = runCatching { p.getString("restore", null)?.let { SwarmJson.decodeFromString<Map<String, List<RestoreItem>>>(it) } }.getOrNull() ?: emptyMap()
         val peers = runCatching { p.getString("peers", null)?.let { SwarmJson.decodeFromString<Map<String, String>>(it) } }.getOrNull() ?: emptyMap()
-        return Persisted(restore, peers, p.getString("baseline_pending", null))
+        val loans = runCatching { p.getString("loans", null)?.let { SwarmJson.decodeFromString<Map<String, String>>(it) } }.getOrNull() ?: emptyMap()
+        return Persisted(restore, peers, p.getString("baseline_pending", null), loans)
     }
 
     override fun save(p: Persisted) {
         val e = prefs().edit()
         e.putString("restore", SwarmJson.encodeToString(p.restore))
         e.putString("peers", SwarmJson.encodeToString(p.peerAddrs))
+        e.putString("loans", SwarmJson.encodeToString(p.peerLoans))
         if (p.baselinePending == null) e.remove("baseline_pending") else e.putString("baseline_pending", p.baselinePending)
         // The record of what is owed to other phones must be on disk when this returns, not queued: commit() waits for the write, so it
         // runs only off the main thread (every caller is on the coordinator's IO scope); on the main thread apply() is the fallback.

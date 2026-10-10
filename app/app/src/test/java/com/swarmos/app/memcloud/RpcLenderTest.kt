@@ -43,6 +43,17 @@ private class FakeLender : LenderEnv {
     override fun rpcBind() = bind
     override fun rpcPort() = port
     override fun stopRpc() { calls += "stopRpc"; ready = false }
+
+    /** The wait for rpc-server's process to leave; [onWait] runs inside it, and [rpcGone] is what it reports (false: still there at the timeout). */
+    var rpcGone = true
+    var onWait: (() -> Unit)? = null
+    var heldMonitorDuringWait: Boolean? = null
+    override fun awaitRpcGone(timeoutMs: Long): Boolean {
+        calls += "awaitRpcGone $timeoutMs"
+        heldMonitorDuringWait = Thread.holdsLock(lender)
+        onWait?.invoke()
+        return rpcGone
+    }
     override fun modelFileExists(file: String) = file in models
     override fun restoreLocal(role: Role, file: String) { calls += "restore ${role.tag} $file" }
 
@@ -410,6 +421,86 @@ class RpcLenderTest {
         val t = tokenOf(start(from = "c"))
         assertEquals(t, tokenOf(start(from = "c")))
         assertEquals(1, env.calls.count { it.startsWith("startRpc") })
+    }
+
+    // ---------- the models come back only after rpc-server's process is gone ----------
+
+    private fun indexOfCall(prefix: String) = env.calls.indexOfFirst { it.startsWith(prefix) }
+
+    @Test fun everyWayOfEndingALoanWaitsForRpcServerToLeaveBeforeLoadingTheModelsAgain() {
+        val t = tokenOf(start())
+        lender.stop("stopped on this phone")
+        assertTrue(indexOfCall("stopRpc") in 0 until indexOfCall("awaitRpcGone"))
+        assertTrue("the wait comes before the first load", indexOfCall("awaitRpcGone") in 0 until indexOfCall("restore chat"))
+        assertEquals(RpcLender.RPC_GONE_WAIT_MS.toString(), env.calls.first { it.startsWith("awaitRpcGone") }.substringAfter(' '))
+        // from the driver
+        env.calls.clear()
+        val t2 = tokenOf(start())
+        assertNotEquals(t, t2)
+        assertEquals(RpcLender.StopResult.Ok, lender.stopFrom("c", t2, "stopped by the driver"))
+        assertTrue(indexOfCall("stopRpc") in 0 until indexOfCall("awaitRpcGone") && indexOfCall("awaitRpcGone") in 0 until indexOfCall("restore chat"))
+        // by the lease
+        env.calls.clear()
+        start()
+        env.elapsed += RpcLender.LEASE_MS + 1
+        lender.tick()
+        assertTrue(indexOfCall("stopRpc") in 0 until indexOfCall("awaitRpcGone") && indexOfCall("awaitRpcGone") in 0 until indexOfCall("restore chat"))
+    }
+
+    @Test fun theWaitHappensOutsideTheMonitorSoANewStartIsNotHeldUp() {
+        start()
+        lender.stop("test")
+        assertEquals(false, env.heldMonitorDuringWait)
+        env.heldMonitorDuringWait = null
+        start()
+        lender.stopFrom("c", null, "stopped by the driver")
+        assertEquals(false, env.heldMonitorDuringWait)
+        env.heldMonitorDuringWait = null
+        start()
+        env.ready = false
+        lender.tick()
+        assertEquals(false, env.heldMonitorDuringWait)
+    }
+
+    @Test fun anotherDriverCanStartWhileTheFirstLoanIsStillWaitingForRpcServerToLeave() {
+        start(from = "c")
+        var inner: RpcLender.StartResult? = null
+        env.onWait = {
+            // the first loan is already over, so the phone is free: a start is taken at once, not after the wait
+            val t = Thread { inner = runBlocking { lender.start(req(), null, "x") } }
+            t.start(); t.join(2_000)
+        }
+        lender.stop("test")
+        assertTrue("$inner", inner is RpcLender.StartResult.Ok)
+    }
+
+    @Test fun aRpcServerThatStaysPastTheTimeoutDoesNotStopTheModelsFromBeingRequested() {
+        start()
+        env.rpcGone = false
+        lender.stop("test")
+        assertTrue("the load is still asked for, after the bounded wait", env.calls.contains("restore chat small.gguf"))
+        assertTrue(env.calls.contains("restore embed embed.gguf"))
+    }
+
+    @Test fun aLenderWithNothingToBringBackDoesNotWait() {
+        start(restore = emptyList())
+        lender.stop("test")
+        assertTrue(env.calls.none { it.startsWith("awaitRpcGone") })
+        assertNull(lender.lending.value)
+    }
+
+    // ---------- a stop that names an earlier loan cannot end the newer one of the same driver ----------
+
+    @Test fun aStopWithTheOldTokenWhileANewerLoanOfTheSameDriverRunsIsRefusedAndChangesNothing() {
+        val old = tokenOf(start(from = "c"))
+        assertEquals(RpcLender.StopResult.Ok, lender.stopFrom("c", old, "stopped by the driver"))
+        val newer = tokenOf(start(from = "c"))
+        env.calls.clear()
+        val r = lender.stopFrom("c", old, "retry of an earlier stop")
+        assertEquals(RpcLender.StopResult.Refused("that loan has ended; this phone is lending under a newer one"), r)
+        assertNotNull(lender.lending.value)
+        assertTrue("rpc-server keeps running and nothing is loaded", env.ready && env.calls.none { it == "stopRpc" || it.startsWith("restore") })
+        assertEquals(RpcLender.StopResult.Ok, lender.stopFrom("c", newer, "stopped by the driver"))
     }
 
     @Test fun theLendingActivityOwnerIsNotTheDrivers() {
