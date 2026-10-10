@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
-import com.swarmos.app.AppGraph
 import kotlinx.serialization.Serializable
 import java.io.File
 
@@ -58,7 +57,6 @@ class IndexStats(val label: String) {
 /** Listing and reading of the three on-device sources. Nothing here touches the network. */
 object PduIndexer {
     const val MIN_OCR_CHARS = 20
-    private const val EMBED_BATCH = 16
 
     fun kindOf(name: String): String? = when (name.substringAfterLast('.', "").lowercase()) {
         "txt", "md" -> "text"
@@ -164,11 +162,14 @@ object PduIndexer {
 
     // ---- ingest -------------------------------------------------------------------------------------------
 
-    /** Read, chunk, embed and store one file. Skips it when this uri + lastModified is already indexed. */
-    suspend fun ingest(ctx: Context, store: PduStore, ref: DocRef, stats: IndexStats, preText: String? = null) {
+    /**
+     * Read, chunk, embed and store one file. Skips it when this uri + lastModified is already indexed (not on an owner-forced
+     * re-index, which reads everything again). Throws [EmbedderStopped] when the embedder went away: the file is not stored.
+     */
+    suspend fun ingest(ctx: Context, store: PduStore, ref: DocRef, stats: IndexStats, run: IndexRun, preText: String? = null) {
         stats.seen++
         val docId = PduStore.docIdOf(ref.uri)
-        if (store.isIndexed(docId, ref.lastModified)) { stats.unchanged++; return }
+        if (!run.rereadAll && store.isIndexed(docId, ref.lastModified)) { stats.unchanged++; return }
         val doc = DocRecord(docId, ref.uri, ref.title, ref.kind, ref.folder, ref.lastModified, ref.dateMs)
         try {
             var ocrMsHere = -1L
@@ -190,25 +191,25 @@ object PduIndexer {
             }
             val isImage = ref.kind == "photo" || ref.kind == "scan"
             val bodies = if (isImage && text.trim().length < MIN_OCR_CHARS) emptyList() else Chunker.split(text)
-            val rows = embed(bodies.map { PduEmbedConfig.document(ref.title, it) }, stats).mapIndexed { i, e -> ChunkRow(bodies[i], e) }
+            val rows = embed(run, bodies.map { PduEmbedConfig.document(ref.title, it) }, stats).mapIndexed { i, e -> ChunkRow(bodies[i], e) }
+            run.beforeStore(embedded = rows.isNotEmpty())
             store.putDoc(doc, rows)
             if (rows.isEmpty()) stats.noText++ else { stats.indexed++; stats.chunks += rows.size }
             val shown = if (store.doc(docId)?.isPrivate == true) "(private file)" else ref.title
             stats.files += "$shown ${ref.kind} chars=${text.trim().length} chunks=${rows.size}" +
                 (if (ocrMsHere >= 0) " ocrMs=$ocrMsHere" else "")
         } catch (t: Throwable) {
-            if (t is kotlinx.coroutines.CancellationException) throw t
+            if (t is kotlinx.coroutines.CancellationException || t is EmbedderStopped) throw t
             stats.failed++
             val shown = if (SharePolicy.mustStayPrivate(ref.folder)) "(private file)" else ref.title
             stats.errors += "$shown: ${t.javaClass.simpleName} ${t.message}".take(200)
         }
     }
 
-    private suspend fun embed(texts: List<String>, stats: IndexStats): List<FloatArray> {
+    private suspend fun embed(run: IndexRun, texts: List<String>, stats: IndexStats): List<FloatArray> {
         if (texts.isEmpty()) return emptyList()
         val t0 = System.nanoTime()
-        val out = ArrayList<FloatArray>(texts.size)
-        for (batch in texts.chunked(EMBED_BATCH)) out += AppGraph.embedder.embed(batch).map(PduStore::fit)
+        val out = run.embed(texts).map(PduStore::fit)
         stats.embedMs += (System.nanoTime() - t0) / 1_000_000
         return out
     }

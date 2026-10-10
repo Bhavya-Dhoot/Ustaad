@@ -49,19 +49,36 @@ object GgufMeta {
     private const val MAGIC = 0x46554747L // "GGUF" little-endian
     private const val DEFAULT_ALIGNMENT = 32L
     private const val MAX_KEPT_STRING = 512L
+    private const val MAX_TENSORS = 100_000L
+    private const val MAX_KEYS = 100_000L
+    private const val MAX_BLOCKS = 4096
 
     fun read(file: File): GgufInfo = FileInputStream(file).use { read(it, file.name, file.length()) }
 
-    /** [fileBytes] is the full file length; the last tensor's size is derived from it. */
-    fun read(input: InputStream, fileName: String, fileBytes: Long): GgufInfo {
-        val r = Src(BufferedInputStream(input, 1 shl 20))
+    /** [fileBytes] is the full file length; the last tensor's size is derived from it. A corrupt file gives [GgufFormatException], nothing else. */
+    fun read(input: InputStream, fileName: String, fileBytes: Long): GgufInfo = try {
+        parse(input, fileName, fileBytes)
+    } catch (e: GgufFormatException) {
+        throw e
+    } catch (e: EOFException) {
+        throw GgufFormatException("$fileName ends inside its header (truncated or not a GGUF file)")
+    } catch (e: OutOfMemoryError) {
+        throw GgufFormatException("$fileName has an implausible header size (corrupt file)")
+    } catch (e: RuntimeException) {
+        throw GgufFormatException("$fileName has a corrupt header: ${e.javaClass.simpleName}")
+    }
+
+    private fun parse(input: InputStream, fileName: String, fileBytes: Long): GgufInfo {
+        val r = Src(BufferedInputStream(input, 1 shl 20), fileBytes)
         if (r.u32() != MAGIC) throw GgufFormatException("not a GGUF file: $fileName")
         val version = r.u32()
         if (version < 2 || version > 3) throw GgufFormatException("unsupported GGUF version $version")
         val tensorCount = r.u64()
         val kvCount = r.u64()
-        if (tensorCount < 0 || tensorCount > 10_000_000 || kvCount < 0 || kvCount > 1_000_000) {
-            throw GgufFormatException("implausible header: $tensorCount tensors, $kvCount keys")
+        // every key takes at least 12 bytes and every tensor entry at least 24, so counts beyond the file size are corrupt
+        if (tensorCount < 0 || kvCount < 0 || tensorCount > MAX_TENSORS || kvCount > MAX_KEYS ||
+            tensorCount > fileBytes / 24 || kvCount > fileBytes / 12) {
+            throw GgufFormatException("implausible header: $tensorCount tensors, $kvCount keys in a file of $fileBytes bytes")
         }
 
         val ints = HashMap<String, Long>()
@@ -89,7 +106,8 @@ object GgufMeta {
         // Tensor data follows the info block in offset order, so a tensor's size is the gap to the next offset.
         val sorted = tensors.sortedBy { it.offset }
         val arch = strings["general.architecture"] ?: throw GgufFormatException("no general.architecture")
-        val blockCount = ints["$arch.block_count"]?.toInt() ?: throw GgufFormatException("no $arch.block_count")
+        val blockCount = ints["$arch.block_count"]?.toInt()?.takeIf { it in 1..MAX_BLOCKS }
+            ?: throw GgufFormatException("no usable $arch.block_count (it must be between 1 and $MAX_BLOCKS)")
         val layerBytes = LongArray(blockCount)
         var input0 = 0L
         var rest = 0L
@@ -149,9 +167,12 @@ object GgufMeta {
                 val elem = r.u32().toInt()
                 val n = r.u64()
                 val fixed = fixedSize(elem)
+                if (n < 0) throw GgufFormatException("array of $n elements in $key")
                 if (fixed != null) {
+                    if (n > r.remaining() / fixed) throw GgufFormatException("array of $n elements in $key does not fit in the file")
                     r.skip(n * fixed)
                 } else if (elem == 8) {
+                    if (n > r.remaining() / 8) throw GgufFormatException("array of $n strings in $key does not fit in the file")
                     var i = 0L
                     while (i < n) { r.skip(r.u64()); i++ }
                 } else {
@@ -174,9 +195,12 @@ object GgufMeta {
     }
 
     /** Little-endian reader that counts the bytes it consumed. */
-    private class Src(private val ins: InputStream) {
+    private class Src(private val ins: InputStream, private val fileBytes: Long) {
         var pos = 0L
             private set
+
+        /** Bytes of the file not read yet. */
+        fun remaining(): Long = (fileBytes - pos).coerceAtLeast(0)
 
         fun u8(): Long {
             val b = ins.read()
@@ -190,6 +214,7 @@ object GgufMeta {
         fun u64(): Long = u32() or (u32() shl 32)
 
         fun bytes(n: Int): ByteArray {
+            if (n < 0 || n > remaining()) throw GgufFormatException("a value of $n bytes at offset $pos runs past the end of the file")
             val out = ByteArray(n)
             var got = 0
             while (got < n) {
@@ -202,6 +227,7 @@ object GgufMeta {
         }
 
         fun skip(n: Long) {
+            if (n < 0 || n > remaining()) throw GgufFormatException("a value of $n bytes at offset $pos runs past the end of the file")
             var left = n
             while (left > 0) {
                 val k = ins.skip(left)

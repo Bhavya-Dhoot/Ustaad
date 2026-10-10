@@ -124,6 +124,28 @@ class GgufMetaTest {
         assertTrue(e is GgufFormatException)
     }
 
+    /** A header whose counts claim far more than the file can hold must fail cleanly, not allocate. */
+    @Test fun aCorruptHeaderGivesACleanErrorAndNeverAnOutOfMemory() {
+        fun le(n: Long, bytes: Int) = ByteArray(bytes) { ((n shr (8 * it)) and 0xFF).toByte() }
+        // claims 2^40 tensors
+        val manyTensors = "GGUF".toByteArray() + le(3, 4) + le(1L shl 40, 8) + le(0, 8)
+        // one key whose value is a string array of 2^40 entries
+        val key = "tokenizer.ggml.tokens".toByteArray()
+        val hugeArray = "GGUF".toByteArray() + le(3, 4) + le(0, 8) + le(1, 8) + le(key.size.toLong(), 8) + key + le(9, 4) + le(8, 4) + le(1L shl 40, 8)
+        // a string longer than the file
+        val k2 = "general.name".toByteArray()
+        val longString = "GGUF".toByteArray() + le(3, 4) + le(0, 8) + le(1, 8) + le(k2.size.toLong(), 8) + k2 + le(8, 4) + le(1L shl 40, 8)
+        // block_count that would allocate a huge array
+        val arch = GgufBuilder().apply {
+            kvStr("general.architecture", "x")
+            kvU32("x.block_count", 2_000_000_000)
+        }.build()
+        for ((name, bytes) in listOf("tensors" to manyTensors, "array" to hugeArray, "string" to longString, "blocks" to arch, "empty" to ByteArray(0), "cut" to moeFile().copyOf(100))) {
+            val e = runCatching { GgufMeta.read(bytes.inputStream(), "bad-$name.gguf", bytes.size.toLong()) }.exceptionOrNull()
+            assertTrue("$name: $e", e is GgufFormatException)
+        }
+    }
+
     @Test fun blockIndexOnlyMatchesRepeatingLayers() {
         assertEquals(17, GgufMeta.blockIndex("blk.17.ffn_up_exps.weight"))
         assertNull(GgufMeta.blockIndex("token_embd.weight"))

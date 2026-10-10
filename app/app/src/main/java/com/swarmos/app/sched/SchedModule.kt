@@ -42,8 +42,17 @@ object Sched {
 
     private val remotes = ConcurrentHashMap<String, RemoteLlmClient>()
 
+    /**
+     * The one place that says which address reaches a peer: the link module's path choice (PeerLinks.find follows the active
+     * PathPolicy, Wi-Fi Direct before LAN), else the address in the registry. When SwarmLink phase 2 adds its best-address
+     * API (bestBulkAddress), call it in this function and nowhere else.
+     */
+    private fun addressOf(peer: NodeInfo): String = PeerLinks.find(peer.nodeId)?.status?.value?.hostPort ?: peer.ip
+
     private fun remoteFor(peer: NodeInfo): RemoteLlmClient =
-        remotes.compute(peer.nodeId) { _, old -> if (old != null && old.peer.ip == peer.ip) old else RemoteLlmClient(peer, AppGraph.nodeClient, streams) }!!
+        remotes.compute(peer.nodeId) { _, old ->
+            if (old != null && old.peer.ip == peer.ip) old else RemoteLlmClient(peer, AppGraph.nodeClient, streams, ::addressOf)
+        }!!
 
     /** This phone first, then every peer the registry has not marked away (the link module keeps that flag from its heartbeats). */
     private fun allEndpoints(): List<PhoneEndpoint> =
@@ -88,7 +97,7 @@ object SchedModule : SwarmModule {
     override val showInNav = false   // embedded in the Swarm screen through ThroughputPanel()
 
     override fun Route.routes() {
-        schedNodeRoutes(Sched.node, peerName = { id -> AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == id }?.info?.name })
+        schedNodeRoutes(Sched.node, secret = { AppGraph.pairingSecret }, peerName = { id -> AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == id }?.info?.name })
         schedBatchRoutes(Sched.batches)
         schedPhonesRoute { Sched.swarm }
         if (BuildConfig.DEBUG) {

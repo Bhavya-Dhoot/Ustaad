@@ -1,8 +1,9 @@
 package com.swarmos.app.memcloud
 
 /**
- * ExpertMesh arithmetic. Inputs are the model file (layer count, experts) and live measurements (round-trip time of
- * the link); nothing is assumed.
+ * ExpertMesh arithmetic. Inputs are the model file (layer count, experts) and a live measurement: the TCP connect time to
+ * the rpc-server port, which is one network round trip (not the HTTP heartbeat, which adds the server's own handling).
+ * The results are estimates of network wait only, never measured speeds.
  *
  * Spreading the experts of one layer over several phones would send the hidden state to a remote phone and wait for the
  * answer in every MoE layer of every token: one round trip per MoE layer. Putting whole layer ranges on one phone
@@ -24,7 +25,7 @@ object ExpertMesh {
     /** Experts that live on one phone: its layers times the experts per layer. */
     fun expertsOnPhone(layers: Int, expertsPerLayer: Int): Long = layers.toLong() * expertsPerLayer
 
-    /** Mean of the positive samples (heartbeat round trips of the phones in the split), null when there are none. */
+    /** Mean of the positive samples (round trips of the phones in the split), null when there are none. */
     fun meanRtt(samples: List<Double?>): Double? =
         samples.filterNotNull().filter { it > 0.0 }.takeIf { it.isNotEmpty() }?.average()
 }

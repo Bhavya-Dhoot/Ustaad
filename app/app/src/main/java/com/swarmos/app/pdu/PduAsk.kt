@@ -252,14 +252,23 @@ private fun AnswerBlock(q: QueryUi, onCite: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         SectionTitle("Answer")
         Spacer(Modifier.width(10.dp))
-        if (q.model == "FAKE") Stamp("Fake model", caution = true, small = true) else Tag(q.model)
+        // a model name only when a real chat model wrote (or is writing) the answer; there is no placeholder text to label any more
+        if (q.model.isNotEmpty()) Tag(q.model)
     }
     SwarmCard {
+        val note = q.note
         if (q.answer.isEmpty()) {
-            if (q.phase == "done") Text("no answer", style = SwarmType.body.copy(color = SwarmColors.graphite))
-            else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Skeleton(18.dp); Skeleton(18.dp); Skeleton(18.dp) }
+            when {
+                note != null -> Text(note, style = SwarmType.body.copy(color = SwarmColors.graphite))
+                q.phase == "done" -> Text("no answer", style = SwarmType.body.copy(color = SwarmColors.graphite))
+                else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Skeleton(18.dp); Skeleton(18.dp); Skeleton(18.dp) }
+            }
         } else {
             CitedText(q.answer, streaming = q.phase == "answering", onCite = onCite, cites = 1..q.sources.size)
+            if (note != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(note, style = SwarmType.label.copy(color = SwarmColors.graphite))
+            }
         }
     }
 }

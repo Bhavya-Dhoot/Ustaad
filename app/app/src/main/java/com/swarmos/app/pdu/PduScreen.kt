@@ -140,6 +140,11 @@ private fun LibraryPage(go: (String) -> Unit) {
                 Text("This index was made with another embedding model or prefix. Questions use keywords only until it is rebuilt.", style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp))
                 Spacer(Modifier.height(8.dp))
                 SecondaryButton("Re-index everything", { PduEngine.scope.launch { PduEngine.reindexAll() } }, enabled = !progress.running)
+            } else if (counts.pending > 0) {
+                Spacer(Modifier.height(6.dp))
+                Text("A re-index was cut short. ${counts.pending} files are waiting to be read again; until then they are not searchable.", style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp))
+                Spacer(Modifier.height(8.dp))
+                SecondaryButton("Continue re-index", { PduEngine.scope.launch { PduEngine.reindexAll() } }, enabled = !progress.running)
             }
             if (progress.running) {
                 Spacer(Modifier.height(6.dp))

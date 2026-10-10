@@ -73,7 +73,7 @@ class SchedStreamTest {
         val node = SchedNode(scope, { id }, { llm }, { llm }, { null })
         servers += embeddedServer(CIO, port = port, host = "127.0.0.1") {
             install(ContentNegotiation) { json(SwarmJson) }
-            routing { route("/v1/sched") { schedNodeRoutes(node, streamPingMs = 100) } }
+            routing { route("/v1/sched") { schedNodeRoutes(node, { "secret" }, streamPingMs = 100) } }
         }.also { it.start(wait = false) }
         val info = NodeInfo(id, "Phone $id", "x", "127.0.0.1:$port", "t", llm.modelName, null)
         return Peer(node, RemoteLlmClient(info, NodeClient({ "secret" }, { "me" }), StreamClient({ "secret" }, { "me" })), llm)
