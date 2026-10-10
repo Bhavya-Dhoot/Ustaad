@@ -179,6 +179,12 @@ object PeerLinks {
 
     fun session(key: String): PeerSession? = sessions[key]
 
+    /** Unit tests only: hold a session without a handshake or a heartbeat. */
+    internal fun putSessionForTest(s: PeerSession) { sessions[s.status.value.key] = s }
+
+    /** Unit tests only. */
+    internal fun clearSessionsForTest() { sessions.clear() }
+
     /** The session for a node: the given link, else DIRECT when online, else any. */
     fun find(nodeId: String, link: LinkType? = null): PeerSession? {
         val all = sessions.values.filter { it.status.value.nodeId == nodeId }
