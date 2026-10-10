@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.pdu.PageHeader
+import com.swarmos.app.ui.CitedText
 import com.swarmos.app.pdu.PromptBuilder
 import com.swarmos.app.ui.EmptyHint
 import com.swarmos.app.ui.Hairline
@@ -90,7 +91,7 @@ private fun CardRow(e: KbEntry, onOpen: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(e.card.question, style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 21.sp), maxLines = 2)
-                Text("${PromptBuilder.day(e.card.createdMs)} · ${tierText(e)}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
+                Text("${KbText.dayTime(e.card.createdMs)} · ${tierText(e)}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
             }
             KbStamp(e)
         }
@@ -127,7 +128,7 @@ private fun CardDetail(e: KbEntry) {
     SectionTitle("Sources")
     for (s in e.card.sources) {
         SwarmCard(owner = s.phone) {
-            Text(s.title, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp), maxLines = 2)
+            Text(s.title.ifBlank { "(untitled)" }, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp), maxLines = 2)
             Text("${s.phone} · ${PromptBuilder.day(s.dateMs)}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
             if (s.priv) { Spacer(Modifier.height(4.dp)); Tag("private folder, this phone only") }
         }
@@ -136,7 +137,7 @@ private fun CardDetail(e: KbEntry) {
     SectionTitle("Provenance")
     SwarmCard {
         Text(
-            (if (mine) "Saved on this phone" else "Received from the swarm, saved by ${e.card.authorName}") + " on ${PromptBuilder.day(e.card.createdMs)}",
+            (if (mine) "Saved on this phone" else "Received from the swarm, saved by ${e.card.authorName}") + " on ${KbText.dayTime(e.card.createdMs)}",
             style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp),
         )
         Spacer(Modifier.height(4.dp))
@@ -190,7 +191,7 @@ fun SaveCardPanel(draft: KbDraft.Draft, onSaved: (String) -> Unit, onCancel: () 
         Text(draft.answer, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp))
         if (draft.clipped) Text("Shortened to ${KbLimits.MAX_ANSWER} characters.", style = SwarmType.label.copy(color = SwarmColors.graphite))
         Spacer(Modifier.height(6.dp))
-        for (s in draft.sources) Text("${s.phone} · ${s.title} · ${PromptBuilder.day(s.dateMs)}", style = SwarmType.mono.copy(color = SwarmColors.graphite), maxLines = 1)
+        for (s in draft.sources) Text(KbText.sourceLine(s), style = SwarmType.mono.copy(color = SwarmColors.graphite), maxLines = 1)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SelectChip("Keep on this phone", !share, { share = false })
@@ -214,7 +215,7 @@ fun SaveCardPanel(draft: KbDraft.Draft, onSaved: (String) -> Unit, onCancel: () 
 
 /** A saved answer that matched, shown above the file sources: the author's token, the save date, the sources and the SAVED stamp. */
 @Composable
-fun KbHitCard(h: KbHit) {
+fun KbHitCard(h: KbHit, onCite: (Int) -> Unit) {
     val c = h.entry.card
     SwarmCard(owner = c.authorName) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -227,15 +228,16 @@ fun KbHitCard(h: KbHit) {
         }
         Spacer(Modifier.height(6.dp))
         Text(c.question, style = SwarmType.title.copy(fontSize = 15.sp, lineHeight = 20.sp), maxLines = 2)
-        Text(c.answer, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp), maxLines = 6)
+        // the same marker chips as a live answer; a marker with no matching source stays plain text
+        CitedText(c.answer, streaming = false, onCite = onCite, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp), cites = 1..c.sources.size)
         Spacer(Modifier.height(4.dp))
-        for (s in c.sources) Text("${s.phone} · ${s.title} · ${PromptBuilder.day(s.dateMs)}", style = SwarmType.mono.copy(color = SwarmColors.graphite), maxLines = 1)
+        for (s in c.sources) Text(KbText.sourceLine(s), style = SwarmType.mono.copy(color = SwarmColors.graphite), maxLines = 1)
     }
 }
 
 /** The answer view when a saved answer clears the floor: the card's answer, marked as saved, with its age, and the way to run the live search. */
 @Composable
-fun SavedAnswerBlock(h: KbHit, onAskAgain: () -> Unit) {
+fun SavedAnswerBlock(h: KbHit, onCite: (Int) -> Unit, onAskAgain: () -> Unit) {
     val c = h.entry.card
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         SectionTitle("Answer")
@@ -243,10 +245,10 @@ fun SavedAnswerBlock(h: KbHit, onAskAgain: () -> Unit) {
         Tag("saved, ${KbSearch.age(c.createdMs, System.currentTimeMillis())} old")
     }
     SwarmCard {
-        Text(c.answer, style = SwarmType.body)
+        CitedText(c.answer, streaming = false, onCite = onCite, cites = 1..c.sources.size)
         Spacer(Modifier.height(6.dp))
         // the [n] in the text are the numbered sources listed below this block
-        Text("Saved answer from ${c.authorName}, ${PromptBuilder.day(c.createdMs)}", style = SwarmType.label)
+        Text("Saved answer from ${c.authorName}, ${KbText.dayTime(c.createdMs)}", style = SwarmType.label)
         Text("No phone was searched for this; the files may have changed since.", style = SwarmType.label.copy(color = SwarmColors.graphite))
     }
     SecondaryButton("Ask again", onAskAgain, Modifier.fillMaxWidth())

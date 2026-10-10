@@ -3,6 +3,7 @@ package com.swarmos.app.kb
 import com.swarmos.app.pdu.Coverage
 import com.swarmos.app.pdu.HybridRanker
 import com.swarmos.app.pdu.PduHit
+import com.swarmos.app.pdu.PromptBuilder
 import com.swarmos.app.pdu.QueryUi
 import com.swarmos.app.pdu.SourceUi
 
@@ -67,6 +68,36 @@ object KbSearch {
             else -> "${s / 86_400} days"
         }
     }
+}
+
+/** Text of source lines and times, so every screen prints them the same way. */
+object KbText {
+    private const val SEP = " \u00b7 "
+
+    /**
+     * "Phone A · Laptop_Ext…ate.pdf · 2025-03-14": phone, title and date on every line. A blank title reads "(untitled)", a long one is
+     * cut in the middle so the date stays, and the line never ends on the separator.
+     */
+    fun sourceLine(s: KbSource, width: Int = 38): String {
+        val title = s.title.trim().ifEmpty { "(untitled)" }
+        val date = PromptBuilder.day(s.dateMs)
+        val budget = (width - s.phone.length - date.length - 2 * SEP.length).coerceAtLeast(12)
+        return s.phone + SEP + middle(title, budget) + SEP + date
+    }
+
+    fun middle(text: String, max: Int): String {
+        if (text.length <= max) return text
+        val keep = max - 1
+        val head = (keep + 1) / 2
+        return text.take(head) + "\u2026" + text.takeLast(keep - head)
+    }
+
+    /** What a tap on the marker [n] of a saved answer says: that source's line. Null for a marker with no matching source, which stays plain text. */
+    fun citeLine(card: KbCard, n: Int): String? = card.sources.getOrNull(n - 1)?.let { "[$n] " + sourceLine(it) }
+
+    /** "2026-10-10 09:54": the day and the time, so cards saved on the same day can be told apart. */
+    fun dayTime(ms: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(java.time.Instant.ofEpochMilli(ms).atZone(zone))
 }
 
 /** Whether a source belongs to a private file of this phone. Decided from the phone's own index, not from what a caller says. */

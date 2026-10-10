@@ -48,6 +48,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -55,8 +56,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.swarmos.app.kb.KbCard
 import com.swarmos.app.kb.KbDraft
 import com.swarmos.app.kb.KbHitCard
+import com.swarmos.app.kb.KbText
 import com.swarmos.app.kb.SaveCardPanel
 import com.swarmos.app.kb.SavedAnswerBlock
 import com.swarmos.app.ui.CitedText
@@ -162,7 +165,9 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
 
             // the answer first, directly under the timings; the sources it cites follow
             val savedHit = cur.savedAnswer
-            if (savedHit != null) SavedAnswerBlock(savedHit) { PduEngine.scope.launch { PduEngine.ask(cur.text, useSaved = false) } }
+            // a tap on a marker of a saved answer names that source (the file is not on this phone)
+            val citeSaved = { card: KbCard, n: Int -> KbText.citeLine(card, n)?.let { opened = it }; Unit }
+            if (savedHit != null) SavedAnswerBlock(savedHit, { n -> citeSaved(savedHit.entry.card, n) }) { PduEngine.scope.launch { PduEngine.ask(cur.text, useSaved = false) } }
             else AnswerBlock(cur) { n ->
                 cur.sources.getOrNull(n - 1)?.let { s ->
                     scope.launch { opened = PduEngine.openSource(s).let { r -> if (r.opened) "opened on ${if (s.local) "this phone" else s.deviceName}" else "could not open: ${r.error}" } }
@@ -180,7 +185,7 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
             val otherCards = cur.cards.filter { it.entry.card.id != savedHit?.entry?.card?.id }
             if (otherCards.isNotEmpty()) {
                 SectionTitle("From the knowledge bank")
-                for (h in otherCards) KbHitCard(h)
+                for (h in otherCards) KbHitCard(h) { n -> citeSaved(h.entry.card, n) }
             }
             val open = { s: SourceUi ->
                 scope.launch { opened = PduEngine.openSource(s).let { r -> if (r.opened) "opened on ${if (s.local) "this phone" else s.deviceName}" else "could not open: ${r.error}" } }
@@ -310,6 +315,11 @@ private fun AnswerBlock(q: QueryUi, onCite: (Int) -> Unit) {
     SwarmCard(Modifier.padding(end = 3.dp, bottom = 3.dp).hardShadow(3.dp, SwarmShape)) {
         val note = q.note
         val missing = MissingPhones.line(q.devices)
+        // which phone is missing comes before the answer: a gap in the sources is not "nothing there"
+        if (missing != null) {
+            Text(missing, style = SwarmType.body.copy(fontSize = 15.sp, fontWeight = FontWeight.W500, color = SwarmColors.ink))
+            Spacer(Modifier.height(8.dp))
+        }
         if (q.answer.isEmpty()) {
             when {
                 note != null -> Text(note, style = SwarmType.body.copy(color = SwarmColors.graphite))
@@ -325,10 +335,6 @@ private fun AnswerBlock(q: QueryUi, onCite: (Int) -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 Text(note, style = SwarmType.label.copy(color = SwarmColors.graphite))
             }
-        }
-        if (missing != null) {
-            Spacer(Modifier.height(8.dp))
-            Text(missing, style = SwarmType.label.copy(color = SwarmColors.ink))
         }
     }
 }
