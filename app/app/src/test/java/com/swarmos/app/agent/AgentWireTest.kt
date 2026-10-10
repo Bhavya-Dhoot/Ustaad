@@ -106,6 +106,76 @@ class AgentWireTest {
         assertTrue(AgentWire.PING.endsWith("\n\n"))
     }
 
+    // ---- tool calls -------------------------------------------------------------------------------------------
+
+    private val calls = listOf(ToolCallOut("call_a", "search_files", """{"query":"bill"}"""), ToolCallOut("call_b", "get_time", "{}"))
+
+    @Test fun anAnswerWithToolCallsHasNullContentAndFinishReasonToolCalls() {
+        val r = AgentWire.toolReply("chatcmpl-1", 5, AgentModel.LOCAL, "ustaad:Phone A", ToolReply.Calls(calls), stats, maxTokens = 256)
+        val choice = r.getValue("choices").jsonArray.single().jsonObject
+        assertEquals("tool_calls", choice.getValue("finish_reason").jsonPrimitive.content)
+        val message = choice.getValue("message").jsonObject
+        assertEquals("assistant", message.getValue("role").jsonPrimitive.content)
+        assertEquals(JsonNull, message.getValue("content"))
+        val tc = message.getValue("tool_calls").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("call_a", "call_b"), tc.map { it.getValue("id").jsonPrimitive.content })
+        assertTrue(tc.all { it.getValue("type").jsonPrimitive.content == "function" })
+        assertTrue("no index outside a stream", tc.none { "index" in it })
+        val f = tc[0].getValue("function").jsonObject
+        assertEquals("search_files", f.getValue("name").jsonPrimitive.content)
+        assertTrue("arguments are JSON text, not an object", f.getValue("arguments").jsonPrimitive.isString)
+        assertEquals("""{"query":"bill"}""", f.getValue("arguments").jsonPrimitive.content)
+        assertEquals(42, r.getValue("usage").jsonObject.getValue("total_tokens").jsonPrimitive.int)
+        assertEquals("chat.completion", r.getValue("object").jsonPrimitive.content)
+    }
+
+    @Test fun toolCallsWinEvenWhenTheBudgetWasUsedUp() {
+        val r = AgentWire.toolReply("i", 5, AgentModel.LOCAL, "f", ToolReply.Calls(calls), stats, maxTokens = 30)
+        assertEquals("tool_calls", r.getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+    }
+
+    @Test fun wordsFromACallWithToolsAreAnOrdinaryCompletion() {
+        val r = AgentWire.toolReply("i", 5, AgentModel.LOCAL, "f", ToolReply.Content("Done."), stats, maxTokens = 256)
+        val choice = r.getValue("choices").jsonArray.single().jsonObject
+        assertEquals("stop", choice.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals("Done.", choice.getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertTrue("tool_calls" !in choice.getValue("message").jsonObject)
+        assertEquals("length", AgentWire.toolReply("i", 5, AgentModel.LOCAL, "f", ToolReply.Content("Do"), stats, maxTokens = 30)
+            .getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+    }
+
+    @Test fun aBufferedAnswerWithCallsIsOneToolCallChunkAndTheLastChunk() {
+        val chunks = AgentWire.bufferedChunks("id", 5, AgentModel.LOCAL, "f", ToolReply.Calls(calls), stats, maxTokens = 256)
+        assertEquals(2, chunks.size)
+        val delta = chunks[0].getValue("choices").jsonArray.single().jsonObject.getValue("delta").jsonObject
+        assertEquals("assistant", delta.getValue("role").jsonPrimitive.content)
+        assertEquals(JsonNull, delta.getValue("content"))
+        val tc = delta.getValue("tool_calls").jsonArray.map { it.jsonObject }
+        assertEquals(listOf(0, 1), tc.map { it.getValue("index").jsonPrimitive.int })
+        assertEquals(listOf("call_a", "call_b"), tc.map { it.getValue("id").jsonPrimitive.content })
+        assertTrue(tc.all { it.getValue("type").jsonPrimitive.content == "function" })
+        assertEquals("""{"query":"bill"}""", tc[0].getValue("function").jsonObject.getValue("arguments").jsonPrimitive.content)
+        assertEquals(JsonNull, chunks[0].getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason"))
+        assertTrue("usage" !in chunks[0])
+        val last = chunks[1]
+        val c1 = last.getValue("choices").jsonArray.single().jsonObject
+        assertEquals(JsonObject(emptyMap()), c1.getValue("delta"))
+        assertEquals("tool_calls", c1.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals(42, last.getValue("usage").jsonObject.getValue("total_tokens").jsonPrimitive.int)
+        assertEquals(1, chunks.map { it.getValue("id").jsonPrimitive.content }.toSet().size)
+    }
+
+    @Test fun aBufferedAnswerInWordsIsTheRoleChunkTheTextAndTheLastChunk() {
+        val chunks = AgentWire.bufferedChunks("id", 5, AgentModel.LOCAL, "f", ToolReply.Content("Hello"), stats, maxTokens = 256)
+        val deltas = chunks.map { it.getValue("choices").jsonArray.single().jsonObject.getValue("delta").jsonObject }
+        assertEquals("assistant", deltas[0].getValue("role").jsonPrimitive.content)
+        assertEquals("Hello", deltas[1].getValue("content").jsonPrimitive.content)
+        assertEquals(JsonObject(emptyMap()), deltas[2])
+        assertEquals("stop", chunks.last().getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+        // no words, no text chunk
+        assertEquals(2, AgentWire.bufferedChunks("id", 5, AgentModel.LOCAL, "f", ToolReply.Content(""), stats, maxTokens = 256).size)
+    }
+
     @Test fun embeddingsAsFloats() {
         val r = AgentWire.embeddings(AgentModel.LOCAL, listOf(floatArrayOf(0.5f, -1f), floatArrayOf(2f, 0.25f)), base64 = false)
         assertEquals("list", r.getValue("object").jsonPrimitive.content)

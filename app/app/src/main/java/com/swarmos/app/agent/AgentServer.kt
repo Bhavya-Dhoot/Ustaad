@@ -160,11 +160,14 @@ class AgentServer(
             }
             val reply = backend.chat(c.model, c.request)
             auditChat(c, 200, reply.text.length, reply.stats, t0)
-            AgentWire.chatCompletion(newId(), clock() / 1000, c.model, AgentWire.fingerprint(reply.phone), reply.text, reply.stats, c.request.maxTokens)
+            AgentWire.toolReply(
+                newId(), clock() / 1000, c.model, AgentWire.fingerprint(reply.phone),
+                AgentTools.parseReply(reply.text, c.tools), reply.stats, c.request.maxTokens,
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val r = refusalOf(e)
+            val r = refusalOf(e, constrained = parsed?.request?.jsonSchema != null)
             if (r.status >= 500) auditChat(parsed, r.status, 0, null, t0) else onRefused()
             status = HttpStatusCode.fromValue(r.status)
             AgentWire.error(r)
@@ -229,6 +232,9 @@ class AgentServer(
         val created = clock() / 1000
         val fingerprint = AgentWire.fingerprint(backend.streamPhone(c.model))
         val lock = Mutex()
+        // with tools the answer is held back until it is whole: whether it is words or calls is only known then
+        val buffered = c.tools != null
+        val held = StringBuilder()
         // a client that stops reading blocks the write; after writeTimeoutMs the stream ends, which frees the model slot
         suspend fun send(text: String) = lock.withLock {
             withTimeoutOrNull(writeTimeoutMs) {
@@ -243,12 +249,12 @@ class AgentServer(
             }
         }
         try {
-            send(AgentWire.event(AgentWire.chunk(id, created, c.model, fingerprint, AgentWire.roleDelta())))
+            if (!buffered) send(AgentWire.event(AgentWire.chunk(id, created, c.model, fingerprint, AgentWire.roleDelta())))
             var item = first
             while (item != null) {
                 when (item) {
                     is Item.Failed -> {
-                        send(AgentWire.event(AgentWire.error(refusalOf(item.error))))
+                        send(AgentWire.event(AgentWire.error(refusalOf(item.error, constrained = c.request.jsonSchema != null))))
                         return@coroutineScope
                     }
                     is Item.Chunk -> {
@@ -257,17 +263,23 @@ class AgentServer(
                             state.stats = chunk.stats
                         } else if (chunk.delta.isNotEmpty()) {
                             state.chars += chunk.delta.length
-                            send(AgentWire.event(AgentWire.chunk(id, created, c.model, fingerprint, AgentWire.textDelta(chunk.delta))))
+                            if (buffered) held.append(chunk.delta)
+                            else send(AgentWire.event(AgentWire.chunk(id, created, c.model, fingerprint, AgentWire.textDelta(chunk.delta))))
                         }
                     }
                 }
                 item = upstream.receiveCatching().getOrNull()
             }
-            val last = AgentWire.chunk(
-                id, created, c.model, fingerprint, JsonObject(emptyMap()),
-                finish = AgentWire.finishReason(state.stats, c.request.maxTokens), usage = AgentWire.usage(state.stats),
-            )
-            send(AgentWire.event(last))
+            if (buffered) {
+                val reply = AgentTools.parseReply(held.toString(), c.tools)
+                for (chunk in AgentWire.bufferedChunks(id, created, c.model, fingerprint, reply, state.stats, c.request.maxTokens)) send(AgentWire.event(chunk))
+            } else {
+                val last = AgentWire.chunk(
+                    id, created, c.model, fingerprint, JsonObject(emptyMap()),
+                    finish = AgentWire.finishReason(state.stats, c.request.maxTokens), usage = AgentWire.usage(state.stats),
+                )
+                send(AgentWire.event(last))
+            }
             send(AgentWire.DONE)
             state.finished = true
         } finally {
@@ -333,9 +345,20 @@ class AgentServer(
         }
     }
 
-    /** What an exception becomes on the wire. A 5xx never carries the exception's own message: it can name paths, ports or models. */
-    private fun refusalOf(e: Exception): AgentRefusal = when (e) {
-        is AgentRefusal -> e
+    /**
+     * What an exception becomes on the wire. A 5xx never carries the exception's own message: it can name paths, ports or models.
+     * [constrained]: the call carried a JSON schema, so the model server saying it cannot use that schema is the caller's 400, not our 500.
+     */
+    private fun refusalOf(e: Exception, constrained: Boolean = false): AgentRefusal = when {
+        e is AgentRefusal -> e
+        constrained && AgentTools.isSchemaRejection(e) -> AgentRefusal(
+            400, "The model server could not turn the JSON schema of this request into a constraint (for tools: a `parameters` schema). Use plain types, enum, required, nested objects and arrays.",
+            "unsupported_schema",
+        )
+        else -> serverRefusal(e)
+    }
+
+    private fun serverRefusal(e: Exception): AgentRefusal = when (e) {
         is ModelBusyTimeoutException -> AgentRefusal(503, "The model is busy. Try again shortly.", "model_busy", AgentRefusal.TYPE_SERVER)
         is NoPhoneAvailableException, is PhoneTimeoutException, is PhoneAbortedException, is BusyException ->
             AgentRefusal(503, "The swarm could not run the request. Try again shortly.", "swarm_unavailable", AgentRefusal.TYPE_SERVER)
