@@ -20,3 +20,5 @@ B-10: HTTP 200, wall 2.60 s, model time 2.52 s (prompt 332 ms, 30 tokens, 13.7 t
 C-10: HTTP 0, wall 180.12 s, model time 0.00 s (prompt 0 ms, None tokens, 0.0 tok/s), so 180.12 s outside the model | busy before: None cancelled=None | after: None cancelled=None
 B-11: HTTP 200, wall 2.27 s, model time 2.12 s (prompt 405 ms, 19 tokens, 11.1 tok/s), so 0.15 s outside the model | busy before: half_duty cancelled=4 | after: waiting_for_idle cancelled=5
 C-11: HTTP 200, wall 4.48 s, model time 4.42 s (prompt 769 ms, 48 tokens, 13.2 tok/s), so 0.06 s outside the model | busy before: running cancelled=5 | after: waiting_for_idle cancelled=6
+B-12: HTTP 200, wall 4.35 s, model time 4.24 s (prompt 680 ms, 48 tokens, 13.5 tok/s), so 0.11 s outside the model | busy before: half_duty cancelled=0 | after: waiting_for_idle cancelled=0
+C-12: HTTP 200, wall 4.53 s, model time 4.36 s (prompt 697 ms, 48 tokens, 13.1 tok/s), so 0.16 s outside the model | busy before: running cancelled=0 | after: waiting_for_idle cancelled=1

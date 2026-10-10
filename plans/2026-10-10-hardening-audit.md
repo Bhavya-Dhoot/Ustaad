@@ -33,3 +33,5 @@ Constraint: phone time and heat. Two phones, one model slot each, and a warm pho
 5. A 60 minute keep-busy soak on B and C with the chat server memory sampled. Verify: share of time generating, thermal trace, memory trace, failed jobs.
 Failure modes: an engineer leaves a phone on a non-default server load (caught: the orchestrator reads the state of both phones before step 3); a reported gain that is only heat (caught: alternating order, a thermal column, and a bench32 re-run by the orchestrator); an agent touching Phone A (each brief pins one serial and forbids the address); a hung agent (stopped, phone restored with a default reload).
 Ledger: 1 and 2 delegated to Sonnet inference engineers (bounded, checkable by a re-run, their exploration stays out of the orchestrator context); 3 direct (a few calls); 4 delegated (Kotlin); 5 direct (one background script).
+
+Ledger, 22:10: the read-only watch of B and C, its analysis and the keep-busy fix it led to (1b9d60b, one condition and one test) were done by the orchestrator directly: a few calls, nothing to isolate, and the founder was using the phones, so no agent was given adb.
