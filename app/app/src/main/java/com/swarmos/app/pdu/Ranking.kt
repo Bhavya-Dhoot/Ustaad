@@ -103,6 +103,13 @@ object SharePolicy {
     /** The privacy a chunk gets: the folder's stored choice, forced to private for a Private folder. */
     fun effectivePrivate(folder: String, stored: Boolean): Boolean = stored || mustStayPrivate(folder)
 
+    /**
+     * The folders among [publicChunkFolders] (folders that still hold public chunks) whose chunks must be forced private: the folder's
+     * stored choice is private, it has no stored choice (a new folder starts private), or its path has a Private segment.
+     */
+    fun foldersToForce(publicChunkFolders: Collection<String>, storedPrivate: Map<String, Boolean>): List<String> =
+        publicChunkFolders.distinct().filter { effectivePrivate(it, storedPrivate[it] ?: startsPrivate(it)) }
+
     fun isShareable(c: Candidate): Boolean = !c.isPrivate && !mustStayPrivate(c.folder)
 
     class PeerSelection(val shared: List<Candidate>, val withheldPrivate: Int)

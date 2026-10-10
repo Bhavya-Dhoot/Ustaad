@@ -48,6 +48,7 @@ class PduStore(path: String) : IndexBacking {
     private var ids = LongArray(0)
     private var matrix = FloatArray(0)
     private var rows = 0
+    private var txDepth = 0
 
     init {
         synchronized(lock) {
@@ -71,7 +72,47 @@ class PduStore(path: String) : IndexBacking {
             )
             exec("CREATE TABLE IF NOT EXISTS folders(folder TEXT PRIMARY KEY, isPrivate INTEGER NOT NULL)")
             exec("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+            repairPrivacy()
             loadMatrix()
+        }
+    }
+
+    /** One SQLite transaction on the shared connection. A call inside another transaction joins it; any throw rolls the whole thing back. */
+    internal fun <T> inTransaction(block: () -> T): T = synchronized(lock) {
+        if (txDepth > 0) return block()
+        exec("BEGIN")
+        txDepth++
+        try {
+            val r = block()
+            exec("COMMIT")
+            r
+        } catch (t: Throwable) {
+            runCatching { exec("ROLLBACK") }
+            throw t
+        } finally {
+            txDepth--
+        }
+    }
+
+    /**
+     * Start-up repair of the privacy flag. Peer search reads `isPrivate` from the chunk rows, so a chunk that is public while its
+     * folder is private (or lies under a folder named Private) would still be served. The folder row and the chunk rows are now one
+     * transaction, but a store written by an older build, or a kill in the middle of that older two-step write, can still hold such
+     * chunks: force them private. Returns how many chunks were changed.
+     */
+    internal fun repairPrivacy(): Int = synchronized(lock) {
+        val publicFolders = query("SELECT DISTINCT folder FROM chunks WHERE isPrivate=0", {}) { it.getText(0) }
+        if (publicFolders.isEmpty()) return 0
+        val stored = query("SELECT folder, isPrivate FROM folders", {}) { it.getText(0) to (it.getLong(1) == 1L) }.toMap()
+        val force = SharePolicy.foldersToForce(publicFolders, stored)
+        if (force.isEmpty()) return 0
+        inTransaction {
+            var n = 0
+            for (f in force) {
+                write("UPDATE chunks SET isPrivate=1 WHERE folder=? AND isPrivate=0") { it.bindText(1, f) }
+                n += query("SELECT changes()", {}) { it.getLong(0).toInt() }.first()
+            }
+            n
         }
     }
 
@@ -130,8 +171,12 @@ class PduStore(path: String) : IndexBacking {
         }
     }
 
-    /** Owner's per-folder switch. Applies to chunks already indexed and to files indexed later. */
-    fun setFolderPrivate(folder: String, isPrivate: Boolean) = synchronized(lock) {
+    /**
+     * Owner's per-folder switch. Applies to chunks already indexed and to files indexed later. The folder row and the chunk rows
+     * change in one transaction: peer search reads the flag from the chunks, so a kill between two separate writes would leave a
+     * folder that looks private to its owner while its snippets are still served.
+     */
+    fun setFolderPrivate(folder: String, isPrivate: Boolean) = inTransaction {
         val v = if (SharePolicy.effectivePrivate(folder, isPrivate)) 1L else 0L
         write("INSERT OR REPLACE INTO folders(folder,isPrivate) VALUES(?,?)") { it.bindText(1, folder); it.bindLong(2, v) }
         write("UPDATE chunks SET isPrivate=? WHERE folder=?") { it.bindLong(1, v); it.bindText(2, folder) }
