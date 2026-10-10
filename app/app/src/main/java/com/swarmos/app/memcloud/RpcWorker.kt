@@ -137,9 +137,16 @@ object RpcWorker {
         )
     }
 
-    private fun cacheStats(): Pair<Long, Int> {
-        val files = cacheDir().listFiles { f -> f.isFile } ?: return 0L to 0
-        return files.sumOf { it.length() } to files.size
+    private fun cacheStats(): Pair<Long, Int> = RpcCache.stats(cacheDir()).let { it.bytes to it.files }
+
+    /** Clears the tensor cache unless rpc-server is running (it may be reading those files) or this phone is lending. */
+    fun clearCache(): RpcCache.ClearResult {
+        val busy = when {
+            lender.lending.value != null -> "this phone is lending memory to ${lender.lending.value?.driverName}; stop the loan first"
+            LlamaRuntime.statusOf(Role.RPC).state != ServerState.STOPPED -> "rpc-server is running; stop it first"
+            else -> null
+        }
+        return RpcCache.clear(cacheDir(), busy)
     }
 
     private fun procKb(pid: Long, key: String): Long? = try {

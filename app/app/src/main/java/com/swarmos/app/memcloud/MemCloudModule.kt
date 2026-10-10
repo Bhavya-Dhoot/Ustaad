@@ -18,7 +18,8 @@ import io.ktor.server.routing.post
  * MemoryCloud: one phone drives a model whose layers sit on several phones (llama.cpp rpc-server), and the
  * Memory tab shows where every layer lives. Routes under /v1/memcloud/ (all signed):
  *
- * Worker: POST /rpc/start {port, cache, bind, threads, restore}, POST /rpc/renew, POST /rpc/stop, GET /rpc/state.
+ * Worker: POST /rpc/start {port, cache, bind, threads, restore, stopOwn, needMb}, POST /rpc/renew, POST /rpc/stop, GET /rpc/state
+ * (reports cachedBytes and cachedFiles of the tensor cache), POST /rpc/cache/clear.
  * Coordinator: POST /start {file, peers, mode, layers}, POST /replan {peers}, POST /stop, POST /ask {prompt, maxTokens},
  * POST /baseline {timeoutSec}, GET /state, GET /plan?file=&peers=&mode=. Long operations answer 202 at once
  * (the node server drops a connection idle for 45 s); poll GET /state.
@@ -46,6 +47,13 @@ object MemCloudModule : SwarmModule {
             }
         }
         post("/rpc/stop") { call.respond(RpcWorker.stop("stopped by the driver")) }
+        // the tensor cache has no cap and the warm load depends on it, so it is cleared only on request (the state route reports its size)
+        post("/rpc/cache/clear") {
+            when (val r = RpcWorker.clearCache()) {
+                is RpcCache.ClearResult.Cleared -> call.respond(RpcCacheDto(r.removed.files, r.removed.bytes, r.remaining.files, r.remaining.bytes))
+                is RpcCache.ClearResult.Refused -> call.respond(HttpStatusCode.Conflict, ErrorBody(r.message))
+            }
+        }
         get("/rpc/state") { call.respond(RpcWorker.state()) }
 
         get("/state") { call.respond(MemCloud.state.value) }
