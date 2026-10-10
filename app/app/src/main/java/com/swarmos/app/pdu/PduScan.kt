@@ -30,12 +30,14 @@ import androidx.compose.foundation.verticalScroll
 import com.swarmos.app.ui.InkSwitch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +89,10 @@ internal fun ScanPage(onBack: () -> Unit) {
     val emb by PduEngine.embedder.collectAsStateWithLifecycle()
     val reindexNeeded by PduEngine.reindexNeeded.collectAsStateWithLifecycle()
     var status by remember { mutableStateOf<String?>(null) }
+
+    // the captured page lives in the cache directory only until the page is left: Back after a failed index deletes it too
+    val heldShot by rememberUpdatedState(shot)
+    DisposableEffect(Unit) { onDispose { heldShot?.delete() } }
 
     /** Both the shutter and the debug hook land here: read the page, propose a title. */
     fun review(f: File) {
@@ -206,9 +212,9 @@ internal fun ScanPage(onBack: () -> Unit) {
                     val file = shot ?: return@PrimaryButton
                     status = "indexing"
                     scope.launch {
+                        // the page reaches the gallery only after it has been embedded and is about to be stored: a refusal leaves no image
                         val rep = withContext(Dispatchers.IO) {
-                            val (uri, modified) = PduIndexer.saveScan(ctx, file, share)
-                            PduEngine.indexScan(uri, modified, title.trim(), share, text!!)
+                            PduEngine.indexScan(title.trim(), share, text!!, { PduIndexer.saveScan(ctx, file, share) })
                         }
                         if (rep.error == null && rep.indexed > 0) { file.delete(); onBack() } else status = rep.error ?: "nothing was indexed"
                     }

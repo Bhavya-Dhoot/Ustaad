@@ -11,6 +11,7 @@ import com.swarmos.app.pdu.PduEmbedConfig
 import com.swarmos.app.pdu.PduEngine
 import com.swarmos.app.pdu.PduStore
 import com.swarmos.app.pdu.QueryTerms
+import com.swarmos.app.pdu.QueryVectors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -102,16 +103,16 @@ object KbEngine {
     // ---- search -----------------------------------------------------------------------------------------------
 
     /** Cards for a question, best first. Dense only when the embedder is real and answering and the card vectors were made by it. */
-    suspend fun search(text: String): KbSearchResult = withContext(Dispatchers.IO) {
+    suspend fun search(text: String, dense: Boolean = true): KbSearchResult = withContext(Dispatchers.IO) {
         val entries = service.entries().filter { it.usable }
         if (entries.isEmpty()) return@withContext KbSearchResult.NONE
         val client = AppGraph.embedder
         val vectors = store.vectors()
         var qv: FloatArray? = null
         var ms = 0L
-        if (vectors.isNotEmpty() && IndexGuard.usable(client) && PduEngine.store.meta(EMBED_KEY) == embedKey(client.modelName)) {
+        if (dense && vectors.isNotEmpty() && IndexGuard.usable(client) && PduEngine.store.meta(EMBED_KEY) == embedKey(client.modelName)) {
             val t0 = SystemClock.elapsedRealtime()
-            qv = runCatching { PduStore.fit(client.embed(listOf(PduEmbedConfig.query(text))).first()) }.getOrNull()
+            qv = try { QueryVectors.of(client, text) } catch (t: Throwable) { if (t is CancellationException) throw t else null }
             ms = SystemClock.elapsedRealtime() - t0
         }
         KbSearchResult(KbSearch.rank(entries, vectors, qv, QueryTerms.terms(text)), ms, qv != null)

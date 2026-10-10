@@ -3,6 +3,7 @@ package com.swarmos.app.pdu
 import android.os.Environment
 import android.os.SystemClock
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.AuditScope
 import com.swarmos.app.core.PeerState
 import com.swarmos.app.core.Ports
 import com.swarmos.app.link.ConnectResult
@@ -10,6 +11,7 @@ import com.swarmos.app.link.PeerLinks
 import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.sched.Sched
 import com.swarmos.app.core.SwarmJson
+import com.swarmos.app.core.SwarmPrefs
 import com.swarmos.app.kb.KbEngine
 import com.swarmos.app.kb.KbHit
 import com.swarmos.app.kb.KbSearch
@@ -17,6 +19,7 @@ import com.swarmos.app.kb.KbSearchResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -127,7 +130,8 @@ class PeerAnswer(val response: PduResponse?, val status: String, val detail: Str
 /** Owns the store and every flow of this module: indexing, local search, the federated ask, serving peers. */
 object PduEngine {
     // The process lives as long as SwarmService's foreground notification, so a process-level scope is the indexing scope.
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // An exception nobody caught is one audit entry, not the end of the process.
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + AuditScope.handler("pdu") { AppGraph.audit })
 
     val store: PduStore by lazy { PduStore(File(AppGraph.appContext.filesDir, "pdu.db").path) }
 
@@ -148,6 +152,10 @@ object PduEngine {
     /** Stored vectors were made by another embedder or document prefix: the owner has to re-index. */
     val reindexNeeded: StateFlow<Boolean> = _reindexNeeded.asStateFlow()
 
+    private val _note = MutableStateFlow<String?>(null)
+    /** One line for the library screen when the background loop of this module hit an error; null while it is healthy. */
+    val engineNote: StateFlow<String?> = _note.asStateFlow()
+
     private val openLimiter = RateLimiter(max = 3, windowMs = 60_000)
 
     @Volatile var lastSearchMs: Long = -1
@@ -156,7 +164,21 @@ object PduEngine {
     /** Debug builds only: a page the Scan screen should open straight into its review sheet, standing in for the shutter. */
     @Volatile var debugScanFile: File? = null
 
+    /**
+     * Give the model fewer, better sources (see [PromptBuilder.leanSelect]). Off by default; the pref `pdu_lean_sources` holds it, and a
+     * debug build can set it with the intent extra `leanSources`.
+     */
+    @Volatile var leanSources: Boolean = false
+        private set
+
+    fun setLeanSources(on: Boolean) {
+        leanSources = on
+        scope.launch(Dispatchers.IO) { SwarmPrefs(AppGraph.appContext).setPduLeanSources(on) }
+    }
+
     private val indexLock = Mutex()
+    @Volatile private var indexControl: IndexControl? = null
+    private val askSlot = AskSlot()
     private fun now() = SystemClock.elapsedRealtime()
 
     /** Open the store and load the in-memory matrix off the main thread. Safe to call repeatedly. */
@@ -167,14 +189,24 @@ object PduEngine {
         if (started) return
         started = true
         scope.launch(Dispatchers.IO) {
-            PduEmbedConfig.load(store)
-            refresh()
-            while (true) {
-                embedderStatus()
+            StepGuard.run(::noteError) {
+                PduEmbedConfig.load(store)
+                leanSources = SwarmPrefs(AppGraph.appContext).pduLeanSources()
                 refresh()
+            }
+            while (true) {
+                if (StepGuard.run(::noteError) { embedderStatus(); refresh() }) _note.value = null
                 delay(4_000)
             }
         }
+    }
+
+    /** Remembers what went wrong in a background step, once per distinct message, so the screen can say it and the audit log has it. */
+    private fun noteError(t: Throwable) {
+        val m = StepGuard.describe("Data Union", t)
+        if (_note.value == m) return
+        _note.value = m
+        AppGraph.audit.append("pdu.error", JsonObject(mapOf("error" to JsonPrimitive(m))))
     }
 
     fun refresh() {
@@ -191,20 +223,29 @@ object PduEngine {
 
     fun setFolderPrivate(folder: String, isPrivate: Boolean) {
         scope.launch(Dispatchers.IO) {
-            store.setFolderPrivate(folder, isPrivate)
-            refresh()
-            AppGraph.audit.append(
-                "pdu.policy",
-                JsonObject(mapOf("folder" to JsonPrimitive(folder), "private" to JsonPrimitive(isPrivate))),
-            )
+            StepGuard.run(::noteError) {
+                store.setFolderPrivate(folder, isPrivate)
+                refresh()
+                AppGraph.audit.append(
+                    "pdu.policy",
+                    JsonObject(mapOf("folder" to JsonPrimitive(folder), "private" to JsonPrimitive(isPrivate))),
+                )
+            }
         }
     }
 
     // ---- indexing -----------------------------------------------------------------------------------------
 
-    /** One run at a time. [list] runs on the IO dispatcher; each file is committed as soon as it is embedded, so a killed run resumes. */
-    suspend fun runIndex(label: String, ownerForce: Boolean, list: () -> List<DocRef>): IndexReport {
+    /**
+     * One run at a time. [list] runs on the IO dispatcher; each file is committed as soon as it is embedded, so a killed run resumes.
+     * [roots] say which stored files this run is responsible for: when the run finishes, stored files of those roots that the listing
+     * did not contain are removed (a deleted file, or one moved out of the listed folder, stops being searchable and served).
+     * [stopIndex] ends the run after the file in hand.
+     */
+    suspend fun runIndex(label: String, ownerForce: Boolean, roots: List<IndexRoot> = emptyList(), list: () -> List<DocRef>): IndexReport {
         if (!indexLock.tryLock()) return IndexReport(label, error = "an index run is already in progress")
+        val control = IndexControl()
+        indexControl = control
         return try {
             withContext(Dispatchers.IO) {
                 // the embedder is captured once; every batch checks it is still this real, answering client (see BatchEmbedder)
@@ -221,42 +262,75 @@ object PduEngine {
                 _progress.value = IndexProgress(true, label, current = "listing files")
                 PduActivity.set(PduActivity.listing())
                 val refs = list()
-                var stoppedAt = -1
-                for ((i, ref) in refs.withIndex()) {
-                    _progress.value = IndexProgress(true, label, i, refs.size, ref.title)
-                    PduActivity.set(PduActivity.indexing(refs.size, i))
-                    try {
-                        PduIndexer.ingest(AppGraph.appContext, store, ref, stats, run)
-                    } catch (e: EmbedderStopped) {
-                        stoppedAt = i
-                        break
-                    }
-                    refresh()
-                }
+                val ctx = AppGraph.appContext
+                val res = IndexLoop.run(
+                    refs, control, IndexLoop.FILE_TIMEOUT_MS,
+                    prepare = { PduIndexer.prepare(ctx, store, it, run.rereadAll) },
+                    commit = { ref, p -> PduIndexer.commit(store, ref, p, stats, run) },
+                    onProgress = { i, ref ->
+                        stats.seen++
+                        _progress.value = IndexProgress(true, label, i, refs.size, ref.title)
+                        PduActivity.set(PduActivity.indexing(refs.size, i))
+                    },
+                    onFailure = { ref, t -> PduIndexer.recordFailure(store, ref, t, stats) },
+                    refresh = ::refresh, // every 25 files, not after every one
+                    // embedding is slower for a long text, so the budget of the embedding step grows with the number of chunks
+                    commitBudgetMs = { p -> IndexLoop.FILE_TIMEOUT_MS + (p as? PduIndexer.Ready)?.bodies?.size.let { (it ?: 0) * 250L } },
+                )
+                if (res.end == LoopEnd.COMPLETE && roots.isNotEmpty()) stats.removed += sweep(roots, refs, stats)
                 stats.totalMs = now() - t0
                 store.setMeta("lastRunMs", System.currentTimeMillis().toString())
                 refresh()
-                if (stoppedAt >= 0) return@withContext abort(label, stats, refs.size, stoppedAt)
-                val report = stats.report()
-                _progress.value = IndexProgress(false, label, refs.size, refs.size, "", report)
-                AppGraph.audit.append(
-                    "pdu.index",
-                    JsonObject(mapOf(
-                        "label" to JsonPrimitive(label), "seen" to JsonPrimitive(report.seen),
-                        "indexed" to JsonPrimitive(report.indexed), "chunks" to JsonPrimitive(report.chunks),
-                    )),
-                )
-                report
+                when (res.end) {
+                    LoopEnd.EMBEDDER_STOPPED -> abort(label, stats, refs.size, res.done)
+                    LoopEnd.FULL -> endedEarly(label, stats, refs.size, res.done, ChunkCap.message(), "pdu.index_full")
+                    LoopEnd.STOPPED -> endedEarly(label, stats, refs.size, res.done, "Stopped after ${res.done} of ${refs.size} files", "pdu.index_stopped")
+                    LoopEnd.COMPLETE -> {
+                        val report = stats.report()
+                        _progress.value = IndexProgress(false, label, refs.size, refs.size, "", report)
+                        AppGraph.audit.append(
+                            "pdu.index",
+                            JsonObject(mapOf(
+                                "label" to JsonPrimitive(label), "seen" to JsonPrimitive(report.seen),
+                                "indexed" to JsonPrimitive(report.indexed), "chunks" to JsonPrimitive(report.chunks),
+                                "moved" to JsonPrimitive(report.moved), "removed" to JsonPrimitive(report.removed),
+                            )),
+                        )
+                        report
+                    }
+                }
             }
         } catch (t: Throwable) {
-            if (t is CancellationException) throw t
+            if (t is CancellationException) {
+                _progress.update { if (it.running) IndexProgress(false, it.label, it.done, it.total) else it }
+                throw t
+            }
             val r = IndexReport(label, error = "${t.javaClass.simpleName}: ${t.message}")
             _progress.value = IndexProgress(false, label, last = r)
             r
         } finally {
+            indexControl = null
             PduActivity.clear()
             indexLock.unlock()
         }
+    }
+
+    /** Ends the index run in progress after the file it is on. False when no run is going. */
+    fun stopIndex(): Boolean = indexControl?.let { it.stop(); true } ?: false
+
+    /** Removes the stored files of [roots] that a finished run did not see. Returns how many files went. */
+    private fun sweep(roots: List<IndexRoot>, refs: List<DocRef>, stats: IndexStats): Int {
+        val seen = refs.mapTo(HashSet(refs.size * 2)) { it.uri }
+        var n = 0
+        for (root in roots) {
+            val stored = store.docsUnder(root)
+            if (!IndexSweep.mayRemove(refs.size, stored.size)) {
+                stats.errors += "nothing was listed, so ${stored.size} stored files were left alone"
+                continue
+            }
+            n += store.removeDocs(IndexSweep.stale(stored, seen).map { it.docId })
+        }
+        return n
     }
 
     /** The embedder went away mid-run. [done] files were stored before it; the file in hand and the rest were not touched. */
@@ -265,6 +339,17 @@ object PduEngine {
         _progress.value = IndexProgress(false, label, done, total, "", r)
         AppGraph.audit.append(
             "pdu.index_aborted",
+            JsonObject(mapOf("label" to JsonPrimitive(label), "done" to JsonPrimitive(done), "total" to JsonPrimitive(total))),
+        )
+        return r
+    }
+
+    /** The run ended before the listing did (the owner pressed Stop, or the index is full): what was stored stays, the reason is shown. */
+    private fun endedEarly(label: String, stats: IndexStats, total: Int, done: Int, message: String, auditKind: String): IndexReport {
+        val r = stats.report().copy(error = message)
+        _progress.value = IndexProgress(false, label, done, total, "", r)
+        AppGraph.audit.append(
+            auditKind,
             JsonObject(mapOf("label" to JsonPrimitive(label), "done" to JsonPrimitive(done), "total" to JsonPrimitive(total))),
         )
         return r
@@ -315,7 +400,10 @@ object PduEngine {
             if (req.photos) "photos" + (req.relPrefix?.let { " $it" } ?: "") else null,
             req.dir?.let { "dir $it" },
         ).joinToString(" + ").ifEmpty { "nothing selected" }
-        return runIndex(label, req.force) {
+        val roots = ArrayList<IndexRoot>()
+        if (req.photos && req.limit == null) roots += photosRoot(req.relPrefix) // a limited listing is not the whole root
+        req.dir?.let { d -> roots += IndexRoot(android.net.Uri.fromFile(File(d).canonicalFile).toString().trimEnd('/') + "/") }
+        return runIndex(label, req.force, roots) {
             val ctx = AppGraph.appContext
             val out = ArrayList<DocRef>()
             if (req.photos) out += PduIndexer.listPhotos(ctx, req.relPrefix, req.limit)
@@ -327,17 +415,26 @@ object PduEngine {
         }
     }
 
-    suspend fun indexPhotos(relPrefix: String? = null): IndexReport =
-        runIndex("photos", false) { PduIndexer.listPhotos(AppGraph.appContext, relPrefix, null) }
+    private fun photosRoot(relPrefix: String?) = IndexRoot(
+        android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI.toString().trimEnd('/') + "/",
+        kinds = setOf("photo"), folderPrefix = relPrefix?.trim('/')?.takeIf { it.isNotEmpty() },
+    )
 
-    suspend fun indexTree(tree: android.net.Uri): IndexReport =
-        runIndex("folder", false) { PduIndexer.listTree(AppGraph.appContext, tree) }
+    suspend fun indexPhotos(relPrefix: String? = null): IndexReport =
+        runIndex("photos", false, listOf(photosRoot(relPrefix))) { PduIndexer.listPhotos(AppGraph.appContext, relPrefix, null) }
+
+    suspend fun indexTree(tree: android.net.Uri): IndexReport {
+        val rootDoc = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, android.provider.DocumentsContract.getTreeDocumentId(tree)).toString()
+        return runIndex("folder", false, listOf(IndexRoot(rootDoc))) { PduIndexer.listTree(AppGraph.appContext, tree) }
+    }
 
     /**
      * A scanned page that was already recognised: index it under the user's title. It stays on this phone (Pictures/UstaadScans)
-     * unless [share] is on, which is the owner's explicit choice and marks Pictures/UstaadScans/Shared as shared.
+     * unless [share] is on, which is the owner's explicit choice and marks Pictures/UstaadScans/Shared as shared. The image is saved
+     * to the gallery by [save] only after the page has been embedded and is about to be stored, so a refusal leaves no image behind
+     * and a retry cannot save it twice; [save] returns the image's uri and DATE_MODIFIED in ms.
      */
-    suspend fun indexScan(imageUri: String, modifiedMs: Long, title: String, share: Boolean, text: String): IndexReport {
+    suspend fun indexScan(title: String, share: Boolean, text: String, save: () -> Pair<String, Long>, savedHere: Boolean = true): IndexReport {
         if (!indexLock.tryLock()) return IndexReport("scan", error = "an index run is already in progress")
         return try {
             withContext(Dispatchers.IO) {
@@ -349,18 +446,18 @@ object PduEngine {
                 val stats = IndexStats("scan")
                 val t0 = now()
                 PduActivity.set(PduActivity.indexingScan())
-                val nowMs = System.currentTimeMillis()
                 // folder and lastModified match what a later "Index photos" run sees, so it skips this scan instead of rewriting it
                 val folder = PduIndexer.scanFolder(share)
                 if (share) store.setFolderPrivate(folder, false)
-                val ref = DocRef(imageUri, title, "scan", folder, modifiedMs, nowMs)
                 try {
-                    PduIndexer.ingest(AppGraph.appContext, store, ref, stats, run, preText = text)
+                    PduIndexer.ingestScan(AppGraph.appContext, store, title, folder, text, stats, run, save, savedHere)
                 } catch (e: EmbedderStopped) {
                     return@withContext IndexReport("scan", error = "Embedder stopped, the scan was not indexed")
+                } catch (e: IndexFull) {
+                    return@withContext IndexReport("scan", error = ChunkCap.message())
                 }
                 stats.totalMs = now() - t0
-                store.setMeta("lastRunMs", nowMs.toString())
+                store.setMeta("lastRunMs", System.currentTimeMillis().toString())
                 refresh()
                 stats.report()
             }
@@ -373,14 +470,23 @@ object PduEngine {
         }
     }
 
+    /** The debug route's form: the image was saved by the caller already. */
+    suspend fun indexScan(imageUri: String, modifiedMs: Long, title: String, share: Boolean, text: String): IndexReport =
+        indexScan(title, share, text, { imageUri to modifiedMs }, savedHere = false)
+
     // ---- search on this phone -----------------------------------------------------------------------------
 
-    suspend fun searchLocal(text: String): LocalSearch {
+    suspend fun searchLocal(text: String): LocalSearch = searchLocalWith(text, allowDense = true)
+
+    /** The same search with keywords only: no embedder is asked, so it cannot wait for one. What the ask falls back to after its budget. */
+    suspend fun searchLocalKeywords(text: String): LocalSearch = searchLocalWith(text, allowDense = false)
+
+    private suspend fun searchLocalWith(text: String, allowDense: Boolean): LocalSearch {
         val terms = QueryTerms.terms(text)
         if (store.chunkCount == 0) return LocalSearch(emptyList(), terms, 0, 0)
-        val dense = denseUsable()
+        val dense = allowDense && denseUsable()
         val t0 = now()
-        val vec = if (dense) PduStore.fit(AppGraph.embedder.embed(listOf(PduEmbedConfig.query(text))).first()) else null
+        val vec = if (dense) QueryVectors.of(AppGraph.embedder, text) else null
         val t1 = now()
         val cands = withContext(Dispatchers.Default) { store.search(vec, terms) }
         val t2 = now()
@@ -418,11 +524,14 @@ object PduEngine {
 
     // ---- the federated ask --------------------------------------------------------------------------------
 
-    /** Sends the signed [q] to one paired phone and waits at most [deadlineMs]. Only cancellation is thrown; every other failure is in the answer. */
+    /**
+     * Sends the signed [q] to one paired phone and waits at most [deadlineMs]. Only cancellation is thrown; every other failure is in
+     * the answer. What comes back is cut to the sizes a phone may send ([PduResponse.capped]): a peer is not trusted for size.
+     */
     suspend fun queryPeer(p: PeerState, q: PduQuery, deadlineMs: Int): PeerAnswer {
         val r0 = now()
         return try {
-            val resp = withTimeoutOrNull(deadlineMs.toLong()) { AppGraph.nodeClient.post<PduResponse, PduQuery>(p.info.ip, "/pdu/query", q) }
+            val resp = withTimeoutOrNull(deadlineMs.toLong()) { AppGraph.nodeClient.post<PduResponse, PduQuery>(p.info.ip, "/pdu/query", q) }?.capped()
             val rtt = now() - r0
             if (resp == null) PeerAnswer(null, "unreachable", "no answer in $deadlineMs ms", rtt) else PeerAnswer(resp, "ok", null, rtt)
         } catch (t: Throwable) {
@@ -433,29 +542,61 @@ object PduEngine {
         }
     }
 
+    /** Ends the ask in progress, keeping what it has found and written so far. False when none is running. */
+    fun stopAsk(): Boolean = askSlot.stop()
+
+    /** What an ask had when it was stopped or replaced. */
+    private class AskHandle { @Volatile var last: QueryUi? = null }
+
     /**
      * Full flow: look in the knowledge bank, query every online peer and this phone, merge, show cards, stream the answer.
      * Returns the final state. A saved answer that clears the relevance floor ends the ask at once (no peers, no model) unless
-     * [useSaved] is false, which is what "Ask again" passes.
+     * [useSaved] is false, which is what "Ask again" passes. One ask runs at a time: a new one cancels the one before it, and
+     * [stopAsk] cancels the running one, which then ends as "done" with a note and the text it had.
      */
-    suspend fun ask(text: String, k: Int = 5, deadlineMs: Int = 1500, useSaved: Boolean = true): QueryUi =
-        try {
-            runAsk(text, k, deadlineMs, useSaved)
-        } finally {
-            PduActivity.clear()
+    suspend fun ask(text: String, k: Int = 5, deadlineMs: Int = 1500, useSaved: Boolean = true): QueryUi {
+        val handle = AskHandle()
+        val result = askSlot.run {
+            try {
+                runAsk(handle, text, k, deadlineMs, useSaved)
+            } finally {
+                PduActivity.clear()
+            }
         }
+        return result ?: handle.last ?: _query.value ?: QueryUi("", text, "done", note = AnswerNotes.STOPPED)
+    }
 
-    private suspend fun runAsk(text: String, k: Int, deadlineMs: Int, useSaved: Boolean): QueryUi {
+    private fun updateQuery(qid: String, f: (QueryUi) -> QueryUi) = _query.update { if (it?.qid == qid) f(it) else it }
+
+    private suspend fun runAsk(handle: AskHandle, text: String, k: Int, deadlineMs: Int, useSaved: Boolean): QueryUi {
         val t0 = now()
         val qid = UUID.randomUUID().toString().take(8)
+        // visible at once: Stop has something to stop, and a cancelled ask can be closed in the state the screen shows
+        _query.value = QueryUi(qid, text, "searching")
+        try {
+            return askBody(qid, t0, text, k, deadlineMs, useSaved)
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                updateQuery(qid) {
+                    if (it.phase == "done") it
+                    else it.copy(phase = "done", note = it.note ?: AnswerNotes.STOPPED, timings = it.timings.copy(totalMs = now() - t0))
+                }
+                handle.last = _query.value?.takeIf { it.qid == qid }
+            }
+            throw e
+        }
+    }
+
+    private suspend fun askBody(qid: String, t0: Long, text: String, k: Int, deadlineMs: Int, useSaved: Boolean): QueryUi {
         val self = AppGraph.registry.self.value
         val peers = AppGraph.registry.peers.value
         val q = PduQuery(qid, text, k, deadlineMs)
         val qBytes = SwarmJson.encodeToString(q).toByteArray().size
 
-        // the knowledge bank first: cards stay usable when the phone that held the files is away
+        // the knowledge bank first: cards stay usable when the phone that held the files is away. Three seconds for the lookup with
+        // the embedder; after that, keywords only.
         val kb = try {
-            KbEngine.search(text)
+            Bounded.withFallback(Bounded.LOOKUP_BUDGET_MS, { KbEngine.search(text) }, { KbEngine.search(text, dense = false) })
         } catch (t: Throwable) {
             if (t is CancellationException) throw t
             KbSearchResult.NONE
@@ -468,7 +609,7 @@ object PduEngine {
                 timings = Timings(embedMs = kb.embedMs, totalMs = now() - t0),
                 auditHash = AppGraph.audit.append(
                     "pdu.ask_saved", JsonObject(mapOf("qid" to JsonPrimitive(qid), "card" to JsonPrimitive(saved.entry.card.id))),
-                ).hash,
+                ).writtenHash,
             )
             return _query.value!!
         }
@@ -497,7 +638,7 @@ object PduEngine {
             JsonObject(mapOf("qid" to JsonPrimitive(qid), "peers" to JsonPrimitive(online.size), "bytes" to JsonPrimitive(qBytes * online.size))),
         )
 
-        fun update(f: (QueryUi) -> QueryUi) = _query.update { if (it?.qid == qid) f(it) else it }
+        fun update(f: (QueryUi) -> QueryUi) = updateQuery(qid, f)
         val lock = Any()
         fun publish(timings: (Timings) -> Timings = { it }) = synchronized(lock) {
             val merged = DeviceMerge.merge(results.keys.mapNotNull { hits[it] })
@@ -516,7 +657,8 @@ object PduEngine {
         coroutineScope {
             launch {
                 try {
-                    val ls = searchLocal(text)
+                    // three seconds with the embedder, then keywords only on this phone's own files
+                    val ls = Bounded.withFallback(Bounded.LOOKUP_BUDGET_MS, { searchLocal(text) }, { searchLocalKeywords(text) })
                     val local = ls.candidates.take(k)
                     synchronized(lock) {
                         local.filter { it.isPrivate }.forEach { localPrivate += it.docId }
@@ -597,13 +739,16 @@ object PduEngine {
                 try {
                     // a saved answer is listed as one source among the others; the model is not told it is more reliable
                     val merged = sources.map { MergedHit(it.deviceId, it.deviceName, it.local, it.hit, 0.0) } + cardSources
-                    chat.chatStream(PromptBuilder.build(text, merged)).collect { c ->
+                    // no token for 45 s ends the answer with what was written so far: the stream's own read timeout is minutes long
+                    IdleStream.collect(chat.chatStream(PromptBuilder.build(text, merged, lean = leanSources)), IdleStream.ANSWER_IDLE_MS) { c ->
                         c.stats?.let(Sched.node::noteStats)
                         if (ttft < 0 && c.delta.isNotEmpty()) ttft = now() - t0
                         sb.append(c.delta)
                         val snapshot = sb.toString()
                         update { it.copy(answer = snapshot) }
                     }
+                } catch (e: StreamIdle) {
+                    note = AnswerNotes.quiet(e.idleMs)
                 } catch (t: Throwable) {
                     if (t is CancellationException) throw t
                     note = AnswerNotes.stopped("${t.javaClass.simpleName} ${t.message}".take(120))
