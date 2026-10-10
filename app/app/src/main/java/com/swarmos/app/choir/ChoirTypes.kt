@@ -278,4 +278,8 @@ data class RunTrace(
     val choirToolCorrect: Boolean? = null,
     val fake: Boolean = false,
     val error: String? = null,
+    /** Why round 2 did not run: "unanimous" (round 1 agreed), "majority" (skipped by the majority policy), or "" (it ran, or there was nothing to compare). */
+    val round2Skip: String = "",
+    /** The majority policy was on for this run, so a run that skipped round 2 by majority is not mistaken for a unanimous one. */
+    val majorityPolicy: Boolean = false,
 )
