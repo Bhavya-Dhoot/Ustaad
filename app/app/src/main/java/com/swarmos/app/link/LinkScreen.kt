@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.clip
@@ -44,7 +46,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpOffset
@@ -55,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.Ports
 import com.swarmos.app.ui.BackLink
+import com.swarmos.app.ui.Jitter
 import com.swarmos.app.ui.DoodleConnector
 import com.swarmos.app.ui.HeroMetric
 import com.swarmos.app.ui.Hairline
@@ -74,6 +78,11 @@ import com.swarmos.app.ui.SwarmTextField
 import com.swarmos.app.ui.SwarmType
 import com.swarmos.app.ui.Tag
 import com.swarmos.app.ui.TopologyPanel
+import com.swarmos.app.ui.hardShadow
+import com.swarmos.app.ui.inkStroke
+import com.swarmos.app.ui.smoothPath
+import com.swarmos.app.ui.wobblePoints
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private sealed interface Page {
@@ -129,7 +138,6 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
     val peers by PeerLinks.peers.collectAsStateWithLifecycle()
     val rejected by PeerLinks.rejected.collectAsStateWithLifecycle()
     val results by LinkRuntime.results.collectAsStateWithLifecycle()
-    val internet by InternetState.validated.collectAsStateWithLifecycle()
     val message by LinkRuntime.message.collectAsStateWithLifecycle()
     val serverError by LinkRuntime.serverError.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -138,16 +146,12 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
     val online = peers.map { it.nodeId }.distinct().count { id -> peers.any { it.nodeId == id && it.state == LinkState.ONLINE } }
     val firstOnline = peers.firstOrNull { it.state == LinkState.ONLINE }
 
-    PageColumn {
-        ScreenHeader("Swarm", "${online + 1} phones online, ${peers.count { it.state == LinkState.ONLINE }} links")
-        serverError?.let { Text(it, style = SwarmType.body, fontWeight = androidx.compose.ui.text.font.FontWeight.W700) }
-        KeptAwakeLine()
+    val links = peers.count { it.state == LinkState.ONLINE }
+    val status = if (online == 0) "Only this phone is online" else "${plural(online + 1, "phone")} online, ${plural(links, "link")}"
 
-        Column {
-            MetricRow("This phone", "${self.name}  ${self.ip}:${Ports.NODE}")
-            MetricRow("Pairing code", Pairing.code(AppGraph.pairingSecret))
-            MetricRow("Internet validated", if (internet) "yes" else "no")
-        }
+    PageColumn {
+        ScreenHeader("Swarm", status)
+        serverError?.let { Text(it, style = SwarmType.body, fontWeight = androidx.compose.ui.text.font.FontWeight.W700) }
 
         Topology(self.name, peers, results)
 
@@ -158,14 +162,16 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
         rejected.forEach { Text("${it.name ?: it.ip} at ${it.ip}: ${it.reason ?: "rejected our signature"}", style = SwarmType.body) }
         message?.let { Text(it, style = SwarmType.body.copy(color = Dim)) }
 
-        // the scheduler's load panel (tokens per second across the phones); it scrolls inside its own box
-        com.swarmos.app.sched.ThroughputPanel(Modifier.height(340.dp))
-
+        // the actions sit directly under the peers; Host is the one primary button of the screen
         PrimaryButton("Host a swarm", onHost, Modifier.fillMaxWidth(), icon = SwarmIcon.Plus)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SecondaryButton("Join", onJoin, Modifier.weight(1f), icon = SwarmIcon.Join)
             SecondaryButton("Measure link", { firstOnline?.let { onLink(it.key) } }, Modifier.weight(1f), enabled = firstOnline != null, icon = SwarmIcon.Gauge)
         }
+
+        // the scheduler's load panel (tokens per second across the phones), after the actions; it sizes itself, so no fixed height here
+        // (its run buttons are secondary by default: "Host a swarm" above is this screen's one primary button)
+        com.swarmos.app.sched.ThroughputPanel()
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
             SwarmTextField(ip, { ip = it.trim() }, "Peer IP or ip:port", Modifier.weight(1f), mono = true)
@@ -175,8 +181,15 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
                 scope.launch { LinkRuntime.addPeer(host, port) }
             }, enabled = ip.isNotEmpty())
         }
+        Text(
+            "${self.name}  ${self.ip}:${Ports.NODE}  code ${Pairing.code(AppGraph.pairingSecret)}",
+            style = SwarmType.mono.copy(fontSize = 12.sp, color = Dim),
+        )
+        KeptAwakeNote()
     }
 }
+
+private fun plural(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"
 
 /** One phone with every path to it as a small tag: live round trip and the last measured Mbps. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -249,7 +262,7 @@ private fun Topology(selfName: String, peers: List<PeerStatus>, results: List<Tp
                 val label = listOfNotNull(mbps?.let { "${fmt1(it)} Mbps" }, p.rttMs?.let { "${fmt1(it)} ms" }, if (p.state == LinkState.AWAY) "away" else null).joinToString("\n")
                 DoodleConnector(
                     selfC, peerC(i), Modifier.fillMaxSize(), label = label.ifEmpty { null }, dashed = p.state != LinkState.ONLINE,
-                    gap = 26.dp, startGap = 30.dp, labelAt = 0.62f, seed = 7 + i,
+                    gap = 26.dp, startGap = 30.dp, labelAt = 0.62f, seed = 7 + i, fromCaption = 36.dp,
                 )
             }
             Box(Modifier.offset(selfC.x - 45.dp, selfC.y - 17.dp).width(90.dp), contentAlignment = Alignment.TopCenter) { PhoneNode(selfName) }
@@ -262,18 +275,16 @@ private fun Topology(selfName: String, peers: List<PeerStatus>, results: List<Tp
     }
 }
 
-/** Says whether the screen is held on, from the window flag the activity really set, and which Wi-Fi lock is held. */
+/** Says whether the screen is held on, from the window flag the activity really set (the Wi-Fi lock is not a user matter). */
 @Composable
-private fun KeptAwakeLine() {
+private fun KeptAwakeNote() {
     val ctx = LocalContext.current
     val fg by AppForeground.foreground.collectAsStateWithLifecycle()
-    val lock by WifiLocks.held.collectAsStateWithLifecycle()
     var act = ctx
     while (act is android.content.ContextWrapper && act !is android.app.Activity) act = act.baseContext
     val flag = ((act as? android.app.Activity)?.window?.attributes?.flags ?: 0) and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
-    val awake = flag && fg
     Text(
-        if (awake) "Kept awake: the screen stays on while this app is in front. Wi-Fi lock ${lock.name.lowercase()}."
+        if (flag && fg) "The screen stays on while this app is in front, so peers keep seeing this phone."
         else "Not kept awake: the app is in the background, so the system may freeze it and peers will lose this phone.",
         style = SwarmType.body.copy(fontSize = 12.sp, color = Dim),
     )
@@ -304,7 +315,21 @@ fun PairingConfirmDialog() {
 
 private fun copyPairingLink(ctx: Context, link: String) {
     ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Ustaad pairing link", link))
-    Toast.makeText(ctx, "Pairing link copied", Toast.LENGTH_SHORT).show()
+    // Android 13 and later show their own "Copied" confirmation; the button label also says it
+    if (android.os.Build.VERSION.SDK_INT < 33) Toast.makeText(ctx, "Pairing link copied", Toast.LENGTH_SHORT).show()
+}
+
+/** The name of the Wi-Fi network this phone is on; null when the system will not say (no location access, not connected). */
+@Suppress("DEPRECATION")
+private fun wifiName(ctx: Context): String? =
+    ctx.getSystemService(android.net.wifi.WifiManager::class.java)?.connectionInfo?.ssid
+        ?.trim('"')?.takeIf { it.isNotEmpty() && it != "<unknown ssid>" }
+
+/** Band and channel frequency of the Wi-Fi station, as measured by the radio; empty when not connected. */
+@Suppress("DEPRECATION")
+private fun stationBand(ctx: Context): List<String> {
+    val f = ctx.getSystemService(android.net.wifi.WifiManager::class.java)?.connectionInfo?.frequency?.takeIf { it > 0 } ?: return emptyList()
+    return listOfNotNull(LinkInfo.bandOf(f), "$f MHz")
 }
 
 private fun sharePairingLink(ctx: Context, link: String, hostName: String) {
@@ -339,9 +364,28 @@ private fun HostPage(onBack: () -> Unit) {
         val h = hosting
         if (h != null) {
             val link = remember(h.payload) { Pairing.toLink(h.payload) }
-            val bmp = remember(link) { QrCode.bitmap(link).asImageBitmap() }
+            val bmp = remember(link) { QrCode.bitmap(link, dark = SwarmColors.ink.toArgb(), light = SwarmColors.sheet.toArgb()).asImageBitmap() }
+            var copied by remember { mutableStateOf(false) }
+            LaunchedEffect(copied) { if (copied) { delay(2_000); copied = false } }
+            // QR on Sheet in an Ink frame with the kit's hard shadow, then the code and the two ways to hand the link over
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.padding(end = 4.dp, bottom = 4.dp).hardShadow(4.dp, SwarmShape)) {
+                    Image(bmp, "Pairing QR", Modifier.size(250.dp).clip(SwarmShape).background(SwarmColors.sheet).border(2.dp, SwarmColors.ink, SwarmShape))
+                }
+                Text("Pairing code", style = SwarmType.mono.copy(fontSize = 12.sp, color = Dim))
+                Text(Pairing.code(h.payload.secret), style = SwarmType.title.copy(fontSize = 28.sp, fontFamily = SwarmType.mono.fontFamily))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SecondaryButton(if (copied) "Copied" else "Copy link", { copyPairingLink(ctx, link); copied = true }, Modifier.weight(1f))
+                    SecondaryButton("Share link", { sharePairingLink(ctx, link, self.name) }, Modifier.weight(1f))
+                }
+                Text(
+                    "The other phone shows this code before it pairs. Without a camera, copy or share the link and paste it on the Join page.",
+                    style = SwarmType.body.copy(fontSize = 12.sp, color = Dim),
+                )
+            }
+            val band = if (h.payload.p2p != null) listOfNotNull(direct.band, direct.frequencyMhz?.let { "$it MHz" }) else stationBand(ctx)
             SwarmCard(owner = self.name) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         PhoneToken(self.name, 32.dp)
                         Column(Modifier.padding(start = 10.dp)) {
@@ -349,17 +393,10 @@ private fun HostPage(onBack: () -> Unit) {
                             Text("Local node", style = SwarmType.mono.copy(fontSize = 12.sp, color = Dim))
                         }
                     }
-                    Image(bmp, "Pairing QR", Modifier.fillMaxWidth().aspectRatio(1f).background(Color.White))
-                    MetricRow("network", h.payload.p2p?.ssid ?: "current Wi-Fi")
-                    MetricRow("band", if (h.payload.p2p != null) listOfNotNull(direct.band, direct.frequencyMhz?.let { "$it MHz" }).joinToString("  ").ifEmpty { "-" } else "-")
+                    MetricRow("network", h.payload.p2p?.ssid ?: wifiName(ctx) ?: "Wi-Fi")
+                    if (band.isNotEmpty()) MetricRow("band", band.joinToString("  "))
                     h.payload.ips.forEachIndexed { i, ip -> MetricRow(if (i == 0) "address" else "", "$ip:${h.payload.port}") }
                     direct.formationMs?.let { MetricRow("group formed in", "$it", "ms") }
-                    MetricRow("pairing code", Pairing.code(h.payload.secret))
-                    Text("The other phone shows this code before it pairs. Without a camera, copy or share the link and paste it on the Join page.", style = SwarmType.body.copy(fontSize = 12.sp, color = Dim))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton("Copy link", { copyPairingLink(ctx, link) }, Modifier.weight(1f))
-                        SecondaryButton("Share link", { sharePairingLink(ctx, link, self.name) }, Modifier.weight(1f))
-                    }
                 }
             }
             SectionTitle("Joined")
@@ -389,6 +426,28 @@ private fun HostPage(onBack: () -> Unit) {
 
 // ------------------------------------------------------------------ join
 
+/** Four hand-drawn corner brackets over the camera picture: a Sheet casing under the Ink stroke, so they read on a dark or a bright picture. */
+@Composable
+private fun ScanBrackets(modifier: Modifier) {
+    Canvas(modifier) {
+        val inset = 18.dp.toPx()
+        val len = 44.dp.toPx()
+        val amp = 1.6.dp.toPx()
+        val step = 9.dp.toPx()
+        val jitter = Jitter(11)
+        fun bracket(corner: Offset, dx: Float, dy: Float) {
+            val ends = Offset(corner.x + dx * len, corner.y) to Offset(corner.x, corner.y + dy * len)
+            val path = smoothPath(wobblePoints(ends.first, corner, amp, step, jitter) + wobblePoints(corner, ends.second, amp, step, jitter).drop(1))
+            drawPath(path, SwarmColors.sheet, style = inkStroke(7.dp.toPx()))
+            drawPath(path, SwarmColors.ink, style = inkStroke(3.dp.toPx()))
+        }
+        bracket(Offset(inset, inset), 1f, 1f)
+        bracket(Offset(size.width - inset, inset), -1f, 1f)
+        bracket(Offset(inset, size.height - inset), 1f, -1f)
+        bracket(Offset(size.width - inset, size.height - inset), -1f, -1f)
+    }
+}
+
 @Composable
 private fun JoinPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
@@ -404,13 +463,22 @@ private fun JoinPage(onBack: () -> Unit) {
         ScreenHeader("Join a swarm")
         if (cameraOk) {
             // the box clips the camera view to its rounded outline (a TextureView otherwise paints over the text below it)
+            var streaming by remember { mutableStateOf(false) }
+            var waited by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { delay(3_000); waited = true }
+            val noPicture = waited && !streaming
             Box(Modifier.fillMaxWidth().height(320.dp).clip(SwarmShape).border(1.5.dp, SwarmColors.ink, SwarmShape)) {
-                QrScanner(Modifier.fillMaxSize()) { text ->
+                QrScanner(Modifier.fillMaxSize(), onStreaming = { streaming = it }) { text ->
                     scanned = true
                     LinkRuntime.handleDeepLink(text)
                 }
+                if (noPicture) {
+                    Box(Modifier.fillMaxSize().background(SwarmColors.sheet).padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text("The camera shows no picture. Paste the pairing link below instead.", style = SwarmType.body.copy(color = Dim))
+                    }
+                } else ScanBrackets(Modifier.fillMaxSize())
             }
-            Text("Point at the host phone's code", style = SwarmType.title)
+            Text("Point the camera at the code on the host phone.", style = SwarmType.body.copy(color = Dim))
         } else {
             Text("The camera permission is needed to scan the host's code.", style = SwarmType.body)
             PrimaryButton("Allow camera", { camLauncher.launch(Manifest.permission.CAMERA) }, Modifier.fillMaxWidth(), icon = SwarmIcon.Camera)

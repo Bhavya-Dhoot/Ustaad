@@ -81,8 +81,18 @@ class FakePhone(
     val calls = AtomicInteger()
     val jobIds = ConcurrentLinkedQueue<String>()
 
+    /** Nanosecond timestamps (System.nanoTime) of every chat job that reached this phone. */
+    val startedAt = ConcurrentLinkedQueue<Long>()
+
+    /** The next this many pings fail, then the phone answers again: one missed heartbeat. */
+    val capsFailures = AtomicInteger()
+
+    /** The next chat call is refused with 429 although the phone reported a free slot: a job from elsewhere got there first. */
+    @Volatile var busyOnce = false
+
     override suspend fun caps(): Caps {
         if (dead || capsDown) throw IOException("$nodeId is down")
+        if (capsFailures.getAndUpdate { maxOf(0, it - 1) } > 0) throw IOException("$nodeId missed a ping")
         return node.caps().copy(lastDecodeTokPerSec = tokPerSec ?: node.caps().lastDecodeTokPerSec, thermalStatus = thermal)
     }
 
@@ -93,6 +103,11 @@ class FakePhone(
             throw IOException("$nodeId went away")
         }
         jobIds += jobId
+        startedAt += System.nanoTime()
+        if (busyOnce) {
+            busyOnce = false
+            throw BusyException(1, 1, 0)
+        }
         if (hang) awaitCancellation()
         return node.chat(jobId, req, pinModel)
     }

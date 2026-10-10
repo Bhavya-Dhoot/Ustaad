@@ -246,6 +246,7 @@ object LinkRuntime {
     /** Stop showing the code and take the Wi-Fi Direct group down with it (the stored credentials go too). */
     fun stopHosting() {
         _hosting.value = null
+        if (_message.value?.startsWith("Hosting") == true) _message.value = null // the "Hosting ..." line is stale once hosting stops
         if (DirectLink.state.value.role == "host") scope.launch { runCatching { DirectLink.stop() } }
     }
 

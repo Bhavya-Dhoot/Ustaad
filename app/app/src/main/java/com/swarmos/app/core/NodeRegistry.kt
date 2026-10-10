@@ -1,8 +1,11 @@
 package com.swarmos.app.core
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 
 data class PeerState(
@@ -11,6 +14,16 @@ data class PeerState(
     val away: Boolean = false,
     val lastSeenMs: Long = 0,
 )
+
+/**
+ * Keeps [NodeRegistry.self] current for as long as it runs: every time the model names (chat, embedding) or the
+ * address change, the registry's own entry is refreshed. Never returns; cancel the coroutine to stop it.
+ */
+suspend fun NodeRegistry.followSelf(models: Flow<Pair<String?, String?>>, ip: Flow<String>) {
+    combine(models, ip) { m, address -> Triple(address, m.first, m.second) }
+        .distinctUntilChanged()
+        .collect { (address, chat, embed) -> refreshSelf(address, chat, embed) }
+}
 
 /** This node plus the peers it has seen. All state is observable. */
 class NodeRegistry(initialSelf: NodeInfo) {
@@ -21,6 +34,19 @@ class NodeRegistry(initialSelf: NodeInfo) {
     val peers: StateFlow<List<PeerState>> = _peers.asStateFlow()
 
     fun updateSelf(transform: (NodeInfo) -> NodeInfo) = _self.update(transform)
+
+    /**
+     * Brings this node's own ip and model names up to date: they change after start-up (a model finishes loading, the
+     * Wi-Fi address changes) and everything that reads [self] (Choir, the strip) must not keep the start-up values.
+     * Returns true when something changed.
+     */
+    fun refreshSelf(ip: String, chatModel: String?, embedModel: String?): Boolean {
+        var changed = false
+        _self.update { before ->
+            before.copy(ip = ip, chatModel = chatModel, embedModel = embedModel).also { changed = it != before }
+        }
+        return changed
+    }
 
     /** Insert or refresh a peer; clears its away flag. Ignores this node's own id. */
     fun add(info: NodeInfo, nowMs: Long = System.currentTimeMillis()) {

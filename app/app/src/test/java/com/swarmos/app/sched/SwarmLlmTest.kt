@@ -146,6 +146,7 @@ class SwarmLlmTest {
         val llm = swarm(listOf(a, b))
         assertEquals(4, llm.slotCount())
         b.dead = true
+        llm.refreshCaps(force = true)   // one missed ping is not a verdict
         llm.refreshCaps(force = true)
         assertTrue("b is down", llm.phoneViews().none { it.nodeId == "b" && it.up })
         assertEquals("a down phone keeps its last known slots", 4, llm.slotCount())
