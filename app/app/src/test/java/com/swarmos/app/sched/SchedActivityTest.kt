@@ -124,7 +124,7 @@ class SchedActivityTest {
     @Test fun aBatchShowsRealCountsAcrossThePhonesAndClearsWhenDone() = runBlocking {
         val me = FakePhone("me", TestLlm(delayMs = 80), scope, isLocal = true)
         val other = FakePhone("other", TestLlm(delayMs = 80), scope)
-        val swarm = SwarmLlm({ listOf(me, other) }, scope, attemptTimeoutMs = 5_000, capsMaxAgeMs = 50, probeEveryMs = 100)
+        val swarm = SwarmLlm({ listOf(me, other) }, scope, attemptTimeoutMs = 5_000, capsMaxAgeMs = 50, probeEveryMs = 100, msPerToken = 0)
         val store = BatchStore(scope, { swarm }, { swarm })
         val seen = mutableListOf<String>()
         val watcher = launch(Dispatchers.Default) {

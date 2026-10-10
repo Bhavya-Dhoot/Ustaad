@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
+import com.swarmos.app.busy.BusyMode
 import com.swarmos.app.core.HealthMonitor
 import com.swarmos.app.core.ThermalLevel
 
@@ -53,6 +54,7 @@ fun StatsBar(
     val battery = if (h.batteryPct < 0) "?" else "${h.batteryPct}%" + if (h.charging) " chg" else ""
     val ram = "%.1f GB".format(h.ramAvailMb / 1024.0)
     val link = HealthMonitor.linkLabel(h.linkStandard, h.linkSpeedMbps)
+    val busy by BusyMode.state.collectAsStateWithLifecycle()
     StatusStrip(
         name = self.name,
         thermal = level.word,
@@ -64,6 +66,7 @@ fun StatsBar(
         onEditName = onEditName,
         modifier = modifier,
         hot = level.tooHot,
+        busy = busy.stripWord,
     )
 }
 
@@ -80,6 +83,8 @@ fun StatusStrip(
     modifier: Modifier = Modifier,
     hot: Boolean = false,
     internet: Boolean = false,
+    // "Keep busy": a short plain word while filler runs or is paused (busy.BusyState.stripWord), null otherwise
+    busy: String? = null,
 ) {
     Column(
         modifier
@@ -111,6 +116,11 @@ fun StatusStrip(
                             name, Modifier.weight(1f),
                             style = SwarmType.title.copy(fontSize = 15.sp, lineHeight = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
+                        if (busy != null) {
+                            // plain mono word, like "online": an ordinary state is not a stamp
+                            val plainBusy = SwarmType.mono.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SwarmColors.graphite)
+                            Text(busy, style = plainBusy, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
+                        }
                         if (hot) Stamp("Hot", caution = true, small = true)
                         else if (!internet) Stamp("No internet", small = true) // outline: no network has validated internet
                         else {

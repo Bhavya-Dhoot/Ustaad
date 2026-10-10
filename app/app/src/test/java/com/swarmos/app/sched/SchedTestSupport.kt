@@ -90,7 +90,18 @@ class FakePhone(
     /** The next chat call is refused with 429 although the phone reported a free slot: a job from elsewhere got there first. */
     @Volatile var busyOnce = false
 
+    /** Every report asked of this phone, whoever asked. */
+    val capsCalls = AtomicInteger()
+
+    /** Each report takes this long: a phone that answers its ping slowly. */
+    @Volatile var capsDelayMs = 0L
+
+    /** The next chat call runs on the phone, then the reply is lost on the way back (an I/O error), as when the connection resets. */
+    @Volatile var loseReplyOnce = false
+
     override suspend fun caps(): Caps {
+        capsCalls.incrementAndGet()
+        if (capsDelayMs > 0) kotlinx.coroutines.delay(capsDelayMs)
         if (dead || capsDown) throw IOException("$nodeId is down")
         if (capsFailures.getAndUpdate { maxOf(0, it - 1) } > 0) throw IOException("$nodeId missed a ping")
         return node.caps().copy(lastDecodeTokPerSec = tokPerSec ?: node.caps().lastDecodeTokPerSec, thermalStatus = thermal)
@@ -109,6 +120,11 @@ class FakePhone(
             throw BusyException(1, 1, 0)
         }
         if (hang) awaitCancellation()
+        if (loseReplyOnce) {
+            loseReplyOnce = false
+            node.chat(jobId, req, pinModel)
+            throw IOException("$nodeId: reply lost")
+        }
         return node.chat(jobId, req, pinModel)
     }
 

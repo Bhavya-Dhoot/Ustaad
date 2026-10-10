@@ -123,7 +123,7 @@ class SchedRoutesTest {
     @Test fun swarmFallsBackToThisPhoneWhenAPeerIsUnreachable() = runBlocking {
         val me = FakePhone("me", TestLlm(delayMs = 20), scope, isLocal = true)
         val unreachable = client(freePort())               // nothing listens there: connection refused
-        val llm = SwarmLlm({ listOf(unreachable, me) }, scope, attemptTimeoutMs = 3_000, capsMaxAgeMs = 50, probeEveryMs = 100)
+        val llm = SwarmLlm({ listOf(unreachable, me) }, scope, attemptTimeoutMs = 3_000, capsMaxAgeMs = 50, probeEveryMs = 100, msPerToken = 0)
         val r = llm.chatJob("j", req("x"))
         assertEquals("me", r.nodeId)
         assertEquals("T:x", r.text)
@@ -131,7 +131,7 @@ class SchedRoutesTest {
 
     @Test fun swarmSpreadsJobsOverThisPhoneAndAPeerOverHttp() = runBlocking {
         val me = FakePhone("me", TestLlm(delayMs = 150), scope, isLocal = true)
-        val llm = SwarmLlm({ listOf(me, remote) }, scope, attemptTimeoutMs = 5_000, capsMaxAgeMs = 50, probeEveryMs = 100)
+        val llm = SwarmLlm({ listOf(me, remote) }, scope, attemptTimeoutMs = 5_000, capsMaxAgeMs = 50, probeEveryMs = 100, msPerToken = 0)
         val report = BatchRunner(llm).run("t", "swarm", (0 until 8).map { req("p$it") })
         assertEquals(0, report.failed)
         assertEquals((0 until 8).toList(), report.items.map { it.index })

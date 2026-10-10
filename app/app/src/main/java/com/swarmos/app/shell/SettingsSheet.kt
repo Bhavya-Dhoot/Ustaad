@@ -23,6 +23,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
 import com.swarmos.app.agent.AgentAccess
+import com.swarmos.app.busy.BusyMode
 import com.swarmos.app.core.AuditVerify
 import com.swarmos.app.core.Ports
 import com.swarmos.app.core.SwarmService
@@ -69,6 +71,7 @@ import com.swarmos.app.ui.SwarmType
 import com.swarmos.app.ui.phoneLetter
 import com.swarmos.app.ui.underlinePath
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -140,6 +143,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                     "Load models at start", "The default chat and embedding models load when Ustaad starts.",
                     checked = autoload, onChange = { ModelStore.setAutoload(it) },
                 )
+                KeepBusyRows()
                 AgentAccessRows()
                 AuditLogCard()
                 StopStartRow()
@@ -242,6 +246,33 @@ private fun SwitchRow(title: String, helper: String, checked: Boolean, onChange:
             Text(helper, style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite))
         }
         InkSwitch(checked, onCheckedChange = null) // the whole row is the toggle
+    }
+}
+
+/** "Keep busy": the switch, and while it is on the state and the counters (re-read every second). */
+@Composable
+private fun KeepBusyRows() {
+    val on by BusyMode.enabled.collectAsStateWithLifecycle()
+    val state by BusyMode.state.collectAsStateWithLifecycle()
+    var report by remember { mutableStateOf(BusyMode.report()) }
+    LaunchedEffect(on, state) {
+        report = BusyMode.report()
+        while (on) {
+            delay(1000)
+            report = BusyMode.report()
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SwitchRow(
+            "Keep busy", "Runs short practice questions on this phone while it has no other work, and stops the moment real work arrives.",
+            checked = on, onChange = { BusyMode.setEnabled(it) },
+        )
+        if (on) {
+            Text(
+                "Now: ${state.text}. ${report.line()}",
+                style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite),
+            )
+        }
     }
 }
 

@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.swarmos.app.agent.AgentAccess
+import com.swarmos.app.busy.BusyMode
 import com.swarmos.app.choir.ChoirModule
 import com.swarmos.app.core.AuditLog
 import com.swarmos.app.core.HealthMonitor
@@ -118,6 +119,7 @@ object AppGraph {
                 }
                 AgentAccess.restore(p?.agentAccess ?: false, p?.agentKey, p?.agentFiles ?: false) { on, key, files -> prefs.setAgent(on, key, files) }
                 audit.load()
+                BusyMode.restore(p?.keepBusy ?: false, { on -> prefs.setKeepBusy(on) }) { kind, payload -> audit.append(kind, payload) }
                 health.start()
                 audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))
                 // restore models and release lenders if a MemoryCloud session was killed mid-way

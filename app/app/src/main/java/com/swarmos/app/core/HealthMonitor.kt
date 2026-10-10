@@ -33,12 +33,16 @@ enum class ThermalLevel(val word: String, private val firstStatus: Int) {
     Severe("Severe", 3);
 
     /**
-     * Status 2 (MODERATE) or more: shown in bold in the throughput table. The scheduler does NOT use this threshold: it prefers
-     * other phones from status 3 ([tooHot], sched/Scheduler.kt isDegraded).
+     * Status 2 (MODERATE) or more: shown in bold in the throughput table, the point where decode speed was measured to drop, and
+     * half duty for "Keep busy". The scheduler only takes 20 % off a status-2 phone's score (Scheduler.MODERATE_FACTOR); it prefers
+     * other phones from status 3 ([tooHot], sched/Scheduler.kt isDegraded) and sends nothing from status 4.
      */
     val degraded: Boolean get() = firstStatus >= DEGRADED_FROM
 
-    /** Status 3 (SEVERE) or more: benchmarks and heavy generation are refused, the scheduler prefers other phones, and the status strip shows the HOT stamp. */
+    /**
+     * Status 3 (SEVERE) or more: benchmarks and heavy generation are refused, the scheduler takes a job here only when no cooler
+     * phone is up (nothing at all from status 4), and the status strip shows the HOT stamp.
+     */
     val tooHot: Boolean get() = firstStatus >= TOO_HOT_FROM
 
     companion object {

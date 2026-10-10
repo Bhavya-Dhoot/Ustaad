@@ -1,5 +1,7 @@
 package com.swarmos.app.sched
 
+import com.swarmos.app.busy.BusyMode
+import com.swarmos.app.busy.BusyReport
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
@@ -64,13 +66,22 @@ private suspend inline fun <reified T : Any> RoutingCall.answer(block: () -> T) 
 }
 
 /**
- * GET /caps, POST /chat, POST /chat-stream, POST /embed: what a phone offers to the rest of the swarm.
+ * GET /caps, GET /busy, POST /chat, POST /chat-stream, POST /embed: what a phone offers to the rest of the swarm.
  * [peerName] turns the node id that signed a request into the phone's name for the live state line (null when unknown).
+ * /busy is read-only: the "Keep busy" switch, its state and counters, and the share of the last 60 s spent on filler.
  */
-fun Route.schedNodeRoutes(node: SchedNode, secret: () -> String, streamPingMs: Long = STREAM_PING_MS, peerName: (String?) -> String? = { null }) {
+fun Route.schedNodeRoutes(
+    node: SchedNode,
+    secret: () -> String,
+    streamPingMs: Long = STREAM_PING_MS,
+    peerName: (String?) -> String? = { null },
+    busy: () -> BusyReport = BusyMode::report,
+) {
     fun RoutingCall.caller(): String? = peerName(request.header(Signer.HEADER_NODE))
 
     get("/caps") { call.answer { node.caps() } }
+
+    get("/busy") { call.answer { busy() } }
 
     post("/chat") {
         val job = call.receiveJson<ChatJobRequest>() ?: return@post
@@ -170,7 +181,12 @@ fun Route.schedBatchRoutes(batches: BatchStore) {
             call.respond(HttpStatusCode.BadRequest, ErrorBody("mode must be swarm or local"))
             return@post
         }
-        val id = batches.start(requests, body.mode)
+        // one batch at a time: two at once share the phones and neither measures anything
+        val id = batches.tryStart(requests, body.mode)
+        if (id == null) {
+            call.respond(HttpStatusCode.Conflict, ErrorBody("a batch is already running"))
+            return@post
+        }
         call.respond(BatchStarted(id, requests.size))
     }
 

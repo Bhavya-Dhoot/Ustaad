@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.swarmos.app.agent.AgentAccess
+import com.swarmos.app.busy.BusyMode
 import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.core.SwarmService
 import com.swarmos.app.shell.ActivityBanner
@@ -110,6 +111,8 @@ class MainActivity : ComponentActivity() {
         i?.getStringExtra(EXTRA_AGENT_KEY)?.let { AgentAccess.setKey(it) }
         // `--ez agentFiles true` lets key holders search the shared files (false stops it); only while agent access is on, so give it after `agentAccess`
         if (i?.hasExtra(EXTRA_AGENT_FILES) == true) AgentAccess.setFiles(i.getBooleanExtra(EXTRA_AGENT_FILES, false))
+        // `--ez keepBusy true` turns the "Keep busy" mode on (false turns it off); persisted like the Settings switch
+        if (i?.hasExtra(EXTRA_KEEP_BUSY) == true) BusyMode.setEnabled(i.getBooleanExtra(EXTRA_KEEP_BUSY, false))
         // `--ez leanSources true` gives the Data Union model fewer, better sources (false restores today's prompt); persisted in the pref pdu_lean_sources
         if (i?.hasExtra(EXTRA_LEAN_SOURCES) == true) com.swarmos.app.pdu.PduEngine.setLeanSources(i.getBooleanExtra(EXTRA_LEAN_SOURCES, false))
         // `--ez choirMajority true` lets a majority in round 1 skip round 2 (false restores today's policy); persisted in the pref choir_majority_skips_round2
@@ -136,6 +139,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_CHOIR_MAJORITY = "choirMajority"
         const val EXTRA_AGENT_KEY = "agentKey"
         const val EXTRA_AGENT_FILES = "agentFiles"
+        const val EXTRA_KEEP_BUSY = "keepBusy"
         const val EXTRA_GALLERY = "gallery"
         const val EXTRA_GALLERY_PAGE = "galleryPage"
     }

@@ -26,6 +26,12 @@ interface PhoneEndpoint {
 
     /** Local phone only: stream [req] into [out] if a slot is free right now and return true; otherwise return false untouched. */
     suspend fun streamIfFree(req: ChatRequest, pinModel: String?, out: FlowCollector<ChatChunk>): Boolean = false
+
+    /**
+     * Null when this phone can take model jobs and streams; else a plain sentence for the phone list. A phone reachable only
+     * over Bluetooth is up for control messages but is not a target for model work.
+     */
+    val unusableReason: String? get() = null
 }
 
 /**
@@ -59,6 +65,7 @@ class SchedNode(
         if (tps > 0.0) lastTokPerSec = tps
     }
 
+    /** What other phones see. Filler work ("Keep busy") is not in `running` or `queued`: the executor leaves it out. */
     fun caps(): Caps {
         val h = health()
         return Caps(
@@ -89,8 +96,9 @@ class SchedNode(
     /**
      * A slot held for a stream that a peer asked for. Throws [BusyException] when no slot is free (streams are not queued)
      * and [ModelMismatchException] when [pinModel] is another model. The caller must [StreamSlot.close] it.
+     * Suspends for a moment when only "Keep busy" filler holds the slot: the filler is stopped and the stream takes its place.
      */
-    fun openStream(pinModel: String?): StreamSlot {
+    suspend fun openStream(pinModel: String?): StreamSlot {
         val client = llm()
         if (pinModel != null && pinModel != client.modelName) throw ModelMismatchException(client.modelName)
         if (!chatExec.tryAcquire()) throw BusyException(chatExec.running, chatExec.capacity, chatExec.queued)

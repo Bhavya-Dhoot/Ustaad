@@ -20,6 +20,8 @@ import com.swarmos.app.agent.AgentAccess
 import com.swarmos.app.agent.AgentBackend
 import com.swarmos.app.agent.AgentServer
 import com.swarmos.app.agent.FileSource
+import com.swarmos.app.busy.BusyApp
+import com.swarmos.app.busy.BusyMode
 import com.swarmos.app.link.NodeServer
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.Role
@@ -85,6 +87,7 @@ class SwarmService : Service() {
                 val s = NodeServer().also { server = it }
                 launch { s.start() }
                 launch { serveAgentWhileEnabled() }
+                launch { BusyMode.serve { BusyApp.loop().run() } } // filler jobs while the "Keep busy" switch is on; ends with this job
                 AppGraph.audit.append("service.start")
                 launch { keepNotificationCurrent() }
                 holdLocksWhileNeeded()

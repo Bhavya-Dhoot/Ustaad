@@ -9,6 +9,8 @@ import com.swarmos.app.llm.ChatChunk
 import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatResult
 import com.swarmos.app.llm.LlmClient
+import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.catch
@@ -32,6 +34,8 @@ class RemoteLlmClient(
     private val streams: StreamClient? = null,
     /** Which "ip" or "ip:port" reaches [peer] right now. Asked at every call, so it follows the link module's path choice. */
     private val address: (NodeInfo) -> String = { it.ip },
+    /** Time a chat request to the peer may take for a reply of at most this many tokens. */
+    private val budgetMs: (Int) -> Long = { GenBudget.forTokens(it) },
 ) : LlmClient, PhoneEndpoint {
     private val host get() = address(peer)
 
@@ -39,6 +43,11 @@ class RemoteLlmClient(
     private var seenModel: String? = null
 
     override val nodeId: String get() = peer.nodeId
+    override val unusableReason: String? get() = if (NodeClient.isBluetoothAddress(host)) BLUETOOTH_ONLY else null
+
+    private fun requireUsable() {
+        unusableReason?.let { throw PhoneUnusableException(it) }
+    }
     override val modelName: String get() = seenModel ?: peer.chatModel ?: "unknown"
 
     override suspend fun ready(): Boolean = runCatching { caps() }.isSuccess
@@ -47,12 +56,26 @@ class RemoteLlmClient(
         client.get<Caps>(host, "/sched/caps").also { seenModel = it.modelName }
     }
 
+    /**
+     * The request may take the generation budget of the reply ([GenBudget]: 30 s plus the tokens asked for at 5 per second),
+     * not the client's 60 s default, which cut long answers off and sent them to another phone. A request that still runs
+     * out of time is a [PhoneTimeoutException]: the job was slow, which says nothing about whether the phone is there.
+     */
     override suspend fun runChat(jobId: String, req: ChatRequest, pinModel: String?): ChatJobResult = mapErrors {
-        client.post<ChatJobResult, ChatJobRequest>(host, "/sched/chat", ChatJobRequest(jobId, req.toDto(), pinModel))
-            .also { seenModel = it.modelName }
+        requireUsable()
+        val budget = budgetMs(req.maxTokens)
+        try {
+            client.post<ChatJobResult, ChatJobRequest>(host, "/sched/chat", ChatJobRequest(jobId, req.toDto(), pinModel), budget)
+                .also { seenModel = it.modelName }
+        } catch (e: HttpRequestTimeoutException) {
+            throw PhoneTimeoutException(peer.nodeId, budget)
+        } catch (e: SocketTimeoutException) {
+            throw PhoneTimeoutException(peer.nodeId, budget)
+        }
     }
 
     override suspend fun runEmbed(jobId: String, texts: List<String>): EmbedJobResult = mapErrors {
+        requireUsable()
         client.post<EmbedJobResult, EmbedJobRequest>(host, "/sched/embed", EmbedJobRequest(jobId, texts))
     }
 
@@ -69,6 +92,7 @@ class RemoteLlmClient(
 
     /** Streams when this client can; false (nothing emitted) otherwise so the caller falls back to a whole-reply job. */
     override suspend fun streamIfFree(req: ChatRequest, pinModel: String?, out: FlowCollector<ChatChunk>): Boolean {
+        requireUsable()
         val sc = streams ?: return false
         remoteStream(sc, req, pinModel).collect { out.emit(it) }
         return true

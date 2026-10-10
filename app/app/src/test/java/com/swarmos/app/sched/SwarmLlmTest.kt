@@ -24,7 +24,7 @@ class SwarmLlmTest {
         FakePhone(id, llm, scope, capacity, local, tps, thermal)
 
     private fun swarm(phones: List<FakePhone>, attemptTimeoutMs: Long = 5_000) =
-        SwarmLlm({ phones }, scope, attemptTimeoutMs = attemptTimeoutMs, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100)
+        SwarmLlm({ phones }, scope, attemptTimeoutMs = attemptTimeoutMs, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100, msPerToken = 0)
 
     private fun batch(n: Int) = (0 until n).map { req("p$it") }
 
@@ -38,13 +38,56 @@ class SwarmLlmTest {
         repeat(4) { assertEquals("fast", llm.chatJob("j$it", req("x$it")).nodeId) }
     }
 
-    @Test fun aHotPhoneIsOnlyUsedWhenTheOthersAreBusy() = runBlocking {
+    @Test fun aPhoneAtStatusThreeTakesNoJobWhileACoolerPhoneIsUpEvenWhenThatOneIsBusy() = runBlocking {
         val hot = phone("hot", TestLlm(delayMs = 120), tps = 90.0, thermal = 3)
         val cool = phone("cool", TestLlm(delayMs = 120), tps = 3.0)
         val llm = swarm(listOf(hot, cool))
         assertEquals("cool", llm.chatJob("a", req("a")).nodeId)
         val both = listOf(async { llm.chatJob("b", req("b")) }, async { llm.chatJob("c", req("c")) }).awaitAll()
-        assertEquals(setOf("hot", "cool"), both.map { it.nodeId }.toSet())
+        assertEquals("both wait for the cool phone", setOf("cool"), both.map { it.nodeId }.toSet())
+        assertTrue("the hot phone ran nothing", hot.llm.executed.isEmpty())
+    }
+
+    @Test fun aPhoneAtStatusThreeIsUsedWhenItIsTheOnlyOneUp() = runBlocking {
+        val hot = phone("hot", tps = 90.0, thermal = 3)
+        val gone = phone("gone", tps = 3.0).also { it.dead = true }
+        val llm = swarm(listOf(hot, gone))
+        assertEquals("hot", llm.chatJob("a", req("a")).nodeId)
+    }
+
+    @Test fun aPhoneAtStatusFourOrMoreTakesNoJobEvenWhenItIsTheOnlyOne() = runBlocking {
+        val burning = phone("burning", tps = 90.0, thermal = 4)
+        val llm = swarm(listOf(burning))
+        try {
+            llm.chatJob("a", req("a"))
+            fail("expected NoPhoneAvailableException")
+        } catch (e: NoPhoneAvailableException) {
+            assertTrue("a plain heat message: ${e.message}", e.message!!.contains("too hot"))
+        }
+        assertTrue(burning.llm.executed.isEmpty())
+    }
+
+    @Test fun aPhoneThatCooledFromFourIsNotAdmittedAgainBeforeTwentySecondsOfReadingLower() = runBlocking {
+        var now = 1_000_000L
+        val p = phone("p", tps = 50.0, thermal = 4)
+        val other = phone("other", tps = 1.0)
+        val llm = SwarmLlm({ listOf(p, other) }, scope, clock = { now }, capsMaxAgeMs = 0, busyBackoffMs = 20, probeEveryMs = 100, msPerToken = 0)
+        llm.refreshCaps(force = true)
+        assertEquals("excluded at 4", "other", llm.chatJob("a", req("a")).nodeId)
+        p.thermal = 3
+        now += 10_000
+        llm.refreshCaps(force = true)
+        assertEquals("one level lower, but not for 20 s yet", "other", llm.chatJob("b", req("b")).nodeId)
+        now += 20_000
+        llm.refreshCaps(force = true)
+        assertEquals("20 s at status 3: back as a status 3 phone, which still waits while a cooler phone is up", "other", llm.chatJob("c", req("c")).nodeId)
+        p.thermal = 1
+        now += 1_000
+        llm.refreshCaps(force = true)
+        assertEquals("reading 1 for under 20 s: still at level 3", "other", llm.chatJob("d", req("d")).nodeId)
+        now += 20_000
+        llm.refreshCaps(force = true)
+        assertEquals("fully admitted", "p", llm.chatJob("e", req("e")).nodeId)
     }
 
     @Test fun pinnedModelSkipsPhonesRunningAnotherModel() = runBlocking {
@@ -121,15 +164,17 @@ class SwarmLlmTest {
         val llm = swarm(listOf(silent, ok), attemptTimeoutMs = 150)
         val r = llm.chatJob("job-1", req("hello"))
         assertEquals("ok", r.nodeId)
-        assertEquals(listOf("job-1"), silent.jobIds.toList())
+        // the silent phone still answers its pings, so the same job id is sent to it a second time before the job moves on
+        assertEquals(listOf("job-1", "job-1"), silent.jobIds.toList())
         assertEquals(listOf("job-1"), ok.jobIds.toList())
         assertEquals("T:hello", r.text)
+        assertTrue("a slow job does not mark the phone down: only pings do", llm.phoneViews().first { it.nodeId == "silent" }.up)
     }
 
     @Test fun aPhoneThatFreezesMidJobIsDetectedByPingsLongBeforeTheAttemptTimeout() = runBlocking {
         val frozen = phone("frozen", tps = 99.0).also { it.hang = true }
         val ok = phone("ok", tps = 1.0)
-        val llm = SwarmLlm({ listOf(frozen, ok) }, scope, attemptTimeoutMs = 30_000, capsMaxAgeMs = 50, probeEveryMs = 100, heartbeatMs = 80, capsTimeoutMs = 100)
+        val llm = SwarmLlm({ listOf(frozen, ok) }, scope, attemptTimeoutMs = 30_000, capsMaxAgeMs = 50, probeEveryMs = 100, heartbeatMs = 80, capsTimeoutMs = 100, msPerToken = 0)
         val started = System.nanoTime()
         val job = async { llm.chatJob("job-1", req("hello")) }
         while (frozen.jobIds.isEmpty()) kotlinx.coroutines.delay(5)
