@@ -90,4 +90,4 @@ Replace the port with `8847` when the demo was built with `-PportOffset=60`.
 bash scripts/gradle-locked.sh "$PWD/app" :app:testDebugUnitTest
 ```
 
-Last full run: master 7962ff1, 2026-10-10 16:49, 1424 tests, 0 failures, 0 skipped (counted from `app/app/build/test-results/testDebugUnitTest/*.xml`); debug and demo APKs built in the same run and the debug APK installed on Phone C at 17:32 and Phone B at 18:24 (Phone A is reserved and stays on c2ca589 from 13:07).
+Last full run: master 7962ff1, 2026-10-10 16:49, 1424 tests, 0 failures, 0 skipped (counted from `app/app/build/test-results/testDebugUnitTest/*.xml`); debug and demo APKs built in the same run and the debug APK installed on Phone C at 17:32 and Phone B at 18:24; rebuilt with the app icon (10c7145, 1424 tests, debug only) and installed on B and C at 19:11 (Phone A is reserved and stays on c2ca589 from 13:07). Older APK copies were deleted on 2026-10-10; the demo APK is not kept and is rebuilt with `:app:assembleDemo`.

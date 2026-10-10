@@ -125,7 +125,7 @@ Not a pair, so not in the table: the three-phone batch on later builds read 39.6
 
 - Code: master is 7962ff1 plus documents. Unit run at 16:49: 1424 tests, 0 failures; debug and demo APKs built. Everything is committed except the founder's `brag-output/` folder.
 - Phone A (192.168.242.89): reserved by the founder since 13:12; released at 15:54 and held back minutes later, before anything ran on it (CLAUDE.md). It carries the older build c2ca589, installed 13:07, so B and C show it as "runs an older version". Nothing was sent to it in gate 9. From 17:30 it showed a vivo Remote Control session into a computer, and at the founder's request random taps were injected on its screen for 120 minutes; nothing else was done on it.
-- Phones B (192.168.242.23) and C (192.168.242.76): debug build of 7962ff1 installed 17:31 and 17:32. Verified at 18:28: chat READY on the GPU, embedder READY, keep busy ON, agent access off. Phone B also holds 5.2 MB of OpenCL cache under `/data/local/tmp/llama.cpp/cl-cache/`, left by an experiment.
+- Phones B (192.168.242.23) and C (192.168.242.76): debug build of 7962ff1 installed 17:31 and 17:32, then rebuilt with the app icon (10c7145: the letter U as one ink stroke joining three phone tokens) and installed on both at 19:11. Verified at 18:28 and again at 19:12: chat READY on the GPU, embedder READY, keep busy ON, agent access off. Phone B also holds 5.2 MB of OpenCL cache under `/data/local/tmp/llama.cpp/cl-cache/`, left by an experiment.
 - Models: Qwen3.5-4B and the embedder on all three. Phone C holds two copies of the 30B file (37 GB). Lender caches reported: A 6792 MB, B 5679 MB. The demo build `com.ustaad.app` is not installed on any phone.
 - Network: PC and phones on the access point "Chulbul" (192.168.242.x).
 
