@@ -22,6 +22,29 @@ class KbStore(private val pdu: PduStore) : KbBacking {
         }
     }
 
+    // the card vectors are read from the database once, and again after anything that changes them (guarded by the same lock)
+    private val vectorCache = VectorCache { loadVectors() }
+
+    override fun <T> atomic(block: () -> T): T = pdu.inTransaction(block)
+
+    override fun countUsable(): Int = synchronized(pdu.lock) {
+        query("SELECT COUNT(*) FROM kb_cards WHERE revokedMs IS NULL", {}) { it.getLong(0).toInt() }.first()
+    }
+
+    override fun replaceCard(card: KbCard) { synchronized(pdu.lock) {
+        val st = pdu.db.prepare("UPDATE kb_cards SET json=? WHERE id=?")
+        try { st.bindText(1, SwarmJson.encodeToString(card)); st.bindText(2, card.id); st.step() } finally { st.close() }
+    } }
+
+    override fun deleteTombstones(ids: Collection<String>) { synchronized(pdu.lock) {
+        pdu.inTransaction {
+            for (id in ids) {
+                val st = pdu.db.prepare("DELETE FROM kb_tombstones WHERE id=?")
+                try { st.bindText(1, id); st.step() } finally { st.close() }
+            }
+        }
+    } }
+
     override fun entry(id: String): KbEntry? = synchronized(pdu.lock) {
         query("SELECT json, tier, revokedMs, everShared FROM kb_cards WHERE id=?", { it.bindText(1, id) }, ::row).firstOrNull()
     }
@@ -42,6 +65,7 @@ class KbStore(private val pdu: PduStore) : KbBacking {
             st.bindLong(5, if (e.everShared) 1 else 0); st.bindLong(6, System.currentTimeMillis())
             st.step()
         } finally { st.close() }
+        vectorCache.invalidate()
     } }
 
     override fun tombstone(id: String): KbTombstone? = synchronized(pdu.lock) {
@@ -61,9 +85,10 @@ class KbStore(private val pdu: PduStore) : KbBacking {
 
     // ---- embeddings (this phone only; never sent) ---------------------------------------------------------
 
-    fun vectors(): Map<String, FloatArray> = synchronized(pdu.lock) {
+    fun vectors(): Map<String, FloatArray> = synchronized(pdu.lock) { vectorCache.get() }
+
+    private fun loadVectors(): Map<String, FloatArray> =
         query("SELECT id, emb FROM kb_cards WHERE emb IS NOT NULL", {}) { it.getText(0) to PduStore.fromBytes(it.getBlob(1)) }.toMap()
-    }
 
     fun withoutVector(): List<KbCard> = synchronized(pdu.lock) {
         query("SELECT json FROM kb_cards WHERE emb IS NULL", {}) { SwarmJson.decodeFromString<KbCard>(it.getText(0)) }
@@ -71,10 +96,10 @@ class KbStore(private val pdu: PduStore) : KbBacking {
 
     fun setVector(id: String, v: FloatArray) = synchronized(pdu.lock) {
         val st = pdu.db.prepare("UPDATE kb_cards SET emb=? WHERE id=?")
-        try { st.bindBlob(1, PduStore.toBytes(v)); st.bindText(2, id); st.step() } finally { st.close() }
+        try { st.bindBlob(1, PduStore.toBytes(v)); st.bindText(2, id); st.step() } finally { st.close(); vectorCache.invalidate() }
     }
 
-    fun clearVectors() = synchronized(pdu.lock) { exec("UPDATE kb_cards SET emb=NULL") }
+    fun clearVectors() = synchronized(pdu.lock) { exec("UPDATE kb_cards SET emb=NULL"); vectorCache.invalidate() }
 
     // ---- internals ----------------------------------------------------------------------------------------
 
@@ -95,5 +120,22 @@ class KbStore(private val pdu: PduStore) : KbBacking {
             while (st.step()) out += read(st)
             return out
         } finally { st.close() }
+    }
+}
+
+/** A value that is read once and read again only after [invalidate]. The caller serialises access (KbStore does, with the store lock). */
+class VectorCache<T>(private val load: () -> T) {
+    private var value: T? = null
+    private var loaded = false
+
+    fun get(): T {
+        if (!loaded) { value = load(); loaded = true }
+        @Suppress("UNCHECKED_CAST")
+        return value as T
+    }
+
+    fun invalidate() {
+        loaded = false
+        value = null
     }
 }

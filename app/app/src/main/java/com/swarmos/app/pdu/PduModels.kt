@@ -27,6 +27,27 @@ data class PduResponse(
     val withheldPrivate: Int,
 )
 
+/**
+ * A phone is not trusted for the size of what it sends back. A response is cut to what a phone may send: at most [MAX_HITS] hits
+ * (the query asks for at most that many), snippets of at most [Snippets.MAX] characters, and short title, id and kind fields.
+ * An honest peer is never changed by it; only the layout of the screen and the prompt are protected from an oversized one.
+ */
+object PduWireLimits {
+    const val MAX_HITS = 10
+    const val MAX_TITLE = 200
+    const val MAX_ID = 64
+    const val MAX_KIND = 16
+}
+
+fun PduResponse.capped(): PduResponse = copy(
+    hits = hits.take(PduWireLimits.MAX_HITS).map {
+        it.copy(
+            title = it.title.take(PduWireLimits.MAX_TITLE), uriHash = it.uriHash.take(PduWireLimits.MAX_ID),
+            kind = it.kind.take(PduWireLimits.MAX_KIND), snippet = it.snippet.take(Snippets.MAX),
+        )
+    },
+)
+
 @Serializable
 data class PduOpenRequest(val uriHash: String)
 

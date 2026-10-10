@@ -41,6 +41,9 @@ class IndexRun(
     /** True for the whole of an owner-forced re-index: every file is read again, not only changed ones. */
     val rereadAll: Boolean get() = replacing
 
+    /** An owner-forced re-index that has not yet swapped out the old chunks: until it does, they still count against the chunk cap but will go. */
+    val wipePending: Boolean get() = replacing && !replaced
+
     suspend fun embed(texts: List<String>): List<FloatArray> = BatchEmbedder.embedAll(client, current, texts)
 
     /** Call right before a file is stored. [embedded]: this file produced new vectors (a file without text proves nothing). */

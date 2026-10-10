@@ -52,6 +52,13 @@ object KbLimits {
     const val MAX_CARDS_PER_SYNC = 50
     const val MAX_BYTES_PER_SYNC = 128 * 1024
     const val MAX_OFFER_ITEMS = 1000
+
+    /**
+     * How long a revocation matters. A card older than this is refused when it arrives, and a tombstone older than this is not kept
+     * (see [KbService.tombstoneExpired]). The two rules go together: a tombstone is only dropped when the card it revoked is too old
+     * to be accepted again, so dropping it can never let that card come back.
+     */
+    const val HORIZON_MS = 400L * 24 * 60 * 60 * 1000
 }
 
 object KbCanon {
@@ -76,6 +83,11 @@ object KbCanon {
 
     fun tombstoneMac(secret: String, id: String, authorId: String, revokedMs: Long): String =
         Signer.hmacSha256Hex(secret, "kb1-revoke\n$id\n$authorId\n$revokedMs")
+
+    /** The card's MAC verifies under [secret]. */
+    fun sealedBy(c: KbCard, secret: String): Boolean = same(macOf(secret, content(c), c.auditHash), c.mac)
+
+    fun tombstoneSealedBy(t: KbTombstone, secret: String): Boolean = same(tombstoneMac(secret, t.id, t.authorId, t.revokedMs), t.mac)
 
     fun make(
         secret: String, question: String, answer: String, sources: List<KbSource>, authorId: String, authorName: String,

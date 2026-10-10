@@ -65,11 +65,13 @@ fun Route.kbRoutes() {
     KbEngine.start()
 
     post("/offer") {
+        KbEngine.observeSecret()
         val o = SwarmJson.decodeFromString<KbOffer>(call.receiveText())
         call.respond(KbEngine.service.handleOffer(o))
     }
 
     post("/cards") {
+        KbEngine.observeSecret()
         val c = SwarmJson.decodeFromString<KbCards>(call.receiveText())
         val r = KbEngine.service.handleCards(c, call.request.header(Signer.HEADER_NODE) ?: "unknown")
         if (r.accepted > 0) {

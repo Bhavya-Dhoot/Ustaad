@@ -157,11 +157,13 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
             },
             Modifier.fillMaxWidth(), enabled = !busy && text.isNotBlank(),
         )
+        // an ask can be ended at any point; what it has found and written so far stays on the screen
+        if (busy) SecondaryButton("Stop", { PduEngine.stopAsk() }, Modifier.fillMaxWidth())
 
         val cur = q
         if (cur != null) {
             TimingStrip(cur)
-            if (cur.lexicalOnly) Text("Keyword search only: this phone's embedding model is not loaded.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+            if (cur.lexicalOnly) Text("Keyword search only on this phone: its embedding model is not loaded or did not answer in time.", style = SwarmType.label.copy(color = SwarmColors.graphite))
 
             // the answer first, directly under the timings; the sources it cites follow
             val savedHit = cur.savedAnswer

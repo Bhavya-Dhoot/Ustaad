@@ -91,6 +91,7 @@ private fun LibraryPage(go: (String) -> Unit) {
     val folders by PduEngine.folders.collectAsStateWithLifecycle()
     val emb by PduEngine.embedder.collectAsStateWithLifecycle()
     val reindexNeeded by PduEngine.reindexNeeded.collectAsStateWithLifecycle()
+    val engineNote by PduEngine.engineNote.collectAsStateWithLifecycle()
     // nothing is indexed, scanned or wiped without a real, loaded embedder, and a stale index waits for the owner
     val canIndex = emb.ready && !reindexNeeded && !progress.running
     var note by remember { mutableStateOf<String?>(null) }
@@ -152,6 +153,12 @@ private fun LibraryPage(go: (String) -> Unit) {
                 Spacer(Modifier.height(6.dp))
                 InkProgress(if (progress.total > 0) progress.done / progress.total.toFloat() else 0f)
                 Text("${progress.label}  ${progress.done}/${progress.total}  ${progress.current}", style = SwarmType.mono, maxLines = 2)
+                Spacer(Modifier.height(8.dp))
+                SecondaryButton("Stop indexing", { PduEngine.stopIndex() })
+            }
+            engineNote?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, style = SwarmType.label.copy(color = SwarmColors.graphite))
             }
             progress.last?.takeIf { !progress.running }?.let { r ->
                 val line = r.error ?: "${r.indexed} indexed, ${r.noText} without text, ${r.unchanged} unchanged" +
