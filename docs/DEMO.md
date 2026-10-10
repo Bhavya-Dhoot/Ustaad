@@ -1,8 +1,8 @@
 # Ustaad demo runbook (judges, 6 minutes maximum)
 
-Updated 2026-10-10 against master 3a55086 (gates 0 to 5 closed, gate 6 polish open). docs/CLAIMS.md is binding: a sentence it marks UNPROVEN or FALSE AS STATED is not said here; it appears only in the "What we do not claim" box or in the "If measured by then" box. A number in parentheses is followed by the file it comes from. Setup is in docs/SETUP.md, the one-page pitch in docs/PITCH.md, the slides in docs/DECK.md.
+Updated 2026-10-10 against master 0a71f33 (gates 0 to 5 closed, gate 6 polish open; that build passes its unit tests and was installed on phones A, B and C at 10:27, docs/BUILD.md). docs/CLAIMS.md is binding: a sentence it marks UNPROVEN or FALSE AS STATED is not said here; it appears only in the "What we do not claim" box or in the "If measured by then" box. A number in parentheses is followed by the file it comes from. Setup is in docs/SETUP.md, the one-page pitch in docs/PITCH.md, the slides in docs/DECK.md.
 
-The script uses only steps that have run on phones, each in one run on the debug build (gate-3-agent-choir.md, gate-4-private-data-union.md, gate-5-memorycloud.md). The demo build has not carried a split or a Choir run. Its time slots are a plan. No rehearsal has been recorded, so do not state a demo time as a result until one has (docs/CLAIMS.md R20, UX6). One blank remains for a phone measurement that is running now (Knowledge Bank replication on the latest build); it sits in the "If measured by then" box.
+The script uses only steps that have run on phones, each in one run on the debug build (gate-3-agent-choir.md, gate-4-private-data-union.md, gate-5-memorycloud.md). The demo build has not carried a split or a Choir run. Its time slots are a plan. No rehearsal has been recorded, so do not state a demo time as a result until one has (docs/CLAIMS.md R20, UX6). The Knowledge Bank replication measurement that was a blank has been taken (2026-10-10-knowledge-bank.md, "Third run"); what it did not measure sits in the "If measured by then" box. A screenshot check of eight screen fixes is running (docs/design/qa3); frames from the second visual pass are in docs/design/qa2/.
 
 ## Layout on the table
 
@@ -84,7 +84,7 @@ Do not say: two model families; critic or rotating judge; "smarter"; that Choir 
 Fallback:
 - A lane shows No answer, Timed out or Away: it is left out of the vote and the run goes on (choir/ChoirScreen.kt); say so. In the second run all three phones answered in 37 of 40 rows.
 - All phones agree in round 1: say they agree and read the stamp as shown.
-- Phone hot: the eval refuses to start; talk over the stored numbers above instead.
+- Phone hot: the eval refuses to start; talk over the stored numbers above instead, with docs/design/qa2/21-choir-result-lanes.png as a frame of a real `m3` run on three phones (second visual pass; do not read its digits aloud).
 
 ## Step 4. MemoryCloud (3:40 to 5:20)
 
@@ -94,9 +94,10 @@ Presenter (Phone C, the driver; Phones A and B lend memory): Memory tab, pick `Q
 
 Judges see: SPLIT READY with a live tok/s, load time and first-token time, TCP round trips to both lenders, a one-row layer strip with a colour per phone (C layers 0 to 15, A 16 to 31, B 32 to 47), and the banner "Running a large model with Phone A and Phone B." (docs/design/shots/memcloud-ready-30b.png).
 
-Say: "This model is 18.6 GB. One phone gave no token in 134 seconds and the system killed 23 other apps; two phones did not load. Across three phones it runs: first token in 1.5 to 2.8 seconds, 5.7 to 6.4 tokens a second. It is a capacity tool, not a speed tool: a model that fits one phone is slower when split."
+Say: "This model is 18.6 GB, a mixture-of-experts model with 128 experts of which 8 are used per token, and whole layer ranges sit on the three phones. One phone gave no token in 134 seconds and the system killed 23 other apps; two phones did not load. Across three phones it runs: first token in 1.5 to 2.8 seconds, 5.7 to 6.4 tokens a second. It is a capacity tool, not a speed tool: a model that fits one phone is slower when split."
 
 Numbers (Phone C driving, A and B lending, Wi-Fi Direct group at 5765 MHz, one run, debug build of e2d41e4; 2026-10-10-memorycloud-inapp.md, gates/gate-5-memorycloud.md):
+- The model is Qwen3-30B-A3B, a mixture-of-experts model: 48 layers, 128 experts, 8 used per token (GGUF header). Whole layer ranges were placed on phones; individual experts were not placed on different phones. The screen shows 3 phone boundaries per token and TCP round trips of 7.1 ms and 7.8 ms to the lenders.
 - Load 319 s with empty lender caches, 65 s on a re-plan with warm caches; first token 1.5 to 2.8 s; decode 5.7 to 6.4 tok/s over 100 and 200 token answers; thermal 1, 1, 1 at the start and 0, 0, 1 at the end.
 - App plus children while serving: A 5.9 GB, B 6.1 GB, C 5.1 GB, with 5.2 to 5.3 GB still available on each phone; the weights received were A 5743 MB and B 5991 MB. Link: C to A 680 Mbps, C to B 245 Mbps, round trip about 7 ms.
 - Baselines: one phone no token after 134 s; two phones did not load (0.47 of 9.3 GB reached the lender in 8 minutes) (2026-10-10-rpc-split-spike.md, gate-5-memorycloud.md).
@@ -104,7 +105,7 @@ Numbers (Phone C driving, A and B lending, Wi-Fi Direct group at 5765 MHz, one r
 
 Optional, only with a laptop and adb on the table and rehearsed: force-stop Ustaad on Phone B mid-answer. In the one run the driver showed DEGRADED naming Phone B after 1.77 s and kept the 27 tokens written, and a re-plan was READY after 65.3 s; the button can read "Re-plan with 3 phones" for a few seconds after a phone is lost (docs/design/shots/memcloud-degraded-30b.png). Say "one run".
 
-Do not say: that two phones run the 30B model (they did not load); that the result was repeated or sustained (one run, answers under 40 s, nothing at Thermal Status 2 or above); that the PRD's 6 to 10 tok/s estimate was met (5.7 to 6.4 measured); that the demo build carried it; ExpertMesh figures as measurements (estimates; no mixture-of-experts model ran split); that the 10 s lease works (unit-tested only).
+Do not say: that two phones run the 30B model (they did not load); that the result was repeated or sustained (one run, answers under 40 s, nothing at Thermal Status 2 or above); that the PRD's 6 to 10 tok/s estimate was met (5.7 to 6.4 measured); that the demo build carried it; the ExpertMesh "remote experts" figures as measurements (they are arithmetic estimates of network wait; no run put experts of one layer on different phones); that the 10 s lease works (unit-tested only).
 
 If it fails live: the first start once failed after 12 s with "port 50052 is still in use" on Phone A, and the second start worked (cause not found): press load again. If the split will not come up, show docs/design/shots/memcloud-ready-30b.png and memcloud-degraded-30b.png as frames from the measured run and read the numbers above.
 
@@ -123,7 +124,8 @@ Use a row only when its file exists and holds the number. Until then say nothing
 
 | Item | File that will hold it | Fallback that is already proven |
 |---|---|---|
-| Knowledge Bank: a shared card and a revoke reach the other phone by themselves within a minute on the current build (push after save and revoke merged in 1f514b6, unit-tested only; a phone measurement is running now). BLANK | to be named; the results go in 2026-10-10-e2e2-knowledge-bank.md or a successor | Do not show it. Say what ran on two phones: an explicit sync moved the card, the other phone answered from it in 35 ms with the author's phone stopped against 5090 ms for the live search, a revoke stopped its use, a tampered copy was refused; nothing was seen on a screen (2026-10-10-e2e2-knowledge-bank.md) |
+| Knowledge Bank with a phone that is away when the card is saved, the 3-minute timer, and more than three phones (not measured; the replication itself is measured) | none yet | Not part of the script. Say what ran on three phones: with no sync call a shared save and a revoke were each listed on both other phones at the first poll, under 0.8 s; with the author's phone stopped the other phone answered from the card in 40 and 47 ms with the author, the time and two sources; a revoke stopped its use and a tampered copy was refused (2026-10-10-knowledge-bank.md "Third run", 2026-10-10-e2e2-knowledge-bank.md) |
+| Knowledge Bank saved and shared with the app's own Save and Share buttons, on the demo build (the measured saves and revokes were made through debug routes, which the demo build does not have) | none yet | Not a live step. Show the page frames docs/design/qa2/12-kb-page-saved-and-revoked.png and 13-kb-card-detail-on-c.png as frames from the second visual pass |
 | A repeat of the three-phone 30B run: cold load, 5 minutes of generation, Thermal Status 2 or above | none yet | Step 4 as written, labelled one run |
 | The 20-problem Choir run repeated after the JSON-fragment and rounding fix (08a205f), and a Choir run on the demo build | none yet | Gate-3 numbers above |
 | Airplane mode with the Direct group formed; bytes to the internet per app | none yet (docs/CLAIMS.md M6) | Do not say "no internet" as a result |
@@ -149,8 +151,8 @@ Use a row only when its file exists and holds the number. Until then say nothing
 - "0 bytes to the internet", "no internet" as a result, or airplane-mode operation (PS2, PS3).
 - "Fully private" or "zero-trust" (PS9). Say: private by design, files and embeddings stay on the phone, the question and short snippets cross the link signed but not encrypted.
 - Works in the background, or the battery setting fixes it (LK7, UX3).
-- The 30B model on two phones (it did not load); the three-phone MemoryCloud result as repeated, sustained or run on the demo build (one run, debug build); any ExpertMesh measurement (EM1).
-- Camera, document scan or dictation as demonstrated; Office Kit; the in-app model download; the memory lease as proven; the Knowledge Bank replicating by itself within a minute (not observed) (R15, R17, R26, R28, R20).
+- The 30B model on two phones (it did not load); the three-phone MemoryCloud result as repeated, sustained or run on the demo build (one run, debug build); individual experts placed on different phones, or the ExpertMesh "remote experts" figures as measurements (EM1).
+- Camera, document scan or dictation as demonstrated; Office Kit; the in-app model download; the memory lease as proven; the Knowledge Bank reaching a phone that was away when the card was saved, or the 3-minute timer (not measured) (R15, R17, R26, R28, R20).
 
 ## Judging-criteria map
 
@@ -180,7 +182,7 @@ Weights are from docs/research/06-hackathon-context-and-landscape.md. Creative p
 | Decode when sustained | 12.3, 10.6, 6.8 tok/s at minutes 1, 5, 10 on the GPU | 2026-10-10-llama-cpu-baseline.md |
 | Choir, three phones, 20 problems, strict scorer, test off | Choir 16 of 20 in 20.1 s; one phone three samples 18 of 20 in 32.3 s; one answer 14 of 20 in 11.4 s | 2026-10-10-e2e2-choir.md |
 | Data Union, GPU, first-time questions, n = 9 | median 4.2 s to the first word, 6.6 s total; under 2 s in 2 of 9, under 6 s in 4 of 9 | 2026-10-10-e2e2-data-union.md |
-| Knowledge Bank, two phones, author's phone stopped | answer from the card in 35 ms against 5090 ms for the live search | 2026-10-10-e2e2-knowledge-bank.md |
+| Knowledge Bank, three phones, no sync call; author's phone stopped | a shared save and a revoke listed on both other phones at the first poll, under 0.8 s; answer from the card in 40 and 47 ms (second run: 35 ms against 5090 ms for the live search) | 2026-10-10-knowledge-bank.md, 2026-10-10-e2e2-knowledge-bank.md |
 | 30B across three phones, one run | load 319 s cold, 65 s warm; first token 1.5 to 2.8 s; 5.7 to 6.4 tok/s | 2026-10-10-memorycloud-inapp.md |
 | 30B on one phone; on two phones | no token in 134 s; did not load | 2026-10-10-rpc-split-spike.md, gates/gate-5-memorycloud.md |
 | Split 4B over two phones against one | 6.86 and 6.98 against 10.80 and 14.69 tok/s | 2026-10-10-memorycloud-inapp.md |
