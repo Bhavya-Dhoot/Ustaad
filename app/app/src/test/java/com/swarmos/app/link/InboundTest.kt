@@ -65,7 +65,28 @@ class InboundDecisionTest {
         assertEquals("no Bluetooth path: nothing to beat", InboundAction.Ignore, Inbound.decide(listOf(lan), "127.0.0.1"))
     }
 
-    @Test fun anAddressNoPathHasIsNotABeat() {
-        assertEquals(InboundAction.Ignore, Inbound.decide(listOf(lan), "192.168.1.99"))
+    @Test fun aPrivateAddressNoPathHasMeansThePhoneMovedSoReconnectThere() {
+        assertEquals(InboundAction.Reconnect("192.168.1.99", 8787), Inbound.decide(listOf(lan), "192.168.1.99"))
+        assertEquals("the port of the paths already held is reused", InboundAction.Reconnect("10.0.0.7", 8797), Inbound.decide(listOf(lan.copy(port = 8797)), "10.0.0.7"))
+        assertEquals("only a Bluetooth path is held: the default node port", InboundAction.Reconnect("192.168.1.99", 8787), Inbound.decide(listOf(bt), "192.168.1.99"))
+    }
+
+    @Test fun aPublicAddressIsNeverFollowed() {
+        assertEquals(InboundAction.Ignore, Inbound.decide(listOf(lan), "8.8.8.8"))
+        assertEquals(InboundAction.Ignore, Inbound.decide(listOf(lan), "2001:db8::1"))
+    }
+}
+
+class RateGateTest {
+    @Test fun oncePerGapPerKey() {
+        var now = 0L
+        val g = RateGate(Inbound.RECONNECT_GAP_MS) { now }
+        assertTrue(g.tryAcquire("n1"))
+        now += 9_999
+        assertFalse("inside the 10 s gap", g.tryAcquire("n1"))
+        assertTrue("another peer has its own gap", g.tryAcquire("n2"))
+        now += 1
+        assertTrue("10 s later", g.tryAcquire("n1"))
+        assertFalse(g.tryAcquire("n1"))
     }
 }

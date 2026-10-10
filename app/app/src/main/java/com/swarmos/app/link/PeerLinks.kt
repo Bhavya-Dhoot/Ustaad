@@ -260,9 +260,12 @@ object PeerLinks {
         val now = System.currentTimeMillis()
         val fresh = PeerStatus(info.nodeId, info.name, host, port, link, LinkState.ONLINE, null, now, 0, health, info, peerForeground = peerFg[info.nodeId])
         var created = false
+        var backOnline = false
+        var before: PeerStatus? = null
         val session: PeerSession
         synchronized(this) {
             val old = sessions[key]
+            before = old?.status?.value
             if (old == null) {
                 created = true
                 session = PeerSession(fresh).also { s ->
@@ -272,7 +275,15 @@ object PeerLinks {
                 }
             } else {
                 session = old
-                old.update { it.copy(name = info.name, ip = host, port = port, info = info, health = health) }
+                val moved = old.status.value.ip != host || old.status.value.port != port
+                backOnline = old.tracker.onInbound(now) // the hello and signed health that got us here prove the peer is there
+                old.update {
+                    it.copy(
+                        name = info.name, ip = host, port = port, info = info, health = health,
+                        state = old.tracker.state, misses = 0, lastSeenMs = now, awayReason = if (backOnline) null else it.awayReason,
+                    )
+                }
+                if (moved) Log.i(TAG, "${info.name} ${link.name} moved from ${before?.ip} to $host:$port")
             }
         }
         publish()
@@ -280,6 +291,8 @@ object PeerLinks {
         if (created) {
             AppGraph.audit.append("peer.trusted", JsonObject(mapOf("node" to JsonPrimitive(info.nodeId), "ip" to JsonPrimitive(host), "link" to JsonPrimitive(link.name))))
             Log.i(TAG, "trusted ${info.name} ${info.nodeId} at $host:$port via $link")
+        } else if (backOnline) {
+            AppGraph.audit.append("peer.online", JsonObject(mapOf("node" to JsonPrimitive(info.nodeId), "link" to JsonPrimitive(link.name), "by" to JsonPrimitive("connect"))))
         }
         return session to created
     }
@@ -383,11 +396,18 @@ object PeerLinks {
         if (nodeId == selfId || path == "/v1/link/bye") return // the bye request must not undo itself
         val mine = sessions.values.map { it.status.value }.filter { it.nodeId == nodeId }
         if (mine.isEmpty()) return
-        when (val a = Inbound.decide(mine, remote)) {
+        when (val a = Inbound.decide(mine, remote, Ports.NODE)) {
             is InboundAction.Beat -> sessions[a.key]?.let { applyInbound(it, nodeId) }
+            is InboundAction.Reconnect -> if (reconnectGate.tryAcquire(nodeId)) {
+                // the phone got a new address: do not wait for discovery to find it (up to a minute), go to where it is
+                Log.i(TAG, "$nodeId reached us from ${a.host}, which none of its paths uses; reconnecting there")
+                scope.launch { runCatching { connect(a.host, a.port, announce = false) } }
+            }
             InboundAction.Ignore -> {}
         }
     }
+
+    private val reconnectGate = RateGate(Inbound.RECONNECT_GAP_MS)
 
     private fun applyInbound(s: PeerSession, nodeId: String) {
         val now = System.currentTimeMillis()
