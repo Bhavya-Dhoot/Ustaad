@@ -5,6 +5,7 @@ import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
 import com.swarmos.app.link.NodeClient
 import com.swarmos.app.link.NodeHttpException
+import com.swarmos.app.link.RequestDedup
 import com.swarmos.app.llm.ChatChunk
 import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatResult
@@ -134,7 +135,11 @@ class RemoteLlmClient(
         if (!finished) throw StreamIntegrityException("the stream from ${peer.name} ended without its signature: discard the answer")
     }.catch { e -> throw if (e is NodeHttpException) e.asSchedError() else e }
 
-    /** 429 becomes [BusyException], 409 becomes [ModelMismatchException]; anything else passes through. */
+    /**
+     * 429 becomes [BusyException]. A 409 with a [MismatchBody] becomes [ModelMismatchException]; any other 409 is the node
+     * server saying the same request is still running after [RequestDedup.MAX_WAIT_MS], which is a [PhoneTimeoutException]:
+     * the job is slow, the phone is there. Anything else passes through.
+     */
     private inline fun <T> mapErrors(block: () -> T): T = try {
         block()
     } catch (e: NodeHttpException) {
@@ -145,7 +150,10 @@ class RemoteLlmClient(
         429 -> runCatching { SwarmJson.decodeFromString<BusyBody>(body) }
             .map { BusyException(it.running, it.capacity, it.queued) }
             .getOrElse { BusyException(0, 0, 0) }
-        409 -> ModelMismatchException(runCatching { SwarmJson.decodeFromString<MismatchBody>(body).model }.getOrDefault("?"))
+        409 -> {
+            val model = runCatching { SwarmJson.decodeFromString<MismatchBody>(body).model }.getOrNull()
+            if (model != null) ModelMismatchException(model) else PhoneTimeoutException(peer.nodeId, RequestDedup.MAX_WAIT_MS)
+        }
         else -> this
     }
 }
