@@ -233,12 +233,14 @@ object ModelStore {
         setState(file, null)
     }
 
+    /** True while a server that is loading or running holds [file]. A server in FAILED holds nothing, so its model may be deleted. */
+    internal fun inUse(statuses: Collection<ServerStatus>, file: String): Boolean = statuses.any {
+        (it.state == ServerState.READY || it.state == ServerState.STARTING) && it.modelPath?.let { p -> File(p).name } == file
+    }
+
     /** Deletes the model (and any partial download). Refuses while a server is using it. */
     fun delete(file: String): Boolean {
-        val inUse = LlamaRuntime.status.value.values.any {
-            it.state != ServerState.STOPPED && it.modelPath?.let { p -> File(p).name } == file
-        }
-        if (inUse) return false
+        if (inUse(LlamaRuntime.status.value.values, file)) return false
         cancelDownload(file)
         val a = fileOf(file).delete()
         File(fileOf(file).path + ".part").delete()

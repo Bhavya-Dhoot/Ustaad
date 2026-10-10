@@ -359,9 +359,7 @@ private fun InkSwitch(checked: Boolean) {
  */
 @Composable
 private fun FileCard(file: String, entry: CatalogEntry?, p: PresentModel?, dl: DownloadState?, status: Map<Role, ServerStatus>) {
-    val loadedAs = Role.entries.firstOrNull { r ->
-        status.getValue(r).let { it.state != ServerState.STOPPED && it.modelPath?.endsWith("/$file") == true }
-    }
+    val loadedAs = loadedAs(status, file)
     val action = cardAction(entry, p, dl, loadedAs)
     var choosing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
