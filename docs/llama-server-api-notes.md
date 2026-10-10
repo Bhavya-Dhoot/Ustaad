@@ -131,3 +131,7 @@ Verified: 768-d, norm 1.0, cosine("I love hiking in the mountains.", "Trekking i
 3. The first request after load pays a page-in penalty; warm it.
 4. Hot phones are slower: decode fell to 8-11 tok/s once Thermal Status reached 3-4 (see the tuning note). Surface tokens/s from `timings`, do not assume 13.
 5. No authentication on llama-server; loopback only. The rpc-server has none either.
+
+## Who may call the models routes
+
+The app's own routes under `/v1/models/` (`GET /state`, `/load`, `/stop`, `/autoload`, `/gpu`, `/selftest`, `/bench`) are signed Node API routes like every other `/v1` route, and any paired phone may call every one of them. That is by design: MemoryCloud stops the chat and embedding servers on a lender phone to make room for `rpc-server` and restores them afterwards, so the driving phone must be able to call `/stop` and `/load` there. The pairing secret is the only gate; there is no per-route or per-phone permission, so a phone that holds the secret can unload or replace the models of any other paired phone. llama-server itself is not reachable from the network (loopback only, no API key).
