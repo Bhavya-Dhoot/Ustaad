@@ -83,7 +83,8 @@ elif cmd == "busy":
     rows, t0 = [], time.time()
     while time.time() - t0 < seconds:
         b = call("GET", "/v1/sched/busy")
-        row = {"t": round(time.time() - t0), "thermal": thermal(), **b}
+        chat = roles().get("chat", {})  # memory and restarts of the chat server, for runs long enough to show growth
+        row = {"t": round(time.time() - t0), "thermal": thermal(), "chatRssMb": chat.get("rssMb"), "chatRestarts": chat.get("restarts"), **b}
         rows.append(row)
         print(json.dumps(row, ensure_ascii=False)[:300], flush=True)
         time.sleep(15)

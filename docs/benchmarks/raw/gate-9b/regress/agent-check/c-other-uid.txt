@@ -1,0 +1,2 @@
+uid 2000
+{"id":"chatcmpl-c74e4efba8bc4f0db652d866","object":"chat.completion","created":1791635630,"model":"ustaad-local","system_fingerprint":"ustaad:Phone C","choices":[{"index":0,"message":{"role":"assistant","content":"ready"},"finish_reason":"stop"}],"usage":{"prompt_tokens":19,"completion_tokens":2,"total_tokens":21}} HTTP200

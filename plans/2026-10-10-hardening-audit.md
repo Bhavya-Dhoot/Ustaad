@@ -23,3 +23,13 @@ Standing limits: Phone A is reserved by the founder (CLAUDE.md), so phone checks
 Constraint: correctness under failure first, then throughput; phone time on two phones; wire compatibility with c2ca589.
 Failure modes: an audit finding that is plausible and wrong (each P0 and P1 is confirmed in the code by the orchestrator or by a failing test before anyone fixes it); a "fix" that slows the phones (before and after measurement, revert if not better); fixes colliding (one builder per package set, merged one at a time with the full suite); the never-idle mode overheating phones or starving real work (thermal gate, short cancellable jobs, measured delay); a change that breaks talking to Phone A's older build (reviewed for wire changes; a B and C check with A online as it is).
 Ledger: Codex audit and four reviewers delegated (independent reads, cheap, verifiable against the code); triage kept by the orchestrator (it decides what is real); fixes delegated to builders per package; phone checks and the gate artifact kept by the orchestrator.
+
+## Continuation on two phones (2026-10-10, 16:00): Phone A held back again by the founder
+Constraint: phone time and heat. Two phones, one model slot each, and a warm phone decodes about 20 % slower, so one experiment per phone at a time and the long soak last.
+1. Phone C: the fixed cost per request inside the model server (16 to 20 prompt tokens take 0.77 to 0.83 s although the same server prefills at 126 tok/s). Verify: fixed cost per variant; if a setting removes it, bench32 on C before and after.
+2. Phone B: n-gram speculation in the model server. Verify: decode tok/s with identical output, alternating order.
+3. Orchestrator: reaction to the low-memory signal, keep busy with the app in the background, the Choir majority switch if the Choir runs three voices on two phones.
+4. One builder: whatever step 1 recommends plus a plain sentence for the cut-answer error; build; install on B and C; regression.
+5. A 60 minute keep-busy soak on B and C with the chat server memory sampled. Verify: share of time generating, thermal trace, memory trace, failed jobs.
+Failure modes: an engineer leaves a phone on a non-default server load (caught: the orchestrator reads the state of both phones before step 3); a reported gain that is only heat (caught: alternating order, a thermal column, and a bench32 re-run by the orchestrator); an agent touching Phone A (each brief pins one serial and forbids the address); a hung agent (stopped, phone restored with a default reload).
+Ledger: 1 and 2 delegated to Sonnet inference engineers (bounded, checkable by a re-run, their exploration stays out of the orchestrator context); 3 direct (a few calls); 4 delegated (Kotlin); 5 direct (one background script).

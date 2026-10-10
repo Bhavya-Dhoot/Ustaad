@@ -1,0 +1,27 @@
+INFO  phone 192.168.242.76:5555  Thermal Status: 0  forward: 
+INFO  t  want get_weather  got get_weather  {"city": "Bengaluru", "unit": "celsius"}  5.7 s
+INFO  t  want get_weather  got get_weather  {"city": "Mumbai", "unit": "celsius"}  2.9 s
+INFO  t  want get_weather  got get_weather  {"city": "Delhi", "unit": "fahrenheit"}  3.0 s
+INFO  t  want set_alarm  got set_alarm  {"time": "06:30", "label": "Wake up tomorrow"}  3.3 s
+INFO  t  want set_alarm  got set_alarm  {"time": "21:15", "label": "medicine"}  3.1 s
+INFO  t  want search_files  got search_files  {"query": "laptop warranty bill"}  2.6 s
+INFO  t  want search_files  got search_files  {"query": "electricity bill"}  2.5 s
+INFO  t  want search_files  got search_files  {"query": "yoga class schedule"}  2.6 s
+INFO  t  want None  got None  '12 times 12 is 144.'  1.8 s
+INFO  t  want None  got None  'नमस्ते! (Namaste!)'  1.5 s
+INFO  t  want None  got None  'The capital of France is **Paris**.'  1.4 s
+INFO  t  want None  got None  'The sea whispers secrets to the wind,\nA boundless blue where dreams be'  2.1 s
+PASS  t-tool-selection  right tool 8 of 8; right key argument 8 of 8; answered directly 4 of 4; tool calls with arguments that parse 8; mean 2.7 s per request; Thermal Status: 0
+PASS  u-required  HTTP 200, calls [('search_files', {'query': 'capital of France'})]
+PASS  u-none  HTTP 200, content "I don't have access to real-time data, so I can't tell you the current weather i"
+PASS  u-named  HTTP 200, calls [('set_alarm', {'time': '19:00', 'label': 'Reminder'})]
+PASS  u-refusals  unknown named tool 400, duplicate names 400, tools with response_format 400
+PASS  u-two-step  first: tool_calls, call [('get_weather', {'city': 'Bengaluru', 'unit': 'celsius'})]; final after the tool result: 'The current weather in Bengaluru is 24°C with light rain.'; 6.7 s for both calls
+PASS  v-openai-sdk-tools  streamed: 2 events, set_alarm({"time":"21:15","label":"medicine"}), finish tool_calls; not streamed: [('get_weather', '{"city":"Mumbai","unit":"celsius"}')], finish tool_calls
+FAIL  w-phone  scope phone, 0.04 s: []
+PASS  w-shape  keys present ['code', 'error', 'message', 'type']; forbidden keys found []; swarm scope not run (AGENT_NO_SWARM)
+FAIL  w-limits  empty query 403, 1001 characters 403, unknown scope 403, max_results 50 403
+FAIL  x-loop-1  'When is my electricity bill due and how much is it?': search_files({'query': 'electricity bill due date amount'}) in 4.4 s; search gave [] in 0.04 s; answer in 3.7 s: "I couldn't find your electricity bill in your documents, so I'm unable to tell you the due date or amount. Please check your email or the utility provider's website for this information."; whole loop 8.1 s
+FAIL  x-loops  0 of 1 loops ended in an answer with the expected fact
+PASS  s-schemas  maxItems 100000: HTTP 400 limit_exceeded; external $ref: HTTP 400 unsupported_parameter
+INFO  end  Thermal Status: 1

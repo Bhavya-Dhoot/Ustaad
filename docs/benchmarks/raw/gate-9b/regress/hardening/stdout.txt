@@ -1,0 +1,3 @@
+INFO  phone 192.168.242.76  thermal 0  chat {'state': 'READY', 'backend': 'GPU', 'loadMs': 16143, 'restarts': 0}
+PASS  g-gpu-start  three reloads (state, backend, loadMs): [('READY', 'GPU', 15819), ('READY', 'GPU', 16126), ('READY', 'GPU', 16140)]; program cache files and kB: '5'; thermal 0
+INFO  end  thermal 0  chat {'state': 'READY', 'backend': 'GPU', 'restarts': 0}

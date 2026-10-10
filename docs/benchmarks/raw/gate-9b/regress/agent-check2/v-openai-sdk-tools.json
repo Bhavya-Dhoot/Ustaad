@@ -1,0 +1,18 @@
+{
+ "stream": {
+  "events": 2,
+  "name": "set_alarm",
+  "arguments": "{\"time\":\"21:15\",\"label\":\"medicine\"}",
+  "finish": "tool_calls",
+  "seconds": 9.178764820098877
+ },
+ "plain": {
+  "finish": "tool_calls",
+  "calls": [
+   [
+    "get_weather",
+    "{\"city\":\"Mumbai\",\"unit\":\"celsius\"}"
+   ]
+  ]
+ }
+}

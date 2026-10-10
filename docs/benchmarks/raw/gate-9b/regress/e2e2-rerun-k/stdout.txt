@@ -1,0 +1,7 @@
+e2e2-check 2026-10-10 17:50:16 results=H:/UStaaf/docs/benchmarks/raw/gate-9b/regress/e2e2-rerun-k phones=192.168.242.23:8787 192.168.242.76:8787  steps=k
+INFO  models  Phone B: chat STOPPED (None); embed STOPPED (None); loading
+INFO  models  Phone C: chat STOPPED (None); embed STOPPED (None); loading
+INFO  k-real-answer  real answer on Phone B: sources=4 ttftMs=6827 totalMs=13352 incomplete=false withheld=0 peers=ok; thermal Phone B=1 Phone C=0
+FAIL  k1-save-shared  HTTP 409: {"error":"A source is in a private folder, so this card cannot be shared"}
+RESPONSE-MAC  ok=8 wrong=0 missing=0 (calls made from the main shell only; problems in rsp-problems.log)
+SUMMARY  pass=0 fail=1 warn=0  results=H:/UStaaf/docs/benchmarks/raw/gate-9b/regress/e2e2-rerun-k

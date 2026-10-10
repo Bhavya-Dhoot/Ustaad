@@ -1,0 +1,18 @@
+binary sha256 on the phone: 4156717d58498e6b93cb8f2d64e961aa289902aa82e957bead5b55afe89335a6
+stop app chat server: {'node': 'Phone B', 'roles': {'chat': {'state': 'STOPPED', 'model': None, 'file': None, 'reason': None, 'pid': None, 'port': 8080, 'rssMb': None, 'loadMs': None
+forward: 18090
+pass 1 base: thermal 0 (waited 0 s), server pid 21547 ready in 32 s
+  du1   prompt 810 (+0 cached) decode 41 tok at 13.25 tok/s, drafted None accepted None, 9.2 s
+  du2   prompt 696 (+68 cached) decode 45 tok at 13.22 tok/s, drafted None accepted None, 8.71 s
+  du3   prompt 639 (+68 cached) decode 59 tok at 13.46 tok/s, drafted None accepted None, 9.17 s
+  du4   prompt 781 (+0 cached) decode 45 tok at 13.26 tok/s, drafted None accepted None, 9.29 s
+  du5   prompt 596 (+68 cached) decode 36 tok at 13.42 tok/s, drafted None accepted None, 7.23 s
+  du6   prompt 665 (+68 cached) decode 41 tok at 13.45 tok/s, drafted None accepted None, 8.03 s
+  ch1   prompt 164 (+0 cached) decode 120 tok at 13.72 tok/s, drafted None accepted None, 10.62 s
+  ch2   prompt 162 (+0 cached) decode 110 tok at 13.17 tok/s, drafted None accepted None, 10.45 s
+  ch3   prompt 358 (+0 cached) decode 91 tok at 13.02 tok/s, drafted None accepted None, 10.44 s
+  pl0   prompt 29 (+0 cached) decode 30 tok at 12.96 tok/s, drafted None accepted None, 3.39 s
+  pl2   prompt 17 (+11 cached) decode 21 tok at 12.85 tok/s, drafted None accepted None, 2.42 s
+  pl4   prompt 17 (+11 cached) decode 32 tok at 13.07 tok/s, drafted None accepted None, 3.21 s
+pass 1 base done: thermal 0 -> 1, VmHWM: 2097908 kB VmRSS: 1795908 kB
+remove forward: 

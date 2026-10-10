@@ -1,0 +1,452 @@
+{
+ "name": "ctxcp0",
+ "args": [
+  "-ctxcp",
+  "0"
+ ],
+ "thermalBefore": "0",
+ "thermalWaitedS": 0,
+ "backend": "GPU",
+ "loadMs": 17802,
+ "serverArgs": null,
+ "rssMbAfterLoad": 704,
+ "fresh": [
+  {
+   "tag": "fresh-1",
+   "promptTokens": 14,
+   "promptMs": 347.8,
+   "genMs": 271.5,
+   "completionTokens": 4,
+   "wallMs": 691.8,
+   "text": "An **umbrella",
+   "words": 1,
+   "rep": -1,
+   "warmup": true
+  },
+  {
+   "tag": "fresh-30",
+   "promptTokens": 53,
+   "promptMs": 628.7,
+   "genMs": 274.7,
+   "completionTokens": 4,
+   "wallMs": 951.0,
+   "text": "It looks like you",
+   "words": 30,
+   "rep": -1,
+   "warmup": true
+  },
+  {
+   "tag": "fresh-150",
+   "promptTokens": 211,
+   "promptMs": 1739.7,
+   "genMs": 274.0,
+   "completionTokens": 4,
+   "wallMs": 2119.4,
+   "text": "It looks like you",
+   "words": 150,
+   "rep": -1,
+   "warmup": true
+  },
+  {
+   "tag": "fresh-600",
+   "promptTokens": 779,
+   "promptMs": 5686.3,
+   "genMs": 266.8,
+   "completionTokens": 4,
+   "wallMs": 6005.5,
+   "text": "It looks like you",
+   "words": 600,
+   "rep": -1,
+   "warmup": true
+  },
+  {
+   "tag": "fresh-1",
+   "promptTokens": 14,
+   "promptMs": 353.7,
+   "genMs": 293.0,
+   "completionTokens": 4,
+   "wallMs": 762.2,
+   "text": "The **desert",
+   "words": 1,
+   "rep": 0,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-30",
+   "promptTokens": 51,
+   "promptMs": 618.0,
+   "genMs": 285.4,
+   "completionTokens": 4,
+   "wallMs": 957.8,
+   "text": "It looks like you",
+   "words": 30,
+   "rep": 0,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-150",
+   "promptTokens": 201,
+   "promptMs": 1690.4,
+   "genMs": 279.4,
+   "completionTokens": 4,
+   "wallMs": 2044.2,
+   "text": "It looks like you",
+   "words": 150,
+   "rep": 0,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-600",
+   "promptTokens": 759,
+   "promptMs": 6189.8,
+   "genMs": 283.1,
+   "completionTokens": 4,
+   "wallMs": 6533.6,
+   "text": "It looks like you",
+   "words": 600,
+   "rep": 0,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-1",
+   "promptTokens": 14,
+   "promptMs": 352.7,
+   "genMs": 280.2,
+   "completionTokens": 4,
+   "wallMs": 757.5,
+   "text": "The term **\"c",
+   "words": 1,
+   "rep": 1,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-30",
+   "promptTokens": 52,
+   "promptMs": 628.1,
+   "genMs": 288.3,
+   "completionTokens": 4,
+   "wallMs": 979.6,
+   "text": "It looks like you",
+   "words": 30,
+   "rep": 1,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-150",
+   "promptTokens": 193,
+   "promptMs": 1652.6,
+   "genMs": 257.5,
+   "completionTokens": 4,
+   "wallMs": 1980.5,
+   "text": "It looks like you",
+   "words": 150,
+   "rep": 1,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-600",
+   "promptTokens": 770,
+   "promptMs": 6306.4,
+   "genMs": 299.6,
+   "completionTokens": 4,
+   "wallMs": 6670.0,
+   "text": "It looks like you",
+   "words": 600,
+   "rep": 1,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-1",
+   "promptTokens": 14,
+   "promptMs": 347.9,
+   "genMs": 263.5,
+   "completionTokens": 4,
+   "wallMs": 672.1,
+   "text": "That's a wonderful",
+   "words": 1,
+   "rep": 2,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-30",
+   "promptTokens": 51,
+   "promptMs": 616.5,
+   "genMs": 257.9,
+   "completionTokens": 4,
+   "wallMs": 940.3,
+   "text": "It looks like you",
+   "words": 30,
+   "rep": 2,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-150",
+   "promptTokens": 215,
+   "promptMs": 1754.0,
+   "genMs": 270.7,
+   "completionTokens": 4,
+   "wallMs": 2099.8,
+   "text": "It looks like you",
+   "words": 150,
+   "rep": 2,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-600",
+   "promptTokens": 773,
+   "promptMs": 6317.5,
+   "genMs": 291.5,
+   "completionTokens": 4,
+   "wallMs": 6694.7,
+   "text": "It looks like you",
+   "words": 600,
+   "rep": 2,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-1",
+   "promptTokens": 14,
+   "promptMs": 354.7,
+   "genMs": 297.3,
+   "completionTokens": 4,
+   "wallMs": 732.2,
+   "text": "The **zebra",
+   "words": 1,
+   "rep": 3,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-30",
+   "promptTokens": 50,
+   "promptMs": 621.6,
+   "genMs": 286.1,
+   "completionTokens": 4,
+   "wallMs": 991.1,
+   "text": "It looks like you",
+   "words": 30,
+   "rep": 3,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-150",
+   "promptTokens": 210,
+   "promptMs": 1737.3,
+   "genMs": 269.1,
+   "completionTokens": 4,
+   "wallMs": 2102.0,
+   "text": "It looks like you",
+   "words": 150,
+   "rep": 3,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-600",
+   "promptTokens": 794,
+   "promptMs": 6449.4,
+   "genMs": 287.4,
+   "completionTokens": 4,
+   "wallMs": 6804.7,
+   "text": "It looks like you",
+   "words": 600,
+   "rep": 3,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-1",
+   "promptTokens": 14,
+   "promptMs": 362.4,
+   "genMs": 258.8,
+   "completionTokens": 4,
+   "wallMs": 716.4,
+   "text": "The **violin",
+   "words": 1,
+   "rep": 4,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-30",
+   "promptTokens": 47,
+   "promptMs": 591.9,
+   "genMs": 295.9,
+   "completionTokens": 4,
+   "wallMs": 953.4,
+   "text": "It looks like you",
+   "words": 30,
+   "rep": 4,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-150",
+   "promptTokens": 214,
+   "promptMs": 1754.8,
+   "genMs": 282.5,
+   "completionTokens": 4,
+   "wallMs": 2112.9,
+   "text": "It looks like you",
+   "words": 150,
+   "rep": 4,
+   "warmup": false
+  },
+  {
+   "tag": "fresh-600",
+   "promptTokens": 787,
+   "promptMs": 6395.5,
+   "genMs": 264.3,
+   "completionTokens": 4,
+   "wallMs": 6718.9,
+   "text": "It looks like you",
+   "words": 600,
+   "rep": 4,
+   "warmup": false
+  }
+ ],
+ "fit": {
+  "n": 20,
+  "fixedMs": 193.5,
+  "msPerToken": 7.872,
+  "tokPerSec": 127.0,
+  "r2": 0.9993
+ },
+ "bySize": {
+  "1": {
+   "promptTokens": 14,
+   "promptMsMedian": 353.7,
+   "promptMsMin": 347.9,
+   "promptMsMax": 362.4,
+   "wallMinusServerMsMedian": 95.2,
+   "genMsMedian": 280.2
+  },
+  "30": {
+   "promptTokens": 51,
+   "promptMsMedian": 618.0,
+   "promptMsMin": 591.9,
+   "promptMsMax": 628.1,
+   "wallMinusServerMsMedian": 65.6,
+   "genMsMedian": 286.1
+  },
+  "150": {
+   "promptTokens": 210,
+   "promptMsMedian": 1737.3,
+   "promptMsMin": 1652.6,
+   "promptMsMax": 1754.8,
+   "wallMinusServerMsMedian": 75.1,
+   "genMsMedian": 270.7
+  },
+  "600": {
+   "promptTokens": 773,
+   "promptMsMedian": 6317.5,
+   "promptMsMin": 6189.8,
+   "promptMsMax": 6449.4,
+   "wallMinusServerMsMedian": 64.0,
+   "genMsMedian": 287.4
+  }
+ },
+ "reuse": [
+  {
+   "tag": "repeat-30-1",
+   "promptTokens": 46,
+   "promptMs": 583.3,
+   "genMs": 256.3,
+   "completionTokens": 4,
+   "wallMs": 913.4,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "repeat-30-2",
+   "promptTokens": 46,
+   "promptMs": 583.0,
+   "genMs": 266.7,
+   "completionTokens": 4,
+   "wallMs": 910.0,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "repeat-150-1",
+   "promptTokens": 202,
+   "promptMs": 1702.5,
+   "genMs": 290.8,
+   "completionTokens": 4,
+   "wallMs": 2066.7,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "repeat-150-2",
+   "promptTokens": 202,
+   "promptMs": 1712.9,
+   "genMs": 270.7,
+   "completionTokens": 4,
+   "wallMs": 2044.7,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "aba-A1",
+   "promptTokens": 209,
+   "promptMs": 1770.2,
+   "genMs": 258.3,
+   "completionTokens": 4,
+   "wallMs": 2092.0,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "aba-B",
+   "promptTokens": 207,
+   "promptMs": 1709.0,
+   "genMs": 273.6,
+   "completionTokens": 4,
+   "wallMs": 2065.1,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "aba-A2",
+   "promptTokens": 209,
+   "promptMs": 1739.5,
+   "genMs": 285.2,
+   "completionTokens": 4,
+   "wallMs": 2124.8,
+   "text": "It looks like you"
+  }
+ ],
+ "answers": [
+  {
+   "tag": "answer-0",
+   "promptTokens": 25,
+   "promptMs": 397.1,
+   "genMs": 572.2,
+   "completionTokens": 8,
+   "wallMs": 1031.3,
+   "text": "The capital of France is Paris."
+  },
+  {
+   "tag": "answer-1",
+   "promptTokens": 17,
+   "promptMs": 372.6,
+   "genMs": 2395.1,
+   "completionTokens": 32,
+   "wallMs": 2828.3,
+   "text": "The three primary colors in the context of traditional art and light (additive color mixing) are:\n\n1.  **Red**\n2.  **"
+  },
+  {
+   "tag": "answer-2",
+   "promptTokens": 20,
+   "promptMs": 376.3,
+   "genMs": 2446.1,
+   "completionTokens": 32,
+   "wallMs": 2878.1,
+   "text": "The monsoon is a massive seasonal wind system that brings life-giving rains to vast regions of Asia and Africa, dramatically altering the climate and agriculture of the areas"
+  },
+  {
+   "tag": "answer-0-repeat",
+   "promptTokens": 25,
+   "promptMs": 411.2,
+   "genMs": 574.4,
+   "completionTokens": 8,
+   "wallMs": 1099.3,
+   "text": "The capital of France is Paris."
+  }
+ ],
+ "thermalAfter": "1",
+ "logWarnings": {
+  "makingRoom": 15,
+  "lines": 278
+ }
+}

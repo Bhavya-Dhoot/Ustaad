@@ -1,0 +1,6 @@
+card fields: ['answer', 'auditHash', 'author', 'authorId', 'createdMs', 'hasVector', 'id', 'mac', 'question', 'revokedMs', 'sources', 'tier'] | cards on C: 6
+save on B: HTTP 200 tier SWARM
+card listed on C after 0.31 s
+shared card with a private source: HTTP 409 {"error":"A source is in a private folder, so this card cannot be shared"}
+revoke on B: HTTP 200
+change on C after 0.32 s | C entry now: {'revokedMs': 1791637044964}

@@ -1,0 +1,115 @@
+{
+ "cmd": [
+  "-m",
+  "/storage/emulated/0/Android/data/com.swarmos.app/files/models/Qwen3.5-4B-Q4_K_M.gguf",
+  "--host",
+  "127.0.0.1",
+  "--port",
+  "18080",
+  "-ngl",
+  "99",
+  "-t",
+  "4",
+  "-c",
+  "8192",
+  "-np",
+  "2",
+  "-ctxcp",
+  "6",
+  "-cram",
+  "1024",
+  "--reasoning",
+  "off",
+  "--no-webui",
+  "--api-key",
+  "probekey",
+  "-lv",
+  "5",
+  "-cram",
+  "0"
+ ],
+ "results": [
+  {
+   "tag": "warmup-hi",
+   "wallMs": 1045.0,
+   "cache_n": 0,
+   "prompt_n": 13,
+   "prompt_ms": 732.3,
+   "predicted_ms": 260.3,
+   "text": "Hello! How can"
+  },
+  {
+   "tag": "B30-fresh",
+   "wallMs": 1303.9,
+   "cache_n": 0,
+   "prompt_n": 48,
+   "prompt_ms": 973.6,
+   "predicted_ms": 289.0,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "B30-repeat",
+   "wallMs": 702.2,
+   "cache_n": 44,
+   "prompt_n": 4,
+   "prompt_ms": 379.9,
+   "predicted_ms": 282.6,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "C150-fresh",
+   "wallMs": 2398.0,
+   "cache_n": 0,
+   "prompt_n": 211,
+   "prompt_ms": 2059.3,
+   "predicted_ms": 295.4,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "C150-repeat",
+   "wallMs": 725.3,
+   "cache_n": 207,
+   "prompt_n": 4,
+   "prompt_ms": 393.8,
+   "predicted_ms": 284.6,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "E150-fresh",
+   "wallMs": 2379.4,
+   "cache_n": 0,
+   "prompt_n": 211,
+   "prompt_ms": 2057.3,
+   "predicted_ms": 280.7,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "F150-fresh",
+   "wallMs": 2314.9,
+   "cache_n": 0,
+   "prompt_n": 210,
+   "prompt_ms": 2021.4,
+   "predicted_ms": 265.4,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "G150-fresh",
+   "wallMs": 2234.7,
+   "cache_n": 0,
+   "prompt_n": 195,
+   "prompt_ms": 1925.7,
+   "predicted_ms": 276.8,
+   "text": "It looks like you"
+  },
+  {
+   "tag": "E150-after-F-and-G",
+   "wallMs": 2382.2,
+   "cache_n": 0,
+   "prompt_n": 211,
+   "prompt_ms": 2045.2,
+   "predicted_ms": 288.0,
+   "text": "It looks like you"
+  }
+ ],
+ "thermalAfter": "0"
+}

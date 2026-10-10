@@ -1,0 +1,39 @@
+17:47:22 d-index Phone B start-thermal=1
+17:47:22 d-index Phone C start-thermal=0
+17:47:32 d-pre-share-restaurant Phone B start-thermal=1
+17:47:32 d-pre-share-restaurant Phone C start-thermal=0
+pdu-ask-pre-share-restaurant	thermal start Phone B=1 Phone C=0
+17:47:48 d-warranty-1 Phone B start-thermal=1
+17:47:48 d-warranty-1 Phone C start-thermal=0
+pdu-ask-warranty-1	thermal start Phone B=1 Phone C=0
+17:48:04 d-electricity Phone B start-thermal=1
+17:48:04 d-electricity Phone C start-thermal=0
+pdu-ask-electricity	thermal start Phone B=1 Phone C=0
+17:48:13 d-unrelated Phone B start-thermal=1
+17:48:13 d-unrelated Phone C start-thermal=0
+pdu-ask-unrelated	thermal start Phone B=1 Phone C=0
+17:48:16 d-hindi-warranty Phone B start-thermal=1
+17:48:16 d-hindi-warranty Phone C start-thermal=0
+pdu-ask-hindi-warranty	thermal start Phone B=1 Phone C=0
+17:48:33 d-hindi-note Phone B start-thermal=1
+17:48:33 d-hindi-note Phone C start-thermal=0
+pdu-ask-hindi-note	thermal start Phone B=1 Phone C=0
+17:48:38 d-restaurant Phone B start-thermal=1
+17:48:38 d-restaurant Phone C start-thermal=0
+pdu-ask-restaurant	thermal start Phone B=1 Phone C=0
+17:48:48 d-yoga Phone B start-thermal=1
+17:48:48 d-yoga Phone C start-thermal=0
+pdu-ask-yoga	thermal start Phone B=1 Phone C=0
+17:49:01 d-cab Phone B start-thermal=1
+17:49:01 d-cab Phone C start-thermal=0
+pdu-ask-cab	thermal start Phone B=1 Phone C=0
+17:49:08 d-warranty-2-repeat Phone B start-thermal=1
+17:49:08 d-warranty-2-repeat Phone C start-thermal=0
+pdu-ask-warranty-2-repeat	thermal start Phone B=1 Phone C=0
+17:49:23 d-salary-from-peer Phone B start-thermal=1
+17:49:23 d-salary-from-peer Phone C start-thermal=0
+pdu-ask-salary-from-peer	thermal start Phone B=1 Phone C=0
+17:49:35 d-incomplete Phone B start-thermal=1
+17:49:35 d-incomplete Phone C start-thermal=0
+pdu-ask-incomplete-electricity	thermal start Phone B=1 Phone C=0
+17:50:04 d-restore Phone C start-thermal=0

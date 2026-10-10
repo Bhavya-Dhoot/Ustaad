@@ -1,0 +1,206 @@
+[
+ {
+  "id": "du1",
+  "group": "data-union",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "You answer a question about the user's own files using only the numbered sources below. Answer in at most 80 words. Put the source number in square brackets, like [1], after each fact. If the sources do not contain the answer, say that you found nothing relevant. Do not invent anything."
+   },
+   {
+    "role": "user",
+    "content": "Sources:\n[1] Phone A · IMG_1046_Mobile_Bill_Sept.jpg · 2026-10-02: PINGLINE MOBILE (DEMO) Monthly bill September 2026 Plan: 2 GB per day, 84 days Bill amount INR 599.00 Due date 12-Oct-2026 SYNTHETIC DEMO DATA - not a real document\n[2] Phone C · IMG_3304_Pharmacy_Receipt.jpg · 2026-10-04: GREENCROSS PHARMACY (DEMO) Receipt 40127 04-Oct-2026 Vitamin D3 tablets x1 180.00 Cough syrup 100 ml 95.00 Bandage roll x2 40.00 TOTAL 315.00 SYNTHETIC DEMO DATA - not a real document\n[3] Phone C · IMG_3301_Electricity_Bill.jpg · 2026-09-20: SUNRISE POWER DISTRIBUTION (DEMO) ELECTRICITY BILL 09/2026 Account ID : 8829104921 Meter : 48821 Units used : 312 Due date : 24-Sep-2026 Amount payable INR 2,410.00 Status: PAID via UPI SYNTHETIC DEMO DATA - not a real document\n[4] Phone B · IMG_2232_Grocery_Receipt.jpg · 2026-10-02: FRESHNEST SUPERMART (DEMO) Bill No 88213 02-Oct-2026 Tomatoes 1 kg 42.00 Basmati rice 5 kg 610.00 Toor dal 1 kg 168.00 Amul-style curd 400g 38.00 Bananas 12 pcs 60.00 TOTAL 918.00 Paid by UPI SYNTHETIC DEMO DATA - not a real document\n[5] Phone C · Wifi_Router_Setup_Notes.md · 2026-09-30: # Router setup notes Admin page at 192.168.1.1 (fictional). Network name HomeNest-5G, change the default password, enable guest network, set DNS to automatic. Firmware update every three months. SYNTHETIC DEMO DATA - not a real document\n[6] Phone C · Meeting_Notes_Q4_Planning.txt · 2026-10-02: Meeting notes - Q4 planning, 2 Oct 2026 Attendees: Tara, Ravi, Meena, Rhea. Decisions: launch the dashboard on 20 Nov, freeze features on 6 Nov, Ravi owns the data migration. Actions: Tara to share mock-ups by Friday, Meena to book the review room, Rhea to update the roadmap. Risks: vendor API change could slip the migration by one week. SYNTHETIC DEMO DATA - not a real document\n\nQuestion: When is my electricity bill due and how much is it?"
+   }
+  ]
+ },
+ {
+  "id": "du2",
+  "group": "data-union",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "You answer a question about the user's own files using only the numbered sources below. Answer in at most 80 words. Put the source number in square brackets, like [1], after each fact. If the sources do not contain the answer, say that you found nothing relevant. Do not invent anything."
+   },
+   {
+    "role": "user",
+    "content": "Sources:\n[1] Phone B · IMG_2232_Grocery_Receipt.jpg · 2026-10-02: FRESHNEST SUPERMART (DEMO) Bill No 88213 02-Oct-2026 Tomatoes 1 kg 42.00 Basmati rice 5 kg 610.00 Toor dal 1 kg 168.00 Amul-style curd 400g 38.00 Bananas 12 pcs 60.00 TOTAL 918.00 Paid by UPI SYNTHETIC DEMO DATA - not a real document\n[2] Phone B · IMG_2233_Restaurant_Bill.jpg · 2026-09-21: SPICE ALLEY KITCHEN (DEMO) Table 7 Bill 5521 21-Sep-2026 Paneer tikka 320.00 Veg biryani x2 560.00 Masala chai x2 80.00 Service charge 96.00 TOTAL 1056.00 SYNTHETIC DEMO DATA - not a real document\n[3] Phone B · IMG_2234_Cab_Receipt.jpg · 2026-09-14: RIDEWAVE CABS (DEMO) Trip receipt 14-Sep-2026 Pickup : Fictional Nagar Metro Drop : Imaginary Tech Park Distance 11.4 km Time 38 min Fare INR 312.00 SYNTHETIC DEMO DATA - not a real document\n[4] Phone C · IMG_3304_Pharmacy_Receipt.jpg · 2026-10-04: GREENCROSS PHARMACY (DEMO) Receipt 40127 04-Oct-2026 Vitamin D3 tablets x1 180.00 Cough syrup 100 ml 95.00 Bandage roll x2 40.00 TOTAL 315.00 SYNTHETIC DEMO DATA - not a real document\n[5] Phone B · Yoga_Class_Schedule.txt · 2026-09-28: Yoga class schedule at Lotus Loft Studio (DEMO) Mon and Wed 6:30 am beginners, Tue and Thu 7:00 pm flow, Sat 8:00 am stretch. Monthly fee INR 2,400, first class free. Mats provided. SYNTHETIC DEMO DATA - not a real document\n[6] Phone A · IMG_1045_Gym_Timetable.jpg · 2026-09-01: IRONLEAF FITNESS (DEMO) Timetable Mon Strength 6 am Wed Cardio 6 am Fri Core and mobility 7 am Sat Open floor 8 to 11 am SYNTHETIC DEMO DATA - not a real document\n\nQuestion: What was the total on the restaurant bill and what did we order?"
+   }
+  ]
+ },
+ {
+  "id": "du3",
+  "group": "data-union",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "You answer a question about the user's own files using only the numbered sources below. Answer in at most 80 words. Put the source number in square brackets, like [1], after each fact. If the sources do not contain the answer, say that you found nothing relevant. Do not invent anything."
+   },
+   {
+    "role": "user",
+    "content": "Sources:\n[1] Phone A · IMG_1045_Gym_Timetable.jpg · 2026-09-01: IRONLEAF FITNESS (DEMO) Timetable Mon Strength 6 am Wed Cardio 6 am Fri Core and mobility 7 am Sat Open floor 8 to 11 am SYNTHETIC DEMO DATA - not a real document\n[2] Phone B · Yoga_Class_Schedule.txt · 2026-09-28: Yoga class schedule at Lotus Loft Studio (DEMO) Mon and Wed 6:30 am beginners, Tue and Thu 7:00 pm flow, Sat 8:00 am stretch. Monthly fee INR 2,400, first class free. Mats provided. SYNTHETIC DEMO DATA - not a real document\n[3] Phone A · Notes_Dentist_Appointment.txt · 2026-10-05: Dentist appointment at SmileSquare Clinic (DEMO), Friday 16-Oct-2026 at 4:30 pm. Cleaning and check-up. Bring previous X-ray. Fee about INR 1,200. SYNTHETIC DEMO DATA - not a real document\n[4] Phone A · Goa_Trip_Itinerary.txt · 2026-10-03: Goa trip itinerary, 12-15 Nov 2026 Day 1: arrive 10 am, check in at Palm Shade Homestay (booking ref PS-3391), evening at the beach. Day 2: spice farm visit, old market. Day 3: boat ride at 9 am. Day 4: checkout 11 am, flight 6 pm. SYNTHETIC DEMO DATA - not a real document\n[5] Phone B · Weekend_Trek_Packing_List.txt · 2026-10-06: Weekend trek packing list (Fictional Ridge, 18-19 Oct 2026) Water 3 litres, trail mix, rain jacket, two pairs of socks, torch with spare batteries, first aid kit, sunscreen, power bank, printed route map, cash INR 500. Meet at the Imaginary Gate parking at 5:30 am. Bring your own cup. SYNTHETIC DEMO DATA - not a real document\n[6] Phone B · IMG_2235_Bus_Ticket.jpg · 2026-10-01: CITYLINK EXPRESS (DEMO) E-ticket PNR CL77412 Seat 14W Bengaluru to Mysuru 06:30 Journey date 03-Oct-2026 INR 450 SYNTHETIC DEMO DATA - not a real document\n\nQuestion: When is the yoga class and how much is the monthly fee?"
+   }
+  ]
+ },
+ {
+  "id": "du4",
+  "group": "data-union",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "You answer a question about the user's own files using only the numbered sources below. Answer in at most 80 words. Put the source number in square brackets, like [1], after each fact. If the sources do not contain the answer, say that you found nothing relevant. Do not invent anything."
+   },
+   {
+    "role": "user",
+    "content": "Sources:\n[1] Phone B · IMG_2235_Bus_Ticket.jpg · 2026-10-01: CITYLINK EXPRESS (DEMO) E-ticket PNR CL77412 Seat 14W Bengaluru to Mysuru 06:30 Journey date 03-Oct-2026 INR 450 SYNTHETIC DEMO DATA - not a real document\n[2] Phone B · IMG_2233_Restaurant_Bill.jpg · 2026-09-21: SPICE ALLEY KITCHEN (DEMO) Table 7 Bill 5521 21-Sep-2026 Paneer tikka 320.00 Veg biryani x2 560.00 Masala chai x2 80.00 Service charge 96.00 TOTAL 1056.00 SYNTHETIC DEMO DATA - not a real document\n[3] Phone B · IMG_2234_Cab_Receipt.jpg · 2026-09-14: RIDEWAVE CABS (DEMO) Trip receipt 14-Sep-2026 Pickup : Fictional Nagar Metro Drop : Imaginary Tech Park Distance 11.4 km Time 38 min Fare INR 312.00 SYNTHETIC DEMO DATA - not a real document\n[4] Phone B · IMG_2232_Grocery_Receipt.jpg · 2026-10-02: FRESHNEST SUPERMART (DEMO) Bill No 88213 02-Oct-2026 Tomatoes 1 kg 42.00 Basmati rice 5 kg 610.00 Toor dal 1 kg 168.00 Amul-style curd 400g 38.00 Bananas 12 pcs 60.00 TOTAL 918.00 Paid by UPI SYNTHETIC DEMO DATA - not a real document\n[5] Phone A · IMG_1046_Mobile_Bill_Sept.jpg · 2026-10-02: PINGLINE MOBILE (DEMO) Monthly bill September 2026 Plan: 2 GB per day, 84 days Bill amount INR 599.00 Due date 12-Oct-2026 SYNTHETIC DEMO DATA - not a real document\n[6] Phone A · Goa_Trip_Itinerary.txt · 2026-10-03: Goa trip itinerary, 12-15 Nov 2026 Day 1: arrive 10 am, check in at Palm Shade Homestay (booking ref PS-3391), evening at the beach. Day 2: spice farm visit, old market. Day 3: boat ride at 9 am. Day 4: checkout 11 am, flight 6 pm. SYNTHETIC DEMO DATA - not a real document\n\nQuestion: How much was the cab ride and where did it go?"
+   }
+  ]
+ },
+ {
+  "id": "du5",
+  "group": "data-union",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "You answer a question about the user's own files using only the numbered sources below. Answer in at most 80 words. Put the source number in square brackets, like [1], after each fact. If the sources do not contain the answer, say that you found nothing relevant. Do not invent anything."
+   },
+   {
+    "role": "user",
+    "content": "Sources:\n[1] Phone C · IMG_3303_Whiteboard_Architecture.jpg · 2026-10-01: QUARTER PLAN Phase 1 data cleanup Phase 2 new dashboard Phase 3 rollout to teams Owner: Tara SYNTHETIC DEMO DATA - not a real document\n[2] Phone C · Meeting_Notes_Q4_Planning.txt · 2026-10-02: Meeting notes - Q4 planning, 2 Oct 2026 Attendees: Tara, Ravi, Meena, Rhea. Decisions: launch the dashboard on 20 Nov, freeze features on 6 Nov, Ravi owns the data migration. Actions: Tara to share mock-ups by Friday, Meena to book the review room, Rhea to update the roadmap. Risks: vendor API change could slip the migration by one week. SYNTHETIC DEMO DATA - not a real document\n[3] Phone C · Wifi_Router_Setup_Notes.md · 2026-09-30: # Router setup notes Admin page at 192.168.1.1 (fictional). Network name HomeNest-5G, change the default password, enable guest network, set DNS to automatic. Firmware update every three months. SYNTHETIC DEMO DATA - not a real document\n[4] Phone C · Pet_Vaccination_Record.txt · 2026-10-03: Pet vaccination record - Biscuit (beagle, invented) Rabies booster 12-Aug-2026, next due 12-Aug-2027. Deworming 3-Oct-2026. Vet: Pawfield Clinic (DEMO). SYNTHETIC DEMO DATA - not a real document\n[5] Phone A · Notes_Dentist_Appointment.txt · 2026-10-05: Dentist appointment at SmileSquare Clinic (DEMO), Friday 16-Oct-2026 at 4:30 pm. Cleaning and check-up. Bring previous X-ray. Fee about INR 1,200. SYNTHETIC DEMO DATA - not a real document\n[6] Phone A · IMG_1045_Gym_Timetable.jpg · 2026-09-01: IRONLEAF FITNESS (DEMO) Timetable Mon Strength 6 am Wed Cardio 6 am Fri Core and mobility 7 am Sat Open floor 8 to 11 am SYNTHETIC DEMO DATA - not a real document\n\nQuestion: What did we decide in the Q4 planning meeting and who owns the data migration?"
+   }
+  ]
+ },
+ {
+  "id": "du6",
+  "group": "data-union",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "You answer a question about the user's own files using only the numbered sources below. Answer in at most 80 words. Put the source number in square brackets, like [1], after each fact. If the sources do not contain the answer, say that you found nothing relevant. Do not invent anything."
+   },
+   {
+    "role": "user",
+    "content": "Sources:\n[1] Phone A · Goa_Trip_Itinerary.txt · 2026-10-03: Goa trip itinerary, 12-15 Nov 2026 Day 1: arrive 10 am, check in at Palm Shade Homestay (booking ref PS-3391), evening at the beach. Day 2: spice farm visit, old market. Day 3: boat ride at 9 am. Day 4: checkout 11 am, flight 6 pm. SYNTHETIC DEMO DATA - not a real document\n[2] Phone C · Pet_Vaccination_Record.txt · 2026-10-03: Pet vaccination record - Biscuit (beagle, invented) Rabies booster 12-Aug-2026, next due 12-Aug-2027. Deworming 3-Oct-2026. Vet: Pawfield Clinic (DEMO). SYNTHETIC DEMO DATA - not a real document\n[3] Phone A · Notes_Dentist_Appointment.txt · 2026-10-05: Dentist appointment at SmileSquare Clinic (DEMO), Friday 16-Oct-2026 at 4:30 pm. Cleaning and check-up. Bring previous X-ray. Fee about INR 1,200. SYNTHETIC DEMO DATA - not a real document\n[4] Phone B · Yoga_Class_Schedule.txt · 2026-09-28: Yoga class schedule at Lotus Loft Studio (DEMO) Mon and Wed 6:30 am beginners, Tue and Thu 7:00 pm flow, Sat 8:00 am stretch. Monthly fee INR 2,400, first class free. Mats provided. SYNTHETIC DEMO DATA - not a real document\n[5] Phone C · Meeting_Notes_Q4_Planning.txt · 2026-10-02: Meeting notes - Q4 planning, 2 Oct 2026 Attendees: Tara, Ravi, Meena, Rhea. Decisions: launch the dashboard on 20 Nov, freeze features on 6 Nov, Ravi owns the data migration. Actions: Tara to share mock-ups by Friday, Meena to book the review room, Rhea to update the roadmap. Risks: vendor API change could slip the migration by one week. SYNTHETIC DEMO DATA - not a real document\n[6] Phone A · IMG_1046_Mobile_Bill_Sept.jpg · 2026-10-02: PINGLINE MOBILE (DEMO) Monthly bill September 2026 Plan: 2 GB per day, 84 days Bill amount INR 599.00 Due date 12-Oct-2026 SYNTHETIC DEMO DATA - not a real document\n\nQuestion: When is my dentist appointment and what should I bring?"
+   }
+  ]
+ },
+ {
+  "id": "ch1",
+  "group": "choir",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": "{\"type\":\"object\",\"properties\":{\"key_steps\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"maxLength\":100},\"maxItems\":3},\"answer\":{\"type\":\"number\"},\"confidence\":{\"type\":\"number\"}},\"required\":[\"key_steps\",\"answer\",\"confidence\"]}",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are one of several independent solvers on separate phones. Work step by step. Write each calculation in key_steps like 12*3=36. The answer is one plain number: no units, no commas, no words. Reply with one JSON object only: key_steps (at most 3 short steps; the last step states the final result), answer (only the final result), confidence (a number from 0 to 1)."
+   },
+   {
+    "role": "user",
+    "content": "A bakery bakes 48 muffins per tray and fills 7 trays. It sells 5/8 of all the muffins at Rs 12 each and the rest at Rs 9 each. How much money does the bakery make, in rupees?"
+   }
+  ]
+ },
+ {
+  "id": "ch2",
+  "group": "choir",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": "{\"type\":\"object\",\"properties\":{\"key_steps\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"maxLength\":100},\"maxItems\":3},\"answer\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":60},\"confidence\":{\"type\":\"number\"}},\"required\":[\"key_steps\",\"answer\",\"confidence\"]}",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are one of several independent solvers on separate phones. Trace the code step by step; track variable values in key_steps. The answer is exactly what the program prints or returns, nothing else. Reply with one JSON object only: key_steps (at most 3 short steps; the last step states the final result), answer (only the final result), confidence (a number from 0 to 1)."
+   },
+   {
+    "role": "user",
+    "content": "What does this Python program print? Give the exact output.\na = [3, 1, 4, 1, 5]\nb = []\nfor x in a:\n    if x not in b:\n        b.append(x)\nprint(len(b), sum(b))"
+   }
+  ]
+ },
+ {
+  "id": "ch3",
+  "group": "choir",
+  "max_tokens": 128,
+  "seed": 42,
+  "schema": "{\"type\":\"object\",\"properties\":{\"key_steps\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"maxLength\":100},\"maxItems\":3},\"answer\":{\"type\":\"number\"},\"confidence\":{\"type\":\"number\"}},\"required\":[\"key_steps\",\"answer\",\"confidence\"]}",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You check answers. Find the single step where the answers differ, check that step yourself, then keep or change your answer. Do not change your answer just because others disagree. The answer is one plain number: no units, no commas, no words. Reply with one JSON object only: key_steps (at most 3 short steps; the last step states the final result), answer (only the final result), confidence (a number from 0 to 1)."
+   },
+   {
+    "role": "user",
+    "content": "Problem:\nRavi buys 3 notebooks at Rs 45 each and 2 pens at Rs 18 each and pays with a Rs 500 note. He then spends half of his change on a snack. How many rupees of the change are left?\n\nYour earlier answer. Answer: 164.5\n   Steps: 3*45+2*18=171; 500-171=329; 329/2=164.5\n\nOther solvers answered (authors unknown):\n1. Answer: 164\n   Steps: 3*45+2*18=171; 500-171=329; 329/2=164\n2. Answer: 164.5\n   Steps: 3*45=135 and 2*18=36; 135+36=171, change 500-171=329; half of 329 is 164.5\n"
+   }
+  ]
+ },
+ {
+  "id": "pl0",
+  "group": "plain",
+  "max_tokens": 48,
+  "seed": 0,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "Answer in one short sentence."
+   },
+   {
+    "role": "user",
+    "content": "Explain the monsoon."
+   }
+  ]
+ },
+ {
+  "id": "pl2",
+  "group": "plain",
+  "max_tokens": 48,
+  "seed": 2,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "Answer in one short sentence."
+   },
+   {
+    "role": "user",
+    "content": "Explain binary search."
+   }
+  ]
+ },
+ {
+  "id": "pl4",
+  "group": "plain",
+  "max_tokens": 48,
+  "seed": 4,
+  "schema": null,
+  "messages": [
+   {
+    "role": "system",
+    "content": "Answer in one short sentence."
+   },
+   {
+    "role": "user",
+    "content": "Explain photosynthesis."
+   }
+  ]
+ }
+]

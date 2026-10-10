@@ -1,0 +1,53 @@
+e2e2-check 2026-10-10 17:42:10 results=H:/UStaaf/docs/benchmarks/raw/gate-9b/regress/e2e2 phones=192.168.242.23:8787 192.168.242.76:8787  steps=s,d,p,k
+PASS  s1-hello-1  Phone B node 477684c1: HTTP 200 in 95 ms, chat 'Qwen3.5-4B-Q4_K_M', embed 'embeddinggemma-300M-Q8_0'
+PASS  s2-health-1  Phone B: signed GET /v1/health HTTP 200 in 96 ms (secret: debug dev secret; answer MAC: ok); thermal 1, battery 100 %, link 11ac 325 Mbps
+PASS  s3-unsigned-1  Phone B: unsigned GET /v1/health -> 401
+PASS  s1-hello-2  Phone C node 82d2676d: HTTP 200 in 97 ms, chat 'Qwen3.5-4B-Q4_K_M', embed 'embeddinggemma-300M-Q8_0'
+PASS  s2-health-2  Phone C: signed GET /v1/health HTTP 200 in 119 ms (secret: debug dev secret; answer MAC: ok); thermal 0, battery 100 %, link 11ac 390 Mbps
+PASS  s3-unsigned-2  Phone C: unsigned GET /v1/health -> 401
+PASS  s4-peer-1-2  Phone B lists Phone C online after 595 ms
+PASS  s4-peer-2-1  Phone C lists Phone B online after 609 ms
+PASS  s5-models-1  Phone B: chat=Qwen3.5-4B-Q4_K_M.gguf backend=GPU loadMs=18398 rssMb=1832; embed=embeddinggemma-300M-Q8_0.gguf; thermal=1
+PASS  s6-backend-1  Phone B: chat backend GPU
+PASS  s5-models-2  Phone C: chat=Qwen3.5-4B-Q4_K_M.gguf backend=GPU loadMs=16577 rssMb=1830; embed=embeddinggemma-300M-Q8_0.gguf; thermal=0
+PASS  s6-backend-2  Phone C: chat backend GPU
+INFO  d-perm-1  Phone B: all-files access already allowed
+INFO  d-perm-2  Phone C: all-files access already allowed
+PASS  d-index-1  Phone B folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 7 of 8 in 1702 ms (OCR avg 120 ms), documents 4 of 4 in 611 ms; folders private as indexed: 1 of 3
+WARN  d-cert  Phone A is not in this run: the sample Laptop_Extended_Warranty_Certificate.pdf was pushed to Phone C (Documents/SwarmDemo) for the acceptance pair and is removed at the end
+PASS  d-index-2  Phone C folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 5 of 6 in 1148 ms (OCR avg 144 ms), documents 6 of 6 in 1081 ms; folders private as indexed: 0 of 2
+FAIL  d-pre-share-restaurant  from Phone C: 'What was the total on the restaurant bill?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+INFO  d-private-default  folders private as indexed: Phone B=1 of 3 Phone C=0 of 2 
+FAIL  d-private-default  before sharing: withheld by Phone B = 0, or a file of Phone B was shown to Phone C
+INFO  d-share-1  Phone B: Pictures/SwarmDemo and Documents/SwarmDemo marked shared (debug route)
+INFO  d-share-2  Phone C: Pictures/SwarmDemo and Documents/SwarmDemo marked shared (debug route)
+FAIL  d-warranty-1  from Phone B: 'Where is the warranty bill for my laptop?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+PASS  d-cite-bill  the bill photo IMG_2231.jpg cited as Phone B (local)
+PASS  d-cite-certificate  Laptop_Extended_Warranty_Certificate.pdf cited from a peer (Phone C)
+FAIL  d-electricity  from Phone B: 'When is my electricity bill due and how much is it?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+PASS  d-cite-peer  IMG_3301_Electricity_Bill.jpg cited from a peer
+FAIL  d-unrelated  from Phone B: 'What is the boiling point of liquid nitrogen?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+FAIL  d-hindi-warranty  from Phone B: 'मेरे लैपटॉप का वारंटी बिल कहाँ है?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+FAIL  d-hindi-note  from Phone B: 'दूध वाले को कितने रुपये देने हैं?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+FAIL  d-restaurant  from Phone B: 'What was the total on the restaurant bill?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+FAIL  d-yoga  from Phone B: 'When is the yoga class?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+FAIL  d-cab  from Phone B: 'How much was the cab ride?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+FAIL  d-warranty-2-repeat  from Phone B: 'Where is the warranty bill for my laptop?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+FAIL  d-salary-from-peer  from Phone C: 'What is my salary for September 2026?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+PASS  d-withheld  asked from Phone C: Phone B withheld 1 private item(s) (its Private folder) and no salary source reached Phone C
+PASS  d-scores  calibration recorded for 3 questions on every phone
+INFO  d-incomplete  Phone C app force-stopped at 17:44:44
+PASS  d-incomplete-electricity  from Phone B: 'When is my electricity bill due and how much is it?' -> sources=1 ttftMs=1972 totalMs=4824 incomplete=true withheld=0 peers=Phone C:unreachable; Phone A:offline; thermal start Phone B=1 Phone C=0; answer MAC ok
+INFO  d-incomplete  Phone C app relaunched, API back
+INFO  d-incomplete  Phone B lists Phone C online again
+INFO  models  Phone C: chat STARTING (None); loading
+INFO  d-cert  sample certificate removed from Phone C; chunks now 10 (before: )
+INFO  p-unshare  Phone B: Pictures/SwarmDemo set to private through the debug route
+PASS  d-unshared-restaurant  from Phone C: 'What was the total on the restaurant bill?' -> sources=1 ttftMs=2379 totalMs=5417 incomplete=false withheld=3 peers=ok; thermal start Phone B=1 Phone C=0; answer MAC ok
+PASS  p-withheld  with its Pictures folder private Phone B withheld 3 item(s) from Phone C and none of its files reached Phone C
+INFO  p-reshare  Phone B: Pictures/SwarmDemo shared again
+FAIL  k-real-answer  no real answer to save: peer not ok: Phone A:offline; flagged incomplete
+models stopped on Phone B: HTTP 200
+models stopped on Phone C: HTTP 200
+RESPONSE-MAC  ok=51 wrong=0 missing=0 (calls made from the main shell only; problems in rsp-problems.log)
+SUMMARY  pass=22 fail=13 warn=1  results=H:/UStaaf/docs/benchmarks/raw/gate-9b/regress/e2e2

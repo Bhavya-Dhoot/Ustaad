@@ -1,0 +1,62 @@
+{
+ "phone_electricity": [
+  403,
+  {
+   "error": {
+    "message": "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.",
+    "type": "invalid_request_error",
+    "code": "file_search_off"
+   }
+  }
+ ],
+ "swarm_warranty": [
+  0,
+  {}
+ ],
+ "swarm_salary": [
+  0,
+  {}
+ ],
+ "limits": [
+  [
+   403,
+   {
+    "error": {
+     "message": "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.",
+     "type": "invalid_request_error",
+     "code": "file_search_off"
+    }
+   }
+  ],
+  [
+   403,
+   {
+    "error": {
+     "message": "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.",
+     "type": "invalid_request_error",
+     "code": "file_search_off"
+    }
+   }
+  ],
+  [
+   403,
+   {
+    "error": {
+     "message": "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.",
+     "type": "invalid_request_error",
+     "code": "file_search_off"
+    }
+   }
+  ],
+  [
+   403,
+   {
+    "error": {
+     "message": "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.",
+     "type": "invalid_request_error",
+     "code": "file_search_off"
+    }
+   }
+  ]
+ ]
+}

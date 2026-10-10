@@ -1,0 +1,60 @@
+binary sha256 on the phone: 4156717d58498e6b93cb8f2d64e961aa289902aa82e957bead5b55afe89335a6
+stop app chat server: {'_err': 'TimeoutError: timed out'}
+forward: 18090
+pass 5 mod: thermal 1 (waited 0 s), server pid 22586 ready in 47 s
+  du1   prompt 810 (+0 cached) decode 41 tok at 11.41 tok/s, drafted None accepted None, 11.11 s
+  du2   prompt 696 (+68 cached) decode 45 tok at 11.55 tok/s, drafted None accepted None, 10.43 s
+  du3   prompt 639 (+68 cached) decode 59 tok at 11.91 tok/s, drafted None accepted None, 10.98 s
+  du4   prompt 781 (+0 cached) decode 45 tok at 11.46 tok/s, drafted None accepted None, 11.2 s
+  du5   prompt 596 (+68 cached) decode 36 tok at 11.70 tok/s, drafted None accepted None, 9.32 s
+  du6   prompt 665 (+68 cached) decode 41 tok at 11.65 tok/s, drafted None accepted None, 10.09 s
+  ch1   prompt 164 (+0 cached) decode 120 tok at 11.84 tok/s, drafted None accepted None, 12.83 s
+  ch2   prompt 162 (+0 cached) decode 110 tok at 12.13 tok/s, drafted None accepted None, 11.56 s
+  ch3   prompt 358 (+0 cached) decode 91 tok at 11.98 tok/s, drafted None accepted None, 11.12 s
+  pl0   prompt 29 (+0 cached) decode 30 tok at 11.87 tok/s, drafted None accepted None, 3.83 s
+  pl2   prompt 17 (+11 cached) decode 21 tok at 11.75 tok/s, drafted None accepted None, 2.66 s
+  pl4   prompt 17 (+11 cached) decode 32 tok at 11.86 tok/s, drafted None accepted None, 3.63 s
+pass 5 mod done: thermal 1 -> 1, VmHWM: 2237040 kB VmRSS: 1883216 kB
+pass 6 base: thermal 1 (waited 0 s), server pid 22714 ready in 47 s
+  du1   prompt 810 (+0 cached) decode 41 tok at 11.32 tok/s, drafted None accepted None, 11.13 s
+  du2   prompt 696 (+68 cached) decode 45 tok at 11.48 tok/s, drafted None accepted None, 10.45 s
+  du3   prompt 639 (+68 cached) decode 59 tok at 11.60 tok/s, drafted None accepted None, 11.12 s
+  du4   prompt 781 (+0 cached) decode 45 tok at 11.39 tok/s, drafted None accepted None, 11.21 s
+  du5   prompt 596 (+68 cached) decode 36 tok at 11.62 tok/s, drafted None accepted None, 8.85 s
+  du6   prompt 665 (+68 cached) decode 41 tok at 11.80 tok/s, drafted None accepted None, 9.78 s
+  ch1   prompt 164 (+0 cached) decode 120 tok at 11.96 tok/s, drafted None accepted None, 12.65 s
+  ch2   prompt 162 (+0 cached) decode 110 tok at 11.98 tok/s, drafted None accepted None, 11.83 s
+  ch3   prompt 358 (+0 cached) decode 91 tok at 11.90 tok/s, drafted None accepted None, 11.37 s
+  pl0   prompt 29 (+0 cached) decode 30 tok at 11.73 tok/s, drafted None accepted None, 3.88 s
+  pl2   prompt 17 (+11 cached) decode 21 tok at 11.90 tok/s, drafted None accepted None, 2.77 s
+  pl4   prompt 17 (+11 cached) decode 32 tok at 11.62 tok/s, drafted None accepted None, 3.69 s
+pass 6 base done: thermal 1 -> 2, VmHWM: 2223760 kB VmRSS: 2011760 kB
+pass 7 simple12: thermal 1 (waited 40 s), server pid 22928 ready in 47 s
+  du1   prompt 810 (+0 cached) decode 41 tok at 11.45 tok/s, drafted None accepted None, 11.1 s
+  du2   prompt 696 (+68 cached) decode 45 tok at 11.69 tok/s, drafted None accepted None, 10.4 s
+  du3   prompt 639 (+68 cached) decode 59 tok at 11.75 tok/s, drafted None accepted None, 11.05 s
+  du4   prompt 781 (+0 cached) decode 45 tok at 11.45 tok/s, drafted None accepted None, 11.17 s
+  du5   prompt 596 (+68 cached) decode 36 tok at 11.62 tok/s, drafted None accepted None, 8.83 s
+  du6   prompt 665 (+68 cached) decode 41 tok at 8.34 tok/s, drafted 48 accepted 4, 11.14 s
+  ch1   prompt 164 (+0 cached) decode 120 tok at 12.11 tok/s, drafted None accepted None, 12.61 s
+  ch2   prompt 162 (+0 cached) decode 128 tok at 10.88 tok/s, drafted 48 accepted 4, 14.28 s
+  ch3   prompt 358 (+0 cached) decode 91 tok at 11.97 tok/s, drafted None accepted None, 11.19 s
+  pl0   prompt 29 (+0 cached) decode 30 tok at 11.51 tok/s, drafted None accepted None, 3.87 s
+  pl2   prompt 17 (+11 cached) decode 21 tok at 11.75 tok/s, drafted None accepted None, 2.78 s
+  pl4   prompt 17 (+11 cached) decode 32 tok at 12.04 tok/s, drafted None accepted None, 3.56 s
+pass 7 simple12 done: thermal 1 -> 2, VmHWM: 2217952 kB VmRSS: 2090580 kB
+pass 8 base: thermal 1 (waited 60 s), server pid 23788 ready in 18 s
+  du1   prompt 810 (+0 cached) decode 41 tok at 12.60 tok/s, drafted None accepted None, 10.47 s
+  du2   prompt 696 (+68 cached) decode 45 tok at 12.60 tok/s, drafted None accepted None, 9.75 s
+  du3   prompt 639 (+68 cached) decode 59 tok at 12.91 tok/s, drafted None accepted None, 10.32 s
+  du4   prompt 781 (+0 cached) decode 45 tok at 12.62 tok/s, drafted None accepted None, 10.46 s
+  du5   prompt 596 (+68 cached) decode 36 tok at 12.68 tok/s, drafted None accepted None, 8.2 s
+  du6   prompt 665 (+68 cached) decode 41 tok at 12.67 tok/s, drafted None accepted None, 9.14 s
+  ch1   prompt 164 (+0 cached) decode 120 tok at 13.12 tok/s, drafted None accepted None, 11.3 s
+  ch2   prompt 162 (+0 cached) decode 110 tok at 13.15 tok/s, drafted None accepted None, 10.49 s
+  ch3   prompt 358 (+0 cached) decode 91 tok at 13.02 tok/s, drafted None accepted None, 10.4 s
+  pl0   prompt 29 (+0 cached) decode 30 tok at 12.91 tok/s, drafted None accepted None, 3.41 s
+  pl2   prompt 17 (+11 cached) decode 21 tok at 12.89 tok/s, drafted None accepted None, 2.43 s
+  pl4   prompt 17 (+11 cached) decode 32 tok at 13.10 tok/s, drafted None accepted None, 3.18 s
+pass 8 base done: thermal 1 -> 2, VmHWM: 2196160 kB VmRSS: 1972388 kB
+remove forward: 

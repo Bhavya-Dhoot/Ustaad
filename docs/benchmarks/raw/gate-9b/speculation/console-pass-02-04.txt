@@ -1,0 +1,46 @@
+binary sha256 on the phone: 4156717d58498e6b93cb8f2d64e961aa289902aa82e957bead5b55afe89335a6
+stop app chat server: {'node': 'Phone B', 'roles': {'chat': {'state': 'STOPPED', 'model': None, 'file': None, 'reason': None, 'pid': None, 'port': 8080, 'rssMb': None, 'loadMs': None
+forward: 18090
+pass 2 simple: thermal 1 (waited 0 s), server pid 22037 ready in 20 s
+  du1   prompt 810 (+0 cached) decode 41 tok at 8.94 tok/s, drafted 24 accepted 14, 11.85 s
+  du2   prompt 696 (+68 cached) decode 45 tok at 7.33 tok/s, drafted 24 accepted 3, 12.36 s
+  du3   prompt 639 (+68 cached) decode 59 tok at 7.81 tok/s, drafted 32 accepted 10, 13.88 s
+  du4   prompt 781 (+0 cached) decode 45 tok at 7.28 tok/s, drafted 24 accepted 5, 13.88 s
+  du5   prompt 596 (+68 cached) decode 37 tok at 5.57 tok/s, drafted 32 accepted 3, 12.69 s
+  du6   prompt 665 (+68 cached) decode 41 tok at 8.53 tok/s, drafted 24 accepted 11, 11.07 s
+  ch1   prompt 164 (+0 cached) decode 120 tok at 9.06 tok/s, drafted 40 accepted 8, 16.03 s
+  ch2   prompt 162 (+0 cached) decode 110 tok at 8.88 tok/s, drafted 43 accepted 13, 14.91 s
+  ch3   prompt 358 (+0 cached) decode 91 tok at 6.73 tok/s, drafted 64 accepted 7, 17.06 s
+  pl0   prompt 29 (+0 cached) decode 30 tok at 11.98 tok/s, drafted None accepted None, 3.82 s
+  pl2   prompt 17 (+11 cached) decode 21 tok at 11.65 tok/s, drafted None accepted None, 2.78 s
+  pl4   prompt 17 (+11 cached) decode 32 tok at 12.07 tok/s, drafted None accepted None, 3.57 s
+pass 2 simple done: thermal 1 -> 1, VmHWM: 2317804 kB VmRSS: 2210664 kB
+pass 3 base: thermal 1 (waited 0 s), server pid 22185 ready in 47 s
+  du1   prompt 810 (+0 cached) decode 41 tok at 11.66 tok/s, drafted None accepted None, 10.99 s
+  du2   prompt 696 (+68 cached) decode 45 tok at 11.50 tok/s, drafted None accepted None, 10.5 s
+  du3   prompt 639 (+68 cached) decode 59 tok at 11.85 tok/s, drafted None accepted None, 11.01 s
+  du4   prompt 781 (+0 cached) decode 45 tok at 11.45 tok/s, drafted None accepted None, 11.18 s
+  du5   prompt 596 (+68 cached) decode 36 tok at 11.70 tok/s, drafted None accepted None, 8.81 s
+  du6   prompt 665 (+68 cached) decode 41 tok at 11.66 tok/s, drafted None accepted None, 9.84 s
+  ch1   prompt 164 (+0 cached) decode 120 tok at 11.91 tok/s, drafted None accepted None, 12.52 s
+  ch2   prompt 162 (+0 cached) decode 110 tok at 11.90 tok/s, drafted None accepted None, 11.95 s
+  ch3   prompt 358 (+0 cached) decode 91 tok at 11.89 tok/s, drafted None accepted None, 11.29 s
+  pl0   prompt 29 (+0 cached) decode 30 tok at 12.25 tok/s, drafted None accepted None, 3.75 s
+  pl2   prompt 17 (+11 cached) decode 21 tok at 11.77 tok/s, drafted None accepted None, 2.8 s
+  pl4   prompt 17 (+11 cached) decode 32 tok at 11.86 tok/s, drafted None accepted None, 3.62 s
+pass 3 base done: thermal 1 -> 1, VmHWM: 2221840 kB VmRSS: 2013784 kB
+pass 4 simple: thermal 1 (waited 0 s), server pid 22338 ready in 47 s
+  du1   prompt 810 (+0 cached) decode 41 tok at 8.15 tok/s, drafted 24 accepted 14, 12.51 s
+  du2   prompt 696 (+68 cached) decode 45 tok at 7.43 tok/s, drafted 24 accepted 3, 12.56 s
+  du3   prompt 639 (+68 cached) decode 59 tok at 7.83 tok/s, drafted 32 accepted 10, 13.57 s
+  du4   prompt 781 (+0 cached) decode 45 tok at 7.44 tok/s, drafted 24 accepted 5, 13.49 s
+  du5   prompt 596 (+68 cached) decode 37 tok at 5.50 tok/s, drafted 32 accepted 3, 12.45 s
+  du6   prompt 665 (+68 cached) decode 41 tok at 8.93 tok/s, drafted 24 accepted 11, 10.89 s
+  ch1   prompt 164 (+0 cached) decode 120 tok at 9.07 tok/s, drafted 40 accepted 8, 15.87 s
+  ch2   prompt 162 (+0 cached) decode 110 tok at 8.94 tok/s, drafted 43 accepted 13, 14.71 s
+  ch3   prompt 358 (+0 cached) decode 91 tok at 6.78 tok/s, drafted 64 accepted 7, 16.94 s
+  pl0   prompt 29 (+0 cached) decode 30 tok at 12.13 tok/s, drafted None accepted None, 3.77 s
+  pl2   prompt 17 (+11 cached) decode 21 tok at 11.73 tok/s, drafted None accepted None, 2.76 s
+  pl4   prompt 17 (+11 cached) decode 32 tok at 11.76 tok/s, drafted None accepted None, 3.66 s
+pass 4 simple done: thermal 1 -> 1, VmHWM: 2256544 kB VmRSS: 2071140 kB
+remove forward: 

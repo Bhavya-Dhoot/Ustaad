@@ -1,0 +1,75 @@
+{
+ "phone_electricity": [
+  200,
+  {
+   "object": "list",
+   "data": [
+    {
+     "phone": "Phone C",
+     "title": "IMG_3301_Electricity_Bill.jpg",
+     "date": "2026-09-20",
+     "kind": "photo",
+     "snippet": "SUNRISE POWER DISTRIBUTION (DEMO) ELECTRICITY BILL 09/2026 Account ID: 8829104921 Meter : 48821 Units used : 312 Due date : 24-Sep-202 6 Amount payable INR 2,410.00 Status: PAID via UPI SYNTHETIC DEMO DATA - not a real document"
+    }
+   ],
+   "scope": "phone",
+   "incomplete": false,
+   "phones": [
+    {
+     "name": "Phone C",
+     "status": "ok"
+    }
+   ]
+  }
+ ],
+ "swarm_warranty": [
+  0,
+  {}
+ ],
+ "swarm_salary": [
+  0,
+  {}
+ ],
+ "limits": [
+  [
+   400,
+   {
+    "error": {
+     "message": "`query` must not be empty.",
+     "type": "invalid_request_error",
+     "code": "invalid_value"
+    }
+   }
+  ],
+  [
+   400,
+   {
+    "error": {
+     "message": "`query` is 1001 characters; at most 1000 are accepted.",
+     "type": "invalid_request_error",
+     "code": "limit_exceeded"
+    }
+   }
+  ],
+  [
+   400,
+   {
+    "error": {
+     "message": "`scope` must be \"phone\" or \"swarm\".",
+     "type": "invalid_request_error",
+     "code": "invalid_value"
+    }
+   }
+  ],
+  [
+   400,
+   {
+    "error": {
+     "message": "`max_results` must be 1 to 10.",
+     "type": "invalid_request_error",
+     "code": "limit_exceeded"
+    }
+   }
+  ]
+ ]
+}

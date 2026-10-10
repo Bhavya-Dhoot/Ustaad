@@ -1,0 +1,22 @@
+{
+ "id": "chatcmpl-1a0f8922d654468f8356ba26",
+ "object": "chat.completion",
+ "created": 1791635646,
+ "model": "ustaad-local",
+ "system_fingerprint": "ustaad:Phone C",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "{\n  \"city\": \"Tokyo\",\n  \"population_millions\": 13.96\n}"
+   },
+   "finish_reason": "stop"
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 23,
+  "completion_tokens": 26,
+  "total_tokens": 49
+ }
+}

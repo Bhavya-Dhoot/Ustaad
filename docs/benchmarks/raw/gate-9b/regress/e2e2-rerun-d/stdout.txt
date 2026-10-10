@@ -1,0 +1,35 @@
+e2e2-check 2026-10-10 17:46:28 results=H:/UStaaf/docs/benchmarks/raw/gate-9b/regress/e2e2-rerun-d phones=192.168.242.23:8787 192.168.242.76:8787  steps=d
+INFO  d-perm-1  Phone B: all-files access already allowed
+INFO  d-perm-2  Phone C: all-files access already allowed
+INFO  models  Phone B: chat STOPPED (None); embed STOPPED (None); loading
+INFO  models  Phone C: chat STOPPED (None); embed STOPPED (None); loading
+PASS  d-index-1  Phone B folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 0 of 8 in 21 ms (OCR avg 0 ms), documents 0 of 4 in 20 ms; folders private as indexed: 1 of 3
+WARN  d-cert  Phone A is not in this run: the sample Laptop_Extended_Warranty_Certificate.pdf was pushed to Phone C (Documents/SwarmDemo) for the acceptance pair and is removed at the end
+PASS  d-index-2  Phone C folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 5 of 6 in 802 ms (OCR avg 99 ms), documents 6 of 6 in 900 ms; folders private as indexed: 0 of 2
+PASS  d-pre-share-restaurant  from Phone C: 'What was the total on the restaurant bill?' -> sources=4 ttftMs=6324 totalMs=8098 incomplete=false withheld=0 peers=ok; thermal start Phone B=1 Phone C=0; answer MAC ok
+INFO  d-private-default  folders private as indexed: Phone B=1 of 3 Phone C=0 of 2 
+FAIL  d-private-default  before sharing: withheld by Phone B = 0, or a file of Phone B was shown to Phone C
+INFO  d-share-1  Phone B: Pictures/SwarmDemo and Documents/SwarmDemo marked shared (debug route)
+INFO  d-share-2  Phone C: Pictures/SwarmDemo and Documents/SwarmDemo marked shared (debug route)
+FAIL  d-warranty-1  from Phone B: 'Where is the warranty bill for my laptop?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+PASS  d-cite-bill  the bill photo IMG_2231.jpg cited as Phone B (local)
+PASS  d-cite-certificate  Laptop_Extended_Warranty_Certificate.pdf cited from a peer (Phone C)
+FAIL  d-electricity  from Phone B: 'When is my electricity bill due and how much is it?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+PASS  d-cite-peer  IMG_3301_Electricity_Bill.jpg cited from a peer
+FAIL  d-unrelated  from Phone B: 'What is the boiling point of liquid nitrogen?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+FAIL  d-hindi-warranty  from Phone B: 'मेरे लैपटॉप का वारंटी बिल कहाँ है?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+FAIL  d-hindi-note  from Phone B: 'दूध वाले को कितने रुपये देने हैं?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+FAIL  d-restaurant  from Phone B: 'What was the total on the restaurant bill?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+FAIL  d-yoga  from Phone B: 'When is the yoga class?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+FAIL  d-cab  from Phone B: 'How much was the cab ride?' -> peer not ok: Phone A:offline; thermal start Phone B=1 Phone C=0
+FAIL  d-warranty-2-repeat  from Phone B: 'Where is the warranty bill for my laptop?' -> peer not ok: Phone A:offline; flagged incomplete; thermal start Phone B=1 Phone C=0
+PASS  d-salary-from-peer  from Phone C: 'What is my salary for September 2026?' -> sources=1 ttftMs=1630 totalMs=5442 incomplete=false withheld=1 peers=ok; thermal start Phone B=1 Phone C=0; answer MAC ok
+PASS  d-withheld  asked from Phone C: Phone B withheld 1 private item(s) (its Private folder) and no salary source reached Phone C
+PASS  d-scores  calibration recorded for 3 questions on every phone
+INFO  d-incomplete  Phone C app force-stopped at 17:49:35
+PASS  d-incomplete-electricity  from Phone B: 'When is my electricity bill due and how much is it?' -> sources=1 ttftMs=2019 totalMs=5327 incomplete=true withheld=0 peers=Phone C:unreachable; Phone A:offline; thermal start Phone B=1 Phone C=0; answer MAC ok
+INFO  d-incomplete  Phone C app relaunched, API back
+INFO  d-incomplete  Phone B lists Phone C online again
+INFO  d-cert  sample certificate removed from Phone C; chunks now 10 (before: )
+RESPONSE-MAC  ok=43 wrong=0 missing=0 (calls made from the main shell only; problems in rsp-problems.log)
+SUMMARY  pass=10 fail=10 warn=1  results=H:/UStaaf/docs/benchmarks/raw/gate-9b/regress/e2e2-rerun-d

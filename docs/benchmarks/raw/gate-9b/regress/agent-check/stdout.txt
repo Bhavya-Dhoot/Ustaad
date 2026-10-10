@@ -1,0 +1,13 @@
+INFO  phone 192.168.242.76:5555  Thermal Status: 0  mCurrentFocus=Window{2b49ab2 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
+INFO  adb forward: 8790
+PASS  a-auth  no key 401, wrong key 401, right key 200, models ['ustaad-local', 'ustaad-swarm']
+PASS  b-lan  TCP connect from the PC to 192.168.242.76:8790: ConnectionRefusedError
+PASS  c-other-uid  curl on the phone as uid 2000: ...index":0,"message":{"role":"assistant","content":"ready"},"finish_reason":"stop"}],"usage":{"prompt_tokens":19,"completion_tokens":2,"total_tokens":21}} HTTP200
+PASS  d-chat  HTTP 200, 6.93 s, usage {'prompt_tokens': 27, 'completion_tokens': 87, 'total_tokens': 114}, fingerprint ustaad:Phone C
+PASS  d-stream  first token 0.3962233066558838, total 6.624604225158691, 87 tokens, 14.0 tok/s after the first token, Thermal Status: 0
+PASS  d-schema  HTTP 200, 2.75 s, parsed {'city': 'Tokyo', 'population_millions': 13.96}
+PASS  d-embed  HTTP 200, 0.09 s, vectors 2, dimensions [256, 256]
+PASS  f-two-at-once  alone 6.86 s; together 6.85 s and 13.44 s (slower one is 1.96 times a single call)
+PASS  g-refusals  {'tools': 400, 'unknown_model': 404, 'n2': 400, 'image': 400, 'big': 413, 'many': 400}
+PASS  j-switch  switch off: RemoteDisconnected: Remote end closed connection without response; on again: HTTP 200
+INFO  end  Thermal Status: 0  mCurrentFocus=Window{2b49ab2 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
