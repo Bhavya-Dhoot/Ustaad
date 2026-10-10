@@ -137,11 +137,22 @@ class AgentRequestsTest {
         assertEquals(AgentTools.NO_PARAMETERS, spec.tools[1].parameters)
         assertEquals(ToolChoice.Auto, spec.choice)
         assertEquals(AgentTools.MAX_PARALLEL_CALLS, spec.maxCalls)
-        assertEquals(AgentTools.schema(spec), c.request.jsonSchema)
+        // "auto" answers in the model's own format: nothing constrains it
+        assertNull(c.request.jsonSchema)
         // the tool text is a system message in front of the caller's messages
         assertEquals(listOf("system", "user"), c.request.messages.map { it.role })
-        assertTrue(c.request.messages[0].content.contains("search_files"))
+        assertEquals(AgentTools.systemText(spec), c.request.messages[0].content)
+        assertTrue(c.request.messages[0].content.contains("<tools>") && c.request.messages[0].content.contains("search_files"))
         assertEquals(c.request.messages.sumOf { it.content.length }, c.promptChars)
+        assertEquals(listOf("user"), c.history.map { it.role })
+    }
+
+    @Test fun requiredAndNamedChoicesAreHeldToASchema() {
+        val required = AgentRequests.parseChat(withTools(""""tool_choice":"required""""))
+        assertEquals(AgentTools.schema(required.tools!!), required.request.jsonSchema)
+        val named = AgentRequests.parseChat(withTools(""""tool_choice":{"type":"function","function":{"name":"get_time"}}""", listOf(searchTool, clockTool)))
+        assertEquals(AgentTools.schema(named.tools!!), named.request.jsonSchema)
+        assertTrue(named.request.messages[0].content.contains("You must call `get_time`."))
     }
 
     @Test fun toolChoiceIsRead() {
@@ -205,7 +216,9 @@ class AgentRequestsTest {
     @Test fun aConstraintTooBigForTheSwarmIsRefusedNamingTools() {
         // 16,000 characters of schema fit the 16 KiB of definitions but not what a phone of the swarm accepts
         val tool = """{"type":"function","function":{"name":"f","parameters":{"type":"object","description":"${"p".repeat(16_000)}"}}}"""
-        refused(400, "tools") { AgentRequests.parseChat(withTools(tools = listOf(tool))) }
+        refused(400, "tools") { AgentRequests.parseChat(withTools(""""tool_choice":"required"""", listOf(tool))) }
+        // "auto" sends no constraint, so the same tool is accepted there (a repair that cannot be made falls back to the model's text)
+        assertNull(AgentRequests.parseChat(withTools(tools = listOf(tool))).request.jsonSchema)
     }
 
     @Test fun toolChoiceIsRefusedWhenItDoesNotFit() {
@@ -252,7 +265,9 @@ class AgentRequestsTest {
         val body = """{"messages":[{"role":"user","content":"When is my electricity bill due?"},{"content":null,"role":"assistant","tool_calls":[{"id":"call_85334d154d4047329705601a","function":{"arguments":"{\"query\":\"electricity bill\"}","name":"search_files"},"type":"function"}]},{"role":"tool","tool_call_id":"call_85334d154d4047329705601a","content":"Electricity bill, due 2026-09-30"}],"model":"ustaad-local","tools":[{"type":"function","function":{"name":"search_files","description":"d","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}}]}"""
         val c = AgentRequests.parseChat(body)
         assertEquals(listOf("system", "user", "assistant", "user"), c.request.messages.map { it.role })
-        assertTrue(c.request.messages[3].content.contains("Result of `search_files` (call call_85334d154d4047329705601a)"))
+        // "auto": the past call is a <tool_call> block and the result a <tool_response> block, in the model's own format
+        assertTrue(c.request.messages[2].content.startsWith("<tool_call>\n{\"name\": \"search_files\""))
+        assertEquals("<tool_response>\nElectricity bill, due 2026-09-30\n</tool_response>", c.request.messages[3].content)
     }
 
     @Test fun badToolMessagesAreRefused() {

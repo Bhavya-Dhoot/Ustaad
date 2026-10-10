@@ -183,6 +183,33 @@ private class ScriptedLlm(private val text: String = "", private val error: (() 
     override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
 }
 
+/** A model that answers with [replies] one after the other (the last one again if asked more often), or fails the n-th call with [failAt]. Keeps the requests. */
+private class SequenceLlm(private val replies: List<String>, private val failAt: Int = -1) : LlmClient {
+    override val modelName = "Q"
+    val requests = CopyOnWriteArrayList<ChatRequest>()
+
+    override suspend fun ready() = true
+
+    private fun next(req: ChatRequest): String {
+        requests += req
+        val n = requests.size - 1
+        if (n == failAt) throw LlamaServerException("JSON schema conversion failed", 400)
+        return replies[minOf(n, replies.size - 1)]
+    }
+
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+        val text = next(req)
+        val cut = text.length / 2
+        emit(ChatChunk(text.substring(0, cut)))
+        emit(ChatChunk(text.substring(cut)))
+        emit(ChatChunk("", done = true, stats = ChatStats(7, 9, 1.0, 1.0)))
+    }
+
+    override suspend fun chat(req: ChatRequest): ChatResult = ChatResult(next(req), ChatStats(7, 9, 1.0, 1.0))
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
+}
+
 /** The real engine, gate, scheduler and request path over loopback HTTP; only the models are test doubles. */
 class AgentServerTest {
     companion object {
@@ -1056,7 +1083,10 @@ class AgentServerTest {
     // ---- tools ----------------------------------------------------------------------------------------------
 
     private val searchTool = """{"type":"function","function":{"name":"search_files","description":"Search the owner's files","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}}"""
+    /** The constrained shape ("required" and a named function) and the model's own format ("auto"). */
     private val callText = """{"tool_calls":[{"name":"search_files","arguments":{"query":"electricity bill"}}]}"""
+    private val nativeCall = "<tool_call>\n{\"name\": \"search_files\", \"arguments\": {\"query\": \"electricity bill\"}}\n</tool_call>"
+    private val badNativeCall = "<tool_call>\n{\"name\": \"search_files\", \"arguments\": {}}\n</tool_call>"
 
     private fun toolBody(extra: String = "", model: String = "ustaad-local", messages: String = """[{"role":"user","content":"find my electricity bill"}]""") =
         """{"model":"$model","messages":$messages,"tools":[$searchTool]${if (extra.isEmpty()) "" else ",$extra"}}"""
@@ -1064,7 +1094,7 @@ class AgentServerTest {
     private fun firstChoice(r: Resp) = r.json.getValue("choices").jsonArray.single().jsonObject
 
     @Test fun aToolCallComesBackAsToolCalls() {
-        val llm = ScriptedLlm(callText)
+        val llm = ScriptedLlm("I will search.\n$nativeCall")
         start()
         chat = llm
         val r = post("/v1/chat/completions", toolBody())
@@ -1080,16 +1110,17 @@ class AgentServerTest {
         val args = Json.parseToJsonElement(call.getValue("function").jsonObject.getValue("arguments").jsonPrimitive.content).jsonObject
         assertEquals("electricity bill", args.getValue("query").jsonPrimitive.content)
         assertEquals(16, r.json.getValue("usage").jsonObject.getValue("total_tokens").jsonPrimitive.int)
-        // what the model was given: the tools in a system message and an output held to the two shapes
+        // what the model was given: the tools in its own format in a system message, and no constraint on the answer
         val q = llm.requests.single()
         assertEquals("system", q.messages.first().role)
-        assertTrue(q.messages.first().content.contains("search_files"))
-        assertTrue(q.jsonSchema!!.contains("\"tool_calls\"") && q.jsonSchema!!.contains("\"content\""))
+        assertTrue(q.messages.first().content.contains("<tools>") && q.messages.first().content.contains("search_files"))
+        assertNull(q.jsonSchema)
+        assertEquals(0, audit.single { it.first == "agent.chat" }.second.getValue("repairs").jsonPrimitive.int)
     }
 
     @Test fun theAuditEntryOfAToolCallCarriesNoToolTextOrArguments() {
         start()
-        chat = ScriptedLlm(callText)
+        chat = ScriptedLlm(nativeCall)
         post("/v1/chat/completions", toolBody())
         val entry = audit.single { it.first == "agent.chat" }.second.toString()
         assertFalse(entry, entry.contains("search_files") || entry.contains("electricity"))
@@ -1097,7 +1128,7 @@ class AgentServerTest {
 
     @Test fun anAnswerInWordsComesBackAsContent() {
         start()
-        chat = ScriptedLlm("""{"content":"Hello there."}""")
+        chat = ScriptedLlm("Hello there.")
         val r = post("/v1/chat/completions", toolBody())
         val choice = firstChoice(r)
         assertEquals("stop", choice.getValue("finish_reason").jsonPrimitive.content)
@@ -1105,7 +1136,7 @@ class AgentServerTest {
         assertTrue("tool_calls" !in choice.getValue("message").jsonObject)
     }
 
-    @Test fun anOutputThatIsNeitherShapeIsReturnedAsContent() {
+    @Test fun anAnswerWithoutAToolCallBlockIsReturnedAsContent() {
         start()
         chat = ScriptedLlm("I would rather chat.")
         val r = post("/v1/chat/completions", toolBody())
@@ -1140,7 +1171,7 @@ class AgentServerTest {
     }
 
     @Test fun anEarlierCallAndItsResultReachTheModelInOrder() {
-        val llm = ScriptedLlm("""{"content":"The bill is on 3 September."}""")
+        val llm = ScriptedLlm("The bill is on 3 September.")
         start()
         chat = llm
         val messages = """[{"role":"system","content":"be brief"},{"role":"user","content":"find my electricity bill"},
@@ -1150,15 +1181,15 @@ class AgentServerTest {
         assertEquals(r.body, 200, r.status)
         val sent = llm.requests.single().messages
         assertEquals(listOf("system", "user", "assistant", "user"), sent.map { it.role })
-        assertTrue(sent[0].content.startsWith("be brief\n\n") && sent[0].content.contains("search_files"))
-        assertEquals("""{"tool_calls":[{"name":"search_files","arguments":{"query":"electricity bill"}}]}""", sent[2].content)
-        assertTrue(sent[3].content.contains("call call_1") && sent[3].content.contains("1,240 rupees"))
+        assertTrue(sent[0].content.startsWith("be brief\n\n# Tools\n") && sent[0].content.contains("search_files"))
+        assertEquals("<tool_call>\n{\"name\": \"search_files\", \"arguments\": {\"query\": \"electricity bill\"}}\n</tool_call>", sent[2].content)
+        assertEquals("<tool_response>\nElectricity bill, 2026-09-03: 1,240 rupees\n</tool_response>", sent[3].content)
         assertEquals("The bill is on 3 September.", firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
     }
 
     @Test fun toolsWorkOnTheSwarmModelToo() {
         start()
-        // the stand-in phone answers with text that is neither shape: it comes back as words, from that phone
+        // the stand-in phone answers with text that holds no tool call: it comes back as words, from that phone
         val r = post("/v1/chat/completions", toolBody(model = "ustaad-swarm"))
         assertEquals(r.body, 200, r.status)
         assertEquals("ustaad:Phone B", r.json.getValue("system_fingerprint").jsonPrimitive.content)
@@ -1167,7 +1198,7 @@ class AgentServerTest {
 
     @Test fun aStreamWithToolsIsHeldBackAndSentAsToolCallEvents() {
         start()
-        chat = ScriptedLlm(callText)
+        chat = ScriptedLlm(nativeCall)
         val r = post("/v1/chat/completions", toolBody(""""stream":true"""), headers = mapOf("Accept" to "text/event-stream"))
         assertEquals(r.body, 200, r.status)
         val ev = events(r.body)
@@ -1191,7 +1222,7 @@ class AgentServerTest {
 
     @Test fun aStreamWithToolsThatAnswersInWordsSendsTheText() {
         start()
-        chat = ScriptedLlm("""{"content":"Hello there."}""")
+        chat = ScriptedLlm("Hello there.")
         val r = post("/v1/chat/completions", toolBody(""""stream":true"""), headers = mapOf("Accept" to "text/event-stream"))
         val chunks = events(r.body).dropLast(1).map { Json.parseToJsonElement(it.removePrefix("data: ")).jsonObject }
         val deltas = chunks.map { it.getValue("choices").jsonArray.single().jsonObject.getValue("delta").jsonObject }
@@ -1207,9 +1238,9 @@ class AgentServerTest {
             override val modelName = "slow"
             override suspend fun ready() = true
             override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
-                emit(ChatChunk("""{"tool_calls":[{"name":"search_files","""))
+                emit(ChatChunk("<tool_call>\n{\"name\": \"search_files\","))
                 kotlinx.coroutines.delay(500)
-                emit(ChatChunk(""""arguments":{"query":"x"}}]}"""))
+                emit(ChatChunk(" \"arguments\": {\"query\": \"x\"}}\n</tool_call>"))
                 emit(ChatChunk("", done = true, stats = ChatStats(1, 1, 1.0, 1.0)))
             }
             override suspend fun chat(req: ChatRequest): ChatResult = ChatResult("", ChatStats(0, 0, 0.0, 0.0))
@@ -1221,11 +1252,100 @@ class AgentServerTest {
         assertTrue(r.body.contains("\"tool_calls\""))
     }
 
+    private fun repairsOf(): Int = audit.last { it.first == "agent.chat" }.second.getValue("repairs").jsonPrimitive.int
+
+    @Test fun aGoodCallIsNotAskedForAgain() {
+        val llm = SequenceLlm(listOf(nativeCall))
+        start()
+        chat = llm
+        assertEquals(200, post("/v1/chat/completions", toolBody()).status)
+        assertEquals(1, llm.requests.size)
+        assertEquals(0, repairsOf())
+    }
+
+    @Test fun aBadCallIsAskedForAgainUnderTheNamedTool() {
+        val llm = SequenceLlm(listOf(badNativeCall, callText))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(r.body, 200, r.status)
+        val call = firstChoice(r).getValue("message").jsonObject.getValue("tool_calls").jsonArray.single().jsonObject.getValue("function").jsonObject
+        assertEquals("search_files", call.getValue("name").jsonPrimitive.content)
+        assertEquals("electricity bill", Json.parseToJsonElement(call.getValue("arguments").jsonPrimitive.content).jsonObject.getValue("query").jsonPrimitive.content)
+        assertEquals("tool_calls", firstChoice(r).getValue("finish_reason").jsonPrimitive.content)
+        // the first request had no constraint and the model's own format; the repair held it to that tool
+        val (first, again) = llm.requests.toList()
+        assertNull(first.jsonSchema)
+        assertTrue(first.messages.first().content.contains("<tools>"))
+        assertNotNull(again.jsonSchema)
+        assertTrue(again.messages.first().content.contains("You must call `search_files`."))
+        assertFalse(again.messages.first().content.contains("<tools>"))
+        assertEquals(first.maxTokens, again.maxTokens)
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun aCallToAnUnknownToolIsAskedForAgainUnderRequired() {
+        val llm = SequenceLlm(listOf("<tool_call>\n{\"name\": \"nope\", \"arguments\": {}}\n</tool_call>", callText))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals("tool_calls", firstChoice(r).getValue("finish_reason").jsonPrimitive.content)
+        assertTrue(llm.requests[1].messages.first().content.contains("You must call a tool."))
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun whenTheRepairFailsTooTheModelsTextIsTheAnswer() {
+        val llm = SequenceLlm(listOf(badNativeCall, "still no luck"))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(r.body, 200, r.status)
+        val choice = firstChoice(r)
+        assertEquals("stop", choice.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals(badNativeCall, choice.getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertEquals("one repair, not a loop", 2, llm.requests.size)
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun whenTheRepairCannotRunTheModelsTextIsTheAnswerToo() {
+        val llm = SequenceLlm(listOf(badNativeCall, callText), failAt = 1)
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(r.body, 200, r.status)
+        assertEquals(badNativeCall, firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun aStreamIsRepairedBeforeItIsSent() {
+        val llm = SequenceLlm(listOf(badNativeCall, callText))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody(""""stream":true"""), headers = mapOf("Accept" to "text/event-stream"))
+        assertEquals(r.body, 200, r.status)
+        val chunks = events(r.body).dropLast(1).map { Json.parseToJsonElement(it.removePrefix("data: ")).jsonObject }
+        val call = chunks[0].getValue("choices").jsonArray.single().jsonObject.getValue("delta").jsonObject.getValue("tool_calls").jsonArray.single().jsonObject
+        assertEquals("search_files", call.getValue("function").jsonObject.getValue("name").jsonPrimitive.content)
+        assertEquals("tool_calls", chunks.last().getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals(2, llm.requests.size)
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun aForcedCallIsNeverRepaired() {
+        val llm = SequenceLlm(listOf("no call at all"))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody(""""tool_choice":"required""""))
+        assertEquals("no call at all", firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertEquals(1, llm.requests.size)
+        assertEquals(0, repairsOf())
+    }
+
     @Test fun aSchemaTheModelServerRefusesIs400UnsupportedSchema() {
         start()
         val secret = "Unrecognized schema: /home/secret/path"
         chat = ScriptedLlm(error = { LlamaServerException("""{"error":{"code":400,"message":"$secret"}}""", 400) })
-        for (extra in listOf("", """"stream":true""")) {
+        for (extra in listOf(""""tool_choice":"required"""", """"tool_choice":"required","stream":true""")) {
             val r = post("/v1/chat/completions", toolBody(extra))
             assertEquals(extra + r.body, 400, r.status)
             assertEquals("unsupported_schema", r.errorCode)

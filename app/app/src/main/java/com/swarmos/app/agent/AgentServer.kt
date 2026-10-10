@@ -165,11 +165,9 @@ class AgentServer(
                 return
             }
             val reply = backend.chat(c.model, c.request)
-            auditChat(c, 200, reply.text.length, reply.stats, t0)
-            AgentWire.toolReply(
-                newId(), clock() / 1000, c.model, AgentWire.fingerprint(reply.phone),
-                AgentTools.parseReply(reply.text, c.tools), reply.stats, c.request.maxTokens,
-            )
+            val (answer, repairs) = settle(c, reply.text)
+            auditChat(c, 200, reply.text.length, reply.stats, t0, repairs = repairs)
+            AgentWire.toolReply(newId(), clock() / 1000, c.model, AgentWire.fingerprint(reply.phone), answer, reply.stats, c.request.maxTokens)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -186,6 +184,33 @@ class AgentServer(
         @Volatile var chars = 0
         @Volatile var stats: ChatStats? = null
         @Volatile var finished = false
+        @Volatile var repairs = 0
+    }
+
+    /**
+     * What a call with tools finally says, and how many repair requests it took (0 or 1). "auto" reads the model's own format; if a call
+     * in it fails the check, the same conversation is asked once more under a constraint ([AgentTools.repairRequest]), and when that
+     * fails too the model's own text is the answer, as words. "required" and a named function were held to a schema from the start.
+     */
+    private suspend fun settle(c: AgentChatCall, text: String): Pair<ToolReply, Int> {
+        val spec = c.tools ?: return ToolReply.Content(text) to 0
+        if (spec.choice != ToolChoice.Auto) return AgentTools.parseReply(text, spec) to 0
+        return when (val read = AgentTools.readNative(text, spec)) {
+            is NativeRead.Words -> ToolReply.Content(text) to 0
+            is NativeRead.Calls -> ToolReply.Calls(read.calls) to 0
+            is NativeRead.Invalid -> {
+                val repair = AgentTools.repairSpec(spec, read.tool)
+                val again = try {
+                    backend.chat(c.model, AgentTools.repairRequest(c.request, c.history, repair)).text
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null // the repair failing is not the caller's problem: the model's text is still an answer
+                }
+                val fixed = again?.let { AgentTools.parseReply(it, repair) } as? ToolReply.Calls
+                (fixed ?: ToolReply.Content(text)) to 1
+            }
+        }
     }
 
     private sealed interface Item {
@@ -227,7 +252,7 @@ class AgentServer(
             upstream.cancel()
             // also when the call itself was cancelled because the client went away
             if (committed) {
-                auditChat(c, 200, state.chars, state.stats, t0, aborted = !state.finished)
+                auditChat(c, 200, state.chars, state.stats, t0, aborted = !state.finished, repairs = state.repairs)
                 if (state.finished) onServed()
             }
         }
@@ -277,7 +302,8 @@ class AgentServer(
                 item = upstream.receiveCatching().getOrNull()
             }
             if (buffered) {
-                val reply = AgentTools.parseReply(held.toString(), c.tools)
+                val (reply, repairs) = settle(c, held.toString())
+                state.repairs = repairs
                 for (chunk in AgentWire.bufferedChunks(id, created, c.model, fingerprint, reply, state.stats, c.request.maxTokens)) send(AgentWire.event(chunk))
             } else {
                 val last = AgentWire.chunk(
@@ -412,12 +438,13 @@ class AgentServer(
 
     private fun newQid() = UUID.randomUUID().toString().take(8)
 
-    private fun auditChat(c: AgentChatCall?, status: Int, completionChars: Int, stats: ChatStats?, t0: Long, aborted: Boolean = false) {
+    private fun auditChat(c: AgentChatCall?, status: Int, completionChars: Int, stats: ChatStats?, t0: Long, aborted: Boolean = false, repairs: Int = 0) {
         record("agent.chat", buildJsonObject {
             c?.let {
                 put("model", it.model.id)
                 put("stream", it.stream)
                 put("promptChars", it.promptChars)
+                if (it.tools != null) put("repairs", repairs) // how many times a tool call had to be asked for again: a number, no text
             }
             put("status", status)
             put("completionChars", completionChars)

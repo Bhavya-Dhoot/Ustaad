@@ -22,9 +22,13 @@ enum class AgentModel(val id: String) {
 
 /**
  * A validated chat call: [request] is what the model gets, [maxTokens] already clamped, [promptChars] for the audit log.
- * [tools] is set when the model may call tools: [request] then carries the tool text and the schema that constrains its output.
+ * [tools] is set when the model may call tools: [request] then carries the tool text, and for "required" or a named function the
+ * schema that constrains its output. [history] is the caller's messages before they were rendered, to ask again under a constraint.
  */
-class AgentChatCall(val model: AgentModel, val request: ChatRequest, val stream: Boolean, val promptChars: Int, val tools: ToolSpec? = null)
+class AgentChatCall(
+    val model: AgentModel, val request: ChatRequest, val stream: Boolean, val promptChars: Int,
+    val tools: ToolSpec? = null, val history: List<AgentMessage> = emptyList(),
+)
 
 /** A validated embeddings call. [base64] asks for the vectors as base64 little-endian float32, as the OpenAI Python client does by default. */
 class AgentEmbedCall(val model: AgentModel, val texts: List<String>, val base64: Boolean) {
@@ -84,7 +88,8 @@ object AgentRequests {
         val responseSchema = parseResponseFormat(o["response_format"])
         if (tools.declared && responseSchema != null) throw bad("`response_format` cannot be used together with `tools`: both constrain the answer.", UNSUPPORTED)
         val spec = tools.spec
-        val toolSchema = spec?.let { AgentTools.schema(it) }
+        // "auto" sends no constraint (the model answers in its own format); "required" and a named function are held to a schema
+        val toolSchema = spec?.takeIf { it.choice != ToolChoice.Auto }?.let { AgentTools.schema(it) }
         if (toolSchema != null && toolSchema.length > AgentTools.MAX_SCHEMA_CHARS) {
             throw bad("`tools` need a constraint of ${toolSchema.length} characters; at most ${AgentTools.MAX_SCHEMA_CHARS} are accepted. Shorten the `parameters` schemas.", LIMIT)
         }
@@ -103,6 +108,7 @@ object AgentRequests {
             stream = stream,
             promptChars = rendered.sumOf { it.content.length },
             tools = spec,
+            history = messages,
         )
     }
 
