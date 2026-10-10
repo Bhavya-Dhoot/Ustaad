@@ -27,6 +27,7 @@ internal class Scripted(
     private val delay2: Long = 0,
     private val r1Error: String = "scripted failure",
     override val away: Boolean = false,
+    override val noModel: Boolean = false,
 ) : ChoirParticipant {
     val solveRoles = Collections.synchronizedList(mutableListOf<Role>())
     val reviseCalls = Collections.synchronizedList(mutableListOf<ReviseRequest>())

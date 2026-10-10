@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
+import com.swarmos.app.BuildConfig
 import com.swarmos.app.ui.AnswerChip
 import com.swarmos.app.ui.EmptyHint
 import com.swarmos.app.ui.ErrorNote
@@ -218,6 +219,8 @@ fun ChoirScreen() {
     LaunchedEffect(eval.running) { if (eval.running && showBoard) listState.animateScrollToItem(if (showRun) 3 else 2) }
 
     val fakeModel = AppGraph.llm.modelName == "FAKE"
+    // a demo build does not run on the placeholder model: Run and Run all wait for a real chat model, with the reason in view
+    val refusal = ChoirController.refusal()
     val peersSorted = peers.sortedBy { it.info.name }
     val peersOnline = peersSorted.filter { !it.away }
 
@@ -280,7 +283,13 @@ fun ChoirScreen() {
                     PhonesCard(
                         listOf(Triple(self.name, "Solver (coordinator)", self.chatModel ?: AppGraph.llm.modelName)) +
                             peersSorted.map { p ->
-                                Triple(p.info.name, if (p.away) "Away, not asked" else roleLabel(ChoirCoordinator.roleForPeer(asked++)), p.info.chatModel ?: "model unknown")
+                                val noModel = !BuildConfig.DEBUG && !ChoirReadiness.peerHasRealModel(p.info.chatModel)
+                                val role = when {
+                                    p.away -> "Away, not asked"
+                                    noModel -> "No model loaded, not asked"
+                                    else -> roleLabel(ChoirCoordinator.roleForPeer(asked++))
+                                }
+                                Triple(p.info.name, role, p.info.chatModel ?: "model unknown")
                             },
                     )
                     if (peersOnline.isEmpty()) Text("No peers online: the coordinator runs alone.", style = SwarmType.label.copy(fontSize = 12.sp, color = SwarmColors.graphite))
@@ -315,6 +324,7 @@ fun ChoirScreen() {
 
         // the two actions stay in reach whatever is scrolled into view
         Hairline()
+        refusal?.let { ErrorNote(it, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) }
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             PrimaryButton(
                 "Run",
@@ -323,14 +333,14 @@ fun ChoirScreen() {
                     ChoirController.startRun(builtIn ?: ChoirController.customProblem(text, kind), RunOptions(useProblemCheck = useTest))
                 },
                 modifier = Modifier.weight(1f),
-                enabled = !busy && text.isNotBlank(),
+                enabled = !busy && refusal == null && text.isNotBlank(),
                 icon = SwarmIcon.Play,
             )
             SecondaryButton(
                 "Run all ${problems.size}",
                 onClick = { ChoirController.startEval(RunOptions(useProblemCheck = useTest)) },
                 modifier = Modifier.weight(1f).padding(bottom = 3.dp),
-                enabled = !busy && problems.isNotEmpty(),
+                enabled = !busy && refusal == null && problems.isNotEmpty(),
             )
         }
     }
@@ -466,13 +476,13 @@ private fun RunSection(r: RunTrace, now: Long) {
 private fun LaneCard(lane: LaneTrace) {
     val tokens = (lane.r1?.tokens ?: 0) + (lane.r2?.tokens ?: 0)
     val wall = lane.latest?.wallMs
-    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY
+    val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY || lane.status == LaneStatus.NO_MODEL
     val streaming = lane.status == LaneStatus.SOLVING || lane.status == LaneStatus.REVISING || lane.status == LaneStatus.JUDGING
     Lane(
         name = lane.name,
         role = roleLabel(lane.role),
         trailing = {
-            if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; else -> "Error" }, caution = true, small = true)
+            if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; LaneStatus.NO_MODEL -> "No model"; else -> "Error" }, caution = true, small = true)
             else {
                 Text("$tokens tok", style = Mono11Dim)
                 Spacer(Modifier.width(8.dp))

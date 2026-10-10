@@ -23,6 +23,9 @@ interface ChoirParticipant {
     /** The link heartbeat says this phone is away: it is shown as an away lane and never asked. */
     val away: Boolean get() = false
 
+    /** This phone has no real chat model (demo builds): it is shown as a lane that was not asked. */
+    val noModel: Boolean get() = false
+
     suspend fun solve(req: SolveRequest): NodeAnswer
     suspend fun revise(req: ReviseRequest): NodeAnswer
     suspend fun judge(req: JudgeRequest): JudgeAnswer
@@ -92,9 +95,9 @@ class ChoirCoordinator(
         var asked = 0
         val lanes = buildList {
             add(Lane(self, Role.SOLVER))
-            sortedPeers.forEach { p -> add(Lane(p, roleForPeer(if (p.away) asked else asked++))) }
+            sortedPeers.forEach { p -> add(Lane(p, roleForPeer(if (p.away || p.noModel) asked else asked++))) }
         }
-        val active = lanes.filter { !it.p.away }
+        val active = lanes.filter { !it.p.away && !it.p.noModel }
 
         val lock = Any()
         // every write to the run state happens inside the lock; snapshot() reads it inside the same lock
@@ -106,6 +109,7 @@ class ChoirCoordinator(
         var finalNoTool: FinalTrace? = null
         var error: String? = null
         lanes.filter { it.p.away }.forEach { it.status = LaneStatus.AWAY; it.error = "away: no heartbeat, not asked" }
+        lanes.filter { !it.p.away && it.p.noModel }.forEach { it.status = LaneStatus.NO_MODEL; it.error = ChoirReadiness.PEER_NO_MODEL }
 
         fun correctOf(f: FinalTrace?): Boolean? = when {
             f == null || problem.answer.isEmpty() -> null
@@ -183,6 +187,7 @@ class ChoirCoordinator(
             put("deadlineMs", config.deadlineMs)
         })
         lanes.filter { it.p.away }.forEach { log("choir.away", it.p.name, buildJsonObject { put("status", "AWAY") }) }
+        lanes.filter { !it.p.away && it.p.noModel }.forEach { log("choir.no_model", it.p.name, buildJsonObject { put("status", "NO_MODEL") }) }
 
         fun replyOf(a: NodeAnswer, wall: Long): Reply {
             val t = ToolChecker.check(problem, a.answer, a.keySteps, options.useProblemCheck)
