@@ -51,7 +51,7 @@ class ChoirNode(
         val sc = script
         val letters = AnswerCheck.optionLetters(req.problem)
         val gen = generate(
-            kind = req.kind, letters = letters, budgetMs = req.budgetMs,
+            kind = req.kind, letters = letters, problem = req.problem, budgetMs = req.budgetMs,
             build = { short ->
                 ChatRequest(
                     messages = ChoirPrompts.solve(req, short),
@@ -77,7 +77,7 @@ class ChoirNode(
         val sc = script
         val letters = AnswerCheck.optionLetters(st.problem)
         val gen = generate(
-            kind = st.kind, letters = letters, budgetMs = req.budgetMs,
+            kind = st.kind, letters = letters, problem = st.problem, budgetMs = req.budgetMs,
             build = { short ->
                 ChatRequest(
                     messages = ChoirPrompts.revise(st.kind, st.problem, st.own, others, short),
@@ -168,20 +168,20 @@ class ChoirNode(
      * inside whatever budget is left. The tokens of both calls are counted. `parsed` is null when there is no valid answer.
      */
     private suspend fun generate(
-        kind: Kind, letters: List<Char>, budgetMs: Long, build: (short: Boolean) -> ChatRequest,
+        kind: Kind, letters: List<Char>, problem: String, budgetMs: Long, build: (short: Boolean) -> ChatRequest,
         scripted: String?, fake: () -> String, round: Int, taskId: String, nodeId: String,
     ): Generated {
         val t0 = clock()
         val first = call(budgetMs, build(false), scripted, fake, round, taskId, nodeId)
         if (first.error != null) return Generated(first, null, false)
         val p1 = parseSolve(first.text)
-        if (p1 != null && AnswerCheck.isValid(kind, p1.answer, letters)) return Generated(first, p1, false)
+        if (p1 != null && AnswerCheck.isValid(kind, p1.answer, letters, problem)) return Generated(first, p1, false)
         val left = budgetMs - (clock() - t0)
         if (left < MIN_RETRY_MS) return Generated(first, null, false)
         val second = call(left, build(true), scripted, fake, round, taskId, nodeId)
         val both = Outcome(second.text, first.tokens + second.tokens, second.model, second.fake, second.error)
         if (second.error != null) return Generated(both, null, true)
-        val p2 = parseSolve(second.text)?.takeIf { AnswerCheck.isValid(kind, it.answer, letters) }
+        val p2 = parseSolve(second.text)?.takeIf { AnswerCheck.isValid(kind, it.answer, letters, problem) }
         return Generated(both, p2, true)
     }
 

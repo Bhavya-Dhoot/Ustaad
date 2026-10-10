@@ -82,6 +82,15 @@ class AnswerQualityTest {
         assertTrue(AnswerCheck.isValid(Kind.TEXT, "in Paris"))
     }
 
+    @Test fun aCodeAnswerWithBracesIsOnlyOutputWhenTheProgramHasBraces() {
+        val plain = "What does this Python program print?\ndef g(x):\n    return x * 3\nprint(g(7))"
+        for (bad in listOf("{105}", "{7 * 5 * 3 * 1}", "105}")) assertFalse(bad, AnswerCheck.isValid(Kind.CODE, bad, problem = plain))
+        assertTrue(AnswerCheck.isValid(Kind.CODE, "105", problem = plain))
+        val withSet = "What does this Python program print?\nprint({105})"
+        assertTrue(AnswerCheck.isValid(Kind.CODE, "{105}", problem = withSet))
+        assertTrue("without the problem text nothing is assumed", AnswerCheck.isValid(Kind.CODE, "{105}"))
+    }
+
     @Test fun theScorerRejectsTheBraceAnswerEndToEnd() {
         val p = Problem(id = "p2", kind = Kind.MATH, text = "q", answer = "240")
         val coord = ChoirCoordinator({ _, _ -> }, config = ChoirConfig(deadlineMs = 3_000))
@@ -168,6 +177,15 @@ class AnswerQualityTest {
             assertTrue(retry.messages.first().content.contains("never empty"))
             assertTrue("one short key step", retry.jsonSchema!!.contains("\"maxItems\":1"))
         }
+    }
+
+    @Test fun aBraceWrappedCodeAnswerIsRetriedLikeAnEmptyOne() = runBlocking {
+        val llm = ScriptedLlm(listOf("""{"key_steps": ["7*5*3*1"], "answer": "{7 * 5 * 3 * 1}", "confidence": 0.9}""", """{"key_steps": ["105"], "answer": "105", "confidence": 0.9}"""))
+        val code = "What does this Python program print?\ndef g(x):\n    return x\nprint(g(7))"
+        val a = node(llm).solve(SolveRequest("t", code, Kind.CODE, Role.ALT_SOLVER, 300, 10_000))
+        assertNull(a.error)
+        assertEquals("105", a.answer)
+        assertTrue(a.retried)
     }
 
     @Test fun aValidAnswerIsNeverRetried() = runBlocking {
