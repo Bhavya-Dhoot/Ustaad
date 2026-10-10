@@ -24,6 +24,7 @@ object AgentAccess {
     private val _key = MutableStateFlow<String?>(null)
     private val _served = MutableStateFlow(0)
     private val _error = MutableStateFlow<String?>(null)
+    private val _refused = MutableStateFlow(0)
 
     val enabled: StateFlow<Boolean> = _enabled.asStateFlow()
 
@@ -32,6 +33,9 @@ object AgentAccess {
 
     /** Requests answered since the app process started. */
     val served: StateFlow<Int> = _served.asStateFlow()
+
+    /** Requests turned away with a 4xx (wrong key, bad request, too many at once) since the app process started. Not on screen; refusals are not audited. */
+    val refused: StateFlow<Int> = _refused.asStateFlow()
 
     /** Why the listener could not open its port, or null. */
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -45,6 +49,7 @@ object AgentAccess {
     fun restore(on: Boolean, key: String?, store: suspend (Boolean, String?) -> Unit) {
         this.store = store
         _served.value = 0
+        _refused.value = 0
         _error.value = null
         val stored = if (on) key?.takeIf { it.isNotBlank() } else null
         _key.value = stored ?: if (on) AgentKey.generate() else null
@@ -78,6 +83,10 @@ object AgentAccess {
 
     fun noteServed() {
         _served.update { it + 1 }
+    }
+
+    fun noteRefused() {
+        _refused.update { it + 1 }
     }
 
     fun reportError(message: String?) {

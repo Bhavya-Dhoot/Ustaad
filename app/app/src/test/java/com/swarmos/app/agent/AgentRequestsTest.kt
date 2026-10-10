@@ -95,6 +95,16 @@ class AgentRequestsTest {
         assertEquals("""{"type":"object","properties":{"a":{"type":"integer"}},"required":["a"]}""", c.request.jsonSchema)
     }
 
+    @Test fun aSchemaOver16KiBIsRefusedNamingTheField() {
+        fun withSchema(padding: Int) =
+            chat(""""response_format":{"type":"json_schema","json_schema":{"name":"n","schema":{"type":"object","description":"${"a".repeat(padding)}"}}}""")
+        val overhead = """{"type":"object","description":""}""".length
+        val atLimit = AgentRequests.parseChat(withSchema(AgentRequests.MAX_SCHEMA_BYTES - overhead))
+        assertEquals(AgentRequests.MAX_SCHEMA_BYTES, atLimit.request.jsonSchema!!.length)
+        refused(400, "response_format.json_schema.schema") { AgentRequests.parseChat(withSchema(AgentRequests.MAX_SCHEMA_BYTES - overhead + 1)) }
+        assertEquals("limit_exceeded", codeOf { AgentRequests.parseChat(withSchema(20_000)) })
+    }
+
     @Test fun responseFormatTextIsNoSchema() {
         assertNull(AgentRequests.parseChat(chat(""""response_format":{"type":"text"}""")).request.jsonSchema)
     }

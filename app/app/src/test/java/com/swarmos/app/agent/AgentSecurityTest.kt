@@ -98,30 +98,49 @@ class AgentSecurityTest {
 
     // ---- the gate -------------------------------------------------------------------------------------------
 
+    private fun check(remote: String?, auth: String?, key: String?, host: String? = "127.0.0.1:8790") =
+        AgentGate.check(remote, host, 8790, auth, key)
+
+    @Test fun onlyThePhonesOwnAddressWithThisPortIsAHostName() {
+        for (h in listOf("127.0.0.1:8790", "localhost:8790", "LOCALHOST:8790", "[::1]:8790", " 127.0.0.1:8790 ")) {
+            assertTrue("$h should be served", AgentGate.hostAllowed(h, 8790))
+        }
+        for (h in listOf(null, "", "127.0.0.1", "127.0.0.1:8791", "localhost", "localhost:80", "evil.example:8790", "127.0.0.1.evil.example:8790", "192.168.1.5:8790", "[::1]", "0.0.0.0:8790", "127.0.0.1:8790@evil.example", "evil.example")) {
+            assertFalse("$h should be refused", AgentGate.hostAllowed(h, 8790))
+        }
+    }
+
+    @Test fun aRebindingPageIsRefusedEvenWithTheRightKey() {
+        val r = check("127.0.0.1", "Bearer k1", "k1", host = "evil.example:8790")!!
+        assertEquals(403, r.status)
+        assertEquals("not_local", r.code)
+        assertEquals(403, check("127.0.0.1", "Bearer k1", "k1", host = null)!!.status)
+    }
+
     @Test fun theRightKeyFromThisPhonePasses() {
-        assertNull(AgentGate.check("127.0.0.1", "Bearer k1", "k1"))
+        assertNull(check("127.0.0.1", "Bearer k1", "k1"))
     }
 
     @Test fun noKeyIs401() {
-        assertEquals(401, AgentGate.check("127.0.0.1", null, "k1")!!.status)
-        assertEquals(401, AgentGate.check("127.0.0.1", "", "k1")!!.status)
-        assertEquals("invalid_api_key", AgentGate.check("127.0.0.1", null, "k1")!!.code)
+        assertEquals(401, check("127.0.0.1", null, "k1")!!.status)
+        assertEquals(401, check("127.0.0.1", "", "k1")!!.status)
+        assertEquals("invalid_api_key", check("127.0.0.1", null, "k1")!!.code)
     }
 
     @Test fun aWrongKeyIs401() {
-        assertEquals(401, AgentGate.check("127.0.0.1", "Bearer k2", "k1")!!.status)
-        assertEquals(401, AgentGate.check("127.0.0.1", "Basic k1", "k1")!!.status)
+        assertEquals(401, check("127.0.0.1", "Bearer k2", "k1")!!.status)
+        assertEquals(401, check("127.0.0.1", "Basic k1", "k1")!!.status)
     }
 
     @Test fun noStoredKeyIs401EvenForAnEmptyToken() {
-        assertEquals(401, AgentGate.check("127.0.0.1", "Bearer x", null)!!.status)
-        assertEquals(401, AgentGate.check("127.0.0.1", "Bearer ", "")!!.status)
+        assertEquals(401, check("127.0.0.1", "Bearer x", null)!!.status)
+        assertEquals(401, check("127.0.0.1", "Bearer ", "")!!.status)
     }
 
     @Test fun aPeerThatIsNotThisPhoneIsRefusedEvenWithTheRightKey() {
-        val r = AgentGate.check("192.168.1.5", "Bearer k1", "k1")!!
+        val r = check("192.168.1.5", "Bearer k1", "k1")!!
         assertEquals(403, r.status)
         assertEquals("not_local", r.code)
-        assertEquals(403, AgentGate.check(null, "Bearer k1", "k1")!!.status)
+        assertEquals(403, check(null, "Bearer k1", "k1")!!.status)
     }
 }

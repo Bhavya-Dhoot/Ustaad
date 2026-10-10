@@ -256,12 +256,20 @@ private fun AgentAccessRows() {
     val key by AgentAccess.key.collectAsStateWithLifecycle()
     val served by AgentAccess.served.collectAsStateWithLifecycle()
     val error by AgentAccess.error.collectAsStateWithLifecycle()
+    val running by SwarmService.running.collectAsStateWithLifecycle()
     var renewed by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SwitchRow(
-            "Agent access", "Lets other apps on this phone use Ustaad's model, through a local address and a key.",
+            "Agent access",
+            "Lets other apps on this phone use Ustaad's model, through a local address and a key. The model ustaad-swarm sends their prompts to your paired phones.",
             checked = on, onChange = { renewed = false; AgentAccess.setEnabled(it) },
         )
+        if (on && !running) {
+            Text(
+                "Ustaad is stopped, so nothing is listening yet. Start Ustaad below and the address works again.",
+                style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite),
+            )
+        }
         if (on) {
             Column {
                 Text("Base URL", style = SwarmType.label.copy(color = SwarmColors.graphite))

@@ -41,6 +41,7 @@ object AgentRequests {
     const val MAX_STOP = 4
     const val MAX_EMBED_INPUTS = 64
     const val MAX_DEPTH = 64
+    const val MAX_SCHEMA_BYTES = 16 * 1024
 
     private val json = Json
 
@@ -204,7 +205,11 @@ object AgentRequests {
             "json_schema" -> {
                 val schema = (rf["json_schema"] as? JsonObject)?.get("schema") as? JsonObject
                     ?: throw bad("`response_format.json_schema.schema` is required and must be an object.", INVALID)
-                json.encodeToString(JsonObject.serializer(), schema)
+                json.encodeToString(JsonObject.serializer(), schema).also {
+                    if (it.toByteArray(Charsets.UTF_8).size > MAX_SCHEMA_BYTES) {
+                        throw bad("`response_format.json_schema.schema` is over $MAX_SCHEMA_BYTES bytes.", LIMIT)
+                    }
+                }
             }
             else -> throw bad("`response_format.type` ${type?.let { "\"$it\" " } ?: ""}is not supported: use \"json_schema\" or \"text\".", UNSUPPORTED)
         }

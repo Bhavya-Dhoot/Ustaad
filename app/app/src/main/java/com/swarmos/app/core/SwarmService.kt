@@ -105,6 +105,7 @@ class SwarmService : Service() {
             Ports.AGENT, { AgentAccess.key.value }, AgentBackend.app(),
             audit = { kind, payload -> AppGraph.audit.append(kind, payload) },
             onServed = AgentAccess::noteServed,
+            onRefused = AgentAccess::noteRefused,
         ).also { agent = it }
         AgentAccess.enabled.collect { on ->
             if (on) {

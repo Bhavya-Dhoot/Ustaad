@@ -81,6 +81,61 @@ private class HangingLlm : LlmClient {
     override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
 }
 
+/** A model that writes far more than any socket buffer holds, as fast as it is allowed to, and notes when it is cancelled. */
+private class FloodLlm : LlmClient {
+    override val modelName = "F"
+    val cancelled = AtomicInteger()
+
+    override suspend fun ready() = true
+
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+        try {
+            val big = "x".repeat(64 * 1024)
+            repeat(4_000) { emit(ChatChunk(big)) }
+            emit(ChatChunk("", done = true, stats = ChatStats(1, 1, 1.0, 1.0)))
+        } catch (e: CancellationException) {
+            cancelled.incrementAndGet()
+            throw e
+        }
+    }
+
+    override suspend fun chat(req: ChatRequest): ChatResult = ChatResult("", ChatStats(1, 1, 1.0, 1.0))
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
+}
+
+/** A model that fails the way a broken one does: with a message that must never reach the caller. */
+private class FailingLlm(private val error: () -> Throwable) : LlmClient {
+    override val modelName = "X"
+
+    override suspend fun ready() = true
+
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow { throw error() }
+
+    override suspend fun chat(req: ChatRequest): ChatResult = throw error()
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = throw error()
+}
+
+/** An embedder that holds every call until [release] is completed. */
+private class BlockingEmbedder : LlmClient {
+    override val modelName = "B"
+    val entered = AtomicInteger()
+    val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    override suspend fun ready() = true
+
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow { }
+
+    override suspend fun chat(req: ChatRequest): ChatResult = ChatResult("", ChatStats(0, 0, 0.0, 0.0))
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> {
+        entered.incrementAndGet()
+        release.await()
+        return texts.map { floatArrayOf(1f) }
+    }
+}
+
 /** A model that answers fast and keeps the request it was given. */
 private class RecordingLlm : LlmClient {
     override val modelName = "R"
@@ -124,6 +179,7 @@ class AgentServerTest {
     private val key = "test-key-0123456789"
     private val audit = CopyOnWriteArrayList<Pair<String, JsonObject>>()
     private val served = AtomicInteger()
+    private val refused = AtomicInteger()
     private var port = 0
     private var server: AgentServer? = null
 
@@ -146,6 +202,7 @@ class AgentServerTest {
     private fun start(
         maxWaitMs: Long = 400,
         phones: List<FakePhone> = listOf(FakePhone("b", TestLlm("M"), scope, 1, isLocal = false, tokPerSec = 10.0)),
+        writeTimeoutMs: Long = AgentServer.WRITE_TIMEOUT_MS,
     ) {
         node = SchedNode(scope, { "a" }, { chat }, { embedder }, { null })
         val backend = AgentBackend(
@@ -163,7 +220,9 @@ class AgentServerTest {
             port, { key }, backend,
             audit = { kind, payload -> audit += kind to payload },
             onServed = { served.incrementAndGet() },
+            onRefused = { refused.incrementAndGet() },
             pingMs = 100,
+            writeTimeoutMs = writeTimeoutMs,
         )
         assertNull(server!!.start())
     }
@@ -235,7 +294,7 @@ class AgentServerTest {
 
     @Test fun anUnauthenticatedRequestIsRefusedBeforeItsBodyIsConsidered() {
         start()
-        val s = rawRequest("POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 99999999\r\nConnection: close\r\n\r\n")
+        val s = rawRequest("POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nContent-Length: 99999999\r\nConnection: close\r\n\r\n")
         assertTrue(s, s.startsWith("HTTP/1.1 401"))
     }
 
@@ -370,7 +429,7 @@ class AgentServerTest {
         val s = Socket("127.0.0.1", port)
         s.soTimeout = 5_000
         val body = chatBody(""""stream":true""")
-        val head = "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $key\r\nContent-Type: application/json\r\nContent-Length: ${body.toByteArray().size}\r\nConnection: close\r\n\r\n"
+        val head = "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nAuthorization: Bearer $key\r\nContent-Type: application/json\r\nContent-Length: ${body.toByteArray().size}\r\nConnection: close\r\n\r\n"
         s.getOutputStream().write(head.toByteArray() + body.toByteArray())
         s.getOutputStream().flush()
         val seen = StringBuilder()
@@ -396,7 +455,7 @@ class AgentServerTest {
         chat = hang
         val holder = Socket("127.0.0.1", port)
         val body = chatBody(""""stream":true""")
-        holder.getOutputStream().write(("POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $key\r\nContent-Length: ${body.toByteArray().size}\r\n\r\n$body").toByteArray())
+        holder.getOutputStream().write(("POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nAuthorization: Bearer $key\r\nContent-Length: ${body.toByteArray().size}\r\n\r\n$body").toByteArray())
         waitUntil("the first stream to hold the slot") { node.chatExec.running == 1 }
         val r = post("/v1/chat/completions", chatBody(""""stream":true"""))
         assertEquals(r.body, 503, r.status)
@@ -465,7 +524,7 @@ class AgentServerTest {
 
     @Test fun aBodyOverOneMiBIs413() {
         start()
-        val declared = rawRequest("POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $key\r\nContent-Length: ${(1 shl 20) + 1}\r\nConnection: close\r\n\r\n")
+        val declared = rawRequest("POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nAuthorization: Bearer $key\r\nContent-Length: ${(1 shl 20) + 1}\r\nConnection: close\r\n\r\n")
         assertTrue(declared, declared.startsWith("HTTP/1.1 413"))
         assertTrue(declared.contains("request_too_large"))
     }
@@ -473,7 +532,7 @@ class AgentServerTest {
     @Test fun aChunkedBodyOverOneMiBIs413TooAndIsNeverBufferedWhole() {
         start()
         val big = "a".repeat((1 shl 20) + 1)
-        val req = "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $key\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
+        val req = "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nAuthorization: Bearer $key\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
             Integer.toHexString(big.length) + "\r\n" + big + "\r\n0\r\n\r\n"
         val resp = rawRequest(req)
         assertTrue(resp, resp.startsWith("HTTP/1.1 413"))
@@ -584,7 +643,8 @@ class AgentServerTest {
         post("/v1/embeddings", """{"model":"ustaad-local","input":["private text one","private text two"]}""")
         post("/v1/chat/completions", chatBody(""""n":3""", user = "refused secret"))
         val kinds = audit.map { it.first }
-        assertEquals(listOf("agent.start", "agent.chat", "agent.chat", "agent.embed", "agent.chat"), kinds)
+        assertEquals("the 400 is counted, not audited", listOf("agent.start", "agent.chat", "agent.chat", "agent.embed"), kinds)
+        assertEquals(1, refused.get())
 
         val plain = audit[1].second
         assertEquals("ustaad-local", plain.getValue("model").jsonPrimitive.content)
@@ -602,8 +662,6 @@ class AgentServerTest {
         assertEquals(2, embed.getValue("inputs").jsonPrimitive.int)
         assertEquals("private text one".length * 2, embed.getValue("chars").jsonPrimitive.int)
 
-        assertEquals(400, audit[4].second.getValue("status").jsonPrimitive.int)
-
         val all = audit.joinToString("\n") { it.second.toString() }
         for (secret in listOf("secret prompt", "private text", "refused secret", "T:", "stream:")) assertFalse("audit must not hold '$secret'", all.contains(secret))
     }
@@ -618,7 +676,125 @@ class AgentServerTest {
         call("GET", "/v1/models", key = "wrong")
         post("/v1/chat/completions", chatBody(""""n":2"""))
         post("/v1/chat/completions", chatBody(model = "nope"))
+        call("GET", "/v1/nothing")
         assertEquals(4, served.get())
+        assertEquals("every 4xx is counted: key, field, model, route", 4, refused.get())
+    }
+
+    @Test fun aServerErrorIsAuditedButARefusalIsNot() {
+        start()
+        chat = FailingLlm { RuntimeException("secret detail from /data/user/0/com.swarmos.app") }
+        val r = post("/v1/chat/completions", chatBody(user = "hello"))
+        assertEquals(500, r.status)
+        assertEquals("internal_error", r.errorCode)
+        assertFalse(r.body.contains("secret detail"))
+        assertFalse(r.body.contains("/data/"))
+        assertEquals(listOf("agent.start", "agent.chat"), audit.map { it.first })
+        assertEquals(500, audit.last().second.getValue("status").jsonPrimitive.int)
+        assertEquals(0, refused.get())
+        assertEquals(0, served.get())
+    }
+
+    @Test fun noServerErrorEverCarriesAnExceptionMessage() {
+        start()
+        val secret = "secret detail 127.0.0.1:8080 /data/x"
+        chat = FailingLlm { RuntimeException(secret) }
+        val streamed = post("/v1/chat/completions", chatBody(""""stream":true"""))
+        assertEquals(500, streamed.status)
+        assertFalse(streamed.body.contains("secret"))
+        chat = FailingLlm { java.io.IOException(secret) }
+        val lost = post("/v1/chat/completions", chatBody())
+        assertEquals(503, lost.status)
+        assertEquals("model_unavailable", lost.errorCode)
+        assertFalse(lost.body.contains("secret"))
+        embedderClient = FailingLlm { IllegalStateException(secret) }
+        val e = post("/v1/embeddings", """{"model":"ustaad-local","input":"x"}""")
+        assertEquals(500, e.status)
+        assertFalse(e.body.contains("secret"))
+    }
+
+    @Test fun aSwarmThatCannotRunTheJobIs503() {
+        val dead = FakePhone("b", TestLlm("M"), scope, 1, isLocal = false, tokPerSec = 10.0)
+        dead.dead = true
+        start(phones = listOf(dead))
+        val r = post("/v1/chat/completions", chatBody(model = "ustaad-swarm"))
+        assertEquals(r.body, 503, r.status)
+        assertEquals("swarm_unavailable", r.errorCode)
+        assertEquals("server_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+        assertEquals(503, audit.last().second.getValue("status").jsonPrimitive.int)
+    }
+
+    // ---- host name, limits, stalled clients ----------------------------------------------------------------
+
+    @Test fun aRequestAddressedByAnotherHostNameIsRefusedEvenWithTheRightKey() {
+        start()
+        fun get(host: String) = rawRequest("GET /v1/models HTTP/1.1\r\nHost: $host\r\nAuthorization: Bearer $key\r\nConnection: close\r\n\r\n")
+        for (ok in listOf("127.0.0.1:$port", "localhost:$port", "[::1]:$port")) assertTrue(ok, get(ok).startsWith("HTTP/1.1 200"))
+        for (bad in listOf("evil.example:$port", "127.0.0.1", "localhost:80", "127.0.0.1.evil.example:$port")) {
+            val r = get(bad)
+            assertTrue("$bad: $r", r.startsWith("HTTP/1.1 403"))
+            assertTrue(r.contains("not_local"))
+        }
+        assertEquals(4, refused.get())
+        assertEquals(3, served.get())
+    }
+
+    @Test fun moreThanFourRequestsReadingAtOnceGetTooManyRequests() {
+        start()
+        val holders = List(AgentServer.MAX_PARSING) {
+            Socket("127.0.0.1", port).also { s ->
+                s.getOutputStream().write("POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nAuthorization: Bearer $key\r\nContent-Length: 500\r\n\r\n".toByteArray())
+                s.getOutputStream().flush()
+            }
+        }
+        try {
+            // the holders are inside the handler once a fifth request is turned away
+            waitUntil("the fifth request to be refused") { post("/v1/chat/completions", chatBody()).status == 429 }
+            val r = post("/v1/chat/completions", chatBody())
+            assertEquals(429, r.status)
+            assertEquals("rate_limited", r.errorCode)
+            assertEquals("rate_limit_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+            assertEquals("the key is still checked first", 401, post("/v1/chat/completions", chatBody(), key = "wrong").status)
+        } finally {
+            holders.forEach { it.close() }
+        }
+        waitUntil("the places to come free") { post("/v1/chat/completions", chatBody()).status == 200 }
+    }
+
+    @Test fun moreThanTwoEmbeddingCallsAtOnceGetTooManyRequests() {
+        val blocking = BlockingEmbedder()
+        start()
+        embedderClient = blocking
+        val body = """{"model":"ustaad-local","input":"x"}"""
+        val running = List(AgentServer.MAX_EMBEDDING) { java.util.concurrent.CompletableFuture.supplyAsync { post("/v1/embeddings", body) } }
+        waitUntil("two embedding calls to be running") { blocking.entered.get() == AgentServer.MAX_EMBEDDING }
+        val third = post("/v1/embeddings", body)
+        assertEquals(third.body, 429, third.status)
+        assertEquals("rate_limited", third.errorCode)
+        assertEquals("chat is not limited by the embedding places", 200, post("/v1/chat/completions", chatBody()).status)
+        blocking.release.complete(Unit)
+        assertEquals(listOf(200, 200), running.map { it.get(10, TimeUnit.SECONDS).status })
+        assertEquals(200, post("/v1/embeddings", body).status)
+    }
+
+    @Test fun aClientThatStopsReadingEndsTheStreamAndFreesTheModel() {
+        val flood = FloodLlm()
+        start(writeTimeoutMs = 500)
+        chat = flood
+        val s = Socket()
+        s.receiveBufferSize = 1024 // before connect, so the window stays small
+        s.connect(InetSocketAddress("127.0.0.1", port))
+        val body = chatBody(""""stream":true""")
+        s.getOutputStream().write(
+            ("POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nAuthorization: Bearer $key\r\nContent-Type: application/json\r\nContent-Length: ${body.toByteArray().size}\r\n\r\n$body").toByteArray(),
+        )
+        s.getOutputStream().flush()
+        // the socket is never read from: the server's writes fill the buffers and then block
+        waitUntil("the stalled stream to be ended and the slot freed", ms = 20_000) { node.chatExec.running == 0 && flood.cancelled.get() == 1 }
+        waitUntil("the audit entry of the unfinished stream") { audit.any { it.first == "agent.chat" && it.second["aborted"] != null } }
+        s.close()
+        chat = TestLlm("T", delayMs = 10)
+        assertEquals("the slot is usable again", 200, post("/v1/chat/completions", chatBody()).status)
     }
 
     // ---- lifecycle ------------------------------------------------------------------------------------------

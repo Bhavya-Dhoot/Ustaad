@@ -111,12 +111,15 @@ class AgentAccessTest {
         assertEquals(true to AgentAccess.key.value, saved.last())
     }
 
-    @Test fun servedCountsUpAndResetsOnRestore() {
+    @Test fun servedAndRefusedCountUpAndResetOnRestore() {
         AgentAccess.noteServed()
         AgentAccess.noteServed()
+        AgentAccess.noteRefused()
         assertEquals(2, AgentAccess.served.value)
+        assertEquals(1, AgentAccess.refused.value)
         AgentAccess.restore(false, null) { _, _ -> }
         assertEquals(0, AgentAccess.served.value)
+        assertEquals(0, AgentAccess.refused.value)
     }
 
     @Test fun quickChangesSaveTheLatestStateLast() {

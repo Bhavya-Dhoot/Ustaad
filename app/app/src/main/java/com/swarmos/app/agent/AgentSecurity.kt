@@ -88,14 +88,24 @@ class AgentRefusal(val status: Int, message: String, val code: String, val type:
     companion object {
         const val TYPE_INVALID_REQUEST = "invalid_request_error"
         const val TYPE_SERVER = "server_error"
+        const val TYPE_RATE_LIMIT = "rate_limit_error"
     }
 }
 
-/** The two checks every request passes before anything is read from it: where it came from, and the key. */
+/** The checks every request passes before anything is read from it: where it came from, how it was addressed, and the key. */
 object AgentGate {
-    fun check(remoteAddress: String?, authorization: String?, key: String?): AgentRefusal? {
-        if (!AgentLoopback.isLoopback(remoteAddress)) {
-            return AgentRefusal(403, "This endpoint only answers requests from this phone.", "not_local")
+    /**
+     * [host] is the request's Host header. A web page that reaches this port through DNS rebinding sends its own host name
+     * there, so only the three spellings of this phone's own address with this listener's [port] are served.
+     */
+    fun hostAllowed(host: String?, port: Int): Boolean {
+        val h = host?.trim()?.lowercase() ?: return false
+        return h == "127.0.0.1:$port" || h == "localhost:$port" || h == "[::1]:$port"
+    }
+
+    fun check(remoteAddress: String?, host: String?, port: Int, authorization: String?, key: String?): AgentRefusal? {
+        if (!AgentLoopback.isLoopback(remoteAddress) || !hostAllowed(host, port)) {
+            return AgentRefusal(403, "This endpoint only answers requests from this phone, addressed as 127.0.0.1:$port.", "not_local")
         }
         if (!AgentKey.matches(key, AgentKey.bearerToken(authorization))) {
             return AgentRefusal(401, "Missing or wrong API key. Send the key from Ustaad Settings as 'Authorization: Bearer <key>'.", "invalid_api_key")
