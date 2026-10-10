@@ -26,7 +26,8 @@ The loop checks these in order, and the first that applies decides.
 4. After Hammer is switched off the phone rests for 90 seconds, then normal rules apply. Real work is not held by the rest.
 5. At Thermal Status 3 or more the loop pauses and looks again every 10 s; it carries on by itself when the status is under 3.
 6. Under 30 % battery and not charging, it pauses. An unknown battery level does not pause it.
-7. At Thermal Status 2 (warm) it runs at half duty: after each job it rests as long as the job took. Otherwise it runs at full duty. With Hammer on, step 7 is skipped, so a warm phone stays at full duty. Every other rule still applies.
+7. Under 1024 MB of free memory it pauses and looks again every 10 s, with Hammer on as well. An unknown reading does not pause it. (Added on 2026-10-11. In the regression of that build phones A and B had 4716 to 5245 MB free under Keep busy, so this pause has not been seen on a phone.)
+8. At Thermal Status 2 (warm) it runs at half duty: after each job it rests as long as the job took. Otherwise it runs at full duty. With Hammer on, step 8 is skipped, so a warm phone stays at full duty. Every other rule still applies.
 
 A filler job that has not finished after 60 s is cancelled and counted as failed, and the loop then waits 45 s before the next one, so that the watch for a frozen model server can count its three missed pings (with the server frozen on Phone A it was killed and restarted after 85.5 s).
 
@@ -88,6 +89,6 @@ Usage over speed. A duty rule that reads the step was tried and not merged. Phon
 - Battery use. The battery exemption was never granted on a phone, so whether Keep busy survives with the screen off is unknown.
 - Hammer for longer than 25 minutes, on battery, or on a phone that is not charging at 100 %. Thermal Status 4 under Keep busy or Hammer (it was not reached). The Hammer buttons on Phone C and with a finger.
 - How long a phone needs after Hammer to leave the slow step, and why an install resets it.
-- After a pause for heat the loop resumes at the first reading under status 3 with no settling time; with Hammer it could move back and forth on that edge (docs/review/2026-10-11-final-audit.md, R11). Keep busy has no input for free memory, so Hammer has no back-off for memory (R13).
+- After a pause for heat the loop resumes at the first reading under status 3 with no settling time; with Hammer it could move back and forth on that edge (docs/review/2026-10-11-final-audit.md, R11). The pause under 1024 MB of free memory (rule 7) is held by unit tests only.
 - A benchmark started while a filler job runs can overlap it for up to a quarter of a second. Switch Keep busy off before a benchmark whose figure will be quoted, and before a timed demo run.
 - The mode on the demo build. All of the above was measured on the debug build.

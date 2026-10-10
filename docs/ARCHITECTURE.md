@@ -140,7 +140,7 @@ One job goes through these steps (`sched/SwarmLlm.kt`).
 - Every item has the job id `<batch id>-<index>` and is sent with the prompt cache off.
 - A request that no phone could answer is reported with its error and does not stop the batch.
 - One batch runs at a time (409 for a second). The built-in set `bench32` is 32 short prompts of at most 48 tokens.
-- If the coordinating phone dies, the report is marked `interrupted`, the next batch can start at once, and nothing resumes.
+- If the coordinating phone dies, the report is marked `interrupted`, the next batch can start at once, and nothing resumes. "Stop Ustaad" on the coordinating phone ends its batches the same way: on Phone A, with 2 of 96 jobs done, Phone B's count of running jobs was 0 at the first read 4.7 s after the tap (docs/benchmarks/2026-10-11-final-regression.md, fourth pass, one run).
 
 ## 4. The modules
 
