@@ -1,0 +1,4 @@
+{"t": 0, "thermal": "2", "chatRssMb": 1728, "chatRestarts": 0, "enabled": true, "state": "half_duty", "jobsDone": 0, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 0, "secondsGenerating": 0.453, "share60s": 0.008}
+{"t": 15, "thermal": "2", "chatRssMb": 1685, "chatRestarts": 0, "enabled": true, "state": "half_duty", "jobsDone": 3, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 55, "secondsGenerating": 8.155, "share60s": 0.136}
+{"t": 30, "thermal": "2", "chatRssMb": 1774, "chatRestarts": 0, "enabled": true, "state": "half_duty", "jobsDone": 6, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 112, "secondsGenerating": 16.025, "share60s": 0.267}
+{"t": 46, "thermal": "2", "chatRssMb": 1724, "chatRestarts": 0, "enabled": true, "state": "half_duty", "jobsDone": 10, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 187, "secondsGenerating": 24.558, "share60s": 0.409}

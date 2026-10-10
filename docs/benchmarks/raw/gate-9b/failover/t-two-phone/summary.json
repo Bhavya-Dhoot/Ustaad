@@ -1,0 +1,194 @@
+{
+ "command": "python scripts/batch-failover-check.py 192.168.242.23 192.168.242.76 docs/benchmarks/raw/gate-9b/failover/t-two-phone tt",
+ "startedAt": "2026-10-10 18:43:51",
+ "nodes": {
+  "c6f72247": "A(other)",
+  "477684c1": "coord",
+  "82d2676d": "peer"
+ },
+ "steps": [
+  {
+   "step": "t",
+   "file": "step-1-t.json",
+   "summary": {
+    "id": "a7adf63ab5e84641",
+    "state": "done",
+    "total": 32,
+    "done": 32,
+    "failed": 0,
+    "wallS": 46.43,
+    "aggTokPerSec": 19.15,
+    "totalTokens": 889,
+    "perPhone": [
+     {
+      "node": "coord",
+      "jobs": 14,
+      "tokens": 384,
+      "decodeTokPerSec": 10.9
+     },
+     {
+      "node": "peer",
+      "jobs": 18,
+      "tokens": 505,
+      "decodeTokPerSec": 13.44
+     }
+    ],
+    "itemsByNode": {
+     "coord": 14,
+     "peer": 18
+    },
+    "medianPromptMs": 405.0,
+    "errors": []
+   },
+   "events": null,
+   "error": null
+  },
+  {
+   "step": "t",
+   "file": "step-2-t.json",
+   "summary": {
+    "id": "6fd4a19727c14415",
+    "state": "done",
+    "total": 32,
+    "done": 32,
+    "failed": 0,
+    "wallS": 49.16,
+    "aggTokPerSec": 18.09,
+    "totalTokens": 889,
+    "perPhone": [
+     {
+      "node": "coord",
+      "jobs": 16,
+      "tokens": 438,
+      "decodeTokPerSec": 10.86
+     },
+     {
+      "node": "peer",
+      "jobs": 16,
+      "tokens": 451,
+      "decodeTokPerSec": 12.23
+     }
+    ],
+    "itemsByNode": {
+     "coord": 16,
+     "peer": 16
+    },
+    "medianPromptMs": 483.7,
+    "errors": []
+   },
+   "events": null,
+   "error": null
+  }
+ ],
+ "keepBusyEnabled": {
+  "coord": false,
+  "peer": false
+ },
+ "thermalWait": {
+  "seconds": 0,
+  "coordPeer": [
+   "2",
+   "1"
+  ]
+ },
+ "initialReady": {
+  "ok": true,
+  "elapsedS": 0.1,
+  "last": {
+   "coordModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "peerModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "coordListsPeer": "online",
+   "peerListsCoord": "online"
+  }
+ },
+ "final": {
+  "wait": {
+   "ok": true,
+   "elapsedS": 0.2,
+   "last": {
+    "coordModels": {
+     "api": true,
+     "chat": "READY",
+     "backend": "GPU",
+     "embed": "READY",
+     "restarts": 0
+    },
+    "peerModels": {
+     "api": true,
+     "chat": "READY",
+     "backend": "GPU",
+     "embed": "READY",
+     "restarts": 0
+    },
+    "coordListsPeer": "online",
+    "peerListsCoord": "online"
+   }
+  },
+  "coord": {
+   "foreground": true,
+   "thermal": "2",
+   "keepBusyEnabled": false,
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 38.485208,
+      "ageMs": 55,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 2
+     }
+    ]
+   }
+  },
+  "peer": {
+   "foreground": true,
+   "thermal": "2",
+   "keepBusyEnabled": false,
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 40.23526,
+      "ageMs": 531,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 2
+     }
+    ]
+   }
+  }
+ }
+}

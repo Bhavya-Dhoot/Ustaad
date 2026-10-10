@@ -1,0 +1,3742 @@
+{
+ "tag": "p",
+ "before": {
+  "label": "p before",
+  "at": "18:38:33",
+  "thermal": {
+   "coord": "1",
+   "peer": "0"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "online",
+      "rttMs": 44.15026,
+      "ageMs": 118,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 31.702083,
+      "ageMs": 628,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 0
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 1,
+    "ramAvailMb": 5143
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "online",
+      "rttMs": 35.789375,
+      "ageMs": 228,
+      "misses": 0,
+      "awayCount": 2,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 36.827239,
+      "ageMs": 290,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 1
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 0,
+    "ramAvailMb": 5075
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "doneAtKill": {
+  "done": 8,
+  "state": "running",
+  "perNode": {
+   "coord": 3,
+   "A(other)": 2,
+   "peer": 3
+  }
+ },
+ "killIssuedAtS": 7.76,
+ "killReturnedAtS": 7.92,
+ "finished": true,
+ "report": {
+  "id": "15c23c3c1b1e4d9b",
+  "mode": "swarm",
+  "state": "done",
+  "total": 32,
+  "done": 32,
+  "failed": 0,
+  "wallMs": 52630.551803,
+  "totalTokens": 892,
+  "aggTokPerSec": 16.948330759267375,
+  "fake": false,
+  "models": [
+   "Qwen3.5-4B-Q4_K_M"
+  ],
+  "perPhone": [
+   {
+    "nodeId": "477684c1",
+    "jobs": 21,
+    "tokens": 582,
+    "tokPerSec": 11.058215809297772,
+    "decodeTokPerSec": 13.501831238059463
+   },
+   {
+    "nodeId": "82d2676d",
+    "jobs": 3,
+    "tokens": 80,
+    "tokPerSec": 1.520029664508285,
+    "decodeTokPerSec": 13.440261816300183
+   },
+   {
+    "nodeId": "c6f72247",
+    "jobs": 8,
+    "tokens": 230,
+    "tokPerSec": 4.370085285461319,
+    "decodeTokPerSec": 13.173522845723786
+   }
+  ],
+  "items": [
+   {
+    "index": 0,
+    "jobId": "15c23c3c1b1e4d9b-0",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The monsoon is a seasonal wind system that reverses direction, bringing heavy rainfall to certain regions during the summer and dry conditions during the winter.",
+    "promptTokens": 29,
+    "completionTokens": 30,
+    "genMs": 2217.415,
+    "error": null,
+    "promptMs": 404.529,
+    "waitedMs": 1.0,
+    "endMs": 2677.755832
+   },
+   {
+    "index": 1,
+    "jobId": "15c23c3c1b1e4d9b-1",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A lighthouse is a tower equipped with a powerful light that guides ships away from dangerous coastlines.",
+    "promptTokens": 18,
+    "completionTokens": 21,
+    "genMs": 1580.595,
+    "error": null,
+    "promptMs": 652.17,
+    "waitedMs": 2.0,
+    "endMs": 2384.536093
+   },
+   {
+    "index": 2,
+    "jobId": "15c23c3c1b1e4d9b-2",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Binary search is an efficient algorithm that repeatedly divides a sorted list in half to locate a target value.",
+    "promptTokens": 28,
+    "completionTokens": 21,
+    "genMs": 1564.567,
+    "error": null,
+    "promptMs": 402.673,
+    "waitedMs": 1.0,
+    "endMs": 2065.154114
+   },
+   {
+    "index": 3,
+    "jobId": "15c23c3c1b1e4d9b-3",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Moon is Earth's only natural satellite, a rocky body that orbits our planet and reflects sunlight to cause lunar phases and tides.",
+    "promptTokens": 28,
+    "completionTokens": 28,
+    "genMs": 2088.758,
+    "error": null,
+    "promptMs": 403.852,
+    "waitedMs": 1.0,
+    "endMs": 4629.42906
+   },
+   {
+    "index": 4,
+    "jobId": "15c23c3c1b1e4d9b-4",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy, transforming carbon dioxide and water into glucose and oxygen.",
+    "promptTokens": 4,
+    "completionTokens": 32,
+    "genMs": 2432.732,
+    "error": null,
+    "promptMs": 329.542,
+    "waitedMs": 1.0,
+    "endMs": 5289.294841
+   },
+   {
+    "index": 5,
+    "jobId": "15c23c3c1b1e4d9b-5",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A transistor is a semiconductor device that acts as an electronic switch or amplifier by controlling the flow of electric current.",
+    "promptTokens": 28,
+    "completionTokens": 23,
+    "genMs": 1681.096,
+    "error": null,
+    "promptMs": 397.349,
+    "waitedMs": 1.0,
+    "endMs": 4823.709581
+   },
+   {
+    "index": 6,
+    "jobId": "15c23c3c1b1e4d9b-6",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Silk Road was a vast network of trade routes connecting East Asia to the Mediterranean that facilitated the exchange of goods, culture, and ideas between civilizations.",
+    "promptTokens": 29,
+    "completionTokens": 31,
+    "genMs": 2298.94,
+    "error": null,
+    "promptMs": 397.781,
+    "waitedMs": 1.0,
+    "endMs": 7408.04083
+   },
+   {
+    "index": 7,
+    "jobId": "15c23c3c1b1e4d9b-7",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Tides are the regular rise and fall of ocean water levels caused primarily by the gravitational pull of the moon and the sun.",
+    "promptTokens": 28,
+    "completionTokens": 26,
+    "genMs": 1918.965,
+    "error": null,
+    "promptMs": 395.214,
+    "waitedMs": 1.0,
+    "endMs": 7188.924528
+   },
+   {
+    "index": 8,
+    "jobId": "15c23c3c1b1e4d9b-8",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A prime number is a natural number greater than 1 that has exactly two distinct positive divisors: 1 and itself.",
+    "promptTokens": 18,
+    "completionTokens": 26,
+    "genMs": 1972.129,
+    "error": null,
+    "promptMs": 657.973,
+    "waitedMs": 0.0,
+    "endMs": 8063.492861
+   },
+   {
+    "index": 9,
+    "jobId": "15c23c3c1b1e4d9b-9",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The water cycle is the continuous process where water evaporates from surfaces, condenses into clouds, precipitates back to Earth, and collects in bodies of water to repeat the cycle.",
+    "promptTokens": 29,
+    "completionTokens": 37,
+    "genMs": 2755.389,
+    "error": null,
+    "promptMs": 402.152,
+    "waitedMs": 1.0,
+    "endMs": 10417.922756
+   },
+   {
+    "index": 10,
+    "jobId": "15c23c3c1b1e4d9b-10",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A compiler is a program that translates source code written in a high-level programming language into machine code that a computer can execute.",
+    "promptTokens": 17,
+    "completionTokens": 26,
+    "genMs": 1963.805,
+    "error": null,
+    "promptMs": 641.246,
+    "waitedMs": 0.0,
+    "endMs": 10802.737027
+   },
+   {
+    "index": 11,
+    "jobId": "15c23c3c1b1e4d9b-11",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Volcanoes are openings in the Earth's crust that allow molten rock, ash, and gases to erupt onto the surface.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 1989.505,
+    "error": null,
+    "promptMs": 394.358,
+    "waitedMs": 1.0,
+    "endMs": 12846.11062
+   },
+   {
+    "index": 12,
+    "jobId": "15c23c3c1b1e4d9b-12",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The printing press is a device that uses movable type to reproduce text and images, revolutionizing the spread of information by making books cheaper and more accessible.",
+    "promptTokens": 18,
+    "completionTokens": 31,
+    "genMs": 2350.292,
+    "error": null,
+    "promptMs": 652.616,
+    "waitedMs": 1.0,
+    "endMs": 13981.746349
+   },
+   {
+    "index": 13,
+    "jobId": "15c23c3c1b1e4d9b-13",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A magnet is an object that produces a magnetic field, allowing it to attract ferromagnetic materials like iron and repel other magnets.",
+    "promptTokens": 28,
+    "completionTokens": 28,
+    "genMs": 2078.701,
+    "error": null,
+    "promptMs": 398.005,
+    "waitedMs": 1.0,
+    "endMs": 15389.299942
+   },
+   {
+    "index": 14,
+    "jobId": "15c23c3c1b1e4d9b-14",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Coral reefs are vibrant underwater ecosystems built by tiny marine animals called coral polyps that secrete calcium carbonate to form hard structures.",
+    "promptTokens": 4,
+    "completionTokens": 27,
+    "genMs": 2037.918,
+    "error": null,
+    "promptMs": 317.015,
+    "waitedMs": 1.0,
+    "endMs": 16558.167077
+   },
+   {
+    "index": 15,
+    "jobId": "15c23c3c1b1e4d9b-15",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Morse code is a method of transmitting text information in the form of short and long signals using dots and dashes.",
+    "promptTokens": 28,
+    "completionTokens": 24,
+    "genMs": 1782.359,
+    "error": null,
+    "promptMs": 402.405,
+    "waitedMs": 1.0,
+    "endMs": 17626.614524
+   },
+   {
+    "index": 16,
+    "jobId": "15c23c3c1b1e4d9b-16",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The speed of light is the maximum speed at which all conventional matter and information in the universe can travel, approximately 299,792,458 meters per second in a vacuum.",
+    "promptTokens": 4,
+    "completionTokens": 42,
+    "genMs": 3216.769,
+    "error": null,
+    "promptMs": 322.144,
+    "waitedMs": 3.0,
+    "endMs": 20279.469523
+   },
+   {
+    "index": 17,
+    "jobId": "15c23c3c1b1e4d9b-17",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A sundial is a timekeeping device that uses the position of the sun to cast a shadow onto a marked surface, indicating the time of day.",
+    "promptTokens": 29,
+    "completionTokens": 31,
+    "genMs": 2311.442,
+    "error": null,
+    "promptMs": 394.89,
+    "waitedMs": 1.0,
+    "endMs": 20395.196607
+   },
+   {
+    "index": 18,
+    "jobId": "15c23c3c1b1e4d9b-18",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Bread yeast is a single-celled fungus used in baking to ferment dough by converting sugars into carbon dioxide and alcohol.",
+    "promptTokens": 17,
+    "completionTokens": 25,
+    "genMs": 1905.023,
+    "error": null,
+    "promptMs": 668.067,
+    "waitedMs": 1.0,
+    "endMs": 22999.691762
+   },
+   {
+    "index": 19,
+    "jobId": "15c23c3c1b1e4d9b-19",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Glaciers are massive, slow-moving rivers of ice formed by the accumulation and compaction of snow over many years.",
+    "promptTokens": 27,
+    "completionTokens": 25,
+    "genMs": 1863.618,
+    "error": null,
+    "promptMs": 395.573,
+    "waitedMs": 1.0,
+    "endMs": 22708.448793
+   },
+   {
+    "index": 20,
+    "jobId": "15c23c3c1b1e4d9b-20",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A checksum is a short, fixed-length value calculated from a larger piece of data to verify its integrity and detect accidental corruption.",
+    "promptTokens": 28,
+    "completionTokens": 26,
+    "genMs": 1917.922,
+    "error": null,
+    "promptMs": 396.663,
+    "waitedMs": 1.0,
+    "endMs": 25076.322178
+   },
+   {
+    "index": 21,
+    "jobId": "15c23c3c1b1e4d9b-21",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The heart is a muscular organ that pumps blood throughout the body to deliver oxygen and nutrients.",
+    "promptTokens": 28,
+    "completionTokens": 19,
+    "genMs": 1386.698,
+    "error": null,
+    "promptMs": 402.135,
+    "waitedMs": 1.0,
+    "endMs": 26909.944417
+   },
+   {
+    "index": 22,
+    "jobId": "15c23c3c1b1e4d9b-22",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A telescope is an optical instrument designed to gather light from distant objects and magnify their images for closer inspection.",
+    "promptTokens": 28,
+    "completionTokens": 23,
+    "genMs": 1715.124,
+    "error": null,
+    "promptMs": 393.378,
+    "waitedMs": 1.0,
+    "endMs": 29070.400197
+   },
+   {
+    "index": 23,
+    "jobId": "15c23c3c1b1e4d9b-23",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Origami is the Japanese art of paper folding that transforms flat sheets into intricate three-dimensional shapes through precise creases.",
+    "promptTokens": 28,
+    "completionTokens": 24,
+    "genMs": 1784.065,
+    "error": null,
+    "promptMs": 396.319,
+    "waitedMs": 1.0,
+    "endMs": 31291.346863
+   },
+   {
+    "index": 24,
+    "jobId": "15c23c3c1b1e4d9b-24",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Pythagorean theorem states that in a right-angled triangle, the square of the length of the hypotenuse (the side opposite the right angle) is equal to the sum of the squares of the lengths of the other two sides",
+    "promptTokens": 31,
+    "completionTokens": 48,
+    "genMs": 3573.466,
+    "error": null,
+    "promptMs": 406.463,
+    "waitedMs": 1.0,
+    "endMs": 35333.215767
+   },
+   {
+    "index": 25,
+    "jobId": "15c23c3c1b1e4d9b-25",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Bees are social insects known for their vital role in pollinating plants and producing honey.",
+    "promptTokens": 27,
+    "completionTokens": 19,
+    "genMs": 1397.634,
+    "error": null,
+    "promptMs": 399.126,
+    "waitedMs": 0.0,
+    "endMs": 37171.253579
+   },
+   {
+    "index": 26,
+    "jobId": "15c23c3c1b1e4d9b-26",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A fuse is a safety device containing a thin metal wire that melts and breaks the electrical circuit when current exceeds a safe level, preventing damage or fire.",
+    "promptTokens": 28,
+    "completionTokens": 31,
+    "genMs": 2288.322,
+    "error": null,
+    "promptMs": 390.988,
+    "waitedMs": 1.0,
+    "endMs": 39906.209776
+   },
+   {
+    "index": 27,
+    "jobId": "15c23c3c1b1e4d9b-27",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Ganges is a major river in South Asia that holds profound religious significance for Hindus, who believe it is a goddess and essential for spiritual purification.",
+    "promptTokens": 29,
+    "completionTokens": 31,
+    "genMs": 2305.014,
+    "error": null,
+    "promptMs": 398.222,
+    "waitedMs": 0.0,
+    "endMs": 42663.791858
+   },
+   {
+    "index": 28,
+    "jobId": "15c23c3c1b1e4d9b-28",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Chess openings are the initial moves made by both players to develop their pieces, control the center, and prepare for a strategic plan.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 1985.645,
+    "error": null,
+    "promptMs": 399.673,
+    "waitedMs": 1.0,
+    "endMs": 45113.006805
+   },
+   {
+    "index": 29,
+    "jobId": "15c23c3c1b1e4d9b-29",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Static electricity is an imbalance of electric charges within or on the surface of a material, typically caused by the transfer of electrons between objects.",
+    "promptTokens": 28,
+    "completionTokens": 28,
+    "genMs": 2069.957,
+    "error": null,
+    "promptMs": 393.111,
+    "waitedMs": 1.0,
+    "endMs": 47631.517013
+   },
+   {
+    "index": 30,
+    "jobId": "15c23c3c1b1e4d9b-30",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A rainbow is a natural optical phenomenon caused by sunlight being refracted, reflected, and dispersed by water droplets in the atmosphere.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 1999.334,
+    "error": null,
+    "promptMs": 398.578,
+    "waitedMs": 1.0,
+    "endMs": 50094.333679
+   },
+   {
+    "index": 31,
+    "jobId": "15c23c3c1b1e4d9b-31",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Tea is a popular hot or cold beverage prepared by steeping cured leaves of the Camellia sinensis plant in hot water.",
+    "promptTokens": 27,
+    "completionTokens": 28,
+    "genMs": 2083.593,
+    "error": null,
+    "promptMs": 401.247,
+    "waitedMs": 0.0,
+    "endMs": 52624.329667
+   }
+  ]
+ },
+ "summary": {
+  "id": "15c23c3c1b1e4d9b",
+  "state": "done",
+  "total": 32,
+  "done": 32,
+  "failed": 0,
+  "wallS": 52.63,
+  "aggTokPerSec": 16.95,
+  "totalTokens": 892,
+  "perPhone": [
+   {
+    "node": "coord",
+    "jobs": 21,
+    "tokens": 582,
+    "decodeTokPerSec": 13.5
+   },
+   {
+    "node": "peer",
+    "jobs": 3,
+    "tokens": 80,
+    "decodeTokPerSec": 13.44
+   },
+   {
+    "node": "A(other)",
+    "jobs": 8,
+    "tokens": 230,
+    "decodeTokPerSec": 13.17
+   }
+  ],
+  "itemsByNode": {
+   "coord": 21,
+   "A(other)": 8,
+   "peer": 3
+  },
+  "medianPromptMs": 398.4,
+  "errors": []
+ },
+ "events": {
+  "peerFirstNotOnlineAfterKillS": 2.32,
+  "coordListsPeerAwayAfterKillS": 2.32,
+  "coordListsPeerAwayAfterKillIssuedS": 2.49,
+  "schedulerMarkedPeerDownAfterKillS (first /v1/sched/phones sample with up=false, 2 s sampling)": 0.13,
+  "lastPhonesSampleBeforeKill": {
+   "secondsBeforeKill": 1.71,
+   "view": {
+    "coord": {
+     "up": true,
+     "inflight": 1,
+     "running": 1
+    },
+    "peer": {
+     "up": true,
+     "inflight": 1,
+     "running": 1
+    },
+    "A(other)": {
+     "up": true,
+     "inflight": 1,
+     "running": 0
+    }
+   }
+  },
+  "peerStateSequence": [
+   [
+    2.32,
+    "away"
+   ]
+  ],
+  "peerJobsFinishedAfterKill": 0,
+  "peerJobsFinishedBeforeKill": 3,
+  "timingAroundKill": {
+   "lastFinishBeforeMs": 7408,
+   "firstFinishAfterMs": 8063,
+   "gapAcrossKillMs": 655,
+   "medianGapMs": 1900,
+   "maxGapMs": 4042
+  }
+ },
+ "samplers": {
+  "batch": [
+   [
+    0.0,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    0.4,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    0.81,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    1.21,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    1.62,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    2.03,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    2.43,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "A(other)": 1,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    2.84,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 1,
+      "A(other)": 1,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    3.24,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 1,
+      "A(other)": 1,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    3.65,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 1,
+      "A(other)": 1,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    4.05,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 1,
+      "A(other)": 1,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    4.46,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 1,
+      "A(other)": 1,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    4.86,
+    {
+     "state": "running",
+     "done": 5,
+     "failed": 0,
+     "perNode": {
+      "coord": 2,
+      "A(other)": 1,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    5.26,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 2,
+      "A(other)": 2,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    5.67,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 2,
+      "A(other)": 2,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    6.07,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 2,
+      "A(other)": 2,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    6.48,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 2,
+      "A(other)": 2,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    6.88,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 2,
+      "A(other)": 2,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    7.29,
+    {
+     "state": "running",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "coord": 3,
+      "A(other)": 2,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    7.69,
+    {
+     "state": "running",
+     "done": 8,
+     "failed": 0,
+     "perNode": {
+      "coord": 3,
+      "A(other)": 2,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    8.1,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 3,
+      "A(other)": 3,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    8.5,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 3,
+      "A(other)": 3,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    8.9,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 3,
+      "A(other)": 3,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    9.31,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 3,
+      "A(other)": 3,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    9.71,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 3,
+      "A(other)": 3,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    10.12,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 3,
+      "A(other)": 3,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    10.52,
+    {
+     "state": "running",
+     "done": 10,
+     "failed": 0,
+     "perNode": {
+      "coord": 4,
+      "A(other)": 3,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    10.93,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 4,
+      "A(other)": 4,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    11.33,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 4,
+      "A(other)": 4,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    11.74,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 4,
+      "A(other)": 4,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    12.15,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 4,
+      "A(other)": 4,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    12.55,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 4,
+      "A(other)": 4,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    12.96,
+    {
+     "state": "running",
+     "done": 12,
+     "failed": 0,
+     "perNode": {
+      "coord": 5,
+      "A(other)": 4,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    13.36,
+    {
+     "state": "running",
+     "done": 12,
+     "failed": 0,
+     "perNode": {
+      "coord": 5,
+      "A(other)": 4,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    13.77,
+    {
+     "state": "running",
+     "done": 12,
+     "failed": 0,
+     "perNode": {
+      "coord": 5,
+      "A(other)": 4,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    14.17,
+    {
+     "state": "running",
+     "done": 13,
+     "failed": 0,
+     "perNode": {
+      "coord": 5,
+      "A(other)": 5,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    14.57,
+    {
+     "state": "running",
+     "done": 13,
+     "failed": 0,
+     "perNode": {
+      "coord": 5,
+      "A(other)": 5,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    14.98,
+    {
+     "state": "running",
+     "done": 13,
+     "failed": 0,
+     "perNode": {
+      "coord": 5,
+      "A(other)": 5,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    15.38,
+    {
+     "state": "running",
+     "done": 14,
+     "failed": 0,
+     "perNode": {
+      "coord": 6,
+      "A(other)": 5,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    15.78,
+    {
+     "state": "running",
+     "done": 14,
+     "failed": 0,
+     "perNode": {
+      "coord": 6,
+      "A(other)": 5,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    16.2,
+    {
+     "state": "running",
+     "done": 14,
+     "failed": 0,
+     "perNode": {
+      "coord": 6,
+      "A(other)": 5,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    16.6,
+    {
+     "state": "running",
+     "done": 15,
+     "failed": 0,
+     "perNode": {
+      "coord": 6,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    17.01,
+    {
+     "state": "running",
+     "done": 15,
+     "failed": 0,
+     "perNode": {
+      "coord": 6,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    17.41,
+    {
+     "state": "running",
+     "done": 15,
+     "failed": 0,
+     "perNode": {
+      "coord": 6,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    17.82,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 7,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    18.22,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 7,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    18.63,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 7,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    19.03,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 7,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    19.44,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 7,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    19.84,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 7,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    20.25,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 7,
+      "A(other)": 6,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    20.65,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 8,
+      "A(other)": 7,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    21.05,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 8,
+      "A(other)": 7,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    21.46,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 8,
+      "A(other)": 7,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    21.86,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 8,
+      "A(other)": 7,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    22.26,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 8,
+      "A(other)": 7,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    22.67,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 8,
+      "A(other)": 7,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    23.07,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 9,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    23.48,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 9,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    23.88,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 9,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    24.29,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 9,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    24.69,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 9,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    25.1,
+    {
+     "state": "running",
+     "done": 21,
+     "failed": 0,
+     "perNode": {
+      "coord": 10,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    25.5,
+    {
+     "state": "running",
+     "done": 21,
+     "failed": 0,
+     "perNode": {
+      "coord": 10,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    25.91,
+    {
+     "state": "running",
+     "done": 21,
+     "failed": 0,
+     "perNode": {
+      "coord": 10,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    26.31,
+    {
+     "state": "running",
+     "done": 21,
+     "failed": 0,
+     "perNode": {
+      "coord": 10,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    26.72,
+    {
+     "state": "running",
+     "done": 21,
+     "failed": 0,
+     "perNode": {
+      "coord": 10,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    27.12,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 11,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    27.53,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 11,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    27.94,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 11,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    28.35,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 11,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    28.75,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 11,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    29.16,
+    {
+     "state": "running",
+     "done": 23,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    29.56,
+    {
+     "state": "running",
+     "done": 23,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    29.97,
+    {
+     "state": "running",
+     "done": 23,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    30.37,
+    {
+     "state": "running",
+     "done": 23,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    30.78,
+    {
+     "state": "running",
+     "done": 23,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    31.19,
+    {
+     "state": "running",
+     "done": 23,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    31.59,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    32.0,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    32.4,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    32.8,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    33.21,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    33.61,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    34.02,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    34.42,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    34.83,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    35.23,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    35.64,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    36.04,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    36.46,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    36.86,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    37.27,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    37.67,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    38.09,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    38.49,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    38.89,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    39.3,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    39.71,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    40.11,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    40.52,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    40.92,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    41.33,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    41.73,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    42.14,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    42.55,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    42.95,
+    {
+     "state": "running",
+     "done": 28,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    43.36,
+    {
+     "state": "running",
+     "done": 28,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    43.76,
+    {
+     "state": "running",
+     "done": 28,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    44.16,
+    {
+     "state": "running",
+     "done": 28,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    44.57,
+    {
+     "state": "running",
+     "done": 28,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    44.97,
+    {
+     "state": "running",
+     "done": 28,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    45.38,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    45.78,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    46.19,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    46.59,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    47.0,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    47.4,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    47.81,
+    {
+     "state": "running",
+     "done": 30,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    48.21,
+    {
+     "state": "running",
+     "done": 30,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    48.62,
+    {
+     "state": "running",
+     "done": 30,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    49.02,
+    {
+     "state": "running",
+     "done": 30,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    49.43,
+    {
+     "state": "running",
+     "done": 30,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    49.83,
+    {
+     "state": "running",
+     "done": 30,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    50.24,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    50.64,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    51.05,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    51.45,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    51.86,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    52.26,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    52.67,
+    {
+     "state": "done",
+     "done": 32,
+     "failed": 0,
+     "perNode": {
+      "coord": 21,
+      "A(other)": 8,
+      "peer": 3
+     }
+    }
+   ]
+  ],
+  "peerOnCoord": [
+   [
+    0.03,
+    {
+     "state": "online",
+     "ageMs": 933,
+     "misses": 0
+    }
+   ],
+   [
+    0.54,
+    {
+     "state": "online",
+     "ageMs": 444,
+     "misses": 0
+    }
+   ],
+   [
+    1.06,
+    {
+     "state": "online",
+     "ageMs": 980,
+     "misses": 0
+    }
+   ],
+   [
+    1.56,
+    {
+     "state": "online",
+     "ageMs": 467,
+     "misses": 0
+    }
+   ],
+   [
+    2.06,
+    {
+     "state": "online",
+     "ageMs": 962,
+     "misses": 0
+    }
+   ],
+   [
+    2.57,
+    {
+     "state": "online",
+     "ageMs": 480,
+     "misses": 0
+    }
+   ],
+   [
+    3.09,
+    {
+     "state": "online",
+     "ageMs": 18,
+     "misses": 0
+    }
+   ],
+   [
+    3.6,
+    {
+     "state": "online",
+     "ageMs": 523,
+     "misses": 0
+    }
+   ],
+   [
+    4.12,
+    {
+     "state": "online",
+     "ageMs": 11,
+     "misses": 0
+    }
+   ],
+   [
+    4.63,
+    {
+     "state": "online",
+     "ageMs": 551,
+     "misses": 0
+    }
+   ],
+   [
+    5.14,
+    {
+     "state": "online",
+     "ageMs": 61,
+     "misses": 0
+    }
+   ],
+   [
+    5.65,
+    {
+     "state": "online",
+     "ageMs": 555,
+     "misses": 0
+    }
+   ],
+   [
+    6.17,
+    {
+     "state": "online",
+     "ageMs": 72,
+     "misses": 0
+    }
+   ],
+   [
+    6.68,
+    {
+     "state": "online",
+     "ageMs": 598,
+     "misses": 0
+    }
+   ],
+   [
+    7.19,
+    {
+     "state": "online",
+     "ageMs": 84,
+     "misses": 0
+    }
+   ],
+   [
+    7.69,
+    {
+     "state": "online",
+     "ageMs": 620,
+     "misses": 0
+    }
+   ],
+   [
+    8.21,
+    {
+     "state": "online",
+     "ageMs": 1124,
+     "misses": 1
+    }
+   ],
+   [
+    8.72,
+    {
+     "state": "online",
+     "ageMs": 1632,
+     "misses": 1
+    }
+   ],
+   [
+    9.23,
+    {
+     "state": "online",
+     "ageMs": 2149,
+     "misses": 2
+    }
+   ],
+   [
+    9.73,
+    {
+     "state": "online",
+     "ageMs": 2624,
+     "misses": 2
+    }
+   ],
+   [
+    10.24,
+    {
+     "state": "away",
+     "ageMs": 3142,
+     "misses": 3
+    }
+   ],
+   [
+    10.76,
+    {
+     "state": "away",
+     "ageMs": 3659,
+     "misses": 3
+    }
+   ],
+   [
+    11.27,
+    {
+     "state": "away",
+     "ageMs": 4191,
+     "misses": 3
+    }
+   ],
+   [
+    11.77,
+    {
+     "state": "away",
+     "ageMs": 4687,
+     "misses": 3
+    }
+   ],
+   [
+    12.29,
+    {
+     "state": "away",
+     "ageMs": 5181,
+     "misses": 3
+    }
+   ],
+   [
+    12.8,
+    {
+     "state": "away",
+     "ageMs": 5698,
+     "misses": 3
+    }
+   ],
+   [
+    13.31,
+    {
+     "state": "away",
+     "ageMs": 6214,
+     "misses": 3
+    }
+   ],
+   [
+    13.83,
+    {
+     "state": "away",
+     "ageMs": 6723,
+     "misses": 3
+    }
+   ],
+   [
+    14.34,
+    {
+     "state": "away",
+     "ageMs": 7261,
+     "misses": 3
+    }
+   ],
+   [
+    14.85,
+    {
+     "state": "away",
+     "ageMs": 7766,
+     "misses": 3
+    }
+   ],
+   [
+    15.36,
+    {
+     "state": "away",
+     "ageMs": 8294,
+     "misses": 4
+    }
+   ],
+   [
+    15.88,
+    {
+     "state": "away",
+     "ageMs": 8777,
+     "misses": 4
+    }
+   ],
+   [
+    16.39,
+    {
+     "state": "away",
+     "ageMs": 9300,
+     "misses": 4
+    }
+   ],
+   [
+    16.9,
+    {
+     "state": "away",
+     "ageMs": 9787,
+     "misses": 4
+    }
+   ],
+   [
+    17.41,
+    {
+     "state": "away",
+     "ageMs": 10301,
+     "misses": 4
+    }
+   ],
+   [
+    17.92,
+    {
+     "state": "away",
+     "ageMs": 10820,
+     "misses": 4
+    }
+   ],
+   [
+    18.43,
+    {
+     "state": "away",
+     "ageMs": 11320,
+     "misses": 4
+    }
+   ],
+   [
+    18.94,
+    {
+     "state": "away",
+     "ageMs": 11854,
+     "misses": 4
+    }
+   ],
+   [
+    19.45,
+    {
+     "state": "away",
+     "ageMs": 12370,
+     "misses": 4
+    }
+   ],
+   [
+    19.96,
+    {
+     "state": "away",
+     "ageMs": 12883,
+     "misses": 4
+    }
+   ],
+   [
+    20.48,
+    {
+     "state": "away",
+     "ageMs": 13376,
+     "misses": 5
+    }
+   ],
+   [
+    20.99,
+    {
+     "state": "away",
+     "ageMs": 13910,
+     "misses": 5
+    }
+   ],
+   [
+    21.5,
+    {
+     "state": "away",
+     "ageMs": 14394,
+     "misses": 5
+    }
+   ],
+   [
+    22.02,
+    {
+     "state": "away",
+     "ageMs": 14930,
+     "misses": 5
+    }
+   ],
+   [
+    22.52,
+    {
+     "state": "away",
+     "ageMs": 15413,
+     "misses": 5
+    }
+   ],
+   [
+    23.03,
+    {
+     "state": "away",
+     "ageMs": 15928,
+     "misses": 5
+    }
+   ],
+   [
+    23.54,
+    {
+     "state": "away",
+     "ageMs": 16438,
+     "misses": 5
+    }
+   ],
+   [
+    24.05,
+    {
+     "state": "away",
+     "ageMs": 16942,
+     "misses": 5
+    }
+   ],
+   [
+    24.57,
+    {
+     "state": "away",
+     "ageMs": 17464,
+     "misses": 5
+    }
+   ],
+   [
+    25.07,
+    {
+     "state": "away",
+     "ageMs": 17982,
+     "misses": 5
+    }
+   ],
+   [
+    25.58,
+    {
+     "state": "away",
+     "ageMs": 18505,
+     "misses": 6
+    }
+   ],
+   [
+    26.09,
+    {
+     "state": "away",
+     "ageMs": 19011,
+     "misses": 6
+    }
+   ],
+   [
+    26.59,
+    {
+     "state": "away",
+     "ageMs": 19485,
+     "misses": 6
+    }
+   ],
+   [
+    27.11,
+    {
+     "state": "away",
+     "ageMs": 20010,
+     "misses": 6
+    }
+   ],
+   [
+    27.61,
+    {
+     "state": "away",
+     "ageMs": 20504,
+     "misses": 6
+    }
+   ],
+   [
+    28.11,
+    {
+     "state": "away",
+     "ageMs": 21007,
+     "misses": 6
+    }
+   ],
+   [
+    28.61,
+    {
+     "state": "away",
+     "ageMs": 21504,
+     "misses": 6
+    }
+   ],
+   [
+    29.12,
+    {
+     "state": "away",
+     "ageMs": 22081,
+     "misses": 6
+    }
+   ],
+   [
+    29.64,
+    {
+     "state": "away",
+     "ageMs": 22534,
+     "misses": 6
+    }
+   ],
+   [
+    30.15,
+    {
+     "state": "away",
+     "ageMs": 23070,
+     "misses": 7
+    }
+   ],
+   [
+    30.67,
+    {
+     "state": "away",
+     "ageMs": 23585,
+     "misses": 7
+    }
+   ],
+   [
+    31.19,
+    {
+     "state": "away",
+     "ageMs": 24099,
+     "misses": 7
+    }
+   ],
+   [
+    31.7,
+    {
+     "state": "away",
+     "ageMs": 24596,
+     "misses": 7
+    }
+   ],
+   [
+    32.21,
+    {
+     "state": "away",
+     "ageMs": 25106,
+     "misses": 7
+    }
+   ],
+   [
+    32.73,
+    {
+     "state": "away",
+     "ageMs": 25621,
+     "misses": 7
+    }
+   ],
+   [
+    33.24,
+    {
+     "state": "away",
+     "ageMs": 26132,
+     "misses": 7
+    }
+   ],
+   [
+    33.75,
+    {
+     "state": "away",
+     "ageMs": 26644,
+     "misses": 7
+    }
+   ],
+   [
+    34.27,
+    {
+     "state": "away",
+     "ageMs": 27182,
+     "misses": 7
+    }
+   ],
+   [
+    34.78,
+    {
+     "state": "away",
+     "ageMs": 27696,
+     "misses": 7
+    }
+   ],
+   [
+    35.29,
+    {
+     "state": "away",
+     "ageMs": 28189,
+     "misses": 8
+    }
+   ],
+   [
+    35.8,
+    {
+     "state": "away",
+     "ageMs": 28722,
+     "misses": 8
+    }
+   ],
+   [
+    36.31,
+    {
+     "state": "away",
+     "ageMs": 29209,
+     "misses": 8
+    }
+   ],
+   [
+    36.82,
+    {
+     "state": "away",
+     "ageMs": 29721,
+     "misses": 8
+    }
+   ],
+   [
+    37.33,
+    {
+     "state": "away",
+     "ageMs": 30278,
+     "misses": 8
+    }
+   ],
+   [
+    37.84,
+    {
+     "state": "away",
+     "ageMs": 30758,
+     "misses": 8
+    }
+   ],
+   [
+    38.35,
+    {
+     "state": "away",
+     "ageMs": 31266,
+     "misses": 8
+    }
+   ],
+   [
+    38.86,
+    {
+     "state": "away",
+     "ageMs": 31781,
+     "misses": 8
+    }
+   ],
+   [
+    39.38,
+    {
+     "state": "away",
+     "ageMs": 32270,
+     "misses": 8
+    }
+   ],
+   [
+    39.88,
+    {
+     "state": "away",
+     "ageMs": 32774,
+     "misses": 8
+    }
+   ],
+   [
+    40.39,
+    {
+     "state": "away",
+     "ageMs": 33289,
+     "misses": 9
+    }
+   ],
+   [
+    40.91,
+    {
+     "state": "away",
+     "ageMs": 33822,
+     "misses": 9
+    }
+   ],
+   [
+    41.42,
+    {
+     "state": "away",
+     "ageMs": 34321,
+     "misses": 9
+    }
+   ],
+   [
+    41.93,
+    {
+     "state": "away",
+     "ageMs": 34853,
+     "misses": 9
+    }
+   ],
+   [
+    42.44,
+    {
+     "state": "away",
+     "ageMs": 35357,
+     "misses": 9
+    }
+   ],
+   [
+    42.94,
+    {
+     "state": "away",
+     "ageMs": 35837,
+     "misses": 9
+    }
+   ],
+   [
+    43.45,
+    {
+     "state": "away",
+     "ageMs": 36374,
+     "misses": 9
+    }
+   ],
+   [
+    43.96,
+    {
+     "state": "away",
+     "ageMs": 36893,
+     "misses": 9
+    }
+   ],
+   [
+    44.47,
+    {
+     "state": "away",
+     "ageMs": 37392,
+     "misses": 9
+    }
+   ],
+   [
+    44.99,
+    {
+     "state": "away",
+     "ageMs": 37903,
+     "misses": 9
+    }
+   ],
+   [
+    45.5,
+    {
+     "state": "away",
+     "ageMs": 38400,
+     "misses": 10
+    }
+   ],
+   [
+    46.0,
+    {
+     "state": "away",
+     "ageMs": 38919,
+     "misses": 10
+    }
+   ],
+   [
+    46.52,
+    {
+     "state": "away",
+     "ageMs": 39433,
+     "misses": 10
+    }
+   ],
+   [
+    47.03,
+    {
+     "state": "away",
+     "ageMs": 39939,
+     "misses": 10
+    }
+   ],
+   [
+    47.54,
+    {
+     "state": "away",
+     "ageMs": 40442,
+     "misses": 10
+    }
+   ],
+   [
+    48.06,
+    {
+     "state": "away",
+     "ageMs": 40958,
+     "misses": 10
+    }
+   ],
+   [
+    48.57,
+    {
+     "state": "away",
+     "ageMs": 41468,
+     "misses": 10
+    }
+   ],
+   [
+    49.08,
+    {
+     "state": "away",
+     "ageMs": 41978,
+     "misses": 10
+    }
+   ],
+   [
+    49.6,
+    {
+     "state": "away",
+     "ageMs": 42516,
+     "misses": 10
+    }
+   ],
+   [
+    50.11,
+    {
+     "state": "away",
+     "ageMs": 43031,
+     "misses": 11
+    }
+   ],
+   [
+    50.63,
+    {
+     "state": "away",
+     "ageMs": 43521,
+     "misses": 11
+    }
+   ],
+   [
+    51.14,
+    {
+     "state": "away",
+     "ageMs": 44058,
+     "misses": 11
+    }
+   ],
+   [
+    51.64,
+    {
+     "state": "away",
+     "ageMs": 44556,
+     "misses": 11
+    }
+   ],
+   [
+    52.15,
+    {
+     "state": "away",
+     "ageMs": 45069,
+     "misses": 11
+    }
+   ],
+   [
+    52.67,
+    {
+     "state": "away",
+     "ageMs": 45606,
+     "misses": 11
+    }
+   ]
+  ],
+  "phonesOnCoord": [
+   [
+    0.03,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 0
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 0
+     }
+    }
+   ],
+   [
+    2.03,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    4.04,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    6.04,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 0
+     }
+    }
+   ],
+   [
+    8.05,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": false,
+      "inflight": 0,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    10.06,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": false,
+      "inflight": 0,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    12.07,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    14.08,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    16.08,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    18.08,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    20.09,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    22.09,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    24.1,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    26.11,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": false,
+      "inflight": 0,
+      "running": 1
+     }
+    }
+   ],
+   [
+    28.11,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": false,
+      "inflight": 0,
+      "running": 1
+     }
+    }
+   ],
+   [
+    30.12,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "A(other)": {
+      "up": false,
+      "inflight": 0,
+      "running": 1
+     }
+    }
+   ],
+   [
+    32.14,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    34.14,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    36.15,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    38.17,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    40.17,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    42.18,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    44.2,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    46.21,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    48.21,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    50.22,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    52.23,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ]
+  ]
+ },
+ "after": {
+  "label": "p after (peer still stopped)",
+  "at": "18:39:27",
+  "thermal": {
+   "coord": "2",
+   "peer": "1"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "away",
+      "rttMs": null,
+      "ageMs": 30677,
+      "misses": 7,
+      "awayCount": 1,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "away",
+      "rttMs": null,
+      "ageMs": 46166,
+      "misses": 11,
+      "awayCount": 1,
+      "thermalStatus": 1
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 2,
+    "ramAvailMb": 5247
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "unreachable": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+   },
+   "caps": {
+    "api": false
+   },
+   "models": {
+    "api": false
+   }
+  }
+ },
+ "restart": {
+  "ok": true,
+  "elapsedS": 16.4,
+  "last": {
+   "coordModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "peerModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "coordListsPeer": "online",
+   "peerListsCoord": "online"
+  },
+  "secondsFromAppStart": 16.5
+ },
+ "keepBusyEnabledAfterRestart": {
+  "peer": false,
+  "coord": false
+ },
+ "afterRestart": {
+  "label": "p after restart",
+  "at": "18:39:51",
+  "thermal": {
+   "coord": "2",
+   "peer": "0"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "away",
+      "rttMs": null,
+      "ageMs": 54864,
+      "misses": 12,
+      "awayCount": 1,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 41.917552,
+      "ageMs": 348,
+      "misses": 0,
+      "awayCount": 1,
+      "thermalStatus": 0
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 2,
+    "ramAvailMb": 5248
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 51.853229,
+      "ageMs": 917,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 2
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 0,
+    "ramAvailMb": 5886
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "stepSeconds": 78.1
+}

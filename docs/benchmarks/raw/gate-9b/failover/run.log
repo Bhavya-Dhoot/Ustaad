@@ -1,0 +1,30 @@
+[    0.1s] nodes: {'c6f72247': 'A(other)', '477684c1': 'coord', '82d2676d': 'peer'}
+[    0.4s] thermal at start ('0', '0') after 0s; keep busy enabled {'coord': False, 'peer': False}
+[    0.5s] initial ready: True
+[    0.9s] snap t1 before: thermal coord/peer 0/0; coord lists peer online; peer lists coord online
+[   33.0s] snap t1 after: thermal coord/peer 0/0; coord lists peer online; peer lists coord online
+[   33.0s] t1: 32/32 done, 0 failed, wall 30.86 s, agg 28.81 tok/s, perPhone [{'node': 'coord', 'jobs': 10, 'tokens': 315, 'decodeTokPerSec': 13.43}, {'node': 'peer', 'jobs': 11, 'tokens': 274, 'decodeTokPerSec': 13.47}, {'node': 'A(other)', 'jobs': 11, 'tokens': 300, 'decodeTokPerSec': 13.84}], median promptMs 402.7
+[   33.2s] after step t: pair ready True
+[   33.6s] snap t2 before: thermal coord/peer 0/0; coord lists peer online; peer lists coord online
+[   65.1s] snap t2 after: thermal coord/peer 1/0; coord lists peer online; peer lists coord online
+[   65.1s] t2: 32/32 done, 0 failed, wall 30.65 s, agg 29.01 tok/s, perPhone [{'node': 'coord', 'jobs': 11, 'tokens': 312, 'decodeTokPerSec': 13.46}, {'node': 'peer', 'jobs': 11, 'tokens': 299, 'decodeTokPerSec': 13.4}, {'node': 'A(other)', 'jobs': 10, 'tokens': 278, 'decodeTokPerSec': 13.73}], median promptMs 401.9
+[   65.3s] after step t: pair ready True
+[   65.7s] snap p before: thermal coord/peer 1/0; coord lists peer online; peer lists coord online
+[   73.7s] p: peer app force-stopped at batch t0+7.8s (done=8); adb returned after 0.17s
+[  126.3s] snap p after (peer still stopped): thermal coord/peer 2/1; coord lists peer away; peer lists coord None
+[  143.4s] snap p after restart: thermal coord/peer 2/0; coord lists peer online; peer lists coord online
+[  143.4s] p: 32/32 done, 0 failed, wall 52.63 s, perPhone [{'node': 'coord', 'jobs': 21, 'tokens': 582, 'decodeTokPerSec': 13.5}, {'node': 'peer', 'jobs': 3, 'tokens': 80, 'decodeTokPerSec': 13.44}, {'node': 'A(other)', 'jobs': 8, 'tokens': 230, 'decodeTokPerSec': 13.17}], away after 2.32 s, errors []
+[  143.6s] after step p: pair ready True
+[  144.0s] snap j before: thermal coord/peer 2/0; coord lists peer online; peer lists coord online
+[  154.9s] snap j peer stopped, before batch: thermal coord/peer 2/0; coord lists peer away; peer lists coord None
+[  164.9s] j: peer app started at batch t0+9.8s (done=4)
+[  211.5s] snap j after: thermal coord/peer 2/1; coord lists peer online; peer lists coord online
+[  211.7s] j: 32/32 done, 0 failed, wall 55.9 s, perPhone [{'node': 'coord', 'jobs': 22, 'tokens': 586, 'decodeTokPerSec': 13.53}, {'node': 'peer', 'jobs': 10, 'tokens': 303, 'decodeTokPerSec': 13.4}], events {'peerApiAnswersAfterAppStartS': 0.1, 'peerChatReadyAfterAppStartS': 17.5, 'coordListsPeerOnlineAfterAppStartS': 1.4, 'schedulerMarksPeerUpAfterAppStartS': 2.2, 'peerJobs': 10, 'doneCountWhenPeersFirstJobEnded (rank by endMs)': 13, 'peerFirstJobEndedAtBatchS': 30.4, 'peerFirstJobEndedAfterAppStartS': 20.6}
+[  211.8s] after step j: pair ready True
+[  212.2s] snap c before: thermal coord/peer 2/1; coord lists peer online; peer lists coord online
+[  222.7s] c: coordinator app force-stopped at batch t0+10.2s (done=8), started again 0.1s later
+[  241.9s] snap c before new batch: thermal coord/peer 2/1; coord lists peer online; peer lists coord online
+[  289.5s] snap c after: thermal coord/peer 2/1; coord lists peer online; peer lists coord online
+[  289.5s] c: old batch at API up {'id': '42c1d1a6e6ec4bde', 'state': 'interrupted', 'done': 7, 'failed': 0, 'total': 32, 'wallMs': 9611.6501, '_status': None, '_raw': None, '_err': None}, when ready {'id': '42c1d1a6e6ec4bde', 'state': 'interrupted', 'done': 7, 'failed': 0, 'total': 32, 'wallMs': 9611.6501, '_status': None, '_raw': None, '_err': None}; new batch start ok; new 32/32 done, wall 46.29 s; peer idle 2.7 s after kill
+[  289.6s] after step c: pair ready True
+[  292.8s] final: {"wait": {"ok": true, "elapsedS": 0.2, "last": {"coordModels": {"api": true, "chat": "READY", "backend": "GPU", "embed": "READY", "restarts": 0}, "peerModels": {"api": true, "chat": "READY", "backend": "GPU", "embed": "READY", "restarts": 0}, "coordListsPeer": "online", "peerListsCoord": "online"}}, "coord": {"foreground": true, "thermal": "2", "keepBusyEnabled": false, "models": {"api": true, "chat": "READY", "backend": "GPU", "embed": "READY", "restarts": 0}, "peers": {"self": "Phone B", "peers": [{"name": "Phone C", "ip": "192.168.242.76", "state": "online", "rttMs": 38.596458, "ageMs": 426, "misses": 0, "awayCount": 0, "thermalStatus": 1}]}}, "peer": {"foreground": true, "thermal": "1", "keepBusyEnabled": false, "models": {"api": true, "chat": "READY", "backend": "GPU", "embed": "READY", "restarts": 0}, "peers": {"self": "Phone C", "peers": [{"name": "Phone B", "ip": "192.168.242.23"

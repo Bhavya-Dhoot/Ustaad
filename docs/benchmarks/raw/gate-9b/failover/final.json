@@ -1,0 +1,78 @@
+{
+ "wait": {
+  "ok": true,
+  "elapsedS": 0.2,
+  "last": {
+   "coordModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "peerModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "coordListsPeer": "online",
+   "peerListsCoord": "online"
+  }
+ },
+ "coord": {
+  "foreground": true,
+  "thermal": "2",
+  "keepBusyEnabled": false,
+  "models": {
+   "api": true,
+   "chat": "READY",
+   "backend": "GPU",
+   "embed": "READY",
+   "restarts": 0
+  },
+  "peers": {
+   "self": "Phone B",
+   "peers": [
+    {
+     "name": "Phone C",
+     "ip": "192.168.242.76",
+     "state": "online",
+     "rttMs": 38.596458,
+     "ageMs": 426,
+     "misses": 0,
+     "awayCount": 0,
+     "thermalStatus": 1
+    }
+   ]
+  }
+ },
+ "peer": {
+  "foreground": true,
+  "thermal": "1",
+  "keepBusyEnabled": false,
+  "models": {
+   "api": true,
+   "chat": "READY",
+   "backend": "GPU",
+   "embed": "READY",
+   "restarts": 0
+  },
+  "peers": {
+   "self": "Phone C",
+   "peers": [
+    {
+     "name": "Phone B",
+     "ip": "192.168.242.23",
+     "state": "online",
+     "rttMs": 60.247657,
+     "ageMs": 839,
+     "misses": 0,
+     "awayCount": 0,
+     "thermalStatus": 2
+    }
+   ]
+  }
+ }
+}

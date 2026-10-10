@@ -86,5 +86,18 @@ The regression read 15.8 to 17.8 s for a GPU start where the afternoon had read 
 
 The build makes no difference; the time creeps up with each start in a row, on either build, from about 13 s to about 16.5 s. The compiled-program cache is intact (197 files, none rewritten since 14:31). So "GPU start 13 s" holds for a phone that has not just loaded a model several times, and 16 to 18 s is what repeated starts or a warm phone give. The cause of the creep was not looked into.
 
+## 8. A batch across phones when a phone dies, joins, or the coordinator dies (18:31 to 18:45, new build)
+Phone B coordinating, Phone C as the peer, the 32-job batch, `scripts/batch-failover-check.py`, raw under `raw/gate-9b/failover/`. Phone A's app came online by itself during the first three runs and Phone B's scheduler gave it jobs. The script sent nothing to Phone A, but those three runs are three-phone runs, with Phone A on the older build (c2ca589).
+
+| Case | Result | Numbers |
+|---|---|---|
+| Plain batch, B, C and A (twice) | 32 of 32, 0 failed | 28.81 and 29.01 tok/s; 30.9 and 30.7 s; jobs 10, 11, 11 and 11, 11, 10; decode 13.4 to 13.8 tok/s per phone |
+| Plain batch, B and C only (twice, Phone B at Thermal Status 2) | 32 of 32, 0 failed | 19.15 and 18.09 tok/s; jobs 14 and 18, then 16 and 16; decode 10.9 on B, 13.4 and 12.2 on C |
+| Peer killed when 8 jobs were done (app on Phone C force-stopped) | 32 of 32, 0 failed | Phone B listed Phone C as away 2.3 s after the kill; the rest ran on B (21 jobs) and A (8); C had finished 3; 52.6 s in all |
+| Peer started when 4 jobs were done (Phone C's app was stopped before the batch) | 32 of 32, 0 failed | C was listed online 1.4 s after its app started, its chat model was ready after 17.5 s, its first job ended 20.6 s after the start; it then took 10 of the 32 jobs; 55.9 s in all |
+| Coordinator killed when 8 jobs were done (app on Phone B force-stopped and started again) | old batch reads `interrupted`, 7 of 32 done, 0 failed | the API answered 1.3 s after the kill; Phone C was idle again 2.7 s after it; a new batch started without a refusal 19.3 s after the kill and finished 32 of 32 |
+
+What it shows: no job was lost or failed in any case; a phone that dies is dropped within about two seconds and its work is taken over; a phone that joins is used as soon as its model is loaded; a dead coordinator leaves a report marked interrupted and does not block the next batch. What it does not show: the interrupted batch is not resumed (25 jobs were never run), one job that had finished was missing from the saved report (8 done at the last poll, 7 in the report), and how many jobs were re-run after the peer died cannot be read from the result (it records the final phone only; one, by the timing). The mixed run also shows a phone on the older build working in the same batch as two on the new one.
+
 ## Not measured
-Anything with Phone A (the large-model split, Choir, three-phone throughput, the two switches that are off). Keep busy on battery, with the battery exemption, or beyond 45 minutes. A phone that is really out of memory. The one-shot change on a batch spread over two phones (only each phone alone was run before and after).
+Anything planned with Phone A (the large-model split, Choir, the two switches that are off, a three-phone run with all phones on one build). Keep busy on battery, with the battery exemption, or beyond 45 minutes. A phone that is really out of memory. A before and after of the one-shot change on a batch spread over two phones (the two-phone runs of section 8 are after the change only, and warm).

@@ -1,0 +1,715 @@
+{
+ "tag": "t1",
+ "before": {
+  "label": "t1 before",
+  "at": "18:37:28",
+  "thermal": {
+   "coord": "0",
+   "peer": "0"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "online",
+      "rttMs": 36.580052,
+      "ageMs": 407,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 38.704427,
+      "ageMs": 902,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 0
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 0,
+    "ramAvailMb": 5254
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "online",
+      "rttMs": 30.170781,
+      "ageMs": 480,
+      "misses": 0,
+      "awayCount": 2,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 30.757135,
+      "ageMs": 543,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 0
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 0,
+    "ramAvailMb": 5044
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "pcWallS": 31.6,
+ "finished": true,
+ "report": {
+  "id": "7394215d70814f2b",
+  "mode": "swarm",
+  "state": "done",
+  "total": 32,
+  "done": 32,
+  "failed": 0,
+  "wallMs": 30855.577905,
+  "totalTokens": 889,
+  "aggTokPerSec": 28.811646397844385,
+  "fake": false,
+  "models": [
+   "Qwen3.5-4B-Q4_K_M"
+  ],
+  "perPhone": [
+   {
+    "nodeId": "477684c1",
+    "jobs": 10,
+    "tokens": 315,
+    "tokPerSec": 10.208851085850373,
+    "decodeTokPerSec": 13.434179238819405
+   },
+   {
+    "nodeId": "82d2676d",
+    "jobs": 11,
+    "tokens": 274,
+    "tokPerSec": 8.880079992136515,
+    "decodeTokPerSec": 13.473561970173074
+   },
+   {
+    "nodeId": "c6f72247",
+    "jobs": 11,
+    "tokens": 300,
+    "tokPerSec": 9.722715319857498,
+    "decodeTokPerSec": 13.835221041637192
+   }
+  ],
+  "items": [
+   {
+    "index": 0,
+    "jobId": "7394215d70814f2b-0",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The monsoon is a seasonal wind system that reverses direction, bringing heavy rainfall to certain regions during the summer and dry conditions during the winter.",
+    "promptTokens": 29,
+    "completionTokens": 30,
+    "genMs": 2182.501,
+    "error": null,
+    "promptMs": 876.284,
+    "waitedMs": 3.0,
+    "endMs": 3206.49552
+   },
+   {
+    "index": 1,
+    "jobId": "7394215d70814f2b-1",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A lighthouse is a tower equipped with a powerful light that shines on the horizon to warn ships of nearby dangers.",
+    "promptTokens": 29,
+    "completionTokens": 24,
+    "genMs": 1765.271,
+    "error": null,
+    "promptMs": 403.517,
+    "waitedMs": 0.0,
+    "endMs": 2298.195728
+   },
+   {
+    "index": 2,
+    "jobId": "7394215d70814f2b-2",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Binary search is an efficient algorithm that repeatedly divides a sorted list in half to locate a target value.",
+    "promptTokens": 28,
+    "completionTokens": 21,
+    "genMs": 1554.321,
+    "error": null,
+    "promptMs": 404.274,
+    "waitedMs": 2.0,
+    "endMs": 2015.434791
+   },
+   {
+    "index": 3,
+    "jobId": "7394215d70814f2b-3",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Moon is Earth's only natural satellite, a rocky body that orbits our planet and reflects sunlight to cause lunar phases and tides.",
+    "promptTokens": 28,
+    "completionTokens": 28,
+    "genMs": 2070.71,
+    "error": null,
+    "promptMs": 399.737,
+    "waitedMs": 1.0,
+    "endMs": 4538.15328
+   },
+   {
+    "index": 4,
+    "jobId": "7394215d70814f2b-4",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy, transforming carbon dioxide and water into glucose and oxygen.",
+    "promptTokens": 28,
+    "completionTokens": 32,
+    "genMs": 2392.712,
+    "error": null,
+    "promptMs": 400.742,
+    "waitedMs": 1.0,
+    "endMs": 5163.089477
+   },
+   {
+    "index": 5,
+    "jobId": "7394215d70814f2b-5",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A transistor is a semiconductor device that acts as an electronic switch or amplifier by controlling the flow of electric current.",
+    "promptTokens": 17,
+    "completionTokens": 23,
+    "genMs": 1661.061,
+    "error": null,
+    "promptMs": 561.374,
+    "waitedMs": 0.0,
+    "endMs": 5544.421665
+   },
+   {
+    "index": 6,
+    "jobId": "7394215d70814f2b-6",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Silk Road was a vast network of trade routes connecting East Asia to the Mediterranean that facilitated the exchange of goods, culture, and ideas between civilizations.",
+    "promptTokens": 29,
+    "completionTokens": 31,
+    "genMs": 2349.181,
+    "error": null,
+    "promptMs": 393.284,
+    "waitedMs": 2.0,
+    "endMs": 7323.312497
+   },
+   {
+    "index": 7,
+    "jobId": "7394215d70814f2b-7",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Tides are the regular rise and fall of ocean water levels caused primarily by the gravitational pull of the moon and the sun.",
+    "promptTokens": 28,
+    "completionTokens": 26,
+    "genMs": 1929.805,
+    "error": null,
+    "promptMs": 389.447,
+    "waitedMs": 1.0,
+    "endMs": 7561.264112
+   },
+   {
+    "index": 8,
+    "jobId": "7394215d70814f2b-8",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A prime number is a natural number greater than 1 that has exactly two distinct positive divisors: 1 and itself.",
+    "promptTokens": 18,
+    "completionTokens": 26,
+    "genMs": 1870.471,
+    "error": null,
+    "promptMs": 562.89,
+    "waitedMs": 1.0,
+    "endMs": 8125.946768
+   },
+   {
+    "index": 9,
+    "jobId": "7394215d70814f2b-9",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The water cycle is the continuous process where water evaporates from surfaces, condenses into clouds, precipitates back to Earth, and collects in bodies of water to repeat the cycle.",
+    "promptTokens": 29,
+    "completionTokens": 37,
+    "genMs": 2747.267,
+    "error": null,
+    "promptMs": 402.521,
+    "waitedMs": 1.0,
+    "endMs": 10524.80385
+   },
+   {
+    "index": 10,
+    "jobId": "7394215d70814f2b-10",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A compiler is a program that translates source code written in a high-level programming language into machine code that a computer can execute.",
+    "promptTokens": 28,
+    "completionTokens": 26,
+    "genMs": 1921.573,
+    "error": null,
+    "promptMs": 401.795,
+    "waitedMs": 0.0,
+    "endMs": 9957.695726
+   },
+   {
+    "index": 11,
+    "jobId": "7394215d70814f2b-11",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Volcanoes are openings in the Earth's crust that allow molten rock, ash, and gases to erupt onto the surface.",
+    "promptTokens": 17,
+    "completionTokens": 27,
+    "genMs": 1943.18,
+    "error": null,
+    "promptMs": 556.998,
+    "waitedMs": 1.0,
+    "endMs": 10746.907965
+   },
+   {
+    "index": 12,
+    "jobId": "7394215d70814f2b-12",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The printing press is a device that uses movable type to reproduce text and images efficiently, revolutionizing the spread of information.",
+    "promptTokens": 29,
+    "completionTokens": 25,
+    "genMs": 1863.657,
+    "error": null,
+    "promptMs": 398.625,
+    "waitedMs": 1.0,
+    "endMs": 12300.275308
+   },
+   {
+    "index": 13,
+    "jobId": "7394215d70814f2b-13",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A magnet is an object that produces a magnetic field, allowing it to attract ferromagnetic materials like iron and repel other magnets.",
+    "promptTokens": 28,
+    "completionTokens": 28,
+    "genMs": 2071.413,
+    "error": null,
+    "promptMs": 396.014,
+    "waitedMs": 1.0,
+    "endMs": 13055.542079
+   },
+   {
+    "index": 14,
+    "jobId": "7394215d70814f2b-14",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Coral reefs are vibrant underwater ecosystems built by tiny marine animals called coral polyps that secrete calcium carbonate to form hard structures.",
+    "promptTokens": 17,
+    "completionTokens": 27,
+    "genMs": 1950.814,
+    "error": null,
+    "promptMs": 562.592,
+    "waitedMs": 1.0,
+    "endMs": 13403.439266
+   },
+   {
+    "index": 15,
+    "jobId": "7394215d70814f2b-15",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Morse code is a method of transmitting text information in the form of short and long signals using dots and dashes.",
+    "promptTokens": 28,
+    "completionTokens": 24,
+    "genMs": 1778.637,
+    "error": null,
+    "promptMs": 402.421,
+    "waitedMs": 1.0,
+    "endMs": 14563.00937
+   },
+   {
+    "index": 16,
+    "jobId": "7394215d70814f2b-16",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The speed of light is the maximum speed at which all conventional matter and information in the universe can travel, approximately 299,792,458 meters per second in a vacuum.",
+    "promptTokens": 30,
+    "completionTokens": 42,
+    "genMs": 3142.359,
+    "error": null,
+    "promptMs": 401.959,
+    "waitedMs": 1.0,
+    "endMs": 16655.63114
+   },
+   {
+    "index": 17,
+    "jobId": "7394215d70814f2b-17",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A sundial is a timekeeping device that uses the position of the sun to cast a shadow onto a marked surface, indicating the time of day.",
+    "promptTokens": 18,
+    "completionTokens": 31,
+    "genMs": 2237.579,
+    "error": null,
+    "promptMs": 558.542,
+    "waitedMs": 0.0,
+    "endMs": 16332.833223
+   },
+   {
+    "index": 18,
+    "jobId": "7394215d70814f2b-18",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Bread yeast is a single-celled fungus used in baking to ferment dough by converting sugars into carbon dioxide and alcohol.",
+    "promptTokens": 28,
+    "completionTokens": 25,
+    "genMs": 1865.088,
+    "error": null,
+    "promptMs": 402.93,
+    "waitedMs": 0.0,
+    "endMs": 16913.830567
+   },
+   {
+    "index": 19,
+    "jobId": "7394215d70814f2b-19",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Glaciers are massive, slow-moving rivers of ice formed by the accumulation and compaction of snow over many years.",
+    "promptTokens": 16,
+    "completionTokens": 25,
+    "genMs": 1803.43,
+    "error": null,
+    "promptMs": 565.782,
+    "waitedMs": 1.0,
+    "endMs": 18835.264524
+   },
+   {
+    "index": 20,
+    "jobId": "7394215d70814f2b-20",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A checksum is a short, fixed-length value calculated from a larger piece of data to verify its integrity and detect accidental corruption.",
+    "promptTokens": 28,
+    "completionTokens": 26,
+    "genMs": 1932.97,
+    "error": null,
+    "promptMs": 397.736,
+    "waitedMs": 0.0,
+    "endMs": 19039.510618
+   },
+   {
+    "index": 21,
+    "jobId": "7394215d70814f2b-21",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The heart is a muscular organ that pumps blood throughout the body to deliver oxygen and nutrients.",
+    "promptTokens": 28,
+    "completionTokens": 19,
+    "genMs": 1391.105,
+    "error": null,
+    "promptMs": 381.719,
+    "waitedMs": 1.0,
+    "endMs": 18763.068587
+   },
+   {
+    "index": 22,
+    "jobId": "7394215d70814f2b-22",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A telescope is an optical instrument designed to gather light from distant objects and magnify their images for closer inspection.",
+    "promptTokens": 28,
+    "completionTokens": 23,
+    "genMs": 1723.174,
+    "error": null,
+    "promptMs": 403.101,
+    "waitedMs": 0.0,
+    "endMs": 20977.346398
+   },
+   {
+    "index": 23,
+    "jobId": "7394215d70814f2b-23",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Origami is the Japanese art of paper folding that transforms flat sheets into intricate three-dimensional shapes through precise creases.",
+    "promptTokens": 17,
+    "completionTokens": 24,
+    "genMs": 1735.502,
+    "error": null,
+    "promptMs": 553.841,
+    "waitedMs": 0.0,
+    "endMs": 21262.431815
+   },
+   {
+    "index": 24,
+    "jobId": "7394215d70814f2b-24",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Pythagorean theorem states that in a right-angled triangle, the square of the length of the hypotenuse (the side opposite the right angle) is equal to the sum of the squares of the lengths of the other two sides",
+    "promptTokens": 31,
+    "completionTokens": 48,
+    "genMs": 3579.63,
+    "error": null,
+    "promptMs": 398.526,
+    "waitedMs": 1.0,
+    "endMs": 23080.028898
+   },
+   {
+    "index": 25,
+    "jobId": "7394215d70814f2b-25",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Bees are social insects known for their vital role in pollinating plants and producing honey.",
+    "promptTokens": 27,
+    "completionTokens": 19,
+    "genMs": 1401.981,
+    "error": null,
+    "promptMs": 395.727,
+    "waitedMs": 0.0,
+    "endMs": 22851.459679
+   },
+   {
+    "index": 26,
+    "jobId": "7394215d70814f2b-26",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A fuse is a safety device containing a thin metal wire that melts and breaks the electrical circuit when current exceeds a safe level, preventing damage or fire.",
+    "promptTokens": 17,
+    "completionTokens": 31,
+    "genMs": 2256.297,
+    "error": null,
+    "promptMs": 558.36,
+    "waitedMs": 1.0,
+    "endMs": 24216.15046
+   },
+   {
+    "index": 27,
+    "jobId": "7394215d70814f2b-27",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Ganges is a major river in South Asia that holds profound religious significance for Hindus, who believe it is a goddess and essential for spiritual purification.",
+    "promptTokens": 29,
+    "completionTokens": 31,
+    "genMs": 2303.119,
+    "error": null,
+    "promptMs": 403.385,
+    "waitedMs": 0.0,
+    "endMs": 25642.209574
+   },
+   {
+    "index": 28,
+    "jobId": "7394215d70814f2b-28",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Chess openings are the initial moves made by both players to develop their pieces, control the center, and prepare for a strategic plan.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 1994.365,
+    "error": null,
+    "promptMs": 399.399,
+    "waitedMs": 1.0,
+    "endMs": 25529.785459
+   },
+   {
+    "index": 29,
+    "jobId": "7394215d70814f2b-29",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Static electricity is an imbalance of electric charges within or on the surface of a material, typically caused by the transfer of electrons between objects.",
+    "promptTokens": 17,
+    "completionTokens": 28,
+    "genMs": 2014.725,
+    "error": null,
+    "promptMs": 567.339,
+    "waitedMs": 1.0,
+    "endMs": 26939.813688
+   },
+   {
+    "index": 30,
+    "jobId": "7394215d70814f2b-30",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A rainbow is a natural optical phenomenon caused by sunlight being refracted, reflected, and dispersed by water droplets in the atmosphere.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 2005.439,
+    "error": null,
+    "promptMs": 395.023,
+    "waitedMs": 0.0,
+    "endMs": 28111.747802
+   },
+   {
+    "index": 31,
+    "jobId": "7394215d70814f2b-31",
+    "nodeId": "c6f72247",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Tea is a popular hot or cold beverage prepared by steeping cured leaves of the Camellia sinensis plant in hot water.",
+    "promptTokens": 16,
+    "completionTokens": 28,
+    "genMs": 2028.228,
+    "error": null,
+    "promptMs": 559.465,
+    "waitedMs": 1.0,
+    "endMs": 30847.783738
+   }
+  ]
+ },
+ "summary": {
+  "id": "7394215d70814f2b",
+  "state": "done",
+  "total": 32,
+  "done": 32,
+  "failed": 0,
+  "wallS": 30.86,
+  "aggTokPerSec": 28.81,
+  "totalTokens": 889,
+  "perPhone": [
+   {
+    "node": "coord",
+    "jobs": 10,
+    "tokens": 315,
+    "decodeTokPerSec": 13.43
+   },
+   {
+    "node": "peer",
+    "jobs": 11,
+    "tokens": 274,
+    "decodeTokPerSec": 13.47
+   },
+   {
+    "node": "A(other)",
+    "jobs": 11,
+    "tokens": 300,
+    "decodeTokPerSec": 13.84
+   }
+  ],
+  "itemsByNode": {
+   "A(other)": 11,
+   "peer": 11,
+   "coord": 10
+  },
+  "medianPromptMs": 402.7,
+  "errors": []
+ },
+ "after": {
+  "label": "t1 after",
+  "at": "18:38:00",
+  "thermal": {
+   "coord": "0",
+   "peer": "0"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "online",
+      "rttMs": 37.280938,
+      "ageMs": 451,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 32.667917,
+      "ageMs": 954,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 0
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 0,
+    "ramAvailMb": 5215
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "online",
+      "rttMs": 35.006979,
+      "ageMs": 530,
+      "misses": 0,
+      "awayCount": 2,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 41.687761,
+      "ageMs": 585,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 0
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 0,
+    "ramAvailMb": 5061
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "stepSeconds": 32.5
+}

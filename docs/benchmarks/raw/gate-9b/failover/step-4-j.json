@@ -1,0 +1,4039 @@
+{
+ "tag": "j",
+ "before": {
+  "label": "j before",
+  "at": "18:39:51",
+  "thermal": {
+   "coord": "2",
+   "peer": "0"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "away",
+      "rttMs": null,
+      "ageMs": 55455,
+      "misses": 12,
+      "awayCount": 1,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 41.917552,
+      "ageMs": 939,
+      "misses": 0,
+      "awayCount": 1,
+      "thermalStatus": 0
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 2,
+    "ramAvailMb": 5248
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 47.510729,
+      "ageMs": 497,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 2
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 0,
+    "ramAvailMb": 5886
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "peerStoppedToAwayS": 3.4,
+ "afterStop": {
+  "label": "j peer stopped, before batch",
+  "at": "18:39:55",
+  "thermal": {
+   "coord": "2",
+   "peer": "0"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "away",
+      "rttMs": null,
+      "ageMs": 59420,
+      "misses": 13,
+      "awayCount": 1,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "away",
+      "rttMs": null,
+      "ageMs": 3900,
+      "misses": 3,
+      "awayCount": 2,
+      "thermalStatus": 0
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 2,
+    "ramAvailMb": 5247
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "unreachable": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+   },
+   "caps": {
+    "api": false
+   },
+   "models": {
+    "api": false
+   }
+  }
+ },
+ "doneAtPeerAppStart": 4,
+ "peerAppStartedAtS": 9.84,
+ "finished": true,
+ "report": {
+  "id": "76f9a8bb59d04021",
+  "mode": "swarm",
+  "state": "done",
+  "total": 32,
+  "done": 32,
+  "failed": 0,
+  "wallMs": 55900.744041,
+  "totalTokens": 889,
+  "aggTokPerSec": 15.903187251818498,
+  "fake": false,
+  "models": [
+   "Qwen3.5-4B-Q4_K_M"
+  ],
+  "perPhone": [
+   {
+    "nodeId": "477684c1",
+    "jobs": 22,
+    "tokens": 586,
+    "tokPerSec": 10.482865837531653,
+    "decodeTokPerSec": 13.529911401707132
+   },
+   {
+    "nodeId": "82d2676d",
+    "jobs": 10,
+    "tokens": 303,
+    "tokPerSec": 5.420321414286844,
+    "decodeTokPerSec": 13.397832177692928
+   }
+  ],
+  "items": [
+   {
+    "index": 0,
+    "jobId": "76f9a8bb59d04021-0",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The monsoon is a seasonal wind system that reverses direction, bringing heavy rainfall to certain regions during the summer and dry conditions during the winter.",
+    "promptTokens": 29,
+    "completionTokens": 30,
+    "genMs": 2229.29,
+    "error": null,
+    "promptMs": 403.087,
+    "waitedMs": 0.0,
+    "endMs": 2687.676926
+   },
+   {
+    "index": 1,
+    "jobId": "76f9a8bb59d04021-1",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A lighthouse is a tower equipped with a powerful light that shines on the horizon to warn ships of nearby dangers.",
+    "promptTokens": 29,
+    "completionTokens": 24,
+    "genMs": 1775.579,
+    "error": null,
+    "promptMs": 399.929,
+    "waitedMs": 0.0,
+    "endMs": 4927.694061
+   },
+   {
+    "index": 2,
+    "jobId": "76f9a8bb59d04021-2",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Binary search is an efficient algorithm that repeatedly divides a sorted list in half to locate a target value.",
+    "promptTokens": 28,
+    "completionTokens": 21,
+    "genMs": 1548.075,
+    "error": null,
+    "promptMs": 397.268,
+    "waitedMs": 1.0,
+    "endMs": 6923.190414
+   },
+   {
+    "index": 3,
+    "jobId": "76f9a8bb59d04021-3",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Moon is Earth's only natural satellite, a rocky body that orbits our planet and reflects sunlight to cause lunar phases and tides.",
+    "promptTokens": 28,
+    "completionTokens": 28,
+    "genMs": 2058.714,
+    "error": null,
+    "promptMs": 396.651,
+    "waitedMs": 1.0,
+    "endMs": 9428.815621
+   },
+   {
+    "index": 4,
+    "jobId": "76f9a8bb59d04021-4",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy, transforming carbon dioxide and water into glucose and oxygen.",
+    "promptTokens": 28,
+    "completionTokens": 32,
+    "genMs": 2381.396,
+    "error": null,
+    "promptMs": 395.794,
+    "waitedMs": 0.0,
+    "endMs": 12262.233902
+   },
+   {
+    "index": 5,
+    "jobId": "76f9a8bb59d04021-5",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A transistor is a semiconductor device that acts as an electronic switch or amplifier by controlling the flow of electric current.",
+    "promptTokens": 28,
+    "completionTokens": 23,
+    "genMs": 1690.922,
+    "error": null,
+    "promptMs": 401.868,
+    "waitedMs": 0.0,
+    "endMs": 14420.354942
+   },
+   {
+    "index": 6,
+    "jobId": "76f9a8bb59d04021-6",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Silk Road was a vast network of trade routes connecting East Asia to the Mediterranean that facilitated the exchange of goods, culture, and ideas between civilizations.",
+    "promptTokens": 29,
+    "completionTokens": 31,
+    "genMs": 2300.414,
+    "error": null,
+    "promptMs": 394.352,
+    "waitedMs": 1.0,
+    "endMs": 17170.841764
+   },
+   {
+    "index": 7,
+    "jobId": "76f9a8bb59d04021-7",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Tides are the regular rise and fall of ocean water levels caused primarily by the gravitational pull of the moon and the sun.",
+    "promptTokens": 28,
+    "completionTokens": 26,
+    "genMs": 1922.638,
+    "error": null,
+    "promptMs": 406.799,
+    "waitedMs": 1.0,
+    "endMs": 19551.923274
+   },
+   {
+    "index": 8,
+    "jobId": "76f9a8bb59d04021-8",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A prime number is a natural number greater than 1 that has exactly two distinct positive divisors: 1 and itself.",
+    "promptTokens": 29,
+    "completionTokens": 26,
+    "genMs": 1906.054,
+    "error": null,
+    "promptMs": 392.019,
+    "waitedMs": 1.0,
+    "endMs": 21905.469679
+   },
+   {
+    "index": 9,
+    "jobId": "76f9a8bb59d04021-9",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The water cycle is the continuous process where water evaporates from surfaces, condenses into clouds, precipitates back to Earth, and collects in bodies of water to repeat the cycle.",
+    "promptTokens": 29,
+    "completionTokens": 37,
+    "genMs": 2741.654,
+    "error": null,
+    "promptMs": 402.477,
+    "waitedMs": 1.0,
+    "endMs": 25100.865355
+   },
+   {
+    "index": 10,
+    "jobId": "76f9a8bb59d04021-10",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A compiler is a program that translates source code written in a high-level programming language into machine code that a computer can execute.",
+    "promptTokens": 28,
+    "completionTokens": 26,
+    "genMs": 1929.721,
+    "error": null,
+    "promptMs": 394.741,
+    "waitedMs": 1.0,
+    "endMs": 27477.227073
+   },
+   {
+    "index": 11,
+    "jobId": "76f9a8bb59d04021-11",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Volcanoes are openings in the Earth's crust that allow molten rock, ash, and gases to erupt onto the surface.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 1997.133,
+    "error": null,
+    "promptMs": 402.73,
+    "waitedMs": 0.0,
+    "endMs": 29913.272905
+   },
+   {
+    "index": 12,
+    "jobId": "76f9a8bb59d04021-12",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The printing press is a device that uses movable type to reproduce text and images efficiently, revolutionizing the spread of information.",
+    "promptTokens": 29,
+    "completionTokens": 25,
+    "genMs": 1872.323,
+    "error": null,
+    "promptMs": 400.22,
+    "waitedMs": 0.0,
+    "endMs": 30413.995666
+   },
+   {
+    "index": 13,
+    "jobId": "76f9a8bb59d04021-13",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A magnet is an object that produces a magnetic field, allowing it to attract ferromagnetic materials like iron and repel other magnets.",
+    "promptTokens": 28,
+    "completionTokens": 28,
+    "genMs": 2086.642,
+    "error": null,
+    "promptMs": 398.83,
+    "waitedMs": 0.0,
+    "endMs": 32469.777071
+   },
+   {
+    "index": 14,
+    "jobId": "76f9a8bb59d04021-14",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Coral reefs are vibrant underwater ecosystems built by tiny marine animals called coral polyps that secrete calcium carbonate to form hard structures.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 2016.481,
+    "error": null,
+    "promptMs": 403.591,
+    "waitedMs": 0.0,
+    "endMs": 32929.573685
+   },
+   {
+    "index": 15,
+    "jobId": "76f9a8bb59d04021-15",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Morse code is a method of transmitting text information in the form of short and long signals using dots and dashes.",
+    "promptTokens": 28,
+    "completionTokens": 24,
+    "genMs": 1778.305,
+    "error": null,
+    "promptMs": 399.644,
+    "waitedMs": 0.0,
+    "endMs": 34690.428112
+   },
+   {
+    "index": 16,
+    "jobId": "76f9a8bb59d04021-16",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The speed of light is the maximum speed at which all conventional matter and information in the universe can travel, approximately 299,792,458 meters per second in a vacuum.",
+    "promptTokens": 30,
+    "completionTokens": 42,
+    "genMs": 3149.724,
+    "error": null,
+    "promptMs": 401.181,
+    "waitedMs": 1.0,
+    "endMs": 36558.895767
+   },
+   {
+    "index": 17,
+    "jobId": "76f9a8bb59d04021-17",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A sundial is a timekeeping device that uses the position of the sun to cast a shadow onto a marked surface, indicating the time of day.",
+    "promptTokens": 29,
+    "completionTokens": 31,
+    "genMs": 2291.31,
+    "error": null,
+    "promptMs": 405.218,
+    "waitedMs": 1.0,
+    "endMs": 37453.629986
+   },
+   {
+    "index": 18,
+    "jobId": "76f9a8bb59d04021-18",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Bread yeast is a single-celled fungus used in baking to ferment dough by converting sugars into carbon dioxide and alcohol.",
+    "promptTokens": 28,
+    "completionTokens": 25,
+    "genMs": 1848.391,
+    "error": null,
+    "promptMs": 400.775,
+    "waitedMs": 0.0,
+    "endMs": 38874.214725
+   },
+   {
+    "index": 19,
+    "jobId": "76f9a8bb59d04021-19",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Glaciers are massive, slow-moving rivers of ice formed by the accumulation and compaction of snow over many years.",
+    "promptTokens": 27,
+    "completionTokens": 25,
+    "genMs": 1846.875,
+    "error": null,
+    "promptMs": 394.761,
+    "waitedMs": 0.0,
+    "endMs": 39754.581287
+   },
+   {
+    "index": 20,
+    "jobId": "76f9a8bb59d04021-20",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A checksum is a short, fixed-length value calculated from a larger piece of data to verify its integrity and detect accidental corruption.",
+    "promptTokens": 28,
+    "completionTokens": 26,
+    "genMs": 1941.602,
+    "error": null,
+    "promptMs": 398.899,
+    "waitedMs": 0.0,
+    "endMs": 41288.355974
+   },
+   {
+    "index": 21,
+    "jobId": "76f9a8bb59d04021-21",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The heart is a muscular organ that pumps blood throughout the body to deliver oxygen and nutrients.",
+    "promptTokens": 28,
+    "completionTokens": 19,
+    "genMs": 1405.341,
+    "error": null,
+    "promptMs": 399.675,
+    "waitedMs": 1.0,
+    "endMs": 41613.249463
+   },
+   {
+    "index": 22,
+    "jobId": "76f9a8bb59d04021-22",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A telescope is an optical instrument designed to gather light from distant objects and magnify their images for closer inspection.",
+    "promptTokens": 28,
+    "completionTokens": 23,
+    "genMs": 1700.241,
+    "error": null,
+    "promptMs": 402.398,
+    "waitedMs": 0.0,
+    "endMs": 43468.105765
+   },
+   {
+    "index": 23,
+    "jobId": "76f9a8bb59d04021-23",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Origami is the Japanese art of paper folding that transforms flat sheets into intricate three-dimensional shapes through precise creases.",
+    "promptTokens": 28,
+    "completionTokens": 24,
+    "genMs": 1752.214,
+    "error": null,
+    "promptMs": 402.057,
+    "waitedMs": 0.0,
+    "endMs": 43817.237848
+   },
+   {
+    "index": 24,
+    "jobId": "76f9a8bb59d04021-24",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Pythagorean theorem states that in a right-angled triangle, the square of the length of the hypotenuse (the side opposite the right angle) is equal to the sum of the squares of the lengths of the other two sides",
+    "promptTokens": 31,
+    "completionTokens": 48,
+    "genMs": 3599.791,
+    "error": null,
+    "promptMs": 406.568,
+    "waitedMs": 1.0,
+    "endMs": 47547.788992
+   },
+   {
+    "index": 25,
+    "jobId": "76f9a8bb59d04021-25",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Bees are social insects known for their vital role in pollinating plants and producing honey.",
+    "promptTokens": 27,
+    "completionTokens": 19,
+    "genMs": 1388.231,
+    "error": null,
+    "promptMs": 398.721,
+    "waitedMs": 1.0,
+    "endMs": 45654.806285
+   },
+   {
+    "index": 26,
+    "jobId": "76f9a8bb59d04021-26",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A fuse is a safety device containing a thin metal wire that melts and breaks the electrical circuit when current exceeds a safe level, preventing damage or fire.",
+    "promptTokens": 28,
+    "completionTokens": 31,
+    "genMs": 2284.489,
+    "error": null,
+    "promptMs": 393.674,
+    "waitedMs": 0.0,
+    "endMs": 48380.672898
+   },
+   {
+    "index": 27,
+    "jobId": "76f9a8bb59d04021-27",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "The Ganges is a major river in South Asia that holds profound religious significance for Hindus, who believe it is a goddess and essential for spiritual purification.",
+    "promptTokens": 29,
+    "completionTokens": 31,
+    "genMs": 2321.903,
+    "error": null,
+    "promptMs": 405.38,
+    "waitedMs": 0.0,
+    "endMs": 50346.153002
+   },
+   {
+    "index": 28,
+    "jobId": "76f9a8bb59d04021-28",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Chess openings are the initial moves made by both players to develop their pieces, control the center, and prepare for a strategic plan.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 1998.903,
+    "error": null,
+    "promptMs": 404.655,
+    "waitedMs": 1.0,
+    "endMs": 50847.209929
+   },
+   {
+    "index": 29,
+    "jobId": "76f9a8bb59d04021-29",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Static electricity is an imbalance of electric charges within or on the surface of a material, typically caused by the transfer of electrons between objects.",
+    "promptTokens": 28,
+    "completionTokens": 28,
+    "genMs": 2087.737,
+    "error": null,
+    "promptMs": 397.507,
+    "waitedMs": 0.0,
+    "endMs": 52906.415969
+   },
+   {
+    "index": 30,
+    "jobId": "76f9a8bb59d04021-30",
+    "nodeId": "477684c1",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "A rainbow is a natural optical phenomenon caused by sunlight being refracted, reflected, and dispersed by water droplets in the atmosphere.",
+    "promptTokens": 28,
+    "completionTokens": 27,
+    "genMs": 1997.544,
+    "error": null,
+    "promptMs": 398.686,
+    "waitedMs": 1.0,
+    "endMs": 53313.217896
+   },
+   {
+    "index": 31,
+    "jobId": "76f9a8bb59d04021-31",
+    "nodeId": "82d2676d",
+    "modelName": "Qwen3.5-4B-Q4_K_M",
+    "text": "Tea is a popular hot or cold beverage prepared by steeping cured leaves of the Camellia sinensis plant in hot water.",
+    "promptTokens": 27,
+    "completionTokens": 28,
+    "genMs": 2077.406,
+    "error": null,
+    "promptMs": 399.968,
+    "waitedMs": 0.0,
+    "endMs": 55894.847322
+   }
+  ]
+ },
+ "summary": {
+  "id": "76f9a8bb59d04021",
+  "state": "done",
+  "total": 32,
+  "done": 32,
+  "failed": 0,
+  "wallS": 55.9,
+  "aggTokPerSec": 15.9,
+  "totalTokens": 889,
+  "perPhone": [
+   {
+    "node": "coord",
+    "jobs": 22,
+    "tokens": 586,
+    "decodeTokPerSec": 13.53
+   },
+   {
+    "node": "peer",
+    "jobs": 10,
+    "tokens": 303,
+    "decodeTokPerSec": 13.4
+   }
+  ],
+  "itemsByNode": {
+   "coord": 22,
+   "peer": 10
+  },
+  "medianPromptMs": 399.9,
+  "errors": []
+ },
+ "events": {
+  "peerApiAnswersAfterAppStartS": 0.1,
+  "peerChatReadyAfterAppStartS": 17.5,
+  "coordListsPeerOnlineAfterAppStartS": 1.4,
+  "schedulerMarksPeerUpAfterAppStartS": 2.2,
+  "peerJobs": 10,
+  "doneCountWhenPeersFirstJobEnded (rank by endMs)": 13,
+  "peerFirstJobEndedAtBatchS": 30.4,
+  "peerFirstJobEndedAfterAppStartS": 20.6
+ },
+ "samplers": {
+  "batch": [
+   [
+    0.0,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    0.41,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    0.81,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    1.22,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    1.62,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    2.03,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    2.43,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    2.83,
+    {
+     "state": "running",
+     "done": 1,
+     "failed": 0,
+     "perNode": {
+      "coord": 1
+     }
+    }
+   ],
+   [
+    3.24,
+    {
+     "state": "running",
+     "done": 1,
+     "failed": 0,
+     "perNode": {
+      "coord": 1
+     }
+    }
+   ],
+   [
+    3.64,
+    {
+     "state": "running",
+     "done": 1,
+     "failed": 0,
+     "perNode": {
+      "coord": 1
+     }
+    }
+   ],
+   [
+    4.05,
+    {
+     "state": "running",
+     "done": 1,
+     "failed": 0,
+     "perNode": {
+      "coord": 1
+     }
+    }
+   ],
+   [
+    4.45,
+    {
+     "state": "running",
+     "done": 1,
+     "failed": 0,
+     "perNode": {
+      "coord": 1
+     }
+    }
+   ],
+   [
+    4.86,
+    {
+     "state": "running",
+     "done": 1,
+     "failed": 0,
+     "perNode": {
+      "coord": 1
+     }
+    }
+   ],
+   [
+    5.26,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "coord": 2
+     }
+    }
+   ],
+   [
+    5.67,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "coord": 2
+     }
+    }
+   ],
+   [
+    6.07,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "coord": 2
+     }
+    }
+   ],
+   [
+    6.48,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "coord": 2
+     }
+    }
+   ],
+   [
+    6.88,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "coord": 2
+     }
+    }
+   ],
+   [
+    7.28,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 3
+     }
+    }
+   ],
+   [
+    7.69,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 3
+     }
+    }
+   ],
+   [
+    8.09,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 3
+     }
+    }
+   ],
+   [
+    8.5,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 3
+     }
+    }
+   ],
+   [
+    8.91,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 3
+     }
+    }
+   ],
+   [
+    9.31,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "coord": 3
+     }
+    }
+   ],
+   [
+    9.71,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "coord": 4
+     }
+    }
+   ],
+   [
+    10.12,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "coord": 4
+     }
+    }
+   ],
+   [
+    10.53,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "coord": 4
+     }
+    }
+   ],
+   [
+    10.94,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "coord": 4
+     }
+    }
+   ],
+   [
+    11.34,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "coord": 4
+     }
+    }
+   ],
+   [
+    11.75,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "coord": 4
+     }
+    }
+   ],
+   [
+    12.15,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "coord": 4
+     }
+    }
+   ],
+   [
+    12.55,
+    {
+     "state": "running",
+     "done": 5,
+     "failed": 0,
+     "perNode": {
+      "coord": 5
+     }
+    }
+   ],
+   [
+    12.96,
+    {
+     "state": "running",
+     "done": 5,
+     "failed": 0,
+     "perNode": {
+      "coord": 5
+     }
+    }
+   ],
+   [
+    13.36,
+    {
+     "state": "running",
+     "done": 5,
+     "failed": 0,
+     "perNode": {
+      "coord": 5
+     }
+    }
+   ],
+   [
+    13.77,
+    {
+     "state": "running",
+     "done": 5,
+     "failed": 0,
+     "perNode": {
+      "coord": 5
+     }
+    }
+   ],
+   [
+    14.17,
+    {
+     "state": "running",
+     "done": 5,
+     "failed": 0,
+     "perNode": {
+      "coord": 5
+     }
+    }
+   ],
+   [
+    14.57,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 6
+     }
+    }
+   ],
+   [
+    14.98,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 6
+     }
+    }
+   ],
+   [
+    15.38,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 6
+     }
+    }
+   ],
+   [
+    15.79,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 6
+     }
+    }
+   ],
+   [
+    16.19,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 6
+     }
+    }
+   ],
+   [
+    16.59,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 6
+     }
+    }
+   ],
+   [
+    17.0,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "coord": 6
+     }
+    }
+   ],
+   [
+    17.41,
+    {
+     "state": "running",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "coord": 7
+     }
+    }
+   ],
+   [
+    17.81,
+    {
+     "state": "running",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "coord": 7
+     }
+    }
+   ],
+   [
+    18.22,
+    {
+     "state": "running",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "coord": 7
+     }
+    }
+   ],
+   [
+    18.63,
+    {
+     "state": "running",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "coord": 7
+     }
+    }
+   ],
+   [
+    19.04,
+    {
+     "state": "running",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "coord": 7
+     }
+    }
+   ],
+   [
+    19.44,
+    {
+     "state": "running",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "coord": 7
+     }
+    }
+   ],
+   [
+    19.85,
+    {
+     "state": "running",
+     "done": 8,
+     "failed": 0,
+     "perNode": {
+      "coord": 8
+     }
+    }
+   ],
+   [
+    20.25,
+    {
+     "state": "running",
+     "done": 8,
+     "failed": 0,
+     "perNode": {
+      "coord": 8
+     }
+    }
+   ],
+   [
+    20.66,
+    {
+     "state": "running",
+     "done": 8,
+     "failed": 0,
+     "perNode": {
+      "coord": 8
+     }
+    }
+   ],
+   [
+    21.06,
+    {
+     "state": "running",
+     "done": 8,
+     "failed": 0,
+     "perNode": {
+      "coord": 8
+     }
+    }
+   ],
+   [
+    21.47,
+    {
+     "state": "running",
+     "done": 8,
+     "failed": 0,
+     "perNode": {
+      "coord": 8
+     }
+    }
+   ],
+   [
+    21.87,
+    {
+     "state": "running",
+     "done": 8,
+     "failed": 0,
+     "perNode": {
+      "coord": 8
+     }
+    }
+   ],
+   [
+    22.28,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 9
+     }
+    }
+   ],
+   [
+    22.68,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 9
+     }
+    }
+   ],
+   [
+    23.09,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 9
+     }
+    }
+   ],
+   [
+    23.49,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 9
+     }
+    }
+   ],
+   [
+    23.9,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 9
+     }
+    }
+   ],
+   [
+    24.3,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 9
+     }
+    }
+   ],
+   [
+    24.71,
+    {
+     "state": "running",
+     "done": 9,
+     "failed": 0,
+     "perNode": {
+      "coord": 9
+     }
+    }
+   ],
+   [
+    25.11,
+    {
+     "state": "running",
+     "done": 10,
+     "failed": 0,
+     "perNode": {
+      "coord": 10
+     }
+    }
+   ],
+   [
+    25.51,
+    {
+     "state": "running",
+     "done": 10,
+     "failed": 0,
+     "perNode": {
+      "coord": 10
+     }
+    }
+   ],
+   [
+    25.92,
+    {
+     "state": "running",
+     "done": 10,
+     "failed": 0,
+     "perNode": {
+      "coord": 10
+     }
+    }
+   ],
+   [
+    26.32,
+    {
+     "state": "running",
+     "done": 10,
+     "failed": 0,
+     "perNode": {
+      "coord": 10
+     }
+    }
+   ],
+   [
+    26.73,
+    {
+     "state": "running",
+     "done": 10,
+     "failed": 0,
+     "perNode": {
+      "coord": 10
+     }
+    }
+   ],
+   [
+    27.14,
+    {
+     "state": "running",
+     "done": 10,
+     "failed": 0,
+     "perNode": {
+      "coord": 10
+     }
+    }
+   ],
+   [
+    27.55,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 11
+     }
+    }
+   ],
+   [
+    27.96,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 11
+     }
+    }
+   ],
+   [
+    28.37,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 11
+     }
+    }
+   ],
+   [
+    28.78,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 11
+     }
+    }
+   ],
+   [
+    29.18,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 11
+     }
+    }
+   ],
+   [
+    29.58,
+    {
+     "state": "running",
+     "done": 11,
+     "failed": 0,
+     "perNode": {
+      "coord": 11
+     }
+    }
+   ],
+   [
+    29.99,
+    {
+     "state": "running",
+     "done": 12,
+     "failed": 0,
+     "perNode": {
+      "coord": 12
+     }
+    }
+   ],
+   [
+    30.4,
+    {
+     "state": "running",
+     "done": 13,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    30.81,
+    {
+     "state": "running",
+     "done": 13,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    31.22,
+    {
+     "state": "running",
+     "done": 13,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    31.62,
+    {
+     "state": "running",
+     "done": 13,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    32.03,
+    {
+     "state": "running",
+     "done": 13,
+     "failed": 0,
+     "perNode": {
+      "coord": 12,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    32.43,
+    {
+     "state": "running",
+     "done": 14,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    32.84,
+    {
+     "state": "running",
+     "done": 14,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "peer": 1
+     }
+    }
+   ],
+   [
+    33.24,
+    {
+     "state": "running",
+     "done": 15,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    33.64,
+    {
+     "state": "running",
+     "done": 15,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    34.05,
+    {
+     "state": "running",
+     "done": 15,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    34.45,
+    {
+     "state": "running",
+     "done": 15,
+     "failed": 0,
+     "perNode": {
+      "coord": 13,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    34.86,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    35.26,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    35.67,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    36.08,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    36.48,
+    {
+     "state": "running",
+     "done": 16,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "peer": 2
+     }
+    }
+   ],
+   [
+    36.89,
+    {
+     "state": "running",
+     "done": 17,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    37.29,
+    {
+     "state": "running",
+     "done": 17,
+     "failed": 0,
+     "perNode": {
+      "coord": 14,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    37.7,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    38.11,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    38.51,
+    {
+     "state": "running",
+     "done": 18,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "peer": 3
+     }
+    }
+   ],
+   [
+    38.91,
+    {
+     "state": "running",
+     "done": 19,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "peer": 4
+     }
+    }
+   ],
+   [
+    39.31,
+    {
+     "state": "running",
+     "done": 19,
+     "failed": 0,
+     "perNode": {
+      "coord": 15,
+      "peer": 4
+     }
+    }
+   ],
+   [
+    39.72,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "peer": 4
+     }
+    }
+   ],
+   [
+    40.12,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "peer": 4
+     }
+    }
+   ],
+   [
+    40.52,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "peer": 4
+     }
+    }
+   ],
+   [
+    40.93,
+    {
+     "state": "running",
+     "done": 20,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "peer": 4
+     }
+    }
+   ],
+   [
+    41.34,
+    {
+     "state": "running",
+     "done": 21,
+     "failed": 0,
+     "perNode": {
+      "coord": 16,
+      "peer": 5
+     }
+    }
+   ],
+   [
+    41.74,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "peer": 5
+     }
+    }
+   ],
+   [
+    42.14,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "peer": 5
+     }
+    }
+   ],
+   [
+    42.55,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "peer": 5
+     }
+    }
+   ],
+   [
+    42.96,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "peer": 5
+     }
+    }
+   ],
+   [
+    43.36,
+    {
+     "state": "running",
+     "done": 22,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "peer": 5
+     }
+    }
+   ],
+   [
+    43.76,
+    {
+     "state": "running",
+     "done": 23,
+     "failed": 0,
+     "perNode": {
+      "coord": 17,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    44.17,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    44.57,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    44.98,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    45.38,
+    {
+     "state": "running",
+     "done": 24,
+     "failed": 0,
+     "perNode": {
+      "coord": 18,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    45.8,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    46.2,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    46.61,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    47.02,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    47.42,
+    {
+     "state": "running",
+     "done": 25,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "peer": 6
+     }
+    }
+   ],
+   [
+    47.82,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "peer": 7
+     }
+    }
+   ],
+   [
+    48.23,
+    {
+     "state": "running",
+     "done": 26,
+     "failed": 0,
+     "perNode": {
+      "coord": 19,
+      "peer": 7
+     }
+    }
+   ],
+   [
+    48.63,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "peer": 7
+     }
+    }
+   ],
+   [
+    49.04,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "peer": 7
+     }
+    }
+   ],
+   [
+    49.44,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "peer": 7
+     }
+    }
+   ],
+   [
+    49.85,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "peer": 7
+     }
+    }
+   ],
+   [
+    50.26,
+    {
+     "state": "running",
+     "done": 27,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "peer": 7
+     }
+    }
+   ],
+   [
+    50.67,
+    {
+     "state": "running",
+     "done": 28,
+     "failed": 0,
+     "perNode": {
+      "coord": 20,
+      "peer": 8
+     }
+    }
+   ],
+   [
+    51.07,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 21,
+      "peer": 8
+     }
+    }
+   ],
+   [
+    51.48,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 21,
+      "peer": 8
+     }
+    }
+   ],
+   [
+    51.88,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 21,
+      "peer": 8
+     }
+    }
+   ],
+   [
+    52.29,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 21,
+      "peer": 8
+     }
+    }
+   ],
+   [
+    52.69,
+    {
+     "state": "running",
+     "done": 29,
+     "failed": 0,
+     "perNode": {
+      "coord": 21,
+      "peer": 8
+     }
+    }
+   ],
+   [
+    53.1,
+    {
+     "state": "running",
+     "done": 30,
+     "failed": 0,
+     "perNode": {
+      "coord": 21,
+      "peer": 9
+     }
+    }
+   ],
+   [
+    53.5,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 22,
+      "peer": 9
+     }
+    }
+   ],
+   [
+    53.92,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 22,
+      "peer": 9
+     }
+    }
+   ],
+   [
+    54.33,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 22,
+      "peer": 9
+     }
+    }
+   ],
+   [
+    54.74,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 22,
+      "peer": 9
+     }
+    }
+   ],
+   [
+    55.14,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 22,
+      "peer": 9
+     }
+    }
+   ],
+   [
+    55.54,
+    {
+     "state": "running",
+     "done": 31,
+     "failed": 0,
+     "perNode": {
+      "coord": 22,
+      "peer": 9
+     }
+    }
+   ],
+   [
+    55.95,
+    {
+     "state": "done",
+     "done": 32,
+     "failed": 0,
+     "perNode": {
+      "coord": 22,
+      "peer": 10
+     }
+    }
+   ]
+  ],
+  "peerOnCoord": [
+   [
+    0.0,
+    {
+     "state": "away",
+     "ageMs": 11078,
+     "misses": 4
+    }
+   ],
+   [
+    0.52,
+    {
+     "state": "away",
+     "ageMs": 11611,
+     "misses": 4
+    }
+   ],
+   [
+    1.03,
+    {
+     "state": "away",
+     "ageMs": 12107,
+     "misses": 4
+    }
+   ],
+   [
+    1.55,
+    {
+     "state": "away",
+     "ageMs": 12643,
+     "misses": 4
+    }
+   ],
+   [
+    2.06,
+    {
+     "state": "away",
+     "ageMs": 13138,
+     "misses": 5
+    }
+   ],
+   [
+    2.57,
+    {
+     "state": "away",
+     "ageMs": 13650,
+     "misses": 5
+    }
+   ],
+   [
+    3.08,
+    {
+     "state": "away",
+     "ageMs": 14186,
+     "misses": 5
+    }
+   ],
+   [
+    3.6,
+    {
+     "state": "away",
+     "ageMs": 14693,
+     "misses": 5
+    }
+   ],
+   [
+    4.11,
+    {
+     "state": "away",
+     "ageMs": 15195,
+     "misses": 5
+    }
+   ],
+   [
+    4.62,
+    {
+     "state": "away",
+     "ageMs": 15718,
+     "misses": 5
+    }
+   ],
+   [
+    5.14,
+    {
+     "state": "away",
+     "ageMs": 16227,
+     "misses": 5
+    }
+   ],
+   [
+    5.65,
+    {
+     "state": "away",
+     "ageMs": 16761,
+     "misses": 5
+    }
+   ],
+   [
+    6.17,
+    {
+     "state": "away",
+     "ageMs": 17263,
+     "misses": 5
+    }
+   ],
+   [
+    6.68,
+    {
+     "state": "away",
+     "ageMs": 17752,
+     "misses": 5
+    }
+   ],
+   [
+    7.19,
+    {
+     "state": "away",
+     "ageMs": 18292,
+     "misses": 6
+    }
+   ],
+   [
+    7.7,
+    {
+     "state": "away",
+     "ageMs": 18779,
+     "misses": 6
+    }
+   ],
+   [
+    8.22,
+    {
+     "state": "away",
+     "ageMs": 19315,
+     "misses": 6
+    }
+   ],
+   [
+    8.72,
+    {
+     "state": "away",
+     "ageMs": 19797,
+     "misses": 6
+    }
+   ],
+   [
+    9.23,
+    {
+     "state": "away",
+     "ageMs": 20333,
+     "misses": 6
+    }
+   ],
+   [
+    9.74,
+    {
+     "state": "away",
+     "ageMs": 20815,
+     "misses": 6
+    }
+   ],
+   [
+    10.25,
+    {
+     "state": "away",
+     "ageMs": 21329,
+     "misses": 6
+    }
+   ],
+   [
+    10.76,
+    {
+     "state": "away",
+     "ageMs": 21852,
+     "misses": 6
+    }
+   ],
+   [
+    11.26,
+    {
+     "state": "online",
+     "ageMs": 169,
+     "misses": 0
+    }
+   ],
+   [
+    11.78,
+    {
+     "state": "online",
+     "ageMs": 48,
+     "misses": 0
+    }
+   ],
+   [
+    12.29,
+    {
+     "state": "online",
+     "ageMs": 402,
+     "misses": 0
+    }
+   ],
+   [
+    12.8,
+    {
+     "state": "online",
+     "ageMs": 929,
+     "misses": 0
+    }
+   ],
+   [
+    13.31,
+    {
+     "state": "online",
+     "ageMs": 414,
+     "misses": 0
+    }
+   ],
+   [
+    13.83,
+    {
+     "state": "online",
+     "ageMs": 927,
+     "misses": 0
+    }
+   ],
+   [
+    14.34,
+    {
+     "state": "online",
+     "ageMs": 417,
+     "misses": 0
+    }
+   ],
+   [
+    14.85,
+    {
+     "state": "online",
+     "ageMs": 945,
+     "misses": 0
+    }
+   ],
+   [
+    15.37,
+    {
+     "state": "online",
+     "ageMs": 459,
+     "misses": 0
+    }
+   ],
+   [
+    15.88,
+    {
+     "state": "online",
+     "ageMs": 989,
+     "misses": 0
+    }
+   ],
+   [
+    16.39,
+    {
+     "state": "online",
+     "ageMs": 483,
+     "misses": 0
+    }
+   ],
+   [
+    16.91,
+    {
+     "state": "online",
+     "ageMs": 4,
+     "misses": 0
+    }
+   ],
+   [
+    17.41,
+    {
+     "state": "online",
+     "ageMs": 489,
+     "misses": 0
+    }
+   ],
+   [
+    17.92,
+    {
+     "state": "online",
+     "ageMs": 0,
+     "misses": 0
+    }
+   ],
+   [
+    18.43,
+    {
+     "state": "online",
+     "ageMs": 513,
+     "misses": 0
+    }
+   ],
+   [
+    18.95,
+    {
+     "state": "online",
+     "ageMs": 51,
+     "misses": 0
+    }
+   ],
+   [
+    19.46,
+    {
+     "state": "online",
+     "ageMs": 540,
+     "misses": 0
+    }
+   ],
+   [
+    19.97,
+    {
+     "state": "online",
+     "ageMs": 47,
+     "misses": 0
+    }
+   ],
+   [
+    20.48,
+    {
+     "state": "online",
+     "ageMs": 550,
+     "misses": 0
+    }
+   ],
+   [
+    21.0,
+    {
+     "state": "online",
+     "ageMs": 82,
+     "misses": 0
+    }
+   ],
+   [
+    21.51,
+    {
+     "state": "online",
+     "ageMs": 617,
+     "misses": 0
+    }
+   ],
+   [
+    22.03,
+    {
+     "state": "online",
+     "ageMs": 103,
+     "misses": 0
+    }
+   ],
+   [
+    22.53,
+    {
+     "state": "online",
+     "ageMs": 623,
+     "misses": 0
+    }
+   ],
+   [
+    23.04,
+    {
+     "state": "online",
+     "ageMs": 144,
+     "misses": 0
+    }
+   ],
+   [
+    23.54,
+    {
+     "state": "online",
+     "ageMs": 654,
+     "misses": 0
+    }
+   ],
+   [
+    24.05,
+    {
+     "state": "online",
+     "ageMs": 149,
+     "misses": 0
+    }
+   ],
+   [
+    24.56,
+    {
+     "state": "online",
+     "ageMs": 683,
+     "misses": 0
+    }
+   ],
+   [
+    25.08,
+    {
+     "state": "online",
+     "ageMs": 184,
+     "misses": 0
+    }
+   ],
+   [
+    25.59,
+    {
+     "state": "online",
+     "ageMs": 674,
+     "misses": 0
+    }
+   ],
+   [
+    26.11,
+    {
+     "state": "online",
+     "ageMs": 239,
+     "misses": 0
+    }
+   ],
+   [
+    26.61,
+    {
+     "state": "online",
+     "ageMs": 701,
+     "misses": 0
+    }
+   ],
+   [
+    27.11,
+    {
+     "state": "online",
+     "ageMs": 208,
+     "misses": 0
+    }
+   ],
+   [
+    27.61,
+    {
+     "state": "online",
+     "ageMs": 704,
+     "misses": 0
+    }
+   ],
+   [
+    28.13,
+    {
+     "state": "online",
+     "ageMs": 213,
+     "misses": 0
+    }
+   ],
+   [
+    28.64,
+    {
+     "state": "online",
+     "ageMs": 733,
+     "misses": 0
+    }
+   ],
+   [
+    29.15,
+    {
+     "state": "online",
+     "ageMs": 251,
+     "misses": 0
+    }
+   ],
+   [
+    29.66,
+    {
+     "state": "online",
+     "ageMs": 769,
+     "misses": 0
+    }
+   ],
+   [
+    30.17,
+    {
+     "state": "online",
+     "ageMs": 250,
+     "misses": 0
+    }
+   ],
+   [
+    30.69,
+    {
+     "state": "online",
+     "ageMs": 785,
+     "misses": 0
+    }
+   ],
+   [
+    31.2,
+    {
+     "state": "online",
+     "ageMs": 290,
+     "misses": 0
+    }
+   ],
+   [
+    31.7,
+    {
+     "state": "online",
+     "ageMs": 791,
+     "misses": 0
+    }
+   ],
+   [
+    32.22,
+    {
+     "state": "online",
+     "ageMs": 310,
+     "misses": 0
+    }
+   ],
+   [
+    32.73,
+    {
+     "state": "online",
+     "ageMs": 823,
+     "misses": 0
+    }
+   ],
+   [
+    33.24,
+    {
+     "state": "online",
+     "ageMs": 319,
+     "misses": 0
+    }
+   ],
+   [
+    33.75,
+    {
+     "state": "online",
+     "ageMs": 832,
+     "misses": 0
+    }
+   ],
+   [
+    34.27,
+    {
+     "state": "online",
+     "ageMs": 383,
+     "misses": 0
+    }
+   ],
+   [
+    34.78,
+    {
+     "state": "online",
+     "ageMs": 896,
+     "misses": 0
+    }
+   ],
+   [
+    35.28,
+    {
+     "state": "online",
+     "ageMs": 376,
+     "misses": 0
+    }
+   ],
+   [
+    35.79,
+    {
+     "state": "online",
+     "ageMs": 887,
+     "misses": 0
+    }
+   ],
+   [
+    36.29,
+    {
+     "state": "online",
+     "ageMs": 381,
+     "misses": 0
+    }
+   ],
+   [
+    36.8,
+    {
+     "state": "online",
+     "ageMs": 885,
+     "misses": 0
+    }
+   ],
+   [
+    37.31,
+    {
+     "state": "online",
+     "ageMs": 401,
+     "misses": 0
+    }
+   ],
+   [
+    37.82,
+    {
+     "state": "online",
+     "ageMs": 911,
+     "misses": 0
+    }
+   ],
+   [
+    38.34,
+    {
+     "state": "online",
+     "ageMs": 412,
+     "misses": 0
+    }
+   ],
+   [
+    38.85,
+    {
+     "state": "online",
+     "ageMs": 924,
+     "misses": 0
+    }
+   ],
+   [
+    39.36,
+    {
+     "state": "online",
+     "ageMs": 470,
+     "misses": 0
+    }
+   ],
+   [
+    39.87,
+    {
+     "state": "online",
+     "ageMs": 997,
+     "misses": 0
+    }
+   ],
+   [
+    40.39,
+    {
+     "state": "online",
+     "ageMs": 466,
+     "misses": 0
+    }
+   ],
+   [
+    40.9,
+    {
+     "state": "online",
+     "ageMs": 979,
+     "misses": 0
+    }
+   ],
+   [
+    41.41,
+    {
+     "state": "online",
+     "ageMs": 502,
+     "misses": 0
+    }
+   ],
+   [
+    41.93,
+    {
+     "state": "online",
+     "ageMs": 19,
+     "misses": 0
+    }
+   ],
+   [
+    42.44,
+    {
+     "state": "online",
+     "ageMs": 526,
+     "misses": 0
+    }
+   ],
+   [
+    42.94,
+    {
+     "state": "online",
+     "ageMs": 34,
+     "misses": 0
+    }
+   ],
+   [
+    43.45,
+    {
+     "state": "online",
+     "ageMs": 536,
+     "misses": 0
+    }
+   ],
+   [
+    43.96,
+    {
+     "state": "online",
+     "ageMs": 69,
+     "misses": 0
+    }
+   ],
+   [
+    44.48,
+    {
+     "state": "online",
+     "ageMs": 580,
+     "misses": 0
+    }
+   ],
+   [
+    44.99,
+    {
+     "state": "online",
+     "ageMs": 83,
+     "misses": 0
+    }
+   ],
+   [
+    45.5,
+    {
+     "state": "online",
+     "ageMs": 610,
+     "misses": 0
+    }
+   ],
+   [
+    46.02,
+    {
+     "state": "online",
+     "ageMs": 118,
+     "misses": 0
+    }
+   ],
+   [
+    46.53,
+    {
+     "state": "online",
+     "ageMs": 614,
+     "misses": 0
+    }
+   ],
+   [
+    47.03,
+    {
+     "state": "online",
+     "ageMs": 151,
+     "misses": 0
+    }
+   ],
+   [
+    47.54,
+    {
+     "state": "online",
+     "ageMs": 645,
+     "misses": 0
+    }
+   ],
+   [
+    48.06,
+    {
+     "state": "online",
+     "ageMs": 160,
+     "misses": 0
+    }
+   ],
+   [
+    48.57,
+    {
+     "state": "online",
+     "ageMs": 679,
+     "misses": 0
+    }
+   ],
+   [
+    49.08,
+    {
+     "state": "online",
+     "ageMs": 192,
+     "misses": 0
+    }
+   ],
+   [
+    49.59,
+    {
+     "state": "online",
+     "ageMs": 683,
+     "misses": 0
+    }
+   ],
+   [
+    50.11,
+    {
+     "state": "online",
+     "ageMs": 203,
+     "misses": 0
+    }
+   ],
+   [
+    50.62,
+    {
+     "state": "online",
+     "ageMs": 740,
+     "misses": 0
+    }
+   ],
+   [
+    51.13,
+    {
+     "state": "online",
+     "ageMs": 246,
+     "misses": 0
+    }
+   ],
+   [
+    51.65,
+    {
+     "state": "online",
+     "ageMs": 735,
+     "misses": 0
+    }
+   ],
+   [
+    52.15,
+    {
+     "state": "online",
+     "ageMs": 228,
+     "misses": 0
+    }
+   ],
+   [
+    52.66,
+    {
+     "state": "online",
+     "ageMs": 763,
+     "misses": 0
+    }
+   ],
+   [
+    53.18,
+    {
+     "state": "online",
+     "ageMs": 273,
+     "misses": 0
+    }
+   ],
+   [
+    53.69,
+    {
+     "state": "online",
+     "ageMs": 783,
+     "misses": 0
+    }
+   ],
+   [
+    54.19,
+    {
+     "state": "online",
+     "ageMs": 277,
+     "misses": 0
+    }
+   ],
+   [
+    54.71,
+    {
+     "state": "online",
+     "ageMs": 784,
+     "misses": 0
+    }
+   ],
+   [
+    55.22,
+    {
+     "state": "online",
+     "ageMs": 323,
+     "misses": 0
+    }
+   ],
+   [
+    55.73,
+    {
+     "state": "online",
+     "ageMs": 822,
+     "misses": 0
+    }
+   ]
+  ],
+  "phonesOnCoord": [
+   [
+    0.0,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    2.01,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    4.02,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    6.02,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    8.03,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    10.03,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    12.04,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     }
+    }
+   ],
+   [
+    14.04,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     }
+    }
+   ],
+   [
+    16.05,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     }
+    }
+   ],
+   [
+    18.06,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     }
+    }
+   ],
+   [
+    20.06,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     }
+    }
+   ],
+   [
+    22.07,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     }
+    }
+   ],
+   [
+    24.08,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     }
+    }
+   ],
+   [
+    26.09,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     }
+    }
+   ],
+   [
+    28.09,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 0
+     }
+    }
+   ],
+   [
+    30.1,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    32.11,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    34.11,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    36.12,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    38.14,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    40.15,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    42.16,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    44.17,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    46.17,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    48.18,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    50.18,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    52.19,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ],
+   [
+    54.21,
+    {
+     "coord": {
+      "up": true,
+      "inflight": 0,
+      "running": 0
+     },
+     "peer": {
+      "up": true,
+      "inflight": 1,
+      "running": 1
+     }
+    }
+   ]
+  ],
+  "peerModels": [
+   [
+    0.0,
+    {
+     "api": false,
+     "chat": null,
+     "embed": null
+    }
+   ],
+   [
+    2.46,
+    {
+     "api": false,
+     "chat": null,
+     "embed": null
+    }
+   ],
+   [
+    4.93,
+    {
+     "api": false,
+     "chat": null,
+     "embed": null
+    }
+   ],
+   [
+    7.5,
+    {
+     "api": false,
+     "chat": null,
+     "embed": null
+    }
+   ],
+   [
+    9.94,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "STARTING"
+    }
+   ],
+   [
+    11.16,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "STARTING"
+    }
+   ],
+   [
+    12.16,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    13.17,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    14.19,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    15.19,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    16.2,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    17.22,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    18.23,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    19.24,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    20.25,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    21.26,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    22.28,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    23.29,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    24.3,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    25.31,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    26.32,
+    {
+     "api": true,
+     "chat": "STARTING",
+     "embed": "READY"
+    }
+   ],
+   [
+    27.33,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    28.34,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    29.35,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    30.36,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    31.37,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    32.38,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    33.4,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    34.4,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    35.42,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    36.42,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    37.43,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    38.44,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    39.45,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    40.46,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    41.48,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    42.49,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    43.5,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    44.51,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    45.52,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    46.53,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    47.54,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    48.55,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    49.56,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    50.57,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    51.58,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    52.6,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    53.61,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    54.61,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ],
+   [
+    55.62,
+    {
+     "api": true,
+     "chat": "READY",
+     "embed": "READY"
+    }
+   ]
+  ]
+ },
+ "after": {
+  "label": "j after",
+  "at": "18:40:59",
+  "thermal": {
+   "coord": "2",
+   "peer": "1"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "away",
+      "rttMs": null,
+      "ageMs": 122877,
+      "misses": 25,
+      "awayCount": 1,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 39.816302,
+      "ageMs": 362,
+      "misses": 0,
+      "awayCount": 2,
+      "thermalStatus": 1
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 2,
+    "ramAvailMb": 5193
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 41.392135,
+      "ageMs": 377,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 2
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 1,
+    "ramAvailMb": 5414
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "settle": {
+  "ok": true,
+  "elapsedS": 0.2,
+  "last": {
+   "coordModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "peerModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "coordListsPeer": "online",
+   "peerListsCoord": "online"
+  }
+ },
+ "keepBusyEnabledAfterRestart": {
+  "peer": false,
+  "coord": false
+ },
+ "stepSeconds": 68.1
+}

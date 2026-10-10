@@ -1,0 +1,3088 @@
+{
+ "tag": "c",
+ "before": {
+  "label": "c before",
+  "at": "18:41:00",
+  "thermal": {
+   "coord": "2",
+   "peer": "1"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone A",
+      "ip": "192.168.242.89",
+      "state": "away",
+      "rttMs": null,
+      "ageMs": 123687,
+      "misses": 26,
+      "awayCount": 1,
+      "thermalStatus": 0
+     },
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 30.028646,
+      "ageMs": 183,
+      "misses": 0,
+      "awayCount": 2,
+      "thermalStatus": 1
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 2,
+    "ramAvailMb": 5193
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 31.948802,
+      "ageMs": 170,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 2
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 1,
+    "ramAvailMb": 5414
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "doneAtKill": {
+  "done": 8,
+  "state": "running",
+  "perNode": {
+   "peer": 4,
+   "coord": 4
+  }
+ },
+ "coordApiAnswersAfterKillS": 1.3,
+ "oldBatchAtApiUp": {
+  "id": "42c1d1a6e6ec4bde",
+  "state": "interrupted",
+  "done": 7,
+  "failed": 0,
+  "total": 32,
+  "wallMs": 9611.6501,
+  "_status": null,
+  "_raw": null,
+  "_err": null
+ },
+ "oldBatchItemsFinished": 7,
+ "restartReady": {
+  "ok": true,
+  "elapsedS": 17.4,
+  "last": {
+   "coordModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "peerModels": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   },
+   "coordListsPeer": "online",
+   "peerListsCoord": "online"
+  },
+  "secondsFromKill": 18.7
+ },
+ "keepBusyEnabledAfterRestart": {
+  "peer": false,
+  "coord": false
+ },
+ "oldBatchWhenReady": {
+  "id": "42c1d1a6e6ec4bde",
+  "state": "interrupted",
+  "done": 7,
+  "failed": 0,
+  "total": 32,
+  "wallMs": 9611.6501,
+  "_status": null,
+  "_raw": null,
+  "_err": null
+ },
+ "beforeNewBatch": {
+  "label": "c before new batch",
+  "at": "18:41:29",
+  "thermal": {
+   "coord": "2",
+   "peer": "1"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 35.731354,
+      "ageMs": 673,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 1
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 2,
+    "ramAvailMb": 5957
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 52.081927,
+      "ageMs": 856,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 2
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 1,
+    "ramAvailMb": 5303
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "newBatchStart": {
+  "id": "1dbd082bc7d6438d",
+  "total": 32
+ },
+ "newBatchStartedAfterKillS": 19.3,
+ "newBatch": {
+  "summary": {
+   "id": "1dbd082bc7d6438d",
+   "state": "done",
+   "total": 32,
+   "done": 32,
+   "failed": 0,
+   "wallS": 46.29,
+   "aggTokPerSec": 19.2,
+   "totalTokens": 889,
+   "perPhone": [
+    {
+     "node": "coord",
+     "jobs": 14,
+     "tokens": 384,
+     "decodeTokPerSec": 10.9
+    },
+    {
+     "node": "peer",
+     "jobs": 18,
+     "tokens": 505,
+     "decodeTokPerSec": 13.47
+    }
+   ],
+   "itemsByNode": {
+    "coord": 14,
+    "peer": 18
+   },
+   "medianPromptMs": 405.1,
+   "errors": []
+  },
+  "report": {
+   "id": "1dbd082bc7d6438d",
+   "mode": "swarm",
+   "state": "done",
+   "total": 32,
+   "done": 32,
+   "failed": 0,
+   "wallMs": 46290.655503,
+   "totalTokens": 889,
+   "aggTokPerSec": 19.204739927313963,
+   "fake": false,
+   "models": [
+    "Qwen3.5-4B-Q4_K_M"
+   ],
+   "perPhone": [
+    {
+     "nodeId": "477684c1",
+     "jobs": 14,
+     "tokens": 384,
+     "tokPerSec": 8.29541072225935,
+     "decodeTokPerSec": 10.900492835693663
+    },
+    {
+     "nodeId": "82d2676d",
+     "jobs": 18,
+     "tokens": 505,
+     "tokPerSec": 10.909329205054615,
+     "decodeTokPerSec": 13.47306619346768
+    }
+   ],
+   "items": [
+    {
+     "index": 0,
+     "jobId": "1dbd082bc7d6438d-0",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The monsoon is a seasonal wind system that reverses direction, bringing heavy rainfall to certain regions during the summer and dry conditions during the winter.",
+     "promptTokens": 29,
+     "completionTokens": 30,
+     "genMs": 2790.283,
+     "error": null,
+     "promptMs": 498.023,
+     "waitedMs": 1.0,
+     "endMs": 3336.3738
+    },
+    {
+     "index": 1,
+     "jobId": "1dbd082bc7d6438d-1",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A lighthouse is a tower equipped with a powerful light that shines on the horizon to warn ships of nearby dangers.",
+     "promptTokens": 29,
+     "completionTokens": 24,
+     "genMs": 1766.712,
+     "error": null,
+     "promptMs": 404.635,
+     "waitedMs": 0.0,
+     "endMs": 2255.414999
+    },
+    {
+     "index": 2,
+     "jobId": "1dbd082bc7d6438d-2",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Binary search is an efficient algorithm that repeatedly divides a sorted list in half to locate a target value.",
+     "promptTokens": 28,
+     "completionTokens": 21,
+     "genMs": 1541.091,
+     "error": null,
+     "promptMs": 399.675,
+     "waitedMs": 1.0,
+     "endMs": 4273.9138
+    },
+    {
+     "index": 3,
+     "jobId": "1dbd082bc7d6438d-3",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The Moon is Earth's only natural satellite, a rocky body that orbits our planet and reflects sunlight to cause lunar phases and tides.",
+     "promptTokens": 28,
+     "completionTokens": 28,
+     "genMs": 2580.97,
+     "error": null,
+     "promptMs": 486.853,
+     "waitedMs": 1.0,
+     "endMs": 6476.593278
+    },
+    {
+     "index": 4,
+     "jobId": "1dbd082bc7d6438d-4",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy, transforming carbon dioxide and water into glucose and oxygen.",
+     "promptTokens": 28,
+     "completionTokens": 32,
+     "genMs": 2356.643,
+     "error": null,
+     "promptMs": 400.467,
+     "waitedMs": 1.0,
+     "endMs": 7105.566611
+    },
+    {
+     "index": 5,
+     "jobId": "1dbd082bc7d6438d-5",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A transistor is a semiconductor device that acts as an electronic switch or amplifier by controlling the flow of electric current.",
+     "promptTokens": 28,
+     "completionTokens": 23,
+     "genMs": 2083.71,
+     "error": null,
+     "promptMs": 480.573,
+     "waitedMs": 2.0,
+     "endMs": 9084.203486
+    },
+    {
+     "index": 6,
+     "jobId": "1dbd082bc7d6438d-6",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The Silk Road was a vast network of trade routes connecting East Asia to the Mediterranean that facilitated the exchange of goods, culture, and ideas between civilizations.",
+     "promptTokens": 29,
+     "completionTokens": 31,
+     "genMs": 2312.955,
+     "error": null,
+     "promptMs": 400.796,
+     "waitedMs": 0.0,
+     "endMs": 9894.278537
+    },
+    {
+     "index": 7,
+     "jobId": "1dbd082bc7d6438d-7",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Tides are the regular rise and fall of ocean water levels caused primarily by the gravitational pull of the moon and the sun.",
+     "promptTokens": 28,
+     "completionTokens": 26,
+     "genMs": 2397.921,
+     "error": null,
+     "promptMs": 485.434,
+     "waitedMs": 0.0,
+     "endMs": 12011.179318
+    },
+    {
+     "index": 8,
+     "jobId": "1dbd082bc7d6438d-8",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A prime number is a natural number greater than 1 that has exactly two distinct positive divisors: 1 and itself.",
+     "promptTokens": 29,
+     "completionTokens": 26,
+     "genMs": 1922.932,
+     "error": null,
+     "promptMs": 405.08,
+     "waitedMs": 1.0,
+     "endMs": 12303.177547
+    },
+    {
+     "index": 9,
+     "jobId": "1dbd082bc7d6438d-9",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The water cycle is the continuous process where water evaporates from surfaces, condenses into clouds, precipitates back to Earth, and collects in bodies of water to repeat the cycle.",
+     "promptTokens": 29,
+     "completionTokens": 37,
+     "genMs": 3407.83,
+     "error": null,
+     "promptMs": 484.44,
+     "waitedMs": 1.0,
+     "endMs": 15958.026764
+    },
+    {
+     "index": 10,
+     "jobId": "1dbd082bc7d6438d-10",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A compiler is a program that translates source code written in a high-level programming language into machine code that a computer can execute.",
+     "promptTokens": 28,
+     "completionTokens": 26,
+     "genMs": 1943.562,
+     "error": null,
+     "promptMs": 402.738,
+     "waitedMs": 0.0,
+     "endMs": 14722.643067
+    },
+    {
+     "index": 11,
+     "jobId": "1dbd082bc7d6438d-11",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Volcanoes are openings in the Earth's crust that allow molten rock, ash, and gases to erupt onto the surface.",
+     "promptTokens": 28,
+     "completionTokens": 27,
+     "genMs": 2003.215,
+     "error": null,
+     "promptMs": 399.76,
+     "waitedMs": 1.0,
+     "endMs": 17216.555149
+    },
+    {
+     "index": 12,
+     "jobId": "1dbd082bc7d6438d-12",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The printing press is a device that uses movable type to reproduce text and images efficiently, revolutionizing the spread of information.",
+     "promptTokens": 29,
+     "completionTokens": 25,
+     "genMs": 2291.573,
+     "error": null,
+     "promptMs": 488.03,
+     "waitedMs": 1.0,
+     "endMs": 18781.24442
+    },
+    {
+     "index": 13,
+     "jobId": "1dbd082bc7d6438d-13",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A magnet is an object that produces a magnetic field, allowing it to attract ferromagnetic materials like iron and repel other magnets.",
+     "promptTokens": 28,
+     "completionTokens": 28,
+     "genMs": 2082.332,
+     "error": null,
+     "promptMs": 405.082,
+     "waitedMs": 0.0,
+     "endMs": 19780.265617
+    },
+    {
+     "index": 14,
+     "jobId": "1dbd082bc7d6438d-14",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Coral reefs are vibrant underwater ecosystems built by tiny marine animals called coral polyps that secrete calcium carbonate to form hard structures.",
+     "promptTokens": 28,
+     "completionTokens": 27,
+     "genMs": 2484.677,
+     "error": null,
+     "promptMs": 486.25,
+     "waitedMs": 2.0,
+     "endMs": 21810.864523
+    },
+    {
+     "index": 15,
+     "jobId": "1dbd082bc7d6438d-15",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Morse code is a method of transmitting text information in the form of short and long signals using dots and dashes.",
+     "promptTokens": 28,
+     "completionTokens": 24,
+     "genMs": 1785.154,
+     "error": null,
+     "promptMs": 390.725,
+     "waitedMs": 0.0,
+     "endMs": 22029.737752
+    },
+    {
+     "index": 16,
+     "jobId": "1dbd082bc7d6438d-16",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The speed of light is the maximum speed at which all conventional matter and information in the universe can travel, approximately 299,792,458 meters per second in a vacuum.",
+     "promptTokens": 30,
+     "completionTokens": 42,
+     "genMs": 3868.551,
+     "error": null,
+     "promptMs": 485.565,
+     "waitedMs": 1.0,
+     "endMs": 26221.576031
+    },
+    {
+     "index": 17,
+     "jobId": "1dbd082bc7d6438d-17",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A sundial is a timekeeping device that uses the position of the sun to cast a shadow onto a marked surface, indicating the time of day.",
+     "promptTokens": 29,
+     "completionTokens": 31,
+     "genMs": 2308.496,
+     "error": null,
+     "promptMs": 403.314,
+     "waitedMs": 0.0,
+     "endMs": 24819.061188
+    },
+    {
+     "index": 18,
+     "jobId": "1dbd082bc7d6438d-18",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Bread yeast is a single-celled fungus used in baking to ferment dough by converting sugars into carbon dioxide and alcohol.",
+     "promptTokens": 28,
+     "completionTokens": 25,
+     "genMs": 1854.473,
+     "error": null,
+     "promptMs": 401.782,
+     "waitedMs": 1.0,
+     "endMs": 27158.840562
+    },
+    {
+     "index": 19,
+     "jobId": "1dbd082bc7d6438d-19",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Glaciers are massive, slow-moving rivers of ice formed by the accumulation and compaction of snow over many years.",
+     "promptTokens": 27,
+     "completionTokens": 25,
+     "genMs": 2226.521,
+     "error": null,
+     "promptMs": 427.269,
+     "waitedMs": 1.0,
+     "endMs": 28925.523999
+    },
+    {
+     "index": 20,
+     "jobId": "1dbd082bc7d6438d-20",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A checksum is a short, fixed-length value calculated from a larger piece of data to verify its integrity and detect accidental corruption.",
+     "promptTokens": 28,
+     "completionTokens": 26,
+     "genMs": 1932.416,
+     "error": null,
+     "promptMs": 402.0,
+     "waitedMs": 0.0,
+     "endMs": 29587.42353
+    },
+    {
+     "index": 21,
+     "jobId": "1dbd082bc7d6438d-21",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The heart is a muscular organ that pumps blood throughout the body to deliver oxygen and nutrients.",
+     "promptTokens": 28,
+     "completionTokens": 19,
+     "genMs": 1748.514,
+     "error": null,
+     "promptMs": 479.034,
+     "waitedMs": 1.0,
+     "endMs": 31207.295769
+    },
+    {
+     "index": 22,
+     "jobId": "1dbd082bc7d6438d-22",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A telescope is an optical instrument designed to gather light from distant objects and magnify their images for closer inspection.",
+     "promptTokens": 28,
+     "completionTokens": 23,
+     "genMs": 1684.677,
+     "error": null,
+     "promptMs": 398.626,
+     "waitedMs": 1.0,
+     "endMs": 31758.031185
+    },
+    {
+     "index": 23,
+     "jobId": "1dbd082bc7d6438d-23",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Origami is the Japanese art of paper folding that transforms flat sheets into intricate three-dimensional shapes through precise creases.",
+     "promptTokens": 28,
+     "completionTokens": 24,
+     "genMs": 2190.535,
+     "error": null,
+     "promptMs": 470.372,
+     "waitedMs": 1.0,
+     "endMs": 33935.127851
+    },
+    {
+     "index": 24,
+     "jobId": "1dbd082bc7d6438d-24",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The Pythagorean theorem states that in a right-angled triangle, the square of the length of the hypotenuse (the side opposite the right angle) is equal to the sum of the squares of the lengths of the other two sides",
+     "promptTokens": 31,
+     "completionTokens": 48,
+     "genMs": 3609.659,
+     "error": null,
+     "promptMs": 406.348,
+     "waitedMs": 1.0,
+     "endMs": 35880.588528
+    },
+    {
+     "index": 25,
+     "jobId": "1dbd082bc7d6438d-25",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Bees are social insects known for their vital role in pollinating plants and producing honey.",
+     "promptTokens": 27,
+     "completionTokens": 19,
+     "genMs": 1717.072,
+     "error": null,
+     "promptMs": 483.456,
+     "waitedMs": 1.0,
+     "endMs": 36176.387121
+    },
+    {
+     "index": 26,
+     "jobId": "1dbd082bc7d6438d-26",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A fuse is a safety device containing a thin metal wire that melts and breaks the electrical circuit when current exceeds a safe level, preventing damage or fire.",
+     "promptTokens": 28,
+     "completionTokens": 31,
+     "genMs": 2301.976,
+     "error": null,
+     "promptMs": 400.467,
+     "waitedMs": 1.0,
+     "endMs": 38696.78712
+    },
+    {
+     "index": 27,
+     "jobId": "1dbd082bc7d6438d-27",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "The Ganges is a major river in South Asia that holds profound religious significance for Hindus, who believe it is a goddess and essential for spiritual purification.",
+     "promptTokens": 29,
+     "completionTokens": 31,
+     "genMs": 2865.142,
+     "error": null,
+     "promptMs": 485.771,
+     "waitedMs": 1.0,
+     "endMs": 39597.654464
+    },
+    {
+     "index": 28,
+     "jobId": "1dbd082bc7d6438d-28",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Chess openings are the initial moves made by both players to develop their pieces, control the center, and prepare for a strategic plan.",
+     "promptTokens": 28,
+     "completionTokens": 27,
+     "genMs": 2013.633,
+     "error": null,
+     "promptMs": 401.858,
+     "waitedMs": 1.0,
+     "endMs": 41206.099671
+    },
+    {
+     "index": 29,
+     "jobId": "1dbd082bc7d6438d-29",
+     "nodeId": "477684c1",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Static electricity is an imbalance of electric charges within or on the surface of a material, typically caused by the transfer of electrons between objects.",
+     "promptTokens": 28,
+     "completionTokens": 28,
+     "genMs": 2574.466,
+     "error": null,
+     "promptMs": 478.818,
+     "waitedMs": 0.0,
+     "endMs": 42702.763004
+    },
+    {
+     "index": 30,
+     "jobId": "1dbd082bc7d6438d-30",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "A rainbow is a natural optical phenomenon caused by sunlight being refracted, reflected, and dispersed by water droplets in the atmosphere.",
+     "promptTokens": 28,
+     "completionTokens": 27,
+     "genMs": 1998.174,
+     "error": null,
+     "promptMs": 401.94,
+     "waitedMs": 1.0,
+     "endMs": 43713.642795
+    },
+    {
+     "index": 31,
+     "jobId": "1dbd082bc7d6438d-31",
+     "nodeId": "82d2676d",
+     "modelName": "Qwen3.5-4B-Q4_K_M",
+     "text": "Tea is a popular hot or cold beverage prepared by steeping cured leaves of the Camellia sinensis plant in hot water.",
+     "promptTokens": 27,
+     "completionTokens": 28,
+     "genMs": 2064.088,
+     "error": null,
+     "promptMs": 401.978,
+     "waitedMs": 1.0,
+     "endMs": 46281.482274
+    }
+   ]
+  },
+  "pcWallS": 47.1
+ },
+ "peerIdle": {
+  "lastCapsBeforeKill": {
+   "secondsBeforeKill": 0.14,
+   "value": {
+    "api": true,
+    "running": 1,
+    "queued": 0
+   }
+  },
+  "firstIdleSampleAfterKillS": 2.7,
+  "idleWithin60s": true,
+  "stayedIdleUntilNewBatchStarted": true,
+  "newBatchStartedAfterKillS": 19.3,
+  "capsRowsFirst40sAfterKill": [
+   [
+    0.7,
+    1,
+    0
+   ],
+   [
+    1.7,
+    1,
+    0
+   ],
+   [
+    2.7,
+    0,
+    0
+   ],
+   [
+    3.8,
+    0,
+    0
+   ],
+   [
+    4.8,
+    0,
+    0
+   ],
+   [
+    5.8,
+    0,
+    0
+   ],
+   [
+    6.8,
+    0,
+    0
+   ],
+   [
+    7.8,
+    0,
+    0
+   ],
+   [
+    8.8,
+    0,
+    0
+   ],
+   [
+    9.8,
+    0,
+    0
+   ],
+   [
+    10.8,
+    0,
+    0
+   ],
+   [
+    11.8,
+    0,
+    0
+   ],
+   [
+    12.8,
+    0,
+    0
+   ],
+   [
+    13.9,
+    0,
+    0
+   ],
+   [
+    14.9,
+    0,
+    0
+   ],
+   [
+    15.9,
+    0,
+    0
+   ],
+   [
+    16.9,
+    0,
+    0
+   ],
+   [
+    17.9,
+    0,
+    0
+   ],
+   [
+    18.9,
+    0,
+    0
+   ],
+   [
+    19.9,
+    1,
+    0
+   ],
+   [
+    21.0,
+    1,
+    0
+   ],
+   [
+    22.0,
+    1,
+    0
+   ],
+   [
+    23.0,
+    1,
+    0
+   ],
+   [
+    24.0,
+    1,
+    0
+   ],
+   [
+    25.0,
+    1,
+    0
+   ],
+   [
+    26.0,
+    1,
+    0
+   ],
+   [
+    27.0,
+    1,
+    0
+   ],
+   [
+    28.0,
+    1,
+    0
+   ],
+   [
+    29.1,
+    1,
+    0
+   ],
+   [
+    30.1,
+    1,
+    0
+   ],
+   [
+    31.1,
+    1,
+    0
+   ],
+   [
+    32.1,
+    1,
+    0
+   ],
+   [
+    33.1,
+    1,
+    0
+   ],
+   [
+    34.1,
+    1,
+    0
+   ],
+   [
+    35.1,
+    1,
+    0
+   ],
+   [
+    36.1,
+    1,
+    0
+   ],
+   [
+    37.1,
+    1,
+    0
+   ],
+   [
+    38.2,
+    1,
+    0
+   ],
+   [
+    39.2,
+    1,
+    0
+   ]
+  ]
+ },
+ "samplers": {
+  "oldBatch": [
+   [
+    0.0,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    0.41,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    0.82,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    1.23,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    1.63,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    2.04,
+    {
+     "state": "running",
+     "done": 0,
+     "failed": 0,
+     "perNode": {}
+    }
+   ],
+   [
+    2.44,
+    {
+     "state": "running",
+     "done": 1,
+     "failed": 0,
+     "perNode": {
+      "coord": 1
+     }
+    }
+   ],
+   [
+    2.84,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "peer": 1,
+      "coord": 1
+     }
+    }
+   ],
+   [
+    3.25,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "peer": 1,
+      "coord": 1
+     }
+    }
+   ],
+   [
+    3.65,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "peer": 1,
+      "coord": 1
+     }
+    }
+   ],
+   [
+    4.06,
+    {
+     "state": "running",
+     "done": 2,
+     "failed": 0,
+     "perNode": {
+      "peer": 1,
+      "coord": 1
+     }
+    }
+   ],
+   [
+    4.46,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "peer": 1,
+      "coord": 2
+     }
+    }
+   ],
+   [
+    4.87,
+    {
+     "state": "running",
+     "done": 3,
+     "failed": 0,
+     "perNode": {
+      "peer": 1,
+      "coord": 2
+     }
+    }
+   ],
+   [
+    5.27,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "peer": 2,
+      "coord": 2
+     }
+    }
+   ],
+   [
+    5.68,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "peer": 2,
+      "coord": 2
+     }
+    }
+   ],
+   [
+    6.08,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "peer": 2,
+      "coord": 2
+     }
+    }
+   ],
+   [
+    6.49,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "peer": 2,
+      "coord": 2
+     }
+    }
+   ],
+   [
+    6.89,
+    {
+     "state": "running",
+     "done": 4,
+     "failed": 0,
+     "perNode": {
+      "peer": 2,
+      "coord": 2
+     }
+    }
+   ],
+   [
+    7.29,
+    {
+     "state": "running",
+     "done": 5,
+     "failed": 0,
+     "perNode": {
+      "peer": 2,
+      "coord": 3
+     }
+    }
+   ],
+   [
+    7.7,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 3
+     }
+    }
+   ],
+   [
+    8.1,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 3
+     }
+    }
+   ],
+   [
+    8.51,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 3
+     }
+    }
+   ],
+   [
+    8.91,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 3
+     }
+    }
+   ],
+   [
+    9.32,
+    {
+     "state": "running",
+     "done": 6,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 3
+     }
+    }
+   ],
+   [
+    9.72,
+    {
+     "state": "running",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    10.12,
+    {
+     "state": "running",
+     "done": 8,
+     "failed": 0,
+     "perNode": {
+      "peer": 4,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    10.53,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    11.71,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    12.11,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    12.52,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    12.92,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    13.33,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    13.73,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    14.14,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    14.54,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    14.95,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    15.35,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    15.75,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    16.16,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    16.56,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    16.97,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    17.37,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    17.77,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    18.18,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    18.59,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    18.99,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    19.4,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    19.8,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    20.21,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    20.61,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    21.02,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    21.42,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    21.83,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    22.23,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    22.64,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    23.04,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    23.45,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    23.85,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    24.26,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    24.67,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    25.07,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    25.48,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    25.88,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    26.29,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    26.69,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    27.1,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    27.5,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    27.9,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    28.31,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    28.72,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    29.13,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ],
+   [
+    29.53,
+    {
+     "state": "interrupted",
+     "done": 7,
+     "failed": 0,
+     "perNode": {
+      "peer": 3,
+      "coord": 4
+     }
+    }
+   ]
+  ],
+  "peerCaps": [
+   [
+    0.0,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    1.01,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    2.02,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    3.03,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    4.04,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    5.05,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    6.06,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    7.08,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    8.09,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    9.1,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    10.11,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    11.11,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    12.13,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    13.14,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    14.15,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    15.16,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    16.17,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    17.18,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    18.2,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    19.21,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    20.22,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    21.22,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    22.23,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    23.25,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    24.26,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    25.27,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    26.29,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    27.3,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    28.31,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    29.33,
+    {
+     "api": true,
+     "running": 0,
+     "queued": 0
+    }
+   ],
+   [
+    30.34,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    31.36,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    32.37,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    33.39,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    34.39,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    35.41,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    36.42,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    37.43,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    38.44,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    39.45,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    40.47,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    41.47,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    42.48,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    43.49,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    44.5,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    45.51,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    46.53,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    47.54,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    48.55,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    49.56,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    50.57,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    51.58,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    52.58,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    53.6,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    54.6,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    55.6,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    56.61,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    57.62,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    58.64,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    59.65,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    60.66,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    61.68,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    62.69,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    63.7,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    64.71,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    65.72,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    66.73,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    67.74,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    68.75,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    69.76,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    70.77,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    71.78,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    72.78,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    73.8,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    74.81,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ],
+   [
+    75.82,
+    {
+     "api": true,
+     "running": 1,
+     "queued": 0
+    }
+   ]
+  ],
+  "coordOnPeer": [
+   [
+    0.0,
+    {
+     "state": "online",
+     "ageMs": 307,
+     "misses": 0
+    }
+   ],
+   [
+    1.01,
+    {
+     "state": "online",
+     "ageMs": 328,
+     "misses": 0
+    }
+   ],
+   [
+    2.02,
+    {
+     "state": "online",
+     "ageMs": 313,
+     "misses": 0
+    }
+   ],
+   [
+    3.03,
+    {
+     "state": "online",
+     "ageMs": 318,
+     "misses": 0
+    }
+   ],
+   [
+    4.04,
+    {
+     "state": "online",
+     "ageMs": 343,
+     "misses": 0
+    }
+   ],
+   [
+    5.05,
+    {
+     "state": "online",
+     "ageMs": 337,
+     "misses": 0
+    }
+   ],
+   [
+    6.06,
+    {
+     "state": "online",
+     "ageMs": 349,
+     "misses": 0
+    }
+   ],
+   [
+    7.08,
+    {
+     "state": "online",
+     "ageMs": 398,
+     "misses": 0
+    }
+   ],
+   [
+    8.09,
+    {
+     "state": "online",
+     "ageMs": 373,
+     "misses": 0
+    }
+   ],
+   [
+    9.1,
+    {
+     "state": "online",
+     "ageMs": 412,
+     "misses": 0
+    }
+   ],
+   [
+    10.11,
+    {
+     "state": "online",
+     "ageMs": 420,
+     "misses": 0
+    }
+   ],
+   [
+    11.11,
+    {
+     "state": "online",
+     "ageMs": 1440,
+     "misses": 1
+    }
+   ],
+   [
+    12.13,
+    {
+     "state": "online",
+     "ageMs": 240,
+     "misses": 0
+    }
+   ],
+   [
+    13.14,
+    {
+     "state": "online",
+     "ageMs": 439,
+     "misses": 0
+    }
+   ],
+   [
+    14.15,
+    {
+     "state": "online",
+     "ageMs": 423,
+     "misses": 0
+    }
+   ],
+   [
+    15.16,
+    {
+     "state": "online",
+     "ageMs": 441,
+     "misses": 0
+    }
+   ],
+   [
+    16.17,
+    {
+     "state": "online",
+     "ageMs": 488,
+     "misses": 0
+    }
+   ],
+   [
+    17.18,
+    {
+     "state": "online",
+     "ageMs": 469,
+     "misses": 0
+    }
+   ],
+   [
+    18.2,
+    {
+     "state": "online",
+     "ageMs": 482,
+     "misses": 0
+    }
+   ],
+   [
+    19.21,
+    {
+     "state": "online",
+     "ageMs": 488,
+     "misses": 0
+    }
+   ],
+   [
+    20.22,
+    {
+     "state": "online",
+     "ageMs": 515,
+     "misses": 0
+    }
+   ],
+   [
+    21.22,
+    {
+     "state": "online",
+     "ageMs": 525,
+     "misses": 0
+    }
+   ],
+   [
+    22.23,
+    {
+     "state": "online",
+     "ageMs": 531,
+     "misses": 0
+    }
+   ],
+   [
+    23.25,
+    {
+     "state": "online",
+     "ageMs": 534,
+     "misses": 0
+    }
+   ],
+   [
+    24.26,
+    {
+     "state": "online",
+     "ageMs": 545,
+     "misses": 0
+    }
+   ],
+   [
+    25.27,
+    {
+     "state": "online",
+     "ageMs": 571,
+     "misses": 0
+    }
+   ],
+   [
+    26.29,
+    {
+     "state": "online",
+     "ageMs": 557,
+     "misses": 0
+    }
+   ],
+   [
+    27.3,
+    {
+     "state": "online",
+     "ageMs": 573,
+     "misses": 0
+    }
+   ],
+   [
+    28.31,
+    {
+     "state": "online",
+     "ageMs": 597,
+     "misses": 0
+    }
+   ],
+   [
+    29.33,
+    {
+     "state": "online",
+     "ageMs": 610,
+     "misses": 0
+    }
+   ],
+   [
+    30.34,
+    {
+     "state": "online",
+     "ageMs": 631,
+     "misses": 0
+    }
+   ],
+   [
+    31.36,
+    {
+     "state": "online",
+     "ageMs": 644,
+     "misses": 0
+    }
+   ],
+   [
+    32.37,
+    {
+     "state": "online",
+     "ageMs": 655,
+     "misses": 0
+    }
+   ],
+   [
+    33.39,
+    {
+     "state": "online",
+     "ageMs": 695,
+     "misses": 0
+    }
+   ],
+   [
+    34.39,
+    {
+     "state": "online",
+     "ageMs": 712,
+     "misses": 0
+    }
+   ],
+   [
+    35.41,
+    {
+     "state": "online",
+     "ageMs": 698,
+     "misses": 0
+    }
+   ],
+   [
+    36.42,
+    {
+     "state": "online",
+     "ageMs": 713,
+     "misses": 0
+    }
+   ],
+   [
+    37.43,
+    {
+     "state": "online",
+     "ageMs": 708,
+     "misses": 0
+    }
+   ],
+   [
+    38.44,
+    {
+     "state": "online",
+     "ageMs": 731,
+     "misses": 0
+    }
+   ],
+   [
+    39.45,
+    {
+     "state": "online",
+     "ageMs": 741,
+     "misses": 0
+    }
+   ],
+   [
+    40.47,
+    {
+     "state": "online",
+     "ageMs": 743,
+     "misses": 0
+    }
+   ],
+   [
+    41.47,
+    {
+     "state": "online",
+     "ageMs": 755,
+     "misses": 0
+    }
+   ],
+   [
+    42.48,
+    {
+     "state": "online",
+     "ageMs": 756,
+     "misses": 0
+    }
+   ],
+   [
+    43.49,
+    {
+     "state": "online",
+     "ageMs": 786,
+     "misses": 0
+    }
+   ],
+   [
+    44.5,
+    {
+     "state": "online",
+     "ageMs": 785,
+     "misses": 0
+    }
+   ],
+   [
+    45.51,
+    {
+     "state": "online",
+     "ageMs": 793,
+     "misses": 0
+    }
+   ],
+   [
+    46.53,
+    {
+     "state": "online",
+     "ageMs": 830,
+     "misses": 0
+    }
+   ],
+   [
+    47.54,
+    {
+     "state": "online",
+     "ageMs": 820,
+     "misses": 0
+    }
+   ],
+   [
+    48.55,
+    {
+     "state": "online",
+     "ageMs": 831,
+     "misses": 0
+    }
+   ],
+   [
+    49.56,
+    {
+     "state": "online",
+     "ageMs": 860,
+     "misses": 0
+    }
+   ],
+   [
+    50.57,
+    {
+     "state": "online",
+     "ageMs": 848,
+     "misses": 0
+    }
+   ],
+   [
+    51.58,
+    {
+     "state": "online",
+     "ageMs": 854,
+     "misses": 0
+    }
+   ],
+   [
+    52.58,
+    {
+     "state": "online",
+     "ageMs": 864,
+     "misses": 0
+    }
+   ],
+   [
+    53.6,
+    {
+     "state": "online",
+     "ageMs": 870,
+     "misses": 0
+    }
+   ],
+   [
+    54.6,
+    {
+     "state": "online",
+     "ageMs": 888,
+     "misses": 0
+    }
+   ],
+   [
+    55.6,
+    {
+     "state": "online",
+     "ageMs": 895,
+     "misses": 0
+    }
+   ],
+   [
+    56.61,
+    {
+     "state": "online",
+     "ageMs": 906,
+     "misses": 0
+    }
+   ],
+   [
+    57.62,
+    {
+     "state": "online",
+     "ageMs": 905,
+     "misses": 0
+    }
+   ],
+   [
+    58.64,
+    {
+     "state": "online",
+     "ageMs": 925,
+     "misses": 0
+    }
+   ],
+   [
+    59.65,
+    {
+     "state": "online",
+     "ageMs": 952,
+     "misses": 0
+    }
+   ],
+   [
+    60.66,
+    {
+     "state": "online",
+     "ageMs": 950,
+     "misses": 0
+    }
+   ],
+   [
+    61.68,
+    {
+     "state": "online",
+     "ageMs": 989,
+     "misses": 0
+    }
+   ],
+   [
+    62.69,
+    {
+     "state": "online",
+     "ageMs": 992,
+     "misses": 0
+    }
+   ],
+   [
+    63.7,
+    {
+     "state": "online",
+     "ageMs": 9,
+     "misses": 0
+    }
+   ],
+   [
+    64.71,
+    {
+     "state": "online",
+     "ageMs": 999,
+     "misses": 0
+    }
+   ],
+   [
+    65.72,
+    {
+     "state": "online",
+     "ageMs": 34,
+     "misses": 0
+    }
+   ],
+   [
+    66.73,
+    {
+     "state": "online",
+     "ageMs": 15,
+     "misses": 0
+    }
+   ],
+   [
+    67.74,
+    {
+     "state": "online",
+     "ageMs": 61,
+     "misses": 0
+    }
+   ],
+   [
+    68.75,
+    {
+     "state": "online",
+     "ageMs": 28,
+     "misses": 0
+    }
+   ],
+   [
+    69.76,
+    {
+     "state": "online",
+     "ageMs": 64,
+     "misses": 0
+    }
+   ],
+   [
+    70.77,
+    {
+     "state": "online",
+     "ageMs": 71,
+     "misses": 0
+    }
+   ],
+   [
+    71.78,
+    {
+     "state": "online",
+     "ageMs": 72,
+     "misses": 0
+    }
+   ],
+   [
+    72.78,
+    {
+     "state": "online",
+     "ageMs": 74,
+     "misses": 0
+    }
+   ],
+   [
+    73.8,
+    {
+     "state": "online",
+     "ageMs": 72,
+     "misses": 0
+    }
+   ],
+   [
+    74.81,
+    {
+     "state": "online",
+     "ageMs": 95,
+     "misses": 0
+    }
+   ],
+   [
+    75.82,
+    {
+     "state": "online",
+     "ageMs": 111,
+     "misses": 0
+    }
+   ]
+  ]
+ },
+ "after": {
+  "label": "c after",
+  "at": "18:42:17",
+  "thermal": {
+   "coord": "2",
+   "peer": "1"
+  },
+  "coord": {
+   "peers": {
+    "self": "Phone B",
+    "peers": [
+     {
+      "name": "Phone C",
+      "ip": "192.168.242.76",
+      "state": "online",
+      "rttMs": 47.706875,
+      "ageMs": 207,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 1
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 2,
+    "ramAvailMb": 5460
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  },
+  "peer": {
+   "peers": {
+    "self": "Phone C",
+    "peers": [
+     {
+      "name": "Phone B",
+      "ip": "192.168.242.23",
+      "state": "online",
+      "rttMs": 46.508646,
+      "ageMs": 429,
+      "misses": 0,
+      "awayCount": 0,
+      "thermalStatus": 2
+     }
+    ]
+   },
+   "caps": {
+    "api": true,
+    "capacity": 1,
+    "running": 0,
+    "queued": 0,
+    "thermalStatus": 1,
+    "ramAvailMb": 5062
+   },
+   "models": {
+    "api": true,
+    "chat": "READY",
+    "backend": "GPU",
+    "embed": "READY",
+    "restarts": 0
+   }
+  }
+ },
+ "stepSeconds": 77.7
+}
