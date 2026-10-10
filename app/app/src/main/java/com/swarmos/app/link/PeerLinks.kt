@@ -219,6 +219,7 @@ object PeerLinks {
             currentCoroutineContext().ensureActive()
             return ConnectResult.Failed("health: ${t.message ?: t::class.simpleName}")
         }
+        if (health.nodeId != info.nodeId) return ConnectResult.Failed("hello and health at $host came from different phones")
         _rejected.update { it.filterNot { r -> r.ip == host && r.port == port } }
 
         remember(host, port)
@@ -248,6 +249,7 @@ object PeerLinks {
             currentCoroutineContext().ensureActive()
             return ConnectResult.Failed("health over bluetooth: ${t.message ?: t::class.simpleName}")
         }
+        if (info.nodeId != nodeId || health.nodeId != nodeId) return ConnectResult.Failed("the Bluetooth channel for $nodeId answers as ${info.nodeId}")
         val (session, _) = upsert(info, health, "bt:$nodeId", 0, LinkType.BT)
         return ConnectResult.Ok(session.status.value)
     }
@@ -318,7 +320,7 @@ object PeerLinks {
         val st = s.status.value
         val t0 = System.nanoTime()
         var failReason: String? = null
-        val h: NodeHealth? = try {
+        val answer: NodeHealth? = try {
             if (st.link == LinkType.BT) BleLink.health(st.nodeId, HEARTBEAT_BT_TIMEOUT_MS)
             else AppGraph.nodeClient.getPinned<NodeHealth>(st.hostPort, "/health", HEARTBEAT_TIMEOUT_MS)
         } catch (e: NodeHttpException) {
@@ -331,9 +333,17 @@ object PeerLinks {
             currentCoroutineContext().ensureActive()
             null
         }
+        // the answer must come from the phone this path was made for: another phone at the same address is not a heartbeat
+        val wrongNode = answer != null && answer.nodeId != st.nodeId
+        if (wrongNode) failReason = "another phone (${answer.nodeId}) answers at ${st.hostPort}"
+        val h: NodeHealth? = if (wrongNode) null else answer
         val rtt = (System.nanoTime() - t0) / 1e6
         val now = System.currentTimeMillis()
-        val changed = if (h != null) s.tracker.onSuccess(rtt, now) else s.tracker.onMiss()
+        val changed = when {
+            wrongNode -> s.tracker.onWrongNode()
+            h != null -> s.tracker.onSuccess(rtt, now)
+            else -> s.tracker.onMiss()
+        }
         s.update {
             it.copy(
                 state = s.tracker.state, rttMs = s.tracker.rttMs, misses = s.tracker.misses,
@@ -365,6 +375,20 @@ object PeerLinks {
                 s.update { it.copy(name = info.name, info = info) }
                 syncRegistry(st.nodeId)
             }
+        }
+        if (wrongNode && st.link != LinkType.BT) scope.launch { replaceSession(s, st) }
+    }
+
+    /**
+     * Another phone answers at the address this session was made for (the phone came back under a new node id, or its
+     * address went to another phone). Meet the phone that is there now; once it has its own session this one is dropped,
+     * so the old id is not listed as online beside the new one. A phone that merely is away is never touched by this.
+     */
+    private suspend fun replaceSession(old: PeerSession, st: PeerStatus) {
+        val r = connect(st.ip, st.port)
+        if (r is ConnectResult.Ok && r.status.nodeId != st.nodeId && sessions[st.key] === old) {
+            Log.i(TAG, "${st.name} (${st.nodeId}) is replaced by ${r.status.name} (${r.status.nodeId}) at ${st.ip}")
+            forget(st.key)
         }
     }
 
@@ -466,6 +490,19 @@ object PeerLinks {
 
     /** Keep AppGraph.registry in step: one entry per node, address = how we reach it, away only when every link is away. */
     private fun syncRegistry(nodeId: String) {
+        syncRegistryEntry(nodeId)
+        // one address is one phone: when two entries claim it, keep the one that answers (and stop beating the other's path)
+        val gone = AppGraph.registry.dropAddressConflicts()
+        if (gone.isNotEmpty()) {
+            val taken = AppGraph.registry.peers.value.map { it.info.ip.substringBefore(':') }.toSet()
+            gone.forEach { id ->
+                Log.i(TAG, "$id shared an address with a phone that answers; dropped from the registry")
+                sessions.values.map { it.status.value }.filter { it.nodeId == id && it.link != LinkType.BT && it.ip in taken }.forEach { forget(it.key) }
+            }
+        }
+    }
+
+    private fun syncRegistryEntry(nodeId: String) {
         val group = sessions.values.map { it.status.value }.filter { it.nodeId == nodeId }
         if (group.isEmpty()) return
         val online = group.filter { it.state == LinkState.ONLINE }

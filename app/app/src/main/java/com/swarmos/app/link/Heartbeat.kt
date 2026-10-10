@@ -109,6 +109,10 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
         return changed
     }
 
+    /** A different phone than the one this path was made for answers at its address: the path is gone, whatever else is there. */
+    @Synchronized
+    fun onWrongNode(): Boolean = onBye()
+
     /** The peer told us it is leaving (POST /link/bye). */
     @Synchronized
     fun onBye(): Boolean {

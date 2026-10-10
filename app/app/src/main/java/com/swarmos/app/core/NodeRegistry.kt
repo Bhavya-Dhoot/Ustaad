@@ -71,4 +71,33 @@ class NodeRegistry(initialSelf: NodeInfo) {
     fun remove(nodeId: String) {
         _peers.update { list -> list.filter { it.info.nodeId != nodeId } }
     }
+
+    /**
+     * Two entries with one address cannot both be there (a phone came back under a new node id, or its address went to
+     * another phone). Keeps the entry that answers and removes the others; entries that merely are away and share no
+     * address with another phone stay. Returns the removed node ids.
+     */
+    fun dropAddressConflicts(): List<String> {
+        var dropped: Set<String> = emptySet()
+        _peers.update { list ->
+            dropped = addressLosers(list)
+            if (dropped.isEmpty()) list else list.filter { it.info.nodeId !in dropped }
+        }
+        return dropped.toList()
+    }
+}
+
+/**
+ * Of the entries that share one address, all but the one that answers (not away, latest seen). When none of them
+ * answers nothing is dropped: it cannot be told which one is gone.
+ */
+internal fun addressLosers(peers: List<PeerState>): Set<String> {
+    val losers = mutableSetOf<String>()
+    peers.filter { it.info.ip.isNotBlank() && it.info.ip != "0.0.0.0" && !it.info.ip.startsWith("bt:") }
+        .groupBy { it.info.ip }.values.filter { it.size > 1 }
+        .forEach { group ->
+            val winner = group.filter { !it.away }.maxByOrNull { it.lastSeenMs } ?: return@forEach
+            group.filter { it !== winner }.forEach { losers += it.info.nodeId }
+        }
+    return losers
 }
