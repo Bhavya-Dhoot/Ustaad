@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.swarmos.app.ui.LineIcon
 import com.swarmos.app.ui.Note
 import com.swarmos.app.ui.PrimaryButton
+import com.swarmos.app.ui.ScreenHeader
 import com.swarmos.app.ui.SecondaryButton
 import com.swarmos.app.ui.SwarmColors
 import com.swarmos.app.ui.SwarmIcon
@@ -117,12 +118,7 @@ fun SetupScreen(onFinish: () -> Unit) {
         ) {
             Wordmark()
             Spacer(Modifier.height(16.dp))
-            Text("Three things before we start", style = SwarmType.display)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "These let Ustaad find your other phones.",
-                style = SwarmType.body.copy(color = SwarmColors.graphite),
-            )
+            ScreenHeader("Three things before we start", subtitle = "These let Ustaad find your other phones.")
             Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SetupRow(

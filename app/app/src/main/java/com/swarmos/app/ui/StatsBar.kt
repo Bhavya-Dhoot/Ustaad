@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.core.ThermalLevel
 
 /**
  * The one compact status strip at the top of every screen: phone token and name (tap to rename),
@@ -49,13 +50,13 @@ fun StatsBar(
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val internet by com.swarmos.app.link.LinkModule.internetValidated.collectAsStateWithLifecycle()
     val h by AppGraph.health.state.collectAsStateWithLifecycle()
-    val thermal = HealthMonitor.thermalWord(h.thermalStatus)
+    val level = ThermalLevel.of(h.thermalStatus)
     val battery = if (h.batteryPct < 0) "?" else "${h.batteryPct}%" + if (h.charging) " chg" else ""
     val ram = "%.1f GB".format(h.ramAvailMb / 1024.0)
     val link = HealthMonitor.linkLabel(h.linkStandard, h.linkSpeedMbps)
     StatusStrip(
         name = self.name,
-        thermal = thermal,
+        thermal = level.word,
         battery = battery,
         freeMemory = ram,
         link = link,
@@ -63,7 +64,7 @@ fun StatsBar(
         internet = internet,
         onEditName = onEditName,
         modifier = modifier,
-        hot = HealthMonitor.isHot(h.thermalStatus),
+        hot = level.tooHot,
     )
 }
 
@@ -103,8 +104,21 @@ fun StatusStrip(
             ) {
                 PhoneToken(name, 28.dp)
                 Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(name, style = SwarmType.title.copy(fontSize = 15.sp, lineHeight = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // the stamp sits on the name row so the metrics below get the full width: with a charging phone on 5 GHz
+                // "Cool 100% chg 5.7 GB 11ac 390 Mbps" does not fit beside it and the link speed was cut off
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            name, Modifier.weight(1f),
+                            style = SwarmType.title.copy(fontSize = 15.sp, lineHeight = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        if (hot) Stamp("Hot", caution = true, small = true)
+                        else if (!internet) Stamp("No internet", small = true) // outline: no network has validated internet
+                        else {
+                            Stamp("Online", caution = true, small = true) // hatched: some network reaches the internet
+                            if (wanBytes > 0L) Text(formatWan(wanBytes), style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite), modifier = Modifier.padding(start = 6.dp))
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                         val style = SwarmType.mono.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SwarmColors.graphite)
                         Text(thermal, style = if (hot) style.copy(color = SwarmColors.ink, fontWeight = FontWeight.W700) else style, maxLines = 1)
@@ -113,12 +127,6 @@ fun StatusStrip(
                         Text(link, style = style, maxLines = 1)
                     }
                 }
-            }
-            if (hot) Stamp("Hot", caution = true, small = true)
-            else if (!internet) Stamp("No internet", small = true) // outline: no network has validated internet
-            else {
-                Stamp("Online", caution = true, small = true) // hatched: some network reaches the internet
-                if (wanBytes > 0L) Text(formatWan(wanBytes), style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite), modifier = Modifier.padding(start = 6.dp))
             }
         }
     }

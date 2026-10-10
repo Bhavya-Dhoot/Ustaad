@@ -60,7 +60,7 @@ object ChoirController {
 
     val node: ChoirNode by lazy {
         ChoirNode(
-            llm = { AppGraph.llm },
+            llm = { AppGraph.gatedLlm },
             identity = { AppGraph.registry.self.value.let { NodeIdentity(it.nodeId, it.name) } },
             problems = { problems },
         )
@@ -109,7 +109,9 @@ object ChoirController {
         val scripts = if (BuildConfig.DEBUG) scripts else emptyMap()
         try {
             if (scripts.isNotEmpty()) applyScripts(scripts, peers)
-            coordinator.run(problem, newTaskId(), selfParticipant(), peers, options) { _run.value = it }.also { _run.value = it }
+            ChoirActivity.during(ChoirActivity.asking(1 + peers.count { !it.away })) {
+                coordinator.run(problem, newTaskId(), selfParticipant(), peers, options) { _run.value = it }.also { _run.value = it }
+            }
         } finally {
             if (scripts.isNotEmpty() && !keepScripts) clearScripts(peers)
             _busy.value = false
@@ -132,6 +134,7 @@ object ChoirController {
         val nodes = mutableSetOf<String>()
         try {
             _eval.value = EvalProgress(running = true, total = list.size, useProblemCheck = options.useProblemCheck)
+            ChoirActivity.set(ChoirActivity.check(0, list.size))
             val rows = ChoirEval.run(
                 list,
                 runOne = { p ->
@@ -144,6 +147,7 @@ object ChoirController {
                 },
                 runSamples = if (withSamples) ::samplesFor else null,
                 onProgress = { done, cur ->
+                    ChoirActivity.set(ChoirActivity.check(done.size, list.size))
                     _eval.value = EvalProgress(
                         running = cur != null, done = done.size, total = list.size, current = cur?.id,
                         rows = done, summary = ChoirEval.summarize(done), fake = fake, useProblemCheck = options.useProblemCheck,
@@ -174,6 +178,7 @@ object ChoirController {
             _eval.value = _eval.value.copy(running = false, error = t.message ?: t::class.simpleName)
             throw t
         } finally {
+            ChoirActivity.clear()
             _busy.value = false
         }
     }

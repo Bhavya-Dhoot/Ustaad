@@ -23,12 +23,15 @@ import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.llm.ModelsModule
 import com.swarmos.app.memcloud.MemCloudModule
 import com.swarmos.app.pdu.PduModule
+import com.swarmos.app.sched.GatedLlmClient
+import com.swarmos.app.sched.Sched
 import com.swarmos.app.sched.SchedModule
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
@@ -53,8 +56,21 @@ object AppGraph {
     val pairingSecret: String get() = secret
 
     /** False until the first-run setup is completed or skipped (stored in [SwarmPrefs]). */
-    var setupDone by mutableStateOf(true)
+    var setupDone by mutableStateOf(false)
         private set
+
+    /**
+     * True once the preferences, the audit log and the node identity are loaded (a few ms after the process starts,
+     * off the main thread). The UI shows a skeleton until then; background work waits with [awaitReady].
+     */
+    var ready by mutableStateOf(false)
+        private set
+    private val readyGate = CompletableDeferred<Unit>()
+
+    suspend fun awaitReady() = readyGate.await()
+
+    /** True while a MainActivity is started. The service holds its wake and Wi-Fi locks only while this or a peer is online. */
+    val foreground = MutableStateFlow(false)
 
     /** In-app "Remove animations" preference; `rememberAnimationsEnabled()` honours it besides the system setting. */
     var removeAnimations by mutableStateOf(false)
@@ -67,24 +83,35 @@ object AppGraph {
     var llm: LlmClient by mutableStateOf<LlmClient>(FakeLlmClient())        // chat model on this phone
     var embedder: LlmClient by mutableStateOf<LlmClient>(FakeLlmClient())   // embedding model on this phone
 
+    /**
+     * The chat model for features that run on this phone (Choir, Data Union): every call takes a scheduler slot, so the
+     * slot count stays right while they run. [llm] stays the raw client the model runtime installs and inspects.
+     */
+    val gatedLlm: LlmClient by lazy { GatedLlmClient({ llm }, Sched.node) }
+
     val nodeClient: NodeClient by lazy { NodeClient({ secret }, { registry.self.value.nodeId }) }
 
     val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, MemCloudModule, SchedModule)
 
+    /** Starts loading everything that needs disk off the main thread; nothing here blocks Application.onCreate. */
     fun init(app: Application) {
         appContext = app.applicationContext
         prefs = SwarmPrefs(appContext)
-        val (name, savedSecret) = runBlocking(Dispatchers.IO) { prefs.name() to prefs.secret() }
-        storedName = name
-        runBlocking(Dispatchers.IO) { prefs.setupDone() to prefs.removeAnimations() }.let { (done, remove) ->
-            setupDone = done
-            removeAnimations = remove
+        ioScope.launch {
+            try {
+                val p = runCatching { prefs.snapshot() }.getOrNull() // unreadable settings: start as a fresh install
+                storedName = p?.name
+                setupDone = p?.setupDone ?: false
+                removeAnimations = p?.removeAnimations ?: false
+                secret = p?.secret ?: if (BuildConfig.DEBUG) DEV_SECRET else randomSecret().also { prefs.setSecret(it) }
+                audit.load()
+                health.start()
+                audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))
+            } finally {
+                ready = true
+                readyGate.complete(Unit)
+            }
         }
-        secret = savedSecret ?: if (BuildConfig.DEBUG) DEV_SECRET else randomSecret().also {
-            ioScope.launch { prefs.setSecret(it) }
-        }
-        health.start()
-        audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))
     }
 
     /** Current NodeInfo with live ip and model names. This is what /v1/hello returns. */

@@ -26,6 +26,15 @@ android {
         release {
             isMinifyEnabled = false
         }
+        // Demo build: not debuggable, so BuildConfig.DEBUG is false (no debug routes, random pairing secret per install).
+        // Signed with the debug key so it installs over adb; application id com.ustaad.app (androidComponents below).
+        create("demo") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
     }
 
     compileOptions {
@@ -49,6 +58,12 @@ android {
                 "/META-INF/io.netty.versions.properties",
             )
         }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("demo")) { variant ->
+        variant.applicationId.set("com.ustaad.app") // the Kotlin namespace stays com.swarmos.app
     }
 }
 

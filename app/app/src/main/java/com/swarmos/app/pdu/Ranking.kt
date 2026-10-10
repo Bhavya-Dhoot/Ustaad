@@ -40,8 +40,13 @@ data class Fused(val chunkId: Long, val score: Double, val cosine: Float, val in
 
 /** Dense + BM25 on one phone, fused with RRF. */
 object HybridRanker {
-    /** A dense-only match must be at least this similar. Calibrated against nothing yet: re-tune with the real embedder. */
-    const val DENSE_MIN_COSINE = 0.30f
+    /**
+     * A dense match must be at least this similar to count. Measured on Phone A with EmbeddingGemma-300M Q8_0 (first 256 dims,
+     * renormalised, no task prefixes) over 11 demo files and 6 questions: relevant files 0.43 to 0.61, other files 0.15 to 0.39
+     * (a typical file sits near 0.30, so 0.30 let unrelated files through). Small sample: re-measure with POST /v1/pdu/debug/scores
+     * whenever the model or the prefixes change.
+     */
+    const val DENSE_MIN_COSINE = 0.40f
 
     /**
      * [dense] is the cosine top-N as (chunkId, cosine), best first; [bm25] the BM25 top-N chunk ids, best first.
@@ -88,16 +93,24 @@ object Coverage {
 }
 
 object SharePolicy {
-    /** A folder with a segment named Private (any case) is private unless the owner switched it. */
-    fun isPrivateByDefault(folder: String): Boolean =
+    /** Every folder starts private: nothing is answered to other phones until the owner shares the folder. */
+    fun startsPrivate(@Suppress("UNUSED_PARAMETER") folder: String): Boolean = true
+
+    /** A folder with a segment named Private (any case) can never be shared, whatever the switch says. */
+    fun mustStayPrivate(folder: String): Boolean =
         folder.split('/', '\\').any { it.trim().equals("private", ignoreCase = true) }
+
+    /** The privacy a chunk gets: the folder's stored choice, forced to private for a Private folder. */
+    fun effectivePrivate(folder: String, stored: Boolean): Boolean = stored || mustStayPrivate(folder)
+
+    fun isShareable(c: Candidate): Boolean = !c.isPrivate && !mustStayPrivate(c.folder)
 
     class PeerSelection(val shared: List<Candidate>, val withheldPrivate: Int)
 
     /** What a peer may see: the first [k] public candidates; private ones are only counted, by document. */
     fun forPeer(candidates: List<Candidate>, k: Int): PeerSelection = PeerSelection(
-        shared = candidates.filter { !it.isPrivate }.take(k),
-        withheldPrivate = candidates.filter { it.isPrivate }.map { it.docId }.distinct().size,
+        shared = candidates.filter { isShareable(it) }.take(k),
+        withheldPrivate = candidates.filter { !isShareable(it) }.map { it.docId }.distinct().size,
     )
 }
 

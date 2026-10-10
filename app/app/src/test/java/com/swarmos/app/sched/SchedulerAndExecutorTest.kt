@@ -34,11 +34,16 @@ class SchedulerScoreTest {
         assertEquals(10.0, Scheduler.score(caps(tps = 20.0, queued = 1)), 1e-9)
     }
 
-    @Test fun thermalStatusTwoOrMoreIsUsedLast() {
-        val hotFast = Scheduler.score(caps(tps = 50.0, thermal = 2))
-        val coolSlow = Scheduler.score(caps(tps = 2.0, thermal = 1))
-        assertTrue("a moderate-thermal phone ranks below a cool one however fast it is", coolSlow > hotFast)
-        assertTrue("among hot phones the faster still comes first", hotFast > Scheduler.score(caps(tps = 10.0, thermal = 3)))
+    @Test fun hotPhonesAreUsedLastByTheSharedHotDefinition() {
+        val hotFast = Scheduler.score(caps(tps = 50.0, thermal = 3))
+        val warmSlow = Scheduler.score(caps(tps = 2.0, thermal = 2))
+        assertTrue("a hot phone (ThermalLevel.isTooHot) ranks below a merely warm one however fast it is", warmSlow > hotFast)
+        assertTrue("among hot phones the faster still comes first", hotFast > Scheduler.score(caps(tps = 10.0, thermal = 4)))
+        assertEquals("status 2 is not hot", 50.0, Scheduler.score(caps(tps = 50.0, thermal = 2)), 1e-9)
+    }
+
+    @Test fun aPhoneWithCapacityZeroIsUnavailable() {
+        assertEquals(Double.NEGATIVE_INFINITY, Scheduler.score(caps().copy(capacity = 0)), 0.0)
     }
 
     @Test fun lowBatteryOnlyHurtsWhenNotCharging() {

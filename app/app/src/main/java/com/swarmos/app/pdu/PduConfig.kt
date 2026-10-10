@@ -19,7 +19,7 @@ object PduEmbedConfig {
     fun document(title: String, body: String): String = documentPrefix + Chunker.withTitle(title, body)
 
     /** Stored with the index: vectors made under another embedder or document prefix are not comparable. */
-    fun indexKey(modelName: String): String = "$modelName|$documentPrefix"
+    fun indexKey(modelName: String, prefix: String = documentPrefix): String = "$modelName|$prefix"
 
     fun load(store: PduStore) {
         queryPrefix = store.meta("queryPrefix") ?: ""

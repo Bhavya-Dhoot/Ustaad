@@ -4,40 +4,52 @@ Contract for the Kotlin client. Everything below was run on the phones (iQOO I25
 
 ## Recommended production flags (copy these)
 
-These are the flags that survived measurement. Throughput and thermal numbers behind them are in `docs/benchmarks/2026-10-10-llama-cpu-baseline.md` and `docs/benchmarks/2026-10-10-throughput-tuning.md`; where a flag is still provisional it says so.
+Measured on the phones; reasons and numbers in `docs/benchmarks/2026-10-10-throughput-tuning.md` and `2026-10-10-llama-cpu-baseline.md`. Two binary sets ship: `native/prebuilt/arm64-v8a-opencl/` (GPU, **default**) and `native/prebuilt/arm64-v8a/` (CPU i8mm, **fallback** if OpenCL fails to initialise.
 
-Chat model, port 8080 (Qwen3.5-4B Q4_K_M):
-
-```
-libllama-server.so -m <dir>/Qwen3.5-4B-Q4_K_M.gguf --host 127.0.0.1 --port 8080 \
-    -t 6 -c 4096 -np 2 --reasoning off --no-webui
-```
-
-- `--host 127.0.0.1` for the chat and embedding servers (contract: loopback only). The rpc-server is the only listener on the link interface.
-- `-t`: decode is memory-bandwidth bound (about 12-15 tok/s for this 2.7 GB model, roughly 35 GB/s); prefill scales with cores. 8 threads gave the best prefill on a cold phone; 6 leaves two cores for the app and Android. Final choice and the pinning result are in the tuning note.
-- `-c` is the total context; with `-np N` each slot gets `c/N` (unified KV is off). Keep at least 2048 per slot.
-- `--reasoning off` switches Qwen3.5 thinking off for every request (verified: a default request returns 5 completion tokens instead of 217 and no `reasoning_content`). Per-request alternative: `"chat_template_kwargs":{"enable_thinking":false}`.
-- Do not pass `--mlock`. With the i8mm build Q4_K weights are repacked into an anonymous copy (about 2.8 GB) while the mmapped file pages (2.7 GB) stay resident until the kernel evicts them: measured peak RSS (VmHWM) 5.4 GB, anonymous 2.8 GB for the 4B model. Budget about 3 GB anonymous per 4B instance, 5.5 GB if the page cache is not reclaimed.
-- First request after start is slow (about 3 s extra prefill, weights page in). Send one throwaway request after `/health` returns ok.
-
-Embedding model, port 8081 (EmbeddingGemma-300M Q8_0):
+Chat model (Qwen3.5-4B Q4_K_M), port 8080, GPU:
 
 ```
-libllama-server.so -m <dir>/embeddinggemma-300M-Q8_0.gguf --host 127.0.0.1 --port 8081 \
-    --embedding -t 2 -c 2048 -np 2
+libllama-server.so -m <dir>/Qwen3.5-4B-Q4_K_M.gguf --host 127.0.0.1 --port 8080     -ngl 99 -t 4 -c 8192 -np 2 --reasoning off
 ```
 
-Pooling is taken from the GGUF (mean); no `--pooling` flag needed. Output is 768 floats, L2-normalised (norm 1.0000). Warm latency on phone C: 10 ms for one 12-token text, 31 ms for a batch of three.
+CPU fallback (same model):
 
-RPC worker (MemoryCloud), port 50052:
+```
+libllama-server.so -m <dir>/Qwen3.5-4B-Q4_K_M.gguf --host 127.0.0.1 --port 8080     -t 6 -c 8192 -np 2 --reasoning off
+```
+
+- GPU vs CPU (cool start, phone C): prefill **128 vs 32 tok/s**, decode 13.6 vs 13.6 tok/s, process RSS 1.2 vs 5.4 GB, both heat the phone (sustained GPU run: Thermal Status 4 after 10 min). `-ngl` between 1 and 32 is slower than 99.
+- `-t`: irrelevant on the GPU path (4 = 8). On the CPU path 8 threads gave the best prefill and 6 loses about 6% decode; 6 leaves two cores for the UI.
+- `-np`/`-c`: parallel slots add **no** aggregate throughput (11.7-12.4 tok/s aggregate at np 1, 2, 4); `-np 2` only keeps a second client from blocking. `-c` is the total context, each slot gets `c/np`.
+- `--reasoning off` switches Qwen3.5 thinking off for all requests (a default request spent 217 tokens thinking vs 5 with it off). Per-request alternative: `"chat_template_kwargs":{"enable_thinking":false}`.
+- Do not use `--mlock`. CPU path: Q4_K weights are repacked into a 2.8 GB anonymous copy while the 2.7 GB file pages stay resident until evicted (VmHWM 5.4 GB). GPU path: process RSS 0.7-1.2 GB but system `MemAvailable` fell by 4.0 GB (weights in GPU buffers plus page cache).
+- First request after start pays about 3 s of page-in: send one throwaway request after `/health` is ok.
+- GPU build in an app: manifest `<uses-native-library android:name="libOpenCL.so" android:required="false"/>` (the library is in `/vendor/etc/public.libraries.txt`). First start compiles kernels for a few seconds.
+- **Heat**: any sustained inference (CPU or GPU) moved the phones to Thermal Status 3-4 (skin 46-51 C) within 2-10 minutes; a 10-minute GPU run measured decode 12.3 / 10.6 / 6.8 tok/s at minutes 1 / 5 / 10. Surface `timings` tokens/s rather than assuming 13, and budget 3-4 minutes of continuous generation per phone.
+
+Embedding model (EmbeddingGemma-300M Q8_0), port 8081 (CPU, tiny):
+
+```
+libllama-server.so -m <dir>/embeddinggemma-300M-Q8_0.gguf --host 127.0.0.1 --port 8081     --embedding -t 2 -c 2048 -np 2
+```
+
+Pooling comes from the GGUF (mean); output is 768 floats, L2-normalised. Warm latency on phone C: 10 ms for a 12-token text, 31 ms for three texts. `embeddinggemma-2` does not load on this llama.cpp tag.
+
+RPC worker (MemoryCloud), port 50052, started on demand:
 
 ```
 LLAMA_CACHE=/data/local/tmp/llama/cache ./librpc-server.so -H 0.0.0.0 -p 50052 -t 8 -c
 ```
 
-(`-c` enables the on-disk tensor cache; `LLAMA_CACHE` is needed because Android has no `$HOME`. See the RPC spike note for the measured benefit and for `-t`.) Bind to the link interface address if possible instead of 0.0.0.0: the RPC protocol has no authentication.
+`-c` enables the on-disk tensor cache (second load of the same model: 41 s instead of 153 s and 187 MB instead of 1.6 GB over Wi-Fi); `LLAMA_CACHE` is mandatory on Android (no `$HOME`). Bind to the link interface IP instead of `0.0.0.0` if it is known; the protocol has no authentication. Use the CPU build for the worker unless the GPU path is tested for the model (the GPU rpc-server exposes the Adreno as a second device).
 
-RPC driver: `libllama-server.so ... --rpc hostB:50052[,hostC:50052] -ngl N [-ts a,b]` (details and measured results in `docs/benchmarks/2026-10-10-rpc-split-spike.md`).
+RPC driver (only for a model that does not fit one phone; a 4B model split over two phones measured 3.2 tok/s vs 14.9 on one phone):
+
+```
+libllama-server.so -m <big>.gguf --rpc 192.168.242.A:50052[,192.168.242.B:50052] -ngl N -ts 1,1     -ot '^output[.]weight=CPU' -c 2048 -np 1 --reasoning off --host 127.0.0.1 --port 8080
+```
+
+`-ngl N` offloads the last N-1 layers **and the output layer** (see the spike note); `-ot '^output[.]weight=CPU'` keeps the lm_head on the driver so the ~0.6 MB of logits per token is not shipped back (only meaningful for models with an untied `output.weight`, e.g. Qwen3-30B-A3B; the option was accepted by llama-bench, its effect was not verified on that model because the 30B load failed, and on the tied 4B model it changes nothing). In `llama-server`/`llama-cli` `-ts` is comma-separated; in `llama-bench` use `/`.
 
 ## Process management facts
 

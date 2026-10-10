@@ -21,6 +21,42 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * The one definition of "how hot is this phone" for the whole app, from PowerManager.currentThermalStatus
+ * (0 NONE, 1 LIGHT, 2 MODERATE, 3 SEVERE, 4 CRITICAL, 5 EMERGENCY, 6 SHUTDOWN). The status strip, the scheduler and
+ * the benchmark guard all ask here instead of comparing against their own numbers.
+ */
+enum class ThermalLevel(val word: String, private val firstStatus: Int) {
+    Cool("Cool", 0),
+    Warm("Warm", 1),
+    Hot("Hot", 2),
+    Severe("Severe", 3);
+
+    /** Status 2 (MODERATE) or more: the scheduler prefers other phones. */
+    val degraded: Boolean get() = firstStatus >= DEGRADED_FROM
+
+    /** Status 3 (SEVERE) or more: benchmarks and heavy generation are refused and the status strip shows the HOT stamp. */
+    val tooHot: Boolean get() = firstStatus >= TOO_HOT_FROM
+
+    companion object {
+        const val DEGRADED_FROM = 2
+        const val TOO_HOT_FROM = 3
+
+        fun of(status: Int): ThermalLevel = when {
+            status <= 0 -> Cool
+            status == 1 -> Warm
+            status == 2 -> Hot
+            else -> Severe
+        }
+
+        /** [ThermalLevel.degraded] straight from a raw status, for callers that hold only the number. */
+        fun isDegraded(status: Int): Boolean = status >= DEGRADED_FROM
+
+        /** [ThermalLevel.tooHot] straight from a raw status. */
+        fun isTooHot(status: Int): Boolean = status >= TOO_HOT_FROM
+    }
+}
+
 /** Samples thermal status, battery, free RAM and Wi-Fi link every 2 s into [state]. */
 class HealthMonitor(private val ctx: Context, private val selfId: () -> String) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -137,15 +173,10 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
         }
 
         /** Thermal state as one word for the status strip: Cool, Warm, Hot, Severe (status 3 and above). */
-        fun thermalWord(status: Int): String = when {
-            status <= 0 -> "Cool"
-            status == 1 -> "Warm"
-            status == 2 -> "Hot"
-            else -> "Severe"
-        }
+        fun thermalWord(status: Int): String = ThermalLevel.of(status).word
 
         /** The hatched HOT stamp replaces the internet stamp from this thermal status on. */
-        fun isHot(status: Int): Boolean = status >= 3
+        fun isHot(status: Int): Boolean = ThermalLevel.of(status).tooHot
 
         fun thermalName(status: Int): String = when (status) {
             0 -> "NONE"
