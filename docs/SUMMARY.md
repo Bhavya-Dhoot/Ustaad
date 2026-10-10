@@ -43,6 +43,42 @@ Written from the repository documents, the scripts and `git log` only. No phone,
 
 Only pairs measured on the phones. Where the two sides came from different builds or different heat, the last columns say so. "Not controlled" means the file itself says the comparison is not controlled.
 
+### In short
+
+Most rows are one run per side. The table after this one has the phones, the number of runs and the source file for each.
+
+| Area | Change | Before | After |
+|---|---|---|---|
+| One phone | Chat on the GPU instead of the CPU | reads prompts at 71.6 tok/s, first word 7.20 s, 5952 MB | 201.9 tok/s, 2.59 s, 1032 MB |
+| One phone | Faster CPU build (fallback path) | decode 8.1 tok/s | 11.8 tok/s |
+| One phone | Batch jobs skip a checkpoint they never reuse | 10.33 (B), 10.08 (C) tok/s | 11.11, 10.99 (about 8 % and 9 %) |
+| One phone | Model's own tool-call format for agent loops | 13 to 15 s per loop | 9 to 10 s |
+| One phone | GPU model start with a program cache | 17.9 to 20.6 s | 13.1 to 13.4 s rested, up to 16.5 s after repeated starts |
+| Several phones | Three phones instead of the fastest one | 12.03 tok/s | 30.91 tok/s, mean of 5 runs |
+| Several phones | Scheduler on two phones, share of their sum | 85 % | 99.6 % (heat not controlled) |
+| Several phones | Agent Choir on three phones instead of one phone sampling three times | 32.3 s per problem, 18 of 20 right | 20.1 s, 16 of 20 right |
+| Answers | Data Union first word on the GPU | 12.4 s and 11.8 s | 5.8 s and 2.6 s |
+| Answers | Same question asked again (prompt cache) | 4.5 to 5.3 s | 0.3 to 0.55 s |
+| Answers | Saved card instead of a live search | 5090 ms | 35 to 47 ms |
+| Answers | Knowledge Bank pushes a new card to the other phones | not there after 48 s | 0.5 to 0.75 s |
+| Answers | Leaner sources (a switch, off by default) | first word 5.09 s, whole answer 8.93 s | 2.71 s, 6.63 s, same accuracy |
+| Link | Wi-Fi Direct on the access point's channel | 10.3 Mbps | 426 Mbps, later 650 to 960 |
+| Link | Wi-Fi Direct instead of the access point | 89 to 102 Mbps | 641 to 725 Mbps |
+| Big model | Second load of a split model (cached pieces) | 319 s for the 30B model | 65 s |
+| Big model | Worker threads matched to usable cores | 0.3 tok/s | 6.9 to 7.0 tok/s |
+| Big model | A model one phone cannot run | no word in 134 s, 23 apps killed | 5.7 to 6.4 tok/s across three phones |
+| Safety | Memory check before loading | 134 s of thrashing | refused in 0.4 s with the numbers |
+| Safety | Frozen model server | not noticed in 120 s | restarted within 30 s |
+| Safety | Phone dies in the middle of a batch | not measured before | dropped after 2.3 s, 32 of 32 jobs finished |
+| Keep busy | Filler work while the phone is otherwise idle | none | about half the time generating over two hours, 0 failed jobs |
+| Keep busy | Refused MemoryCloud start | filler stopped for 36 minutes | 22 filler jobs in the next 60 s |
+
+The last three rows are not in the table below. Their sources: 2026-10-10-evening-checks.md section 8 (phone dying in a batch) and section 9 (two hours of keep busy), and 2026-10-10-throttle-passive.md section 1 (refused MemoryCloud start).
+
+Not a gain yet: a duty rule that keeps a warm phone out of its slow GPU throttle step is under test on Phone B since 23:16 on 2026-10-10 (2026-10-10-throttle-passive.md sections 4 to 6). What was tried and rejected is in section 5.
+
+### With runs and sources
+
 | Change | Before | After | Phones and runs | Source |
 |---|---|---|---|---|
 | Chat on the GPU instead of the CPU build, in the app | prefill 71.6 tok/s, decode 16.47, first token 7.20 s, server memory 5952 MB | prefill 201.9, decode 17.31, first token 2.59 s, 1032 MB | Phone C, one run each, cool | 2026-10-10-inapp-llm.md |
