@@ -113,6 +113,8 @@ object AppGraph {
                 audit.load()
                 health.start()
                 audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))
+                // restore models and release lenders if a MemoryCloud session was killed mid-way
+                runCatching { com.swarmos.app.memcloud.MemCloud.onAppStart() }
             } finally {
                 ready = true
                 readyGate.complete(Unit)
