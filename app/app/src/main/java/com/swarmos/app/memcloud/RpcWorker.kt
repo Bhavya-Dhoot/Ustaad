@@ -71,7 +71,7 @@ object AndroidLenderEnv : LenderEnv {
     override fun modelFileExists(file: String) = ModelStore.fileOf(file).isFile
 
     override fun restoreLocal(role: Role, file: String) {
-        ModelsModule.loadModelAsync(role, file)
+        ModelsModule.loadModelAsync(role, file, automatic = true)
     }
 
     override fun ownModels(): List<RestoreItem> = listOf(Role.CHAT, Role.EMBED).mapNotNull { r ->

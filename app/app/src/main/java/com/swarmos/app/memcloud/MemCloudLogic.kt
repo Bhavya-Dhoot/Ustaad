@@ -141,6 +141,17 @@ object MemCloudLogic {
         else -> true
     }
 
+    /**
+     * The wait before the next round of giving peers their models back: [baseMs] after a round that made progress, double the last wait
+     * (at most [maxMs]) after a round in which calls were made and failed (5, 10, 20, 40, 60, 60 s), unchanged when nothing was called
+     * (every peer was away or busy in a split).
+     */
+    fun nextRestoreWait(currentMs: Long, progressed: Boolean, attempted: Boolean, baseMs: Long, maxMs: Long): Long = when {
+        progressed -> baseMs
+        attempted -> (currentMs * 2).coerceAtMost(maxMs)
+        else -> currentMs
+    }
+
     /** Buttons the screen offers in DEGRADED: re-plan needs at least one phone left besides this one. */
     fun canReplan(remainingPeers: Int): Boolean = remainingPeers >= 1
 }

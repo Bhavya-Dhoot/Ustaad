@@ -192,7 +192,7 @@ object AndroidSplitEnv : SplitEnv {
     override fun stopLocal(role: Role) = LlamaRuntime.stop(role)
 
     override fun restoreLocal(role: Role, file: String) {
-        if (ModelStore.fileOf(file).isFile) ModelsModule.loadModelAsync(role, file)
+        if (ModelStore.fileOf(file).isFile) ModelsModule.loadModelAsync(role, file, automatic = true)
     }
 
     override fun startChat(path: String, args: List<String>, readyTimeoutMs: Long) =

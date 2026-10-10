@@ -105,10 +105,13 @@ object LlamaRuntime {
     /**
      * [cpuOnly]: skip the GPU build (set when a server that had fallen back to the CPU is restarted).
      * [fallbackNote]: set when this start IS a fallback from a GPU server that died twice; shown as the banner of the CPU server.
+     * [automatic]: the app made this start by itself (load at app start, restore after a MemoryCloud split or loan), not the owner;
+     * a refusal by the heat gate or the memory check is then retried ([StartRetry]). A restart after a death is automatic too, through `auto`.
      */
     private data class StartConfig(
         val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>,
         val cpuOnly: Boolean = false, val readyTimeoutMs: Long = READY_TIMEOUT_MS, val fallbackNote: String? = null,
+        val automatic: Boolean = false,
     )
 
     private class Running(
@@ -240,7 +243,7 @@ object LlamaRuntime {
         }
         val load = scope.launch {
             awaitGone(killOrphans(), ORPHAN_WAIT_MS)
-            if (ModelStore.autoload.value) loadDefaults() else Log.i(TAG, "autoload is off: no model is loaded at start")
+            if (ModelStore.autoload.value) loadDefaults(automatic = true) else Log.i(TAG, "autoload is off: no model is loaded at start")
         }
         serviceJobs = listOf(wire, load)
     }
@@ -252,9 +255,9 @@ object LlamaRuntime {
      * Returns one handle per role that was started; roles whose file is missing are skipped. With [onlyMissing] a role that is
      * already READY or loading is left alone (the Models tab uses it so "Load models" never restarts a running server).
      */
-    fun loadDefaults(onlyMissing: Boolean = false): List<Deferred<ServerStatus>> =
+    fun loadDefaults(onlyMissing: Boolean = false, automatic: Boolean = false): List<Deferred<ServerStatus>> =
         (if (onlyMissing) rolesToLoad(statusOf(Role.CHAT).state, statusOf(Role.EMBED).state) else listOf(Role.CHAT, Role.EMBED)).mapNotNull { role ->
-            ModelStore.autoLoadFile(role)?.let { startAsync(role, it.absolutePath) }
+            ModelStore.autoLoadFile(role)?.let { startAsync(role, it.absolutePath, automatic = automatic) }
         }
 
     // ---- memory pressure ----
@@ -340,6 +343,7 @@ object LlamaRuntime {
      * RPC takes no model. Must run while SwarmService is alive. CHAT and EMBED get one throwaway request before READY
      * (the first request after load pays a page-in penalty). A start that is superseded by a newer start of the same role,
      * or by [stop], gives up and returns the status at that moment (not READY).
+     * [automatic]: the app asks, not the owner (see [StartConfig]): a start refused for heat or memory is tried again by itself.
      */
     suspend fun start(
         role: Role,
@@ -348,7 +352,8 @@ object LlamaRuntime {
         port: Int = role.defaultPort,
         env: Map<String, String> = emptyMap(),
         readyTimeoutMs: Long = READY_TIMEOUT_MS,
-    ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env, readyTimeoutMs).await()
+        automatic: Boolean = false,
+    ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env, readyTimeoutMs, automatic).await()
 
     /**
      * The directory the OpenCL build caches its compiled programs in (under the app's files), or null when it cannot be made: the
@@ -368,10 +373,11 @@ object LlamaRuntime {
         port: Int = role.defaultPort,
         env: Map<String, String> = emptyMap(),
         readyTimeoutMs: Long = READY_TIMEOUT_MS,
+        automatic: Boolean = false,
     ): Deferred<ServerStatus> {
         // A newer start or a stop() after this point cancels this start; a pending automatic restart is superseded too.
         val epoch = board.newEpoch(role)
-        val cfg = StartConfig(modelPath, extraArgs, port, env, readyTimeoutMs = readyTimeoutMs)
+        val cfg = StartConfig(modelPath, extraArgs, port, env, readyTimeoutMs = readyTimeoutMs, automatic = automatic)
         return scope.async { startInternal(role, cfg, epoch, auto = false) }
     }
 
@@ -379,18 +385,45 @@ object LlamaRuntime {
     private class Attempt(val status: ServerStatus, val retry: Boolean)
 
     /** Announces the load on the phone's activity banner (with a Stop action) while it queues and runs, then starts under the role lock. */
-    private suspend fun startInternal(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus {
-        val text = ModelsActivity.loadText(role) ?: return startLocked(role, cfg, epoch, auto)
+    private suspend fun startInternal(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean, onRefused: ((StartRefusal) -> Unit)? = null): ServerStatus {
+        val text = ModelsActivity.loadText(role) ?: return startLocked(role, cfg, epoch, auto, onRefused)
         val key = ModelsActivity.loadKey(role) + "-$epoch" // one entry per start: a superseded start must not clear the newer one
         ModelsActivity.set(key, text, onStop = { stop(role) })
         try {
-            return startLocked(role, cfg, epoch, auto)
+            return startLocked(role, cfg, epoch, auto, onRefused)
         } finally {
             ModelsActivity.end(key)
         }
     }
 
-    private suspend fun startLocked(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean): ServerStatus = locks.getValue(role).withLock {
+    /**
+     * A start the heat gate or the memory check refused: FAILED with [reason], as before. When the app made the start by itself ([auto] or
+     * [StartConfig.automatic]) and it is a chat or embedding model, the role then waits and tries again ([retryRefusedStart]). A retry
+     * itself passes [onRefused] and gets the new refusal back instead of starting a second loop.
+     */
+    private fun refused(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean, reason: String, why: StartRefusal, onRefused: ((StartRefusal) -> Unit)?): ServerStatus {
+        val st = fail(role, epoch, reason, cfg.modelPath, cfg.port)
+        val path = cfg.modelPath
+        if (onRefused != null) {
+            onRefused(why)
+        } else if (path != null && role != Role.RPC && (auto || cfg.automatic)) {
+            scope.launch {
+                board.retryRefusedStart(
+                    role, epoch, why, byOwner = false, File(path).name,
+                    serviceUp = { serviceUp }, fileExists = { File(path).isFile },
+                    wait = { delay(it) },
+                    attempt = {
+                        var again: StartRefusal? = null
+                        startInternal(role, cfg, epoch, auto) { again = it }
+                        again
+                    },
+                )
+            }
+        }
+        return st
+    }
+
+    private suspend fun startLocked(role: Role, cfg: StartConfig, epoch: Int, auto: Boolean, onRefused: ((StartRefusal) -> Unit)?): ServerStatus = locks.getValue(role).withLock {
         val modelPath = cfg.modelPath
         val port = cfg.port
         if (!board.isCurrent(role, epoch)) return@withLock statusOf(role) // stopped before this start began
@@ -401,7 +434,7 @@ object LlamaRuntime {
         if (!serviceUp) return@withLock fail(role, epoch, "SwarmService is not running", modelPath, port)
         // a phone at CRITICAL or worse takes on no new work, a model load included (ThermalGate)
         ThermalGate.decide(Bench.thermalStatusNow(), WorkKind.MODEL_LOAD).takeUnless { it.allowed }?.let {
-            return@withLock fail(role, epoch, it.reason.orEmpty(), modelPath, port)
+            return@withLock refused(role, cfg, epoch, auto, it.reason.orEmpty(), StartRefusal.Hot, onRefused)
         }
         if (role != Role.RPC && (modelPath == null || !File(modelPath).isFile)) {
             return@withLock fail(role, epoch, "model file not found: $modelPath", modelPath, port)
@@ -410,8 +443,10 @@ object LlamaRuntime {
         // arguments (MemoryCloud's split and its one-phone baseline) is exempt, see LoadPreflight.applies.
         if (modelPath != null && LoadPreflight.applies(role, cfg.extraArgs)) {
             val file = File(modelPath)
-            LoadPreflight.refusal(file.name, file.length(), readMemAvailableKb())?.let {
-                return@withLock fail(role, epoch, it, modelPath, port)
+            val availableKb = readMemAvailableKb()
+            LoadPreflight.refusal(file.name, file.length(), availableKb)?.let {
+                val why = StartRefusal.Memory(LoadPreflight.neededBytes(file.length()), (availableKb ?: 0L) * 1024)
+                return@withLock refused(role, cfg, epoch, auto, it, why, onRefused)
             }
         }
         val libDir = File(ctx.applicationInfo.nativeLibraryDir)
@@ -722,7 +757,7 @@ object LlamaRuntime {
                         cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU || cpuFallback,
                         fallbackNote = if (cpuFallback) BackendPlan.fallbackNote(what) else null,
                     )
-                    startInternal(role, again, run.epoch, auto = true)
+                    startInternal(role, again, run.epoch, auto = true) // a heat or memory refusal of this restart is retried by [refused]
                 },
                 backend = run.backend,
             )

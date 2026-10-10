@@ -72,6 +72,10 @@ private class FakeEnv : SplitEnv {
     /** Peers that answer but refuse /models/load. */
     val failingLoad = mutableSetOf<String>()
 
+    /** A /models/load for "address role" that answers with this HTTP status (404: the file is gone; 400: the request is wrong for that phone), or fails on the network. */
+    val loadStatus = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    val loadIo: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     /** Peers that stop their servers on /rpc/start and then drop the connection; [diedState] is what their roles read afterwards. */
     val diesAfterStop = mutableSetOf<String>()
     @Volatile var diedState = "STOPPED"
@@ -164,6 +168,8 @@ private class FakeEnv : SplitEnv {
     override suspend fun peerLoadModel(addr: String, role: String, file: String) {
         reach(addr)
         if (addr in failingLoad) throw java.io.IOException("load refused")
+        loadStatus["$addr $role"]?.let { throw com.swarmos.app.link.NodeHttpException(it, "no such model file: $file") }
+        if ("$addr $role" in loadIo) throw java.io.IOException("connection reset")
         calls += "loadModel $addr $role $file"
     }
     override suspend fun peerRpcStart(addr: String, req: RpcStartRequest): RpcStateDto {
@@ -264,7 +270,7 @@ class SplitCoordinatorTest {
     private lateinit var env: FakeEnv
     private lateinit var scope: CoroutineScope
     private lateinit var c: SplitCoordinator
-    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1, firstTokenStallMs = 600, tokenStallMs = 150, stallPollMs = 10, degradedRestoreMs = 400)
+    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1, firstTokenStallMs = 600, tokenStallMs = 150, stallPollMs = 10, degradedRestoreMs = 400, restoreRetryMaxMs = 240)
 
     @Before fun setUp() {
         env = FakeEnv()
@@ -1078,6 +1084,51 @@ class SplitCoordinatorTest {
         awaitState("IDLE") { it.phase == Phase.IDLE && it.notices.isEmpty() }
         assertEquals(second, env.stopLoans[c3])
         assertEquals(1, env.count("rpcStop $c3"))
+    }
+
+    // ---------- the retry that gives a peer its models back ----------
+
+    private fun readyThenLoseC(): String {
+        val c3 = "10.0.0.3:8787"
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.unreachable += c3
+        c.stop()
+        awaitState("IDLE with a notice") { it.phase == Phase.IDLE && it.notices.isNotEmpty() }
+        return c3
+    }
+
+    @Test fun aPeerWhoseFirstItemAnswers404StillGetsItsSecondItemAndIsSettled() {
+        val c3 = readyThenLoseC()
+        env.loadStatus["$c3 chat"] = 404 // the chat file is gone on that phone
+        env.unreachable -= c3
+        val s = awaitState("settled") { it.notices.isEmpty() && it.pendingRestore.isEmpty() }
+        assertEquals("the second item was loaded", 1, env.count("loadModel $c3 embed embed.gguf"))
+        assertEquals(0, env.count("loadModel $c3 chat"))
+        assertEquals("said once", 1, s.steps.count { it.contains("chat model small.gguf cannot be loaded there (HTTP 404)") })
+        assertEquals(Persisted(), env.saved.last())
+    }
+
+    @Test fun anItemRefusedForGoodIsSaidOnceAndTheOtherItemIsRetriedUntilItWorks() {
+        val c3 = readyThenLoseC()
+        env.loadStatus["$c3 chat"] = 400
+        env.loadIo += "$c3 embed" // the network drops that one for a while
+        env.unreachable -= c3
+        awaitCall("a few rounds") { env.count("rpcStop $c3") >= 3 }
+        assertEquals("not settled while one item keeps failing", listOf("Phone C has not got its models back yet"), c.state.value.notices)
+        env.loadIo -= "$c3 embed"
+        val s = awaitState("settled") { it.notices.isEmpty() && it.pendingRestore.isEmpty() }
+        assertEquals(1, env.count("loadModel $c3 embed embed.gguf"))
+        assertEquals(1, s.steps.count { it.contains("cannot be loaded there (HTTP 400)") })
+    }
+
+    @Test fun anyOtherFailureKeepsRetryingWithWaitsThatDoubleFiveToSixtySeconds() {
+        val waits = java.util.concurrent.CopyOnWriteArrayList<Long>()
+        c = SplitCoordinator(env, scope, timing.copy(restoreRetryMs = 5_000, restoreRetryMaxMs = 60_000, restoreWait = { waits += it; delay(2) }))
+        readyThenLoseC()
+        awaitCall("six waits") { waits.size >= 6 }
+        assertEquals(listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L, 60_000L), waits.take(6))
+        assertEquals("the record of the phone that is not answering stays", listOf("Phone C has not got its models back yet"), c.state.value.notices)
     }
 
     @Test fun aRestartedAppSendsTheTokenItSavedAndKeepsItWhenThePhoneIsStillAway() {

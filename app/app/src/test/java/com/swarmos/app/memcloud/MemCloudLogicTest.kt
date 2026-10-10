@@ -206,6 +206,15 @@ class MemCloudLogicTest {
         assertTrue(MemCloudLogic.holdsPhone(MemCloudState(phase = Phase.BASELINE, released = true)))
     }
 
+    @Test fun theWaitBetweenRestoreRoundsDoublesWhileCallsFailAndStartsAgainOnProgress() {
+        var wait = 5_000L
+        val seen = mutableListOf(wait)
+        repeat(5) { wait = MemCloudLogic.nextRestoreWait(wait, progressed = false, attempted = true, baseMs = 5_000, maxMs = 60_000); seen += wait }
+        assertEquals(listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L, 60_000L), seen)
+        assertEquals("a round that made progress starts again at the first value", 5_000L, MemCloudLogic.nextRestoreWait(60_000, progressed = true, attempted = true, baseMs = 5_000, maxMs = 60_000))
+        assertEquals("a round that called nobody (every peer away) changes nothing", 20_000L, MemCloudLogic.nextRestoreWait(20_000, progressed = false, attempted = false, baseMs = 5_000, maxMs = 60_000))
+    }
+
     @Test fun aStateWrittenBeforeTheReleasedFieldStillLoadsAsNotReleased() {
         val old = com.swarmos.app.core.SwarmJson.decodeFromString<MemCloudState>("""{"phase":"DEGRADED","lostPhone":"Phone B"}""")
         assertFalse(old.released)

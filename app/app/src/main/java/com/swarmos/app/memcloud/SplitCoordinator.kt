@@ -1,6 +1,7 @@
 package com.swarmos.app.memcloud
 
 import com.swarmos.app.core.Ports
+import com.swarmos.app.link.NodeHttpException
 import com.swarmos.app.llm.ChatMessage
 import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.Role
@@ -61,8 +62,11 @@ class SplitCoordinator(
         val degradedRenewMs: Long = 60_000,
         val loadTimeoutMs: Long = 40L * 60_000,
         val settleMs: Long = 200,
-        /** How often a peer that has not confirmed it got its servers back is tried again. */
+        /** How soon a peer that has not confirmed it got its servers back is tried again; the wait doubles up to [restoreRetryMaxMs] while the calls keep failing. */
         val restoreRetryMs: Long = 5_000,
+        val restoreRetryMaxMs: Long = 60_000,
+        /** The wait between those rounds (a parameter so a test can see the waits). */
+        val restoreWait: suspend (Long) -> Unit = { delay(it) },
         /** A lender whose rpc port is still held is stopped, waited for this long and asked again, this many times. */
         val portRetries: Int = 2,
         val portRetryDelayMs: Long = 2_000,
@@ -178,7 +182,9 @@ class SplitCoordinator(
                         val items = p.restore[nodeId] ?: emptyList()
                         // a peer that cannot be reached keeps its record: the driver still owes it those servers (and the loan it must end)
                         val loan = p.peerLoans[nodeId]
-                        if (!confirmPeerRestored(addr, items, loan) && items.isNotEmpty()) {
+                        if (confirmPeerRestored(addr, items, loan).settled) {
+                            forgetRefusals(addr)
+                        } else if (items.isNotEmpty()) {
                             restore[nodeId] = items
                             unconfirmed[nodeId] = addr
                             if (loan != null) loans[nodeId] = loan
@@ -216,18 +222,45 @@ class SplitCoordinator(
         false
     }
 
-    private suspend fun confirmPeerRestored(addr: String, items: List<RestoreItem>, loan: String? = null): Boolean = try {
-        env.peerRpcStop(addr, loan)
-        val snap = env.peerModels(addr)
-        // FAILED counts as stopped: a lender whose load was refused while rpc-server still held memory is not back
-        for (i in items) if (snap[i.role]?.state.let { s -> s == "STOPPED" || s == "FAILED" }) env.peerLoadModel(addr, i.role, i.file)
-        true
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: LoanNotOurs) {
-        true // another phone holds this lender now (or a newer loan of ours): whatever we stopped came back when ours ended
-    } catch (e: Exception) {
-        false
+    /** What one try to bring a peer back achieved: [settled] (nothing more to do for it) and [progress] (this try moved something, even if the peer is not settled yet). */
+    private class Confirm(val settled: Boolean, val progress: Boolean)
+
+    /** Items a peer refused for good (HTTP 404 or 400 on the load: the file is gone, or the request is wrong for that phone): "address role file". */
+    private val refusedForGood = ConcurrentHashMap.newKeySet<String>()
+
+    private suspend fun confirmPeerRestored(addr: String, items: List<RestoreItem>, loan: String? = null): Confirm {
+        var progress = false
+        return try {
+            env.peerRpcStop(addr, loan)
+            val snap = env.peerModels(addr)
+            for (i in items) {
+                // FAILED counts as stopped: a lender whose load was refused while rpc-server still held memory is not back
+                if (snap[i.role]?.state.let { s -> s != "STOPPED" && s != "FAILED" }) continue // already running, or no such role
+                val key = "$addr ${i.role} ${i.file}"
+                if (key in refusedForGood) continue
+                try {
+                    env.peerLoadModel(addr, i.role, i.file)
+                    progress = true
+                } catch (e: NodeHttpException) {
+                    if (e.status != 404 && e.status != 400) throw e
+                    // nothing more to do for this item: go on to the next one, and say it once
+                    refusedForGood += key
+                    progress = true
+                    step("${env.peers().firstOrNull { it.addr == addr }?.name ?: addr}: ${i.role} model ${i.file} cannot be loaded there (HTTP ${e.status}), so it is left alone")
+                }
+            }
+            Confirm(true, true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: LoanNotOurs) {
+            Confirm(true, true) // another phone holds this lender now (or a newer loan of ours): whatever we stopped came back when ours ended
+        } catch (e: Exception) {
+            Confirm(false, progress)
+        }
+    }
+
+    private fun forgetRefusals(addr: String) {
+        refusedForGood.removeAll { it.startsWith("$addr ") }
     }
 
     private fun peerName(nodeId: String): String = env.peers().firstOrNull { it.nodeId == nodeId }?.name ?: nodeId
@@ -496,8 +529,9 @@ class SplitCoordinator(
     private suspend fun releasePeer(nodeId: String, addr: String, rpcRan: Boolean) {
         val items = restore[nodeId] ?: emptyList()
         val loan = loans.remove(nodeId)
-        val ok = if (rpcRan) stopRpcOn(addr, loan) else confirmPeerRestored(addr, items, loan)
+        val ok = if (rpcRan) stopRpcOn(addr, loan) else confirmPeerRestored(addr, items, loan).settled
         if (ok || items.isEmpty()) {
+            forgetRefusals(addr)
             restore.remove(nodeId)
         } else {
             unconfirmed[nodeId] = addr
@@ -544,27 +578,39 @@ class SplitCoordinator(
     private fun noticesText(): List<String> =
         unconfirmed.keys.sorted().map { "${peerName(it)} has not got its models back yet" } + listOfNotNull(degradedNote)
 
-    /** Calls every peer that has not confirmed, every [Timing.restoreRetryMs], until all have. Skips a peer that is in a split being started or is away. */
+    /**
+     * Calls every peer that has not confirmed, until all have. Skips a peer that is in a split being started or is away (its record stays).
+     * The wait between rounds starts at [Timing.restoreRetryMs], doubles after a round in which a call failed up to [Timing.restoreRetryMaxMs],
+     * and starts again at the first value when a round made progress ([MemCloudLogic.nextRestoreWait]).
+     */
     private fun startRestoreRetry() {
         if (unconfirmed.isEmpty() || retryJob?.isActive == true) return
         retryJob = scope.launch {
+            var wait = timing.restoreRetryMs
             while (isActive && unconfirmed.isNotEmpty()) {
-                delay(timing.restoreRetryMs)
+                timing.restoreWait(wait)
                 if (synchronized(lock) { opJob?.isActive == true }) continue
+                var attempted = false
+                var progressed = false
                 for ((nodeId, addr) in unconfirmed.entries.toList()) {
                     if (touched.containsKey(nodeId) || env.peers().firstOrNull { it.nodeId == nodeId }?.away != false) continue
+                    attempted = true
                     // the token of the loan this record is about: a stop for an older loan is refused by a lender that holds a newer one of ours
-                    if (confirmPeerRestored(addr, restore[nodeId] ?: emptyList(), loans[nodeId])) {
+                    val r = confirmPeerRestored(addr, restore[nodeId] ?: emptyList(), loans[nodeId])
+                    if (r.progress) progressed = true
+                    if (r.settled) {
                         // a new split may have taken the phone while the call was out: then it owns the record, and its own release settles it
                         if (touched.containsKey(nodeId)) continue
                         unconfirmed.remove(nodeId)
                         restore.remove(nodeId)
                         loans.remove(nodeId)
+                        forgetRefusals(addr)
                         step("${peerName(nodeId)} has its models back")
                     }
                 }
                 persist()
                 publishPending()
+                wait = MemCloudLogic.nextRestoreWait(wait, progressed, attempted, timing.restoreRetryMs, timing.restoreRetryMaxMs)
             }
         }
     }
