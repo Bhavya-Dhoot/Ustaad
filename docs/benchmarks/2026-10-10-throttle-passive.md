@@ -4,7 +4,7 @@ Read-only watch of both phones for 40 minutes while the founder was using them: 
 
 The question was which readable signal marks the step between the fast level (about 13.5 tok/s) and the slow level (about 10.8) of real work inside Thermal Status 2 (evening-checks section 9). The first window did not answer it and found a fault instead (sections 1 to 3). A second window half an hour later did answer it (section 5): the level follows the `gpu` cooling step in the thermal report.
 
-## 1. Phone C ran no filler for 26 minutes and more (fault, fixed in code, not yet on the phones)
+## 1. Phone C ran no filler for 36 minutes (fault, fixed, fix checked on the phone)
 
 | | Phone B | Phone C |
 |---|---|---|
@@ -15,7 +15,9 @@ The question was which readable signal marks the step between the fast level (ab
 
 Cause, read from the phone at 22:03 (`GET /v1/memcloud/state`): at 21:35:20 a MemoryCloud start for the 30B model was refused on Phone C ("The plan does not fit: Phone C has 5.6 GB free and the planning estimate is 10.3 GB; Phone B has 7.2 GB free and the planning estimate is 9.9 GB. Nothing was started or stopped."). The refusal is correct. But it leaves MemoryCloud in the phase FAILED until the owner starts again, and the keep-busy loop counted every phase except IDLE as real work in progress. So the phone waited for an idle moment that never came, cool and with its model loaded.
 
-Fix: commit 1b9d60b, FAILED no longer counts as work in progress (`MemCloudLogic.holdsPhone`, one unit test; 1431 tests, 0 failures). The debug APK is built. It is not installed: the founder was using the phones. Until it is, a refused or failed MemoryCloud start stops keep busy on that phone until MemoryCloud is stopped (the Stop control, or `POST /v1/memcloud/stop`) or the app is restarted. Phone C was released that way at 22:11:43 after 36 minutes without filler.
+Fix: commit 1b9d60b, FAILED no longer counts as work in progress (`MemCloudLogic.holdsPhone`, one unit test; 1431 tests, 0 failures). Phone C was released at 22:11:43, after 36 minutes without filler, with the app's own MemoryCloud stop call. The build with the fix was installed on Phone B at 22:51 and Phone C at 22:52 when the founder said so.
+
+Checked on Phone C at 22:55 on that build: with keep busy running, the same start was sent (`POST /v1/memcloud/start` for the 30B file) and refused the same way (phase FAILED, "The plan does not fit ... Nothing was started or stopped"). The filler waited its five idle seconds and ran on: 22 jobs in the next 60 s with the phase still FAILED, chat and embedding servers READY with 0 restarts. MemoryCloud was stopped again afterwards (phase IDLE).
 
 ## 2. What the thermal report shows besides Thermal Status
 
@@ -83,6 +85,15 @@ Same watch, 167 samples per phone, with the decode speed of the last real reques
 - The app's own user can read the step: `/sys/class/thermal/cooling_device<N>/type` names the device and `cur_state` holds the level (checked on Phone B with `run-as com.swarmos.app`: `gpu` 7, `cpu-cluster0` 13, `cpu-cluster1` 17, and the CPU frequency ceilings 1.997 of 3.629 GHz and 2.112 of 4.608 GHz). Whether the app's own process may read it is checked only after an install.
 
 Phone C in this window: 268 filler jobs, 0 failed, generating 616 s of 1692 s (36 %, with the first five minutes stuck and the founder's requests in between). Phone B: 313 jobs, 0 failed, 845 s of 1692 s (50 %).
+
+## 6. At the install (22:51 to 22:56): the step is not temperature alone
+
+From the third watch (`B-3.jsonl`, `C-3.jsonl`, which also records the kernel's board and virtual thermal zones). One event each; the watch is still running and its full reading is not written up here.
+
+- On both phones the step fell from 7/13/17 to 5/10/15 in the sample in which the app was replaced by the install (Phone B 22:51:56 at 42.1 C skin, Phone C 22:52:26 at 41.2 C), with no cooling before it. Phone B had not left step 7 in the 90 minutes before. So the phone's throttle keeps a state that a restart of the app resets; it is not a plain function of any temperature.
+- While Phone C's model was restarting and Ustaad was briefly in the background, its step went 5, 4, 0, 4, 5 within 90 s at 39.8 to 41.7 C skin. Step 0 had otherwise been seen only under 34 C.
+- The one step up to 7 seen with the zones recorded (Phone C, 22:42:57, during real requests on top of half-duty filler): `tz_shell` went from 39.82 to 40.04 C and the battery from 39.8 to 39.9 C. The step up at 22:26 also came at a battery reading of 39.9 C. On Phone B, `tz_shell` stayed between 38.9 and 39.9 C for the whole time it sat at step 7.
+- After the install both phones run at step 5 at half duty, Thermal Status 2. How long that holds is what the watch is recording.
 
 ## Not measured
 - Which sensor moves the step. A third watch with the kernel's board and virtual thermal zones in every sample runs from 22:34 (`B-3.jsonl`, `C-3.jsonl`).
