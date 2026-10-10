@@ -106,14 +106,14 @@ class BusyLoop(
                 val ran = runOne(server ?: return RETRY_MS) ?: return RETRY_MS
                 when (ran.outcome) {
                     BusyOutcome.Done -> BusyPolicy.restAfterMs(state, ran.ms).coerceAtLeast(MIN_GAP_MS)
-                    BusyOutcome.Failed -> FAILURE_BACKOFF_MS
+                    BusyOutcome.Failed -> if (ran.timedOut) TIMEOUT_BACKOFF_MS else FAILURE_BACKOFF_MS
                     BusyOutcome.Cancelled, BusyOutcome.Stopped -> 0L
                 }
             }
         }
     }
 
-    private class Ran(val outcome: BusyOutcome, val ms: Long)
+    private class Ran(val outcome: BusyOutcome, val ms: Long, val timedOut: Boolean = false)
 
     /** Null when no slot could be borrowed (real work got there first, or there is nothing to ask). */
     private suspend fun runOne(server: ChatServer): Ran? {
@@ -141,6 +141,7 @@ class BusyLoop(
             var started = false
             var t0 = 0L
             var outcome = BusyOutcome.Stopped
+            var timedOut = false
             try {
                 restore = protect()
                 t0 = clock()
@@ -166,7 +167,12 @@ class BusyLoop(
                 } catch (e: CancellationException) {
                     if (!currentCoroutineContext().isActive) throw e   // the loop itself is stopping
                     // real work asked for the slot, or the job ran past its limit (a stuck server, not real work)
-                    if (e.message == TIMED_OUT) BusyOutcome.Failed else BusyOutcome.Cancelled
+                    if (e.message == TIMED_OUT) {
+                        timedOut = true
+                        BusyOutcome.Failed
+                    } else {
+                        BusyOutcome.Cancelled
+                    }
                 } catch (e: Exception) {
                     BusyOutcome.Failed
                 }
@@ -187,7 +193,7 @@ class BusyLoop(
                     }
                 }
             }
-            Ran(outcome, clock() - t0)
+            Ran(outcome, clock() - t0, timedOut)
         }
     }
 
@@ -204,6 +210,12 @@ class BusyLoop(
         const val RETRY_MS = 250L
         const val MIN_GAP_MS = 10L   // keeps a model that answers instantly from turning the loop into a spin
         const val FAILURE_BACKOFF_MS = 10_000L
+
+        /**
+         * After a job that ran past its limit: that points at a server that has stopped answering. The frozen-server watch needs
+         * three pings (30 s) with no call in flight to act, and a new filler call would excuse them.
+         */
+        const val TIMEOUT_BACKOFF_MS = 45_000L
         private const val WATCH_MS = 250L
     }
 }
