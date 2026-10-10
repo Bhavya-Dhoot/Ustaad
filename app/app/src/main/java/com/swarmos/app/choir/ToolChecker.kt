@@ -173,7 +173,7 @@ object ToolChecker {
     // ---- MATH ----------------------------------------------------------------------------------
 
     private fun checkMath(p: Problem, answer: String, steps: List<String>, useProblemCheck: Boolean): ToolResult {
-        val ans = Normalizer.parseNumber(answer)
+        val ans = Normalizer.parseNumberStrict(answer)
             ?: return ToolResult(CheckResult.NOT_CHECKABLE, "answer is not a number")
 
         if (useProblemCheck && p.check != null) {
@@ -265,7 +265,7 @@ object ToolChecker {
      * (`expected`, one letter) and the run uses it.
      */
     private fun checkMcq(p: Problem, answer: String, useProblemCheck: Boolean): ToolResult {
-        val letter = Normalizer.mcqLetter(answer)
+        val letter = Normalizer.mcqLetterStrict(answer)
         val letters = p.optionLetters()
         if (letter == null) return ToolResult(CheckResult.REFUTED, "answer has no option letter", "option-letters")
         if (letters.isNotEmpty() && letter !in letters) {
