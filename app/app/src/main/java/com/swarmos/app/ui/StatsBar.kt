@@ -35,10 +35,9 @@ import com.swarmos.app.core.ThermalLevel
 
 /**
  * The one compact status strip at the top of every screen: phone token and name (tap to rename),
- * thermal state, battery, free memory, link standard and speed, and an internet stamp: outline "No internet" when no network has
- * validated internet, otherwise hatched "Online" with [wanBytes] (the model downloader's byte count) beside it when above zero.
- * (The old "0 B to internet" wording claimed more than the counter measures.)
- * From thermal status 3 up ([hot]) a hatched HOT stamp replaces it.
+ * thermal state, battery, free memory, link standard and speed. Only the state that matters gets a stamp: outline "No internet"
+ * when no network has validated internet; when online a small plain mono word "online" (with [wanBytes], the model
+ * downloader's byte count, beside it when above zero). From thermal status 3 up ([hot]) a hatched HOT stamp replaces it.
  */
 @Composable
 fun StatsBar(
@@ -115,8 +114,9 @@ fun StatusStrip(
                         if (hot) Stamp("Hot", caution = true, small = true)
                         else if (!internet) Stamp("No internet", small = true) // outline: no network has validated internet
                         else {
-                            Stamp("Online", caution = true, small = true) // hatched: some network reaches the internet
-                            if (wanBytes > 0L) Text(formatWan(wanBytes), style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite), modifier = Modifier.padding(start = 6.dp))
+                            // an ordinary state is plain text: a stamp (above all a hatched one) reads as a fault
+                            val plain = SwarmType.mono.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SwarmColors.graphite)
+                            Text(if (wanBytes > 0L) "online  ${formatWan(wanBytes)}" else "online", style = plain, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -132,7 +132,7 @@ fun StatusStrip(
     }
 }
 
-/** Downloaded bytes in plain units (the model downloader's counter, shown next to the Online stamp). */
+/** Downloaded bytes in plain units (the model downloader's counter, shown next to the word "online"). */
 private fun formatWan(b: Long): String = when {
     b >= 1_000_000_000 -> "%.1f GB".format(b / 1e9)
     b >= 1_000_000 -> "%.1f MB".format(b / 1e6)

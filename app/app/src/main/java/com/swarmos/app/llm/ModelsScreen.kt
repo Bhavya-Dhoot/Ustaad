@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.core.ThermalLevel
 import com.swarmos.app.ui.EmptyHint
 import com.swarmos.app.ui.ErrorNote
 import com.swarmos.app.ui.Hairline
@@ -100,7 +101,6 @@ private fun ModelsPage(onBench: () -> Unit) {
     val bench by Bench.last.collectAsStateWithLifecycle()
     val lastStats by LlamaRuntime.lastStats.collectAsStateWithLifecycle()
     val embedMs by LlamaRuntime.lastEmbedMsPerText.collectAsStateWithLifecycle()
-    val autoload by ModelStore.autoload.collectAsStateWithLifecycle()
     val useGpu by ModelStore.useGpu.collectAsStateWithLifecycle()
 
     // The file list can change without a state change (adb push), so re-list every 2 s while visible.
@@ -150,10 +150,6 @@ private fun ModelsPage(onBench: () -> Unit) {
         )
         if (rpc.state != ServerState.STOPPED) ServerCard("RPC", rpc, rss[Role.RPC], emptyList(), null)
 
-        SettingRow(
-            "Load models at start", autoload,
-            "The chat and embedding models load when Ustaad starts.", "Models load only when you tap Load.",
-        ) { ModelStore.setAutoload(it) }
         SettingRow(
             "Use GPU for chat", useGpu,
             "The chat model runs on the phone's GPU and falls back to the CPU if that fails. Applies from the next load.",
@@ -436,9 +432,9 @@ private fun BenchPage(onBack: () -> Unit) {
             MetricRow("Time to first token", r?.let { fmt1(it.ttftMs / 1000.0) } ?: "-", "s")
             MetricRow("Server memory", r?.rssMb?.toString() ?: "-", "MB")
             MetricRow("Server memory peak", r?.peakRssMb?.toString() ?: "-", "MB")
-            MetricRow("Thermal at start", r?.thermalStart ?: "-")
-            MetricRow("Thermal at end", r?.thermal ?: "-")
-            MetricRow("Thermal now", HealthMonitor.thermalName(health.thermalStatus))
+            MetricRow("Thermal at start", r?.thermalStart?.let { ThermalLevel.wordForName(it) } ?: "-")
+            MetricRow("Thermal at end", r?.thermal?.let { ThermalLevel.wordForName(it) } ?: "-")
+            MetricRow("Thermal now", ThermalLevel.of(health.thermalStatus).word)
             MetricRow("Threads", r?.threads?.toString() ?: "-")
             MetricRow("Backend", r?.backend ?: "-")
         }

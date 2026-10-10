@@ -107,8 +107,9 @@ fun SettingsSheet(onDismiss: () -> Unit) {
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
-                    .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 ScreenHeader("Settings") { Wordmark(Modifier.padding(bottom = 4.dp)) }
@@ -134,16 +135,17 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                 AuditLogCard()
                 StopStartRow()
                 Text("Ustaad ${BuildConfig.VERSION_NAME}", style = SwarmType.mono.copy(color = SwarmColors.graphite))
-                PrimaryButton(
-                    "Save changes",
-                    onClick = {
-                        if (name.isNotBlank()) AppGraph.setNodeName(name)
-                        close()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = name.isNotBlank(),
-                )
             }
+            // pinned below the scroll area: it is always fully visible, however tall the content grows (after Verify, for one)
+            PrimaryButton(
+                "Save changes",
+                onClick = {
+                    if (name.isNotBlank()) AppGraph.setNodeName(name)
+                    close()
+                },
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                enabled = name.isNotBlank(),
+            )
         }
     }
 }
