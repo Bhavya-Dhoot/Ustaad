@@ -27,6 +27,25 @@ object BackendPlan {
         if ("--rpc" in extraArgs || "-rpc" in extraArgs) return listOf(Backend.CPU)
         return listOf(Backend.GPU, Backend.CPU)
     }
+
+    /**
+     * The banner of a chat server that moved from the GPU to the CPU build: shown by a start whose GPU attempt did not get READY
+     * and by the restart after a GPU server died twice. [reason] is the failure or the way it died.
+     */
+    fun fallbackNote(reason: String?): String = "The GPU server failed (${reason?.take(160) ?: "unknown reason"}). Running on the CPU build."
+}
+
+/**
+ * A GPU failure is remembered per install of the app: a GPU build that hangs costs [LlamaRuntime]'s whole GPU start timeout
+ * (120 s) on every start, so after the CPU build had to take over once, chat starts on the CPU until the app is updated or
+ * reinstalled (the stamp changes) or the owner turns the "Use GPU for chat" switch off and on again (the memory is cleared).
+ */
+object GpuFailureMemory {
+    const val SKIPPED_NOTE = "The GPU build failed earlier on this version of Ustaad, so the chat model runs on the CPU. " +
+        "Turn \"Use GPU for chat\" off and on to try the GPU again."
+
+    /** True when [failedStamp] (the install stamp stored with the failure, null when none) is this install's [currentStamp]. */
+    fun skipGpu(failedStamp: String?, currentStamp: String): Boolean = failedStamp != null && failedStamp == currentStamp
 }
 
 /**

@@ -23,6 +23,12 @@ object RestartPolicy {
 
         /** The one allowed restart was already used: leave the server FAILED and tell the user. */
         data object GiveUp : Decision
+
+        /**
+         * A CHAT server on the GPU build died again after its one restart on the GPU: start it once on the CPU build after
+         * [delayMs] instead of giving up (the same fallback a GPU start that does not get READY already makes).
+         */
+        data class CpuFallback(val delayMs: Long) : Decision
     }
 
     /**
@@ -30,13 +36,19 @@ object RestartPolicy {
      * @param restartsUsed automatic restarts already spent in this episode
      * @param aliveMs how long the dead process lived
      * @param extraArgs the extra arguments it was started with: a split chat server (`--rpc`) is MemoryCloud's to re-plan
+     * @param backend the build the dead server ran on; a CHAT server on [Backend.GPU] that has used its restart gets [Decision.CpuFallback] instead of [Decision.GiveUp]
      */
-    fun decide(role: Role, wasReady: Boolean, serviceUp: Boolean, restartsUsed: Int, aliveMs: Long, extraArgs: List<String>): Decision {
+    fun decide(
+        role: Role, wasReady: Boolean, serviceUp: Boolean, restartsUsed: Int, aliveMs: Long, extraArgs: List<String>,
+        backend: Backend? = null,
+    ): Decision {
         if (!wasReady || !serviceUp) return Decision.Ignore
         if (role == Role.RPC) return Decision.Ignore
         if ("--rpc" in extraArgs || "-rpc" in extraArgs) return Decision.Ignore
         val used = if (aliveMs >= STABLE_MS) 0 else restartsUsed
-        if (used >= MAX_AUTO_RESTARTS) return Decision.GiveUp
+        if (used >= MAX_AUTO_RESTARTS) {
+            return if (role == Role.CHAT && backend == Backend.GPU) Decision.CpuFallback(BACKOFF_MS) else Decision.GiveUp
+        }
         val attempt = used + 1
         return Decision.Restart(attempt, BACKOFF_MS * attempt)
     }

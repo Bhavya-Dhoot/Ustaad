@@ -91,8 +91,14 @@ object LlamaRuntime {
     /** Held while a child is being launched and published in [running], and while orphans are scanned (an orphan scan must not kill a child that is about to be published). */
     private val procLock = Any()
 
-    /** [cpuOnly]: skip the GPU build (set when a server that had fallen back to the CPU is restarted). */
-    private data class StartConfig(val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>, val cpuOnly: Boolean = false, val readyTimeoutMs: Long = READY_TIMEOUT_MS)
+    /**
+     * [cpuOnly]: skip the GPU build (set when a server that had fallen back to the CPU is restarted).
+     * [fallbackNote]: set when this start IS a fallback from a GPU server that died twice; shown as the banner of the CPU server.
+     */
+    private data class StartConfig(
+        val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>,
+        val cpuOnly: Boolean = false, val readyTimeoutMs: Long = READY_TIMEOUT_MS, val fallbackNote: String? = null,
+    )
 
     private class Running(
         val role: Role,
@@ -312,16 +318,26 @@ object LlamaRuntime {
             }
         }
         val libDir = File(ctx.applicationInfo.nativeLibraryDir)
-        val plan = BackendPlan.choose(role, cfg.extraArgs, ModelStore.useGpu.value, File(libDir, LlamaArgs.GPU_BINARY).exists(), cfg.cpuOnly)
-        var fallbackNote: String? = null
+        var plan = BackendPlan.choose(role, cfg.extraArgs, ModelStore.useGpu.value, File(libDir, LlamaArgs.GPU_BINARY).exists(), cfg.cpuOnly)
+        // set when this start is itself a fallback from a GPU server that died twice
+        var fallbackNote: String? = cfg.fallbackNote
+        var gpuFailed = cfg.fallbackNote != null
+        if (Backend.GPU in plan && GpuFailureMemory.skipGpu(ModelStore.gpuFailedStamp(), ModelStore.appStamp())) {
+            // the GPU build failed on this install before: do not pay its start timeout again (cleared by the GPU switch or an app update)
+            plan = listOf(Backend.CPU)
+            fallbackNote = GpuFailureMemory.SKIPPED_NOTE
+        }
         var last = statusOf(role)
         for (backend in plan) {
             val a = launchAttempt(role, cfg, epoch, auto, prior, backend, libDir, fallbackNote)
             last = a.status
-            if (!a.retry) return@withLock last
+            if (!a.retry) break
             // The GPU server did not get READY: say so, then try the CPU build (the next entry of the plan).
-            fallbackNote = "The GPU server failed (${last.reason?.take(160) ?: "unknown reason"}). Running on the CPU build."
+            gpuFailed = true
+            fallbackNote = BackendPlan.fallbackNote(last.reason)
         }
+        // remember a GPU failure only once the CPU build has served the same model: a broken model file fails on both and says nothing about the GPU
+        if (gpuFailed && last.state == ServerState.READY && last.backend == Backend.CPU) ModelStore.markGpuFailed()
         last
     }
 
@@ -594,11 +610,17 @@ object LlamaRuntime {
                     ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, null, it.restarts, it.backend)
                 },
                 wait = { delay(it) },
-                restart = {
-                    // a GPU server that was killed is restarted on the GPU (with the CPU fallback); a CPU server stays on the CPU
-                    val again = cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU)
+                restart = { cpuFallback ->
+                    // A GPU server that was killed is restarted once on the GPU (with the start-time CPU fallback); when it dies again
+                    // inside the stable window (cpuFallback) it is started once on the CPU build, with the usual fallback banner.
+                    // A CPU server stays on the CPU.
+                    val again = cfg.copy(
+                        cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU || cpuFallback,
+                        fallbackNote = if (cpuFallback) BackendPlan.fallbackNote(what) else null,
+                    )
                     startInternal(role, again, run.epoch, auto = true)
                 },
+                backend = run.backend,
             )
         }
     }
