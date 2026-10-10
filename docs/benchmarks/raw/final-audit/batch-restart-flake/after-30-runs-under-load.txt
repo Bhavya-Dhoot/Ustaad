@@ -1,0 +1,1 @@
+after: 30 runs in a row of every sched.Batch* test class (BatchHardeningTest, BatchStoreFilesTest, ...) with the same 16 CPU-spinning processes running: 0 failures

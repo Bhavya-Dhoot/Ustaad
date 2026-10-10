@@ -1,0 +1,33 @@
+SchedStreamTest.aStreamThatBreaksAfterTokensIsNotRetriedOnAnotherPhone, 30 runs in a row, 16 CPU-spinning processes running, test with diagnostic message
+result: 30 of 30 failed
+
+run 1: expected the stream to fail; the stream took 579 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 2: expected the stream to fail; the stream took 510 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 3: expected the stream to fail; the stream took 497 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 4: expected the stream to fail; the stream took 718 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 5: expected the stream to fail; the stream took 691 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 6: expected the stream to fail; the stream took 635 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 7: expected the stream to fail; the stream took 613 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 8: expected the stream to fail; the stream took 548 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 9: expected the stream to fail; the stream took 653 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 10: expected the stream to fail; the stream took 556 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 11: expected the stream to fail; the stream took 547 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 12: expected the stream to fail; the stream took 672 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 13: expected the stream to fail; the stream took 581 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 14: expected the stream to fail; the stream took 517 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 15: expected the stream to fail; the stream took 568 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 16: expected the stream to fail; the stream took 621 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 17: expected the stream to fail; the stream took 559 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 18: expected the stream to fail; the stream took 663 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 19: expected the stream to fail; the stream took 499 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 20: expected the stream to fail; the stream took 509 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 21: expected the stream to fail; the stream took 536 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 22: expected the stream to fail; the stream took 604 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 23: expected the stream to fail; the stream took 563 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 24: expected the stream to fail; the stream took 558 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 25: expected the stream to fail; the stream took 531 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 26: expected the stream to fail; the stream took 575 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 27: expected the stream to fail; the stream took 592 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 28: expected the stream to fail; the stream took 528 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 29: expected the stream to fail; the stream took 467 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0
+run 30: expected the stream to fail; the stream took 564 ms since the local phone was seen busy (it is held 400 ms); seen=[stream:, hi, ]; streams started: me=1 broken=0 other=0

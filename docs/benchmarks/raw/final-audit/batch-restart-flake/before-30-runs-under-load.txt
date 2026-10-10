@@ -1,0 +1,7 @@
+BatchHardeningTest.aFinishedBatchIsWrittenToDiskAndAnswersAfterARestart, 30 runs in a row, 16 CPU-spinning processes running
+result: 4 of 30 failed (runs 2, 13, 15, 17)
+
+run 13: org.junit.ComparisonFailure: expected:<[done]> but was:<[interrupted]> (SchedHardeningTest.kt:547)
+run 15: org.junit.ComparisonFailure: expected:<[done]> but was:<[interrupted]> (SchedHardeningTest.kt:547)
+run 17: org.junit.ComparisonFailure: expected:<[done]> but was:<[interrupted]> (SchedHardeningTest.kt:547)
+run 2: org.junit.ComparisonFailure: expected:<[done]> but was:<[interrupted]> (SchedHardeningTest.kt:547)
