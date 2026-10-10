@@ -327,8 +327,8 @@ object LlamaRuntime {
             return Attempt(fail(role, epoch, "port $port is still in use after two retries (another app or an adb shell process holds it)", modelPath, port, shownBackend), false)
         }
         if (!board.isCurrent(role, epoch)) return Attempt(statusOf(role), false)
-        val args = LlamaArgs.build(role, modelPath, port, cfg.extraArgs, backend)
-        val cmd = listOf(bin.absolutePath) + args
+        val cmd = listOf(bin.absolutePath) + LlamaArgs.build(role, modelPath, port, cfg.extraArgs, backend)
+        val args = LlamaArgs.redacted(cmd.drop(1)) // what the status and the log show: never the API key
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
         val ring = LogRing()
         val restarts = if (auto) prior.restarts else 0
@@ -364,7 +364,7 @@ object LlamaRuntime {
             killProcess(proc)
             return Attempt(statusOf(role), false)
         }
-        Log.i(TAG, "${role.tag}: started on $backend pid=$pid ${cmd.joinToString(" ")}")
+        Log.i(TAG, "${role.tag}: started on $backend pid=$pid ${(listOf(bin.absolutePath) + args).joinToString(" ")}")
         pump(run, logFile)
         watchExit(run)
 

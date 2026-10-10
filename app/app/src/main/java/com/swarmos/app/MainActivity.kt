@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import com.swarmos.app.agent.AgentAccess
 import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.core.SwarmService
 import com.swarmos.app.shell.ActivityBanner
@@ -102,6 +103,9 @@ class MainActivity : ComponentActivity() {
         if (i?.hasExtra(EXTRA_AUTOLOAD) == true) com.swarmos.app.llm.ModelStore.setAutoload(i.getBooleanExtra(EXTRA_AUTOLOAD, true))
         // `--ez gpu false` forces the chat model onto the CPU build (true allows the GPU build again); persisted, applies from the next chat load
         if (i?.hasExtra(EXTRA_GPU) == true) com.swarmos.app.llm.ModelStore.setUseGpu(i.getBooleanExtra(EXTRA_GPU, true))
+        // `--ez agentAccess true [--es agentKey K]` turns the agent endpoint on (false turns it off) and sets a known key, so tests need no screen taps
+        if (i?.hasExtra(EXTRA_AGENT_ACCESS) == true) AgentAccess.setEnabled(i.getBooleanExtra(EXTRA_AGENT_ACCESS, false))
+        i?.getStringExtra(EXTRA_AGENT_KEY)?.let { AgentAccess.setKey(it) }
         // `--es activity 'Running a check (7 of 20).'` shows that line in the banner and the notification, with a Stop action; `--es activity ''` clears it
         if (i?.hasExtra(EXTRA_ACTIVITY) == true) {
             val line = i.getStringExtra(EXTRA_ACTIVITY).orEmpty()
@@ -119,6 +123,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_AUTOLOAD = "autoload"
         const val EXTRA_GPU = "gpu"
         const val EXTRA_ACTIVITY = "activity"
+        const val EXTRA_AGENT_ACCESS = "agentAccess"
+        const val EXTRA_AGENT_KEY = "agentKey"
         const val EXTRA_GALLERY = "gallery"
         const val EXTRA_GALLERY_PAGE = "galleryPage"
     }

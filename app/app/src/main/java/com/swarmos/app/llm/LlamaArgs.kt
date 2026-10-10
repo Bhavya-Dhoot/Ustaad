@@ -76,7 +76,15 @@ object LlamaArgs {
     const val EMBED_CTX = 4096
     const val EMBED_SLOTS = 2
 
-    fun build(role: Role, modelPath: String?, port: Int, extra: List<String> = emptyList(), backend: Backend = Backend.CPU): List<String> {
+    /**
+     * Every llama-server (CHAT and EMBED, the split driver's included) gets `--api-key [apiKey]`: its port is on the loopback
+     * address, open to every app on the phone, and the key is what keeps them out. rpc-server takes none. With the key
+     * before [extra], an `--api-key` in [extra] would win (the last flag wins), so callers must not pass one.
+     */
+    fun build(
+        role: Role, modelPath: String?, port: Int, extra: List<String> = emptyList(), backend: Backend = Backend.CPU,
+        apiKey: String = LlamaKey.value,
+    ): List<String> {
         val gpu = role == Role.CHAT && backend == Backend.GPU
         val base = when (role) {
             Role.CHAT -> listOf(
@@ -88,6 +96,7 @@ object LlamaArgs {
                 "-np", CHAT_SLOTS.toString(),
                 "--reasoning", "off", // Qwen3.5 thinking off for every request (the client also sends enable_thinking=false)
                 "--no-webui",
+                API_KEY_FLAG, apiKey,
             )
             Role.EMBED -> listOf(
                 "-m", requireNotNull(modelPath) { "embed needs a model" },
@@ -98,11 +107,18 @@ object LlamaArgs {
                 "-np", EMBED_SLOTS.toString(),
                 "-b", (EMBED_CTX / EMBED_SLOTS).toString(), "-ub", (EMBED_CTX / EMBED_SLOTS).toString(), // longest text one slot can embed
                 "--no-webui",
+                API_KEY_FLAG, apiKey,
             )
             Role.RPC -> listOf("-H", "127.0.0.1", "-p", port.toString())
         }
         return base + extra
     }
+
+    const val API_KEY_FLAG = "--api-key"
+
+    /** [args] with the value of every `--api-key` hidden, for the status shown on the Models tab and in the log. */
+    fun redacted(args: List<String>): List<String> =
+        args.mapIndexed { i, a -> if (i > 0 && args[i - 1] == API_KEY_FLAG) "***" else a }
 
     /** Parallel slots a started server was given: the last `-np` / `--parallel` in [args], else [CHAT_SLOTS]. */
     fun slots(args: List<String>): Int {

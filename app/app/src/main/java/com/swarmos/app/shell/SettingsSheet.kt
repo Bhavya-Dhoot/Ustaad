@@ -49,7 +49,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
+import com.swarmos.app.agent.AgentAccess
 import com.swarmos.app.core.AuditVerify
+import com.swarmos.app.core.Ports
 import com.swarmos.app.core.SwarmService
 import com.swarmos.app.llm.ModelStore
 import com.swarmos.app.ui.ErrorNote
@@ -138,6 +140,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                     "Load models at start", "The default chat and embedding models load when Ustaad starts.",
                     checked = autoload, onChange = { ModelStore.setAutoload(it) },
                 )
+                AgentAccessRows()
                 AuditLogCard()
                 StopStartRow()
             }
@@ -240,6 +243,64 @@ private fun SwitchRow(title: String, helper: String, checked: Boolean, onChange:
         }
         InkSwitch(checked, onCheckedChange = null) // the whole row is the toggle
     }
+}
+
+/**
+ * The agent endpoint: the switch, and while it is on the base URL, the key (copy it, or make a new one) and how many requests
+ * were answered. Apps on this phone call Ustaad's model at that address with that key; see docs/AGENT-API.md.
+ */
+@Composable
+private fun AgentAccessRows() {
+    val ctx = LocalContext.current
+    val on by AgentAccess.enabled.collectAsStateWithLifecycle()
+    val key by AgentAccess.key.collectAsStateWithLifecycle()
+    val served by AgentAccess.served.collectAsStateWithLifecycle()
+    val error by AgentAccess.error.collectAsStateWithLifecycle()
+    val running by SwarmService.running.collectAsStateWithLifecycle()
+    var renewed by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SwitchRow(
+            "Agent access",
+            "Lets other apps on this phone use Ustaad's model, through a local address and a key. The model ustaad-swarm sends their prompts to your paired phones.",
+            checked = on, onChange = { renewed = false; AgentAccess.setEnabled(it) },
+        )
+        if (on && !running) {
+            Text(
+                "Ustaad is stopped, so nothing is listening yet. Start Ustaad below and the address works again.",
+                style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite),
+            )
+        }
+        if (on) {
+            Column {
+                Text("Base URL", style = SwarmType.label.copy(color = SwarmColors.graphite))
+                Text("http://127.0.0.1:${Ports.AGENT}/v1", style = SwarmType.mono)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("Key", style = SwarmType.label.copy(color = SwarmColors.graphite))
+                    Text(key?.let { "••••••••" + it.takeLast(4) } ?: "", style = SwarmType.mono)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SecondaryButton("Copy", onClick = { key?.let { copyAgentKey(ctx, it) } }, enabled = key != null)
+                    SecondaryButton("New key", onClick = { renewed = true; AgentAccess.newKey() }, enabled = key != null)
+                }
+            }
+            Text(
+                if (renewed) "New key set. Update the apps that use it."
+                else String.format(Locale.US, "%,d %s served", served, if (served == 1) "request" else "requests"),
+                style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite),
+            )
+        }
+        error?.let { ErrorNote(it) }
+    }
+}
+
+private fun copyAgentKey(ctx: android.content.Context, key: String) {
+    val clip = android.content.ClipData.newPlainText("Ustaad agent key", key)
+    // keeps the key out of the clipboard preview on Android 13 and later
+    clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
+    ctx.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(clip)
+    if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(ctx, "Key copied", android.widget.Toast.LENGTH_SHORT).show()
 }
 
 /** Stops the service (node server, models, wake and Wi-Fi locks) in one tap; the same button starts it again. */

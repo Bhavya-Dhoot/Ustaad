@@ -16,6 +16,9 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.swarmos.app.AppGraph
 import com.swarmos.app.MainActivity
+import com.swarmos.app.agent.AgentAccess
+import com.swarmos.app.agent.AgentBackend
+import com.swarmos.app.agent.AgentServer
 import com.swarmos.app.link.NodeServer
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.Role
@@ -50,6 +53,7 @@ class SwarmService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: Boolean? = null
     private var server: NodeServer? = null
+    private var agent: AgentServer? = null
     private var startJob: Job? = null
     private val tornDown = AtomicBoolean(false)
 
@@ -78,6 +82,7 @@ class SwarmService : Service() {
                 LlamaRuntime.onServiceStarted()
                 val s = NodeServer().also { server = it }
                 launch { s.start() }
+                launch { serveAgentWhileEnabled() }
                 AppGraph.audit.append("service.start")
                 launch { keepNotificationCurrent() }
                 holdLocksWhileNeeded()
@@ -92,6 +97,24 @@ class SwarmService : Service() {
         if (!tornDown.get()) TEARDOWN_SCOPE.launch { teardown() }
         scope.cancel()
         super.onDestroy()
+    }
+
+    /** The agent endpoint listens while the Settings switch is on and this service runs; it is never opened otherwise. */
+    private suspend fun serveAgentWhileEnabled() {
+        val a = AgentServer(
+            Ports.AGENT, { AgentAccess.key.value }, AgentBackend.app(),
+            audit = { kind, payload -> AppGraph.audit.append(kind, payload) },
+            onServed = AgentAccess::noteServed,
+            onRefused = AgentAccess::noteRefused,
+        ).also { agent = it }
+        AgentAccess.enabled.collect { on ->
+            if (on) {
+                AgentAccess.reportError(a.start())
+            } else {
+                a.stop()
+                AgentAccess.reportError(null)
+            }
+        }
     }
 
     /** Locks follow [ServicePolicy.holdLocks]: app in front or a peer online. */
@@ -160,6 +183,8 @@ class SwarmService : Service() {
         LlamaRuntime.onServiceStopped()
         server?.stop()
         server = null
+        agent?.stop()
+        agent = null
         AppGraph.audit.append("service.stop")
         PhoneActivity.clearAll()
         _running.value = false

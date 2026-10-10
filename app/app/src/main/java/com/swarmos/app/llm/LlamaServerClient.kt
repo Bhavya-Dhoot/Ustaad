@@ -205,10 +205,23 @@ internal suspend fun <T> cancellableIo(block: (ConnHolder) -> T): T = suspendCan
     }
 }
 
-/** Tiny HttpURLConnection helpers shared by the client, the runtime health check and the benchmark. */
+/**
+ * Tiny HttpURLConnection helpers shared by the client, the runtime health check, the warm-up, the self-test and the
+ * benchmark. Every call to a local llama-server carries the process's API key ([LlamaKey]); a URL that is not a loopback
+ * address never gets it.
+ */
 internal object LlamaHttp {
+    private const val LOCAL_PREFIX = "http://127.0.0.1:"
+
+    /** The `Authorization` value for a call to [url]: the key for a local llama-server, null for any other address. */
+    fun authHeaderFor(url: String, key: String = LlamaKey.value): String? = if (url.startsWith(LOCAL_PREFIX)) LlamaKey.bearer(key) else null
+
+    private fun authorize(c: HttpURLConnection, url: String, key: String) {
+        authHeaderFor(url, key)?.let { c.setRequestProperty("Authorization", it) }
+    }
+
     /** A configured POST connection; no I/O happens until [send]. */
-    fun newPost(url: String, readTimeoutMs: Int): HttpURLConnection {
+    fun newPost(url: String, readTimeoutMs: Int, key: String = LlamaKey.value): HttpURLConnection {
         val c = URL(url).openConnection() as HttpURLConnection
         c.requestMethod = "POST"
         c.connectTimeout = 5_000
@@ -216,6 +229,7 @@ internal object LlamaHttp {
         c.doOutput = true
         c.setRequestProperty("Content-Type", "application/json")
         c.setRequestProperty("Accept", "text/event-stream, application/json")
+        authorize(c, url, key)
         return c
     }
 
@@ -226,14 +240,18 @@ internal object LlamaHttp {
     fun post(url: String, body: String, readTimeoutMs: Int): HttpURLConnection =
         newPost(url, readTimeoutMs).also { send(it, body) }
 
-    fun get(url: String, readTimeoutMs: Int = 5_000): HttpURLConnection {
+    fun get(url: String, readTimeoutMs: Int = 5_000, key: String = LlamaKey.value): HttpURLConnection {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 2_000
         c.readTimeout = readTimeoutMs
+        authorize(c, url, key)
         return c
     }
 
-    /** True when `GET /health` answers 200 (llama-server answers 503 while the model is loading). */
+    /**
+     * True when `GET /health` answers 200 (llama-server answers 503 while the model is loading). With `--api-key` the server
+     * leaves `/health` public (tools/server/server-http.cpp); the header is sent anyway, it does no harm.
+     */
     fun healthOk(port: Int): Boolean = try {
         val c = get("http://127.0.0.1:$port/health", 3_000)
         try { c.responseCode == 200 } finally { c.disconnect() }
