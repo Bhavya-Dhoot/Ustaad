@@ -143,7 +143,7 @@ data class MemCloudState(
 
 @Serializable data class AskRequest(val prompt: String, val maxTokens: Int = 200)
 
-@Serializable data class BaselineRequest(val timeoutSec: Int = 120)
+@Serializable data class BaselineRequest(val timeoutSec: Int = 120, val file: String? = null)
 
 @Serializable data class RpcStartRequest(
     val port: Int = 50052,

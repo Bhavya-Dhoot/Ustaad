@@ -26,6 +26,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,6 +38,7 @@ import com.swarmos.app.ui.EmptyHint
 import com.swarmos.app.ui.ErrorNote
 import com.swarmos.app.ui.Hairline
 import com.swarmos.app.ui.HeroMetric
+import com.swarmos.app.ui.InkSwitch
 import com.swarmos.app.ui.InkProgress
 import com.swarmos.app.ui.LayerStrip
 import com.swarmos.app.ui.Lane
@@ -59,6 +62,14 @@ private fun gb(bytes: Long) = "%.1f".format(bytes / 1073741824.0)
 private fun mbText(mb: Long?) = if (mb == null) "-" else if (mb >= 1024) "%.1f GB".format(mb / 1024.0) else "$mb MB"
 private fun tok(v: Double?) = if (v == null) "-" else "%.1f".format(v)
 
+/** The model's file name, with the GGUF name under it only when it adds something. */
+@Composable
+private fun ModelTitle(st: MemCloudState) {
+    val file = st.file ?: st.model ?: ""
+    Text(file, style = SwarmType.mono)
+    MemCloudLogic.secondaryName(file, st.model)?.let { Text(it, style = SwarmType.label.copy(color = SwarmColors.graphite)) }
+}
+
 private sealed interface PlanResult {
     data class Ok(val plan: SplitPlan) : PlanResult
     data class Error(val message: String) : PlanResult
@@ -74,6 +85,7 @@ fun MemCloudScreen() {
     val lending by RpcWorker.lending.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { MemCloud.onAppStart() } // cleans up after a killed session, off the main thread
     var showExpert by rememberSaveable { mutableStateOf(false) }
+    var fitsAlone by remember { mutableStateOf<Boolean?>(null) } // what the planner says about the selected model on this phone
 
     // peers' model servers change what the plan can count on; ask while this screen is open
     LaunchedEffect(Unit) {
@@ -101,7 +113,7 @@ fun MemCloudScreen() {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.SpaceBetween) {
             Column(Modifier.weight(1f)) {
                 Text("MemoryCloud", style = SwarmType.display)
-                Text("A model too big for one phone, split by layers.", style = SwarmType.body.copy(color = SwarmColors.graphite))
+                Text(MemCloudLogic.subtitle(if (st.phase == Phase.IDLE || st.phase == Phase.FAILED || st.phase == Phase.BASELINE) fitsAlone else null), style = SwarmType.body.copy(color = SwarmColors.graphite))
             }
             when (st.phase) {
                 Phase.READY -> Stamp("Split ready")
@@ -111,7 +123,7 @@ fun MemCloudScreen() {
             }
         }
         when (st.phase) {
-            Phase.IDLE, Phase.FAILED, Phase.BASELINE -> PlanView(st, peers.filter { !it.away }.sortedBy { it.info.name }.map { it.info.name }, self.name, tick, onExpert = { showExpert = true })
+            Phase.IDLE, Phase.FAILED, Phase.BASELINE -> PlanView(st, peers.filter { !it.away }.sortedBy { it.info.name }.map { it.info.name }, self.name, tick, onExpert = { showExpert = true }, onFits = { fitsAlone = it })
             Phase.PLANNING, Phase.STARTING_PEERS, Phase.LOADING -> LoadingView(st)
             Phase.READY -> RunningView(st, onExpert = { showExpert = true })
             Phase.DEGRADED -> DroppedView(st, peers.filter { !it.away }.map { it.info.nodeId }.toSet())
@@ -122,7 +134,7 @@ fun MemCloudScreen() {
 // ---------- plan ----------
 
 @Composable
-private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: String, tick: Int, onExpert: () -> Unit) {
+private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: String, tick: Int, onExpert: () -> Unit, onFits: (Boolean?) -> Unit) {
     val present = remember(tick) { ModelStore.present().filter { it.complete } }
     var file by rememberSaveable { mutableStateOf("") }
     val chosen = present.firstOrNull { it.file == file } ?: present.maxByOrNull { it.bytes }
@@ -133,15 +145,17 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
     val key = listOf(chosen?.file, selected, byRam, onlineNames)
 
     val result by produceState<PlanResult?>(null, key, counts) {
-        value = if (chosen == null || selected.isEmpty()) null else withContext(Dispatchers.IO) {
+        value = if (chosen == null) null else withContext(Dispatchers.IO) {
             try {
-                PlanResult.Ok(MemCloud.previewPlan(chosen.file, selected, if (byRam) SplitMode.RAM else SplitMode.EQUAL, counts?.takeIf { c -> c.size == selected.size + 1 }))
+                PlanResult.Ok(MemCloud.previewPlan(chosen.file, selected, if (byRam) SplitMode.RAM else SplitMode.EQUAL, counts?.takeIf { c -> c.size == selected.size + 1 }, emptyMeansNone = true))
             } catch (e: Exception) {
                 PlanResult.Error(e.message ?: e.toString())
             }
         }
     }
     val plan = (result as? PlanResult.Ok)?.plan
+    val alone = plan?.let { MemCloudLogic.fitsOnOnePhone(it.info.fileBytes, it.driver.device.ramAvailMb) }
+    LaunchedEffect(alone) { onFits(alone) }
 
     if (present.isEmpty()) {
         ErrorNote("No model file on this phone yet. Put a .gguf in the models folder or download one on the Models tab.")
@@ -167,10 +181,10 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
         SwarmCard {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
-                    Text(info.name, style = SwarmType.mono)
-                    Text(info.architecture, style = SwarmType.label.copy(color = SwarmColors.graphite))
+                    Text(info.file, style = SwarmType.mono)
+                    Text(listOfNotNull(MemCloudLogic.secondaryName(info.file, info.name), info.architecture).joinToString("  "), style = SwarmType.label.copy(color = SwarmColors.graphite))
                 }
-                if (info.fileBytes / 1048576 > ownAvail) Stamp("Too big for one phone", caution = true)
+                if (!MemCloudLogic.fitsOnOnePhone(info.fileBytes, ownAvail)) Stamp("Too big for one phone", caution = true)
             }
             Spacer(Modifier.height(8.dp))
             MetricRow("File size", gb(info.fileBytes), "GB")
@@ -180,13 +194,16 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
         }
         if (MemCloudLogic.fitsOnOnePhone(info.fileBytes, ownAvail)) ErrorNote(MemCloudLogic.SPLIT_COSTS_SPEED)
         SectionTitle("Where the layers go")
-        LayerStrip(plan.assignments(), List(plan.nLayers) { true })
+        // the strip shows the plan in the phones' colours; what a screen reader hears says nothing is loaded yet
+        Box(Modifier.clearAndSetSemantics { contentDescription = MemCloudLogic.planDescription(shareViewsOf(plan)) }) {
+            LayerStrip(plan.assignments(), List(plan.nLayers) { true })
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             for (s in plan.shares) Text("${s.device.name}: ${s.range}", style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite))
         }
         plan.shares.forEachIndexed { i, s ->
             val fit = plan.fits()[i]
-            Lane(s.device.name, if (s.device.isDriver) "this phone, drives the model" else "worker", trailing = {
+            Lane(s.device.name, MemCloudLogic.laneRole(s.device.isDriver), trailing = {
                 Text("layers ${s.range}", style = SwarmType.mono.copy(fontSize = 12.sp))
             }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -209,14 +226,15 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
 
     if (onlineNames.isNotEmpty()) {
         SectionTitle("Phones to use")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            onlineNames.forEach { n ->
-                val on = n in selected
-                SecondaryButton((if (on) "Use " else "Skip ") + n, {
+        onlineNames.forEach { n ->
+            val on = n in selected
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(if (on) "$n, lending" else "$n, not used", style = SwarmType.body)
+                InkSwitch(on, { want ->
                     val ex = excluded.split(',').filter { it.isNotBlank() }.toMutableList()
-                    if (on) ex += n else ex.remove(n)
+                    if (want) ex.remove(n) else ex += n
                     excluded = ex.joinToString(","); counts = null
-                }, Modifier.weight(1f))
+                })
             }
         }
     } else {
@@ -225,18 +243,23 @@ private fun PlanView(st: MemCloudState, onlineNames: List<String>, selfName: Str
 
     st.failReason?.let { ErrorNote(it) }
     plan?.let { p -> if (!p.fitsAll() && st.phase == Phase.IDLE) Note("Memory is tight on at least one phone") }
+    val (loadText, canPick) = MemCloudLogic.loadButton(selected.size)
     PrimaryButton(
-        "Load across ${selected.size + 1} phones",
+        loadText,
         { if (chosen != null) MemCloud.start(StartRequest(chosen.file, selected, if (byRam) "ram" else "equal", counts?.takeIf { c -> c.size == selected.size + 1 })) },
         Modifier.fillMaxWidth(),
-        enabled = chosen != null && selected.isNotEmpty() && plan != null,
+        enabled = chosen != null && canPick && plan != null,
     )
     if (st.pendingRestore.isNotEmpty()) {
         Text("Stopped to make room: ${st.pendingRestore.joinToString("; ")}", style = SwarmType.label.copy(color = SwarmColors.graphite))
         SecondaryButton("Restore phones", { MemCloud.stop() }, Modifier.fillMaxWidth())
     }
-    BaselinePanel(st, enabled = chosen != null && st.phase != Phase.BASELINE)
+    BaselinePanel(st, file = chosen?.file, enabled = chosen != null && st.phase != Phase.BASELINE)
     if (st.steps.isNotEmpty()) StepsList(st)
+}
+
+private fun shareViewsOf(plan: SplitPlan): List<ShareView> = plan.shares.map { s ->
+    ShareView(s.device.nodeId, s.device.name, s.device.isDriver, s.firstLayer, s.layerCount, s.range, s.weightBytes / (1024 * 1024), 0, 0, true)
 }
 
 @Composable
@@ -257,7 +280,7 @@ private fun Stepper(value: Int, onMinus: () -> Unit, onPlus: () -> Unit) {
 private fun LoadingView(st: MemCloudState) {
     val n = st.layers ?: 0
     SwarmCard {
-        Text(st.model ?: st.file ?: "", style = SwarmType.mono)
+        ModelTitle(st)
         Text(
             when (st.phase) {
                 Phase.PLANNING -> "Planning"
@@ -300,7 +323,7 @@ private fun shareAssignments(shares: List<ShareView>, n: Int): List<String?> {
 private fun PhoneLanes(st: MemCloudState, showProgress: Boolean) {
     for (p in st.phones) {
         val share = st.shares.firstOrNull { it.nodeId == p.nodeId }
-        Lane(p.name, if (p.isDriver) "this phone, drives the model" else "worker", trailing = {
+        Lane(p.name, MemCloudLogic.laneRole(p.isDriver), trailing = {
             Text("layers ${share?.range ?: "-"}", style = SwarmType.mono.copy(fontSize = 12.sp))
         }) {
             Text(p.step, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp))
@@ -335,7 +358,7 @@ private fun RunningView(st: MemCloudState, onExpert: () -> Unit) {
     var prompt by rememberSaveable { mutableStateOf("Explain how a heat pump works, in about 200 words.") }
     val n = st.layers ?: 0
     SwarmCard {
-        Text(st.model ?: "", style = SwarmType.mono)
+        ModelTitle(st)
         Spacer(Modifier.height(6.dp))
         HeroMetric(tok(g?.decodeTokPerSec), "tok/s", note = g?.ttftMs?.let { "first word after ${"%.1f".format(it / 1000.0)} s" })
         Spacer(Modifier.height(6.dp))
@@ -356,11 +379,11 @@ private fun RunningView(st: MemCloudState, onExpert: () -> Unit) {
         SwarmCard {
             StreamingText(g.text.ifEmpty { "..." }, streaming = g.running)
             g.error?.let { Spacer(Modifier.height(6.dp)); ErrorNote(it) }
-            if (!g.running && g.tokens > 0) Text("${g.tokens} tokens", style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite))
+            if (!g.running && g.tokens > 0) Text(MemCloudLogic.plural(g.tokens, "token"), style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite))
         }
     }
     PhoneLanes(st, showProgress = false)
-    BaselinePanel(st, enabled = true)
+    BaselinePanel(st, file = st.file, enabled = true)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         if (st.experts != null) SecondaryButton("ExpertMesh", onExpert, Modifier.weight(1f))
         SecondaryButton("Stop and restore phones", { MemCloud.stop() }, Modifier.weight(1f))
@@ -390,12 +413,12 @@ private fun DroppedView(st: MemCloudState, onlineIds: Set<String>) {
         SwarmCard {
             Text("Interrupted answer", style = SwarmType.label.copy(color = SwarmColors.graphite))
             Text(g.text, style = SwarmType.body)
-            Text("${g.tokens} tokens streamed before the phone dropped", style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite))
+            Text("${MemCloudLogic.plural(g.tokens, "token")} streamed before the phone dropped", style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite))
         }
     }
     // phones that are online right now (the lost one counts again as soon as its heartbeat is back)
     val remaining = onlineIds.size
-    PrimaryButton("Re-plan with ${remaining + 1} phones", { MemCloud.replan() }, Modifier.fillMaxWidth(), enabled = MemCloudLogic.canReplan(remaining))
+    PrimaryButton("Re-plan with ${MemCloudLogic.plural(remaining + 1, "phone")}", { MemCloud.replan() }, Modifier.fillMaxWidth(), enabled = MemCloudLogic.canReplan(remaining))
     if (remaining == 0) Note("no other phone is online yet")
     SecondaryButton("Stop and restore phones", { MemCloud.stop() }, Modifier.fillMaxWidth())
     PhoneLanes(st, showProgress = false)
@@ -405,14 +428,21 @@ private fun DroppedView(st: MemCloudState, onlineIds: Set<String>) {
 // ---------- baseline ----------
 
 @Composable
-private fun BaselinePanel(st: MemCloudState, enabled: Boolean) {
+private fun BaselinePanel(st: MemCloudState, file: String?, enabled: Boolean) {
     val b = st.baseline
+    val target = file ?: st.file
     SwarmCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("This phone alone", style = SwarmType.title)
             if (b != null && !b.running) Stamp(if (b.outcome == "OK") "Loaded" else b.outcome, caution = b.outcome != "OK", small = true)
         }
         Text("Same model, no other phone, no RPC.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+        // say what pressing the button does, so it never looks dead
+        Text(
+            if (target == null) "Pick a model above first."
+            else "Loads $target on this phone alone and waits up to 120 s, then generates 32 tokens and reports what happened. This phone's chat and embedding servers stop meanwhile and come back afterwards.",
+            style = SwarmType.label.copy(fontSize = 12.sp, lineHeight = 16.sp),
+        )
         st.smallModel?.let { MetricRow("For scale: ${it.name}", "%.1f".format(it.tokPerSec), "tok/s") }
         if (b != null) {
             Spacer(Modifier.height(6.dp))
@@ -421,7 +451,7 @@ private fun BaselinePanel(st: MemCloudState, enabled: Boolean) {
             b.tokPerSec?.let { MetricRow("Decode", "%.2f".format(it), "tok/s") }
         }
         Spacer(Modifier.height(8.dp))
-        SecondaryButton("Try on this phone alone", { MemCloud.baseline() }, Modifier.fillMaxWidth(), enabled = enabled && b?.running != true)
+        SecondaryButton("Try on this phone alone", { MemCloud.baseline(120, target) }, Modifier.fillMaxWidth(), enabled = enabled && target != null && b?.running != true)
     }
 }
 
@@ -451,7 +481,7 @@ private fun ExpertMeshView(st: MemCloudState, onBack: () -> Unit) {
         val rtt = st.tcpRttMs
         val boundaries = st.boundariesPerToken
         SwarmCard {
-            Text(m.name, style = SwarmType.mono)
+            Text(m.file, style = SwarmType.mono)
             Spacer(Modifier.height(6.dp))
             MetricRow("Experts per layer", m.expertCount.toString())
             MetricRow("Experts used per token, per layer", m.expertUsedCount.toString())
@@ -460,8 +490,8 @@ private fun ExpertMeshView(st: MemCloudState, onBack: () -> Unit) {
         if (live.isNotEmpty()) {
             SectionTitle("Layer ranges")
             for (s in live) {
-                Lane(s.name, if (s.isDriver) "this phone" else "worker", trailing = { Text("layers ${s.range}", style = SwarmType.mono.copy(fontSize = 12.sp)) }) {
-                    Text("${s.layers} layers x ${m.expertCount} experts = ${ExpertMesh.expertsOnPhone(s.layers, m.expertCount)} experts, all on this phone.", style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp))
+                Lane(s.name, MemCloudLogic.laneRole(s.isDriver), trailing = { Text("layers ${s.range}", style = SwarmType.mono.copy(fontSize = 12.sp)) }) {
+                    Text("${MemCloudLogic.plural(s.layers, "layer")} x ${m.expertCount} experts = ${ExpertMesh.expertsOnPhone(s.layers, m.expertCount)} experts, all on this phone.", style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp))
                 }
             }
         } else {
@@ -474,7 +504,7 @@ private fun ExpertMeshView(st: MemCloudState, onBack: () -> Unit) {
             val remoteMs = ExpertMesh.remoteExpertMsPerToken(m.moeLayers, rtt)
             val ceiling = ExpertMesh.remoteExpertCeilingTokPerSec(m.moeLayers, rtt)
             MetricRow("Round trip, TCP connect to rpc-server", "%.1f".format(rtt), "ms")
-            MetricRow("Estimate if experts were remote: ${m.moeLayers} layers x %.1f ms".format(rtt), "%.0f".format(remoteMs), "ms per token")
+            MetricRow("Estimate if experts were remote: ${MemCloudLogic.plural(m.moeLayers, "layer")} x %.1f ms".format(rtt), "%.0f".format(remoteMs), "ms per token")
             MetricRow("Estimated ceiling, network wait only", tok(ceiling), "tok/s")
             if (boundaries != null) {
                 val rangeMs = ExpertMesh.layerRangeMsPerToken(boundaries, rtt)

@@ -360,6 +360,25 @@ class SplitCoordinatorTest {
         assertTrue(c.state.value.pendingRestore.isEmpty())
     }
 
+    @Test fun theBaselineFromAnIdlePhoneRunsTheOnePhoneAttemptAndSaysWhatHappened() {
+        // no split has ever run: the button still does something, with an explicit file
+        assertEquals("choose a model first", c.baseline(5))
+        assertTrue(c.baseline(5, "missing.gguf")!!.contains("no such model file"))
+        assertNull(c.baseline(5, "model.gguf"))
+        val s = awaitState("baseline result") { it.phase == Phase.IDLE && it.baseline?.running == false }
+        assertEquals("OK", s.baseline!!.outcome)
+        assertEquals("model.gguf", s.file)
+        assertEquals("no other phone is involved", 0, env.count("rpcStart"))
+        awaitCall("this phone restored") { env.count("restoreLocal chat small.gguf") == 1 }
+        assertTrue(env.calls.any { it.startsWith("startChat -ngl 0") })
+    }
+
+    @Test fun thePlanPreviewCanBeForThisPhoneAloneOrForEveryOnlinePhone() {
+        assertEquals(3, c.previewPlan("model.gguf", emptyList(), SplitMode.EQUAL).shares.size)                           // empty = all online peers
+        assertEquals(1, c.previewPlan("model.gguf", emptyList(), SplitMode.EQUAL, null, emptyMeansNone = true).shares.size) // every switch off
+        assertEquals(2, c.previewPlan("model.gguf", listOf("Phone B"), SplitMode.EQUAL, null, emptyMeansNone = true).shares.size)
+    }
+
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {
         assertNull(start("Phone B"))
         awaitState("READY") { it.phase == Phase.READY }

@@ -139,6 +139,48 @@ class MemCloudLogicTest {
         assertTrue(MemCloudLogic.SPLIT_COSTS_SPEED.contains("slower"))
     }
 
+    @Test fun pluralsAreRight() {
+        assertEquals("1 phone", MemCloudLogic.plural(1, "phone"))
+        assertEquals("2 phones", MemCloudLogic.plural(2, "phone"))
+        assertEquals("0 tokens", MemCloudLogic.plural(0, "token"))
+        assertEquals("1 layer", MemCloudLogic.plural(1, "layer"))
+        assertEquals("Preparing a large model across 3 phones.", MemCloudLogic.activityText(MemCloudState(phase = Phase.PLANNING, shares = threeShares)))
+    }
+
+    @Test fun theLoadButtonNeedsAtLeastOneOtherPhone() {
+        assertEquals("Pick at least one other phone" to false, MemCloudLogic.loadButton(0))
+        assertEquals("Load across 2 phones" to true, MemCloudLogic.loadButton(1))
+        assertEquals("Load across 3 phones" to true, MemCloudLogic.loadButton(2))
+    }
+
+    @Test fun laneCaptionsAreShortEnoughNotToClip() {
+        assertEquals("this phone, driver", MemCloudLogic.laneRole(true))
+        assertEquals("worker", MemCloudLogic.laneRole(false))
+        assertTrue(MemCloudLogic.laneRole(true).length <= 20)
+    }
+
+    @Test fun theGgufNameIsASecondaryLineOnlyWhenItIsInformative() {
+        assertNull(MemCloudLogic.secondaryName("gemma-4-E4B_q4_0-it.gguf", "Hf"))                       // too short to mean anything
+        assertNull(MemCloudLogic.secondaryName("Qwen3.5-4B-Q4_K_M.gguf", "Qwen3.5-4B"))                // the file name already says it
+        assertNull(MemCloudLogic.secondaryName("Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf", "Qwen3 30B A3B Instruct 2507"))
+        assertEquals("Mistral Small 3", MemCloudLogic.secondaryName("model-q4.gguf", "Mistral Small 3"))
+        assertNull(MemCloudLogic.secondaryName("model.gguf", null))
+    }
+
+    @Test fun theSubtitleFollowsWhatThePlannerSaysAboutThisPhone() {
+        assertEquals("A model too big for one phone, split by layers.", MemCloudLogic.subtitle(false))
+        assertTrue(MemCloudLogic.subtitle(true).startsWith("Fits this phone; splitting it is slower"))
+        assertFalse(MemCloudLogic.subtitle(null).contains("too big"))
+        assertFalse(MemCloudLogic.subtitle(true).contains("too big"))
+    }
+
+    @Test fun theLayerStripPlanSaysNothingIsLoadedYet() {
+        val d = MemCloudLogic.planDescription(threeShares)
+        assertTrue(d.startsWith("Plan, no layer loaded yet"))
+        assertTrue(d.contains("Phone B layers 16-31"))
+        assertFalse(d.contains("loaded 48"))
+    }
+
     @Test fun aNewLoadIsRefusedWhileASplitIsServingOrDegraded() {
         assertFalse(MemCloudLogic.canStart(Phase.READY))
         assertFalse(MemCloudLogic.canStart(Phase.DEGRADED))
