@@ -77,6 +77,10 @@ private class FakeEnv : SplitEnv {
         Role.RPC to LocalServer(ServerState.STOPPED, null, null),
     )
 
+    /** How long the 48-token run of the small model takes, and how long /rpc/start takes on a peer. */
+    @Volatile var chatDelayMs = 0L
+    @Volatile var rpcStartDelayMs = 0L
+
     /** What the split model's stream does: answers, or goes quiet before or after its first token (a hung rpc-server). */
     enum class Stream { NORMAL, HANG_BEFORE_FIRST, HANG_AFTER_FIRST }
     @Volatile var streamMode = Stream.NORMAL
@@ -106,6 +110,9 @@ private class FakeEnv : SplitEnv {
         }
         override suspend fun chat(req: ChatRequest): ChatResult {
             llmChats.incrementAndGet()
+            calls += "llmChat start"
+            if (chatDelayMs > 0) delay(chatDelayMs)
+            calls += "llmChat done"
             return ChatResult("x", ChatStats(10, 48, 100.0, 3000.0))
         }
         override suspend fun embed(texts: List<String>) = emptyList<FloatArray>()
@@ -146,7 +153,9 @@ private class FakeEnv : SplitEnv {
             peerRoles[addr] = peerRoles.getValue(addr).mapValues { RoleSnap("STOPPED", null, null) }
             throw IllegalStateException("connection lost")
         }
+        if (rpcStartDelayMs > 0) delay(rpcStartDelayMs)
         if (addr in failingRpcStart) throw IllegalStateException("rpc-server failed to start")
+        calls += "rpcServerListening $addr"
         if (req.stopOwn && addr !in oldLenders) {
             // a new build records the list and the lease, then stops its own servers, then starts rpc-server
             val running = peerRoles.getValue(addr).filterValues { it.state != "STOPPED" }
@@ -713,6 +722,31 @@ class SplitCoordinatorTest {
         assertTrue("a new split starts with no old notice", s.notices.none { it.contains("restored automatically") })
         // stops of the chat server: for the first load, the split server killed by DEGRADED, and the restored model again for the second load
         assertEquals(3, env.count("stopLocal chat"))
+    }
+
+    // ---------- item 8: the small-model measurement runs while the lenders prepare ----------
+
+    @Test fun theSmallModelIsMeasuredWhileTheLendersPrepareAndBeforeThisPhoneStopsIt() {
+        env.chatDelayMs = 150
+        env.rpcStartDelayMs = 150
+        assertNull(start("Phone B", "Phone C"))
+        val s = awaitState("READY") { it.phase == Phase.READY }
+        val measureStart = env.calls.indexOf("llmChat start")
+        val measureDone = env.calls.indexOf("llmChat done")
+        val firstListening = env.calls.indexOfFirst { it.startsWith("rpcServerListening") }
+        assertTrue("the measurement starts before the first lender is ready: $measureStart < $firstListening", measureStart in 0 until firstListening)
+        assertTrue("it is over before this phone's own chat server is stopped", measureDone in 0 until env.calls.indexOf("stopLocal chat"))
+        assertNotNull("the number is still shown", s.smallModel)
+    }
+
+    @Test fun aFailedLenderDropsTheMeasurementInsteadOfWaitingForIt() {
+        env.chatDelayMs = 20_000
+        env.failingRpcStart += "10.0.0.2:8787"
+        assertNull(start("Phone B"))
+        val s = awaitState("FAILED", 3_000) { it.phase == Phase.FAILED }
+        assertTrue(s.failReason!!.contains("Phone B"))
+        assertTrue("it never finished", env.calls.none { it == "llmChat done" })
+        assertNull(s.smallModel)
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {

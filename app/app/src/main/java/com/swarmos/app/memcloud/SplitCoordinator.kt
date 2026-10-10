@@ -365,10 +365,17 @@ class SplitCoordinator(
             }
 
             // memory hygiene: peers first, in parallel, then this phone. The leases are renewed from the first command on.
+            // The 48-token run of this phone's small chat model (about 4 s) goes on while the lenders prepare, so it is not part of the wait;
+            // it uses only this phone's CPU and its own server, and it has finished (or been dropped) before prepSelf stops that server.
             startRenew()
-            val prepared = coroutineScope { peers.map { p -> async { p to runCatching { prepPeer(p, snaps.first { it.first === p }.second.getOrThrow()) } } }.awaitAll() }
+            val prepared = coroutineScope {
+                val measuring = async { try { measureSmallModel() } catch (e: CancellationException) { throw e } catch (e: Exception) { /* a missing scale is not a failure */ } }
+                val results = peers.map { p -> async { p to runCatching { prepPeer(p, snaps.first { it.first === p }.second.getOrThrow()) } } }.awaitAll()
+                if (results.any { it.second.isFailure }) measuring.cancel() // the split cannot go ahead: do not wait for the number
+                measuring.join()
+                results
+            }
             prepared.firstOrNull { it.second.isFailure }?.let { (p, r) -> return fail("${p.name}: ${r.exceptionOrNull()?.message}") }
-            measureSmallModel()
             prepSelf(file)
 
             // is every rpc-server reachable from this phone?
