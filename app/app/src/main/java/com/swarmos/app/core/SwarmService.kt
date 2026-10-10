@@ -211,6 +211,7 @@ class SwarmService : Service() {
         server = null
         agent?.stop()
         agent = null
+        BusyMode.hammerOffForStop() // Hammer is not stored: a start in this same process must not find it still on
         AppGraph.audit.append("service.stop")
         PhoneActivity.clearAll()
         _running.value = false
