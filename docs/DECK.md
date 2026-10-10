@@ -1,82 +1,89 @@
 # Ustaad deck: slide outline for the founder's 6-minute pitch
 
-Written 2026-10-10 against master e2d41e4 (08:25 IST). 11 slides plus 3 backup slides. Every number is followed by the file it comes from and is one that docs/CLAIMS.md or a benchmark file supports. Speaker sentences obey docs/CLAIMS.md and docs/research/07-novelty-and-prior-art.md; the novelty statements are quoted exactly. The live demo is in docs/DEMO.md; slides 3 to 6 double as its fallback if a phone fails. Planned time per slide is below; no rehearsal is recorded, so do not present the total as a measured time. The second end-to-end run is in progress (second run pending, 2026-10-10-e2e2-*.md); where a slide shows BLANK, put the number in only when its file exists.
+Updated 2026-10-10 against master 3a55086 (gates 0 to 5 closed, gate 6 polish open). 12 slides plus 3 backup slides. Every number is followed by the file it comes from and is one that docs/CLAIMS.md or a benchmark file supports. Speaker sentences obey docs/CLAIMS.md and docs/research/07-novelty-and-prior-art.md; the novelty statements are quoted exactly. The live demo is in docs/DEMO.md; slides 3 to 7 double as its fallback if a phone fails. Planned time per slide is below; no rehearsal is recorded, so do not present the total as a measured time. One blank remains on a backup slide for a phone measurement that is running now (Knowledge Bank replication on the latest build).
 
 Judging lines: product quality 30, novelty and impact 20, creative phone use 15, technical depth 15, Office Kit 10, demo 10, and the local-model bonus. No slide earns Office Kit: nothing is claimed until mirroring has been tried (docs/CLAIMS.md R20).
 
 ## Screenshot rules
 
 - Real phone screenshots live in docs/design/qa/ (taken on phone C with real models and the demo corpus; the files named `fix-` were taken after the fixes) and docs/design/shots/. Crop out the black "HackTracker by" pill at the top: it is the hackathon's telemetry app, not Ustaad (docs/design/qa/REPORT.md).
-- Frames numbered 01 to 56 were taken at commit 71f2359 and show the old hatched "ONLINE" stamp in the strip (defect 1, fixed since). Prefer a `fix-` frame where one exists, and reshoot the others on the final demo build before the deck is final.
-- Do not use as evidence: docs/design/shots/choir-*.png (the two I opened, choir-scoreboard.png and choir-converged-matrix.png, carry a FAKE stamp, the placeholder model and the old "0 B TO INTERNET" stamp; check the others before any use), docs/benchmarks/choir-fake-A.png, choir-fake-A-result.png, scaffold-A.png. No screenshot of a Choir run with the real model exists yet; capture one of `m2` on the demo build.
+- Frames numbered 01 to 56 were taken at commit 71f2359 and show the old hatched "ONLINE" stamp in the strip (defect 1, fixed since). Prefer a `fix-` frame where one exists, and reshoot the others on the final demo build before the deck is final (gate 6, second visual pass).
+- docs/design/shots/memcloud-ready-30b.png and memcloud-degraded-30b.png are frames from the measured three-phone run (phone C, 09:30 and 09:31, 2026-10-10-memorycloud-inapp.md); use them as they are.
+- Do not use as evidence: docs/design/shots/choir-*.png (the two I opened, choir-scoreboard.png and choir-converged-matrix.png, carry a FAKE stamp, the placeholder model and the old "0 B TO INTERNET" stamp; check the others before any use), docs/benchmarks/choir-fake-A.png, choir-fake-A-result.png, scaffold-A.png, and docs/design/qa/fix-link-swarm-home-scrolled.png (its Swarm load panel shows "no model" and a FAKE stamp). No screenshot of a Choir run or of a swarm batch with the real model exists yet; capture one of `m3` and one batch on the demo build.
 - The founder's designs in ui-kit/screens/<name>/screen.png are used only where no phone screenshot exists, and are labelled "design" on the slide. They contain invented sample values (ui-kit/README.md); never read a number off them.
 
 ## Main slides (planned 6:00)
 
-### 1. One phone cannot run a big model. (0:00 to 0:30)
+### 1. One phone cannot run a big model. (0:00 to 0:25)
 - Carries: "134 s" with a hand-drawn underline: one phone gave no token in 134 s on the 18.6 GB 30B model and the system killed 23 background apps (2026-10-10-rpc-split-spike.md; size from docs/models.md).
 - Picture: none; type only, a row of the three phone tokens A, B, C in marker colours.
 - Say: "A 30B model is 18.6 GB. On one phone we got no token in 134 seconds and the system killed 23 other apps. Meanwhile people keep private files on several phones."
 - Earns: novelty and impact, technical depth.
 
-### 2. Ustaad makes phones work as one. (0:30 to 0:55)
+### 2. Ustaad makes phones work as one. (0:25 to 0:45)
 - Carries: the Swarm screen itself, "3 phones online, 2 links" (frame text; live in the app).
 - Picture: docs/design/qa/fix-link-swarm-home.png (Swarm home after the fixes; the peers show Severe and Hot, which is true thermal state).
 - Say: "Ustaad is a coordination layer on iQOO phones. It shares work and keeps a log of what it did, with no cloud model in the loop, on top of open-source runtimes."
 - Earns: product quality, local-model bonus.
 
-### 3. Phones link directly at up to 920 Mbps. (0:55 to 1:25)
+### 3. Phones link directly at up to 920 Mbps. (0:45 to 1:10)
 - Carries: a drawn bar chart in Ink. Direct raw 640.7 to 724.9 Mbps, Direct with 4 to 8 streams 790 to 920, access point 89.2 to 102.2; the group off the station's channel 10.3 against 426 on it, one run each (2026-10-10-swarmlink-throughput.md). Solid bars for Direct, hatched for the access point.
 - Picture: the chart, with docs/design/qa/05-swarm-link-throughput-panel.png as a small inset (the link page; its figure is one LAN run, 79.9 Mbps, so caption it "link page" and read the chart, not the frame).
 - Say: "A Wi-Fi Direct group on the station's own channel moves 790 to 920 megabits a second, against about 90 through the access point. Off that channel it fell to 10 megabits, so we pinned it, and we measured it."
 - Earns: technical depth. Do not say Wi-Fi 7 and do not say we invented the pinning (two patents describe it).
 
-### 4. Private files stay on their own phone. (1:25 to 2:00)
-- Carries: source cards after 41 to 143 ms (2026-10-10-e2e-data-union.md), and on the audit frame the line "text only" for what was sent. The frame is a QA frame; its byte figures are not in a benchmark file, so do not read them aloud.
-- Picture: docs/design/qa/30-data-ask-answer.png (sources with phone tokens and the timing strip) beside docs/design/qa/32-data-audit.png (what was sent, what each phone returned). Two frames side by side, not three.
+### 4. Three phones finish a batch 2.57 times faster. (1:10 to 1:35)
+- Carries: a drawn bar chart. Single phones B 10.09, C 12.03, A 10.29 tok/s; two phones 18.83 (hatched, "one run"); three phones 30.91, with the range 28.90 to 31.94. Against the fastest single phone, 2.57 times (2.40 to 2.65). 32 short prompts, GPU on all three, through the access point, debug build (2026-10-10-e2e2-swarm-throughput.md).
+- Picture: the chart; no screenshot. The only frame of the Swarm load panel shows no model and a FAKE stamp (see the screenshot rules); capture a real batch on the demo build.
+- Say: "One batch of 32 short prompts. The fastest single phone makes 12 tokens a second; three phones make 31. This is a batch of independent requests, not one answer made faster."
+- Earns: technical depth, product quality.
+
+### 5. Private files stay on their own phone. (1:35 to 2:05)
+- Carries: the acceptance pair ran, Phone B's bill photo and Phone A's certificate both cited; first-time questions, n = 9: median 4.2 s to the first word and 6.6 s in total, the 2 s target met by 2 of 9 and the 6 s target by 4 of 9 (2026-10-10-e2e2-data-union.md, gate-4-private-data-union.md). On the audit frame the line "text only" for what was sent; the frame is a QA frame and its byte figures are not in a benchmark file, so do not read them aloud.
+- Picture: docs/design/qa/30-data-ask-answer.png (sources with phone tokens and the timing strip) beside docs/design/qa/32-data-audit.png (what was sent, what each phone returned). Two frames side by side, not three. Capture the bill-photo and certificate pair on the demo build when you can.
 - Say (novelty statement 3, exactly): "Private Data Union keeps every folder private by default, returns only short snippets with per-phone, per-file citations, and a peer can only ask the owner's phone to open a file."
-- Earns: novelty and impact, product quality, creative phone use (on-device OCR, 161 and 165 ms per image, 2026-10-10-e2e-data-union.md). Camera scan and dictation are not claimed.
+- Earns: novelty and impact, product quality, creative phone use (on-device OCR, 74 to 110 ms per image on the second run, 2026-10-10-e2e2-data-union.md). Camera scan and dictation are not claimed.
 
-### 5. Agreement is not proof. A checker decides. (2:00 to 2:35)
-- Carries: "15 of 20" and "18 of 20" as two plain bars: one phone alone and one phone sampling three times, strict scorer, no degenerate answers (2026-10-10-choir-answer-quality.md). Leave a third bar blank with the word "pending" for the two-phone Choir arm (BLANK, 2026-10-10-e2e2-choir.md).
-- Picture: docs/design/qa/fix-shell-choir.png (Choir compose with the real model on Phone C and Phone B). Replace it with a run of `m2` from the demo build when you have one. Design fallback: ui-kit/screens/agent_choir_converged/screen.png, labelled "design".
-- Say (novelty statement 2, exactly): "Agent Choir never lets agreement pass as proof: an answer is VERIFIED only if it passed the problem's own test, otherwise at best CONSISTENT, and an equal-compute one-phone baseline sits beside it on screen." Add: "The two-phone score after our fix is still being measured."
-- Earns: novelty and impact, technical depth, demo. Do not say Choir is more accurate or faster than one phone.
+### 6. Agreement is not proof. A checker decides. (2:05 to 2:35)
+- Carries: three plain bars with their time: one answer 14 of 20 in 11.4 s; Choir on three phones 16 of 20 in 20.1 s; one phone sampling three times 18 of 20 in 32.3 s. Strict scorer, test off, one hand-drawn circle around "20.1 s against 32.3 s" (2026-10-10-e2e2-choir.md, gate-3-agent-choir.md).
+- Picture: docs/design/qa/fix-shell-choir.png (Choir compose with the real model on Phone C and Phone B). Replace it with a run of `m3` from the demo build when you have one. Design fallback: ui-kit/screens/agent_choir_converged/screen.png, labelled "design".
+- Say (novelty statement 2, exactly): "Agent Choir never lets agreement pass as proof: an answer is VERIFIED only if it passed the problem's own test, otherwise at best CONSISTENT, and an equal-compute one-phone baseline sits beside it on screen." Add: "Three phones answering in parallel and cross-checking took 20 seconds per problem against 32 for one phone sampling three times. With 20 problems one problem is five points, so we do not claim it is more accurate."
+- Earns: novelty and impact, technical depth, demo. Say parallel speed and cross-checking; never "more accurate than one phone".
 
-### 6. A model can be split across phones. (2:35 to 3:10)
-- Carries: 6.86 and 6.98 tok/s split against 10.80 and 14.69 on one phone, 4B model, phones C and A (2026-10-10-memorycloud-inapp.md).
-- Picture: docs/design/qa/52-memory-plan-4b-fits.png (the plan screen, with the one-row layer strip and the stated warning that splitting a model that fits is slower). Reshoot the plan screen after the Memory fixes.
-- Say: "The split works. For a model that fits on one phone it is slower, and the screen says so. It exists for models that do not fit, and our three-phone run of the 30B model is not done yet."
-- Earns: technical depth, product quality. BLANK: 30B over three phones, 2026-10-10-memorycloud-inapp.md.
+### 7. Three phones run an 18.6 GB model. (2:35 to 3:10)
+- Carries: 5.7 to 6.4 tok/s, first token 1.5 to 2.8 s, load 319 s cold and 65 s warm; Qwen3-30B-A3B across phones C, A and B over a Wi-Fi Direct group, one run (2026-10-10-memorycloud-inapp.md, gate-5-memorycloud.md). Under it, in small type: one phone gave no token in 134 s; two phones did not load.
+- Picture: docs/design/shots/memcloud-ready-30b.png (SPLIT READY, the one-row layer strip with a colour per phone) beside docs/design/shots/memcloud-degraded-30b.png (DEGRADED naming Phone B after it was stopped; the 27 tokens written stay on screen). Two frames, not three.
+- Say: "An 18.6 GB model runs across three phones: first token in 1.5 to 2.8 seconds, 5.7 to 6.4 tokens a second. One phone gave no token in 134 seconds and two phones did not load. It is one run, and the cold load took five minutes, so we load it before the demo."
+- Earns: technical depth, product quality, novelty and impact. Never say two phones; never say repeated or sustained.
 
-### 7. The model runs on the phone's GPU. (3:10 to 3:35)
+### 8. The model runs on the phone's GPU. (3:10 to 3:30)
 - Carries: prefill 201.9 against 71.6 tok/s, first token 2.59 against 7.20 s, server memory 1032 against 5952 MB; one run each on phone C (2026-10-10-inapp-llm.md). Decode was within 5 %: 17.31 against 16.47 tok/s.
 - Picture: docs/design/qa/13-models-ready-gpu.png (chat model READY with the GPU chip, memory 814.2 MB, which matches the first-start figure in the file). Do not read its other digits aloud.
 - Say: "Qwen3.5-4B, Apache-2.0, runs on the Adreno GPU: prefill is 2.8 times faster and the process is about 5.8 times smaller. Decode is the same. No cloud model is called."
 - Earns: local-model bonus, technical depth, creative phone use (on-device AI). EmbeddingGemma-300M is open-weight under the Gemma Terms of Use, not open-source (docs/CLAIMS.md R19).
 
-### 8. What is new is the combination, measured. (3:35 to 4:15)
+### 9. What is new is the combination, measured. (3:30 to 4:00)
 - Carries: the novelty matrix in two columns drawn from docs/research/07-novelty-and-prior-art.md section 2. Left, "known": channel pinning, QR-started Wi-Fi Direct, Bluetooth hand-over, llama.cpp child processes, role-split agents, model split over phones, hash-chained log. Right, "combination": the VERIFIED and CONSISTENT labels, the equal-compute baseline shown in the product, private-by-default snippets with per-phone citations, lease-bound memory lending, the whole on one consumer app. One hand-drawn circle around "combination".
 - Picture: the drawn two-column matrix; no screenshot.
-- Say (novelty statement 1, exactly, then its caveat): "We searched papers, GitHub, patents and vendor material up to 10 October 2026 and found no other app that puts phone-to-phone model offload, a verified-versus-consistent answer check, private cross-phone search and lease-based memory sharing on one measured link, with no cloud and no root." Then: "Each part has prior art. This is the combination, the search was limited, the lease is unit-tested only and the 30B run is pending."
+- Say (novelty statement 1, exactly, then its caveat): "We searched papers, GitHub, patents and vendor material up to 10 October 2026 and found no other app that puts phone-to-phone model offload, a verified-versus-consistent answer check, private cross-phone search and lease-based memory sharing on one measured link, with no cloud and no root." Then: "Each part has prior art. This is the combination, the search was limited, the lease is unit-tested only and the 30B result is one run."
 - Earns: novelty and impact (20). Never say first, only or invented.
 
-### 9. We show where it slows down. (4:15 to 4:55)
-- Carries: a three-point line in Ink: decode 12.3, 10.6, 6.8 tok/s at minutes 1, 5, 10 on the GPU, Thermal Status 4 by 590 s (2026-10-10-llama-cpu-baseline.md). Beside it: the freezer killed the app and both servers at 6 min 18 s and 11 min 2 s with the screen off (2026-10-10-inapp-llm.md); split 4B 6.86 and 6.98 against 10.80 and 14.69 tok/s.
+### 10. We show where it slows down. (4:00 to 4:30)
+- Carries: a three-point line in Ink: decode 12.3, 10.6, 6.8 tok/s at minutes 1, 5, 10 on the GPU, Thermal Status 4 by 590 s (2026-10-10-llama-cpu-baseline.md). Beside it: the freezer killed the app and both servers at 6 min 18 s and 11 min 2 s with the screen off (2026-10-10-inapp-llm.md); a split of a model that fits, 4B, 6.86 and 6.98 against 10.80 and 14.69 tok/s (2026-10-10-memorycloud-inapp.md); a 20-problem Choir run heated all three phones to Thermal Status 2 to 3 in eight minutes (gate-3-agent-choir.md).
 - Picture: the drawn line and one hatched caution stamp reading "IN FRONT ONLY". No screenshot.
-- Say: "Phones throttle within minutes. Android freezes the app when the screen is off, so Ustaad works while it is in front. And splitting a model that fits one phone is slower. We would rather show you than have you find it."
+- Say: "Phones overheat within minutes of sustained work. Android freezes the app when the screen is off, so Ustaad works while it is in front. And splitting a model that fits one phone is slower. We would rather show you than have you find it."
 - Earns: technical depth, demo, product quality. This slide is the honesty slide.
 
-### 10. Teams without signal are the next test. (4:55 to 5:30)
+### 11. Teams without signal are the next test. (4:30 to 5:05)
 - Carries: the five ranked avenues as five short rows, each with its one open item (docs/research/08-applications-and-knowledge-bank.md section 4): disaster response and public safety; field maintenance and inspection; defence, information support only; healthcare camps; legal, audit and finance. Under it, a hand-drawn bracket: "none piloted".
 - Picture: type only; connector doodles between the phone tokens as in the design system.
 - Say: "We rank five uses by fit, buyer and risk. None is piloted. Defence only as information support: training, maintenance, logistics and medical information, never targeting. A consumer phone still lacks emission control, key management, encryption and accreditation, and we say so."
-- Earns: novelty and impact. The Knowledge Bank is a backup slide because it has not run on a phone.
+- Earns: novelty and impact. The Knowledge Bank is a backup slide because its replication on the latest build is still being measured.
 
-### 11. Give us one offline team to pilot. (5:30 to 6:00)
-- Carries: the ask, plus three stamped lines: MEASURED (link, GPU, one-phone Choir, 4B split), PENDING (30B on three phones, two-phone Choir, GPU Data Union timing, airplane mode, camera pairing), NOT CLAIMED (faster than one phone, fully private, first).
+### 12. Give us one offline team to pilot. (5:05 to 5:40)
+- Carries: the ask, plus three stamped lines: MEASURED (link, GPU, three-phone batch, three-phone Choir, Data Union pair, the 30B model on three phones, Knowledge Bank on two phones), PENDING (a repeat of the 30B run, Knowledge Bank replication on the latest build, airplane mode, camera pairing, the demo build end to end), NOT CLAIMED (Choir more accurate than one phone, fully private, first).
 - Picture: the three phone tokens A, B, C in a row; no screenshot. The ask is for the founder to set: an introduction to one team that works without signal, or support for the pending runs. PRD section 10 left the hackathon track unanswered; decide it before this slide.
-- Say: "Everything we showed ran on these phones, and what we have not run is marked pending. We are looking for one offline team to try it with."
+- Say: "Everything we showed ran on these phones, one run each, and what we have not run is marked pending. We are looking for one offline team to try it with."
 - Earns: novelty and impact, demo.
 
 ## Backup slides
@@ -87,10 +94,10 @@ Judging lines: product quality 30, novelty and impact 20, creative phone use 15,
 - Say: "We name the prior art ourselves. We did not read the patent claims; this is not a freedom-to-operate opinion."
 - Earns: novelty and impact (credibility).
 
-### B2. Knowledge Bank: built, not yet run on phones
-- Carries: left column "built": a card is one saved answer (question, answer up to 600 characters, sources by phone, title and date, never file text, author, tier, revoked flag, audit hash, MAC); kept on the phone by default or shared; replicates when a phone comes online and every 3 minutes; revoke travels as a tombstone; searched first on every ask; 27 unit tests (2026-10-10-knowledge-bank.md). Right column "designed for later": per-phone signing keys, encrypted transport and storage, per-author feeds with consistency proofs, capability tiers, contradiction and staleness checks, signed export bundles, crypto-shredding (docs/research/08-applications-and-knowledge-bank.md section 2.5). Stamp: "NOT RUN ON A PHONE". Limits: authorship is "a phone with the pairing secret", unencrypted, no contradiction check.
-- Picture: type only; no screenshot of the page exists yet. Capture the Knowledge bank page after the two-phone procedure runs (second run pending).
-- Say: "This is a prototype. A confirmed answer outlives the question, the file and the phone. It has not run on a phone yet."
+### B2. Knowledge Bank: ran on two phones, replication on the latest build blank
+- Carries: left column "built": a card is one saved answer (question, answer up to 600 characters, sources by phone, title and date, never file text, author, tier, revoked flag, audit hash, MAC); kept on the phone by default or shared; revoke travels as a tombstone; searched first on every ask. Middle column "measured on two phones" (2026-10-10-e2e2-knowledge-bank.md): a shared card reached the other phone on an explicit sync; with the author's phone stopped the other phone answered from the card in 35 ms against 5090 ms for the live search; a revoke stopped its use; a tampered copy was refused. Replication within a minute was not observed in that run. BLANK: that timing on the current build, a phone measurement running now (file to be named). Right column "designed for later": per-phone signing keys, encrypted transport and storage, per-author feeds with consistency proofs, capability tiers, contradiction and staleness checks, signed export bundles, crypto-shredding (docs/research/08-applications-and-knowledge-bank.md section 2.5). Limits: authorship is "a phone with the pairing secret", unencrypted, no contradiction check, nothing was seen on a screen.
+- Picture: type only; no screenshot of the page exists yet. Capture the Knowledge bank page when the measurement finishes.
+- Say: "A confirmed answer outlives the question, the file and the phone. It ran on two phones; it does not yet replicate by itself within a minute in anything we have measured."
 - Earns: novelty and impact.
 
 ### B3. Trust model and what a consumer phone lacks
@@ -105,11 +112,11 @@ Judging lines: product quality 30, novelty and impact 20, creative phone use 15,
 - Fonts and roles: Bricolage Grotesque for titles (weights 600 to 800, tight tracking); Geist for body; Geist Mono for every number, file name, model name and stamp; Shantell Sans for handwritten notes, at most two per slide.
 - Marker colours mean "which phone" and nothing else: phone tokens are 28 px circles with the letter A, B or C and a 1.5 px Ink outline. Never use them for decoration, buttons or status.
 - One hand-drawn Ink underline or circle per slide, on the single most important value.
-- Stamps for states: outline for good states (VERIFIED, CHAIN OK), diagonal hatching for cautions (DISAGREE, UNVERIFIED, PENDING, NOT RUN ON A PHONE); at most one stamp per card.
+- Stamps for states: outline for good states (VERIFIED, CHAIN OK), diagonal hatching for cautions (DISAGREE, UNVERIFIED, PENDING, ONE RUN); at most one stamp per card.
 - Shapes: 8 px corners, 1.5 px Ink outlines, one hard Ink shadow of 3 px on the primary element only. Left-aligned, offset layouts; never three equal cards in a row.
 - Bans: no gradients, glows, glassmorphism, neon, purple or blue "AI" styling, dark terminal look; no emoji; no pure black or pure white; no red, green or yellow status colours; no circular spinners; no em-dashes in visible text; no marketing words (the list is in docs/design/DESIGN.md section 7).
 - Every number on a slide is a live measurement or carries its source file in small Geist Mono under it.
 
 ## Still pending, for the notes page
 
-30B over three phones (2026-10-10-memorycloud-inapp.md); two-phone Choir arm after the fix, GPU Data Union timing and the PRD pair, aggregate throughput on the GPU and with three phones, Knowledge Bank procedure (all second run pending, 2026-10-10-e2e2-*.md); airplane mode and bytes to the internet; camera QR scan, document scan and dictation by a person; 20-minute screen-off soak; Office Kit mirroring (docs/CLAIMS.md section 4, M1 to M8).
+Knowledge Bank replication within a minute on the latest build (a phone measurement is running; file to be named); a repeat of the 30B run (cold load, 5 minutes of generation, Thermal Status 2 or above); the 20-problem Choir run repeated after 08a205f and a Choir run on the demo build; airplane mode and bytes to the internet; camera QR scan, document scan and dictation by a person; the 20-minute screen-off soak; Office Kit mirroring; the second visual pass and the demo build end to end (gate 6) (docs/CLAIMS.md section 4, M6 to M8).

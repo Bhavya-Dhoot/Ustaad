@@ -1,84 +1,87 @@
 # HANDOFF
 
-As of 2026-10-10, master e2d41e4 (08:25 IST). The finale runs 2026-10-09 to 2026-10-11. Read this file, then the newest file in gates/ (gate-5-memorycloud.md; there is no gate-3 file), then CLAUDE.md. Everything before the newest gate artifact is dead context (CLAUDE.md). What may be claimed is in docs/CLAIMS.md and is binding.
+As of 2026-10-10, master 3a55086 (gate 5 closed). Unit tests and the debug and demo APK builds at 1f514b6: the orchestrator reported 695 tests, 0 failures; no file in the repository records that count yet (BLANK: the file that will). The finale runs 2026-10-09 to 2026-10-11. Read this file, then the newest file in gates/ (gate-5-memorycloud.md), then CLAUDE.md. Everything before the newest gate artifact is dead context (CLAUDE.md). What may be claimed is in docs/CLAIMS.md and is binding.
 
 Product name: Ustaad (code still says SwarmOS until the final rename, docs/CONTRACTS.md section 10).
 
+## Gates (one-line verdicts)
+
+| Gate | Verdict | File |
+|---|---|---|
+| G0 research and PRD | Closed. Scope locked. | gates/gate-0-research-prd.md |
+| G1 Swarm link | Closed. Wi-Fi Direct on the station channel, 640 to 920 Mbps; failover 700 of 700; camera QR scan untested. | gates/gate-1-swarmlink.md, docs/benchmarks/2026-10-10-swarmlink-throughput.md |
+| G2 inference baseline | Closed. Qwen3.5-4B in the app, GPU by default with CPU fallback (prefill 201.9 against 71.6 tok/s, one run each). | gates/gate-2-inference-baseline.md, docs/benchmarks/2026-10-10-inapp-llm.md |
+| G3 Agent Choir | Closed on three phones. Parallel speed and cross-checking: 16 of 20 in 20.1 s against 18 of 20 in 32.3 s for one phone sampling three times; never "more accurate". | gates/gate-3-agent-choir.md, docs/benchmarks/2026-10-10-e2e2-choir.md |
+| G4 Data Union | Closed. The acceptance pair ran (bill photo on Phone B, certificate on Phone A); first-time questions median 4.2 s to the first word and 6.6 s total; the 2 s and 6 s targets met by 2 of 9 and 4 of 9. | gates/gate-4-private-data-union.md, docs/benchmarks/2026-10-10-e2e2-data-union.md |
+| G5 MemoryCloud | Closed. The 18.6 GB Qwen3-30B-A3B ran across three phones: load 319 s cold and 65 s warm, first token 1.5 to 2.8 s, 5.7 to 6.4 tok/s; one phone gave no token, two did not load. One run. | gates/gate-5-memorycloud.md, docs/benchmarks/2026-10-10-memorycloud-inapp.md |
+| G6 polish | OPEN, see below. | docs/design/qa/REPORT.md |
+
+Other evidence: throughput on three phones, 30.91 tok/s (28.90 to 31.94) against 12.03 for the fastest single phone, two phones 18.83 in one run (docs/benchmarks/2026-10-10-e2e2-swarm-throughput.md); Knowledge Bank on two phones, the other phone answered from a card in 35 ms with the author's phone stopped, revoke and tamper refusal worked, replication by itself within a minute not observed (docs/benchmarks/2026-10-10-e2e2-knowledge-bank.md).
+
+## What is open (gate 6)
+
+- A second visual pass: the QA of 71f2359 listed 17 defects (docs/design/qa/REPORT.md); several are fixed and not re-shot. No screenshot of a Choir run or a swarm batch with the real model exists (the Choir and Swarm-load frames in docs/design/shots/ and docs/design/qa/ carry FAKE stamps or no model).
+- The demo build has never been exercised end to end: no Choir run, no split, no swarm batch, no Data Union ask on `com.ustaad.app` (docs/BUILD.md lists three curl checks run on phone C with no recorded result).
+- Two things only the founder can do by hand, on every phone: the battery exemption in first-run setup (untested as a fix, gates/gate-2-inference-baseline.md), and QR pairing in the demo build (the camera scan has never been exercised; docs/CLAIMS.md LK9).
+- The phones overheat within minutes of sustained work: a 20-problem Choir run took all three to Thermal Status 2 to 3 in eight minutes (gate-3-agent-choir.md); decode on the GPU fell from 12.3 to 6.8 tok/s over ten minutes (docs/benchmarks/2026-10-10-llama-cpu-baseline.md). Demo segments stay short; Ustaad stays in front with the screen on.
+- One blank for a phone measurement that is running: Knowledge Bank replication by itself within a minute on the current build (the push after a shared save and a revoke, 1f514b6, is unit-tested only). Its file is not named yet.
+- Not run, no file: a repeat of the 30B run (cold load, 5 minutes of generation, Thermal Status 2 or above), the 20-problem Choir run repeated after 08a205f, airplane mode and bytes to the internet, document scan and dictation by a person, the 20-minute screen-off soak, Office Kit mirroring (docs/CLAIMS.md section 4).
+
 ## Done (on master)
 
-- G0 closed: research, PRD, scope lock (gates/gate-0-research-prd.md).
-- G1 closed, phase 2 merged: discovery, heartbeat, pairing with confirmation, signed requests and responses, Wi-Fi Direct group on the station channel (640 to 920 Mbps), striped bulk, request-id dedup and failover (700 of 700 executed once, paths silenced with a fault hook), Bluetooth control path, group re-forming (docs/benchmarks/2026-10-10-swarmlink-throughput.md, gates/gate-1-swarmlink.md).
-- G2 closed: llama-server and rpc-server as child processes, model store, benchmark view, restart policy, cancellable chat; the chat model runs on the Adreno GPU with CPU fallback (prefill 201.9 against 71.6 tok/s, one run each, phone C, docs/benchmarks/2026-10-10-inapp-llm.md).
-- G4 closed with the latency target missed: Data Union, Hindi OCR, audit page, private by default (gates/gate-4-private-data-union.md, docs/benchmarks/2026-10-10-e2e-data-union.md).
-- Agent Choir built and merged: typed answers, validation and retry, strict scorer; one phone alone 15 of 20, three samples 18 of 20 (docs/benchmarks/2026-10-10-choir-answer-quality.md). The two-phone arm was not re-run after the fix. No gate-3 file.
-- MemoryCloud module (planner, rpc lender with a 10 s lease, split coordinator, degraded and re-plan, ExpertMesh explanation screen). 4B over two phones: 6.86 and 6.98 tok/s against 10.80 and 14.69 alone (docs/benchmarks/2026-10-10-memorycloud-inapp.md). Gate 5 is open.
-- Scheduler with the throughput panel embedded in the Swarm screen (15.38 against 7.66 tok/s on two phones, baseline throttled, docs/benchmarks/2026-10-10-e2e-swarm-throughput.md).
-- Knowledge Bank prototype (cards, replication, revocation, saved-answer search, Data tab page); 27 unit tests; not run on a phone (docs/benchmarks/2026-10-10-knowledge-bank.md).
-- Shell: first-run setup, settings sheet, Stop Ustaad, audit log rotation; the `demo` build type (docs/BUILD.md).
-- Documents: docs/CLAIMS.md (claims ledger), docs/research/07 and 08, docs/review/2026-10-10-second-review.md, docs/design/qa/REPORT.md, and, written in two passes this session, docs/SETUP.md, docs/DEMO.md, docs/PITCH.md, docs/DECK.md, README.md and this file.
-- Every branch that existed at the first pass of this file has been merged (`git branch --no-merged master` lists none at 08:25).
-
-## In progress
-
-- The second end-to-end run (Data Union with the PRD pair, Knowledge Bank two-phone procedure, throughput, Choir on two or three phones): scripts/e2e2-check.sh, scripts/e2e/e2e2.py and scripts/e2e/queue2.sh exist and are not yet committed; results will land as docs/benchmarks/2026-10-10-e2e2-*.md (second run pending, names not fixed). The three-phone 30B run of MemoryCloud is written as a procedure in docs/benchmarks/2026-10-10-memorycloud-inapp.md ("Pending") and has not run: the end-to-end tester took the device markers in the same second the waiter polled it.
+- All six gate artifacts above, the claims ledger (docs/CLAIMS.md, updated at 0ca3a92 and for MemoryCloud at the commit that carries this file), the novelty and applications reports (docs/research/07, 08), two code reviews (docs/review/), the visual QA (docs/design/qa/REPORT.md).
+- App: Swarm link with signed requests and responses, pairing confirmation, Wi-Fi Direct on the station channel, Bluetooth control path, failover with dedup; llama-server and rpc-server as child processes, GPU with CPU fallback, restart policy; Agent Choir with typed answers, validation, retry and the strict scorer (JSON-fragment rejection and rounding merged after the run, unit-tested only); Data Union with Hindi OCR, audit page, private by default; MemoryCloud with planner, 10 s rpc lease (unit-tested only), degraded state and re-plan; scheduler with the throughput panel embedded in the Swarm screen; Knowledge Bank page off the Data tab; first-run setup, settings, Stop Ustaad; the `demo` build type (docs/BUILD.md).
+- Documents written this session: docs/SETUP.md, docs/DEMO.md, docs/PITCH.md, docs/DECK.md, README.md and this file, updated three times against the evidence.
 
 ## State of the phones
 
-As reported by the orchestrator at the second pass; I have not touched or read a phone, so every line is "reported", not "verified". Where a benchmark file records an older state I say so.
+As reported by the orchestrator at the second pass, with the three-phone MemoryCloud run (09:18 to 09:37) added from docs/benchmarks/2026-10-10-memorycloud-inapp.md. I have not touched or read a phone, so every line is "reported", not "verified".
 
 | Item | A (10BFC41T2N001UZ, 192.168.242.89) | B (10BFAU14Q6000XR, 192.168.242.23) | C (10BFAT216Z000XQ, 192.168.242.76) |
 |---|---|---|---|
 | App installed | Debug base app `com.swarmos.app` only, no test variants | same | same |
 | Demo build `com.ustaad.app` | Not installed (reported). docs/BUILD.md says build, install and three curl checks ran on phone C, so it may have been removed afterwards | not installed | see A |
-| Models | Reported: in the app folder `/sdcard/Android/data/com.swarmos.app/files/models/` (default chat and embedder; which other files remain is not recorded; phone C once also held Gemma 4 E4B, docs/benchmarks/2026-10-10-inapp-llm.md) | same | same, plus the 30B file in `/data/local/tmp/llama/models/` (not in the app folder; the in-app 30B run needs it copied there, docs/benchmarks/2026-10-10-memorycloud-inapp.md) |
-| Demo corpus | Folders named `SwarmDemo` under Pictures and Documents (scripts/make-demo-corpus.py). Whether `IMG_2231.jpg` is on B is not recorded: the first run found the photo on no phone (docs/benchmarks/2026-10-10-e2e-data-union.md) | `SwarmDemo` folders; check `IMG_2231.jpg` | `SwarmDemo` folders |
-| Pairing secret | The dev secret `swarmos-dev-secret` unless Host was pressed since; the first e2e run had rotated it and put both phones back on the dev secret (docs/benchmarks/2026-10-10-e2e-choir.md, F9) | unknown | see A |
-| Left over | At 06:21 `/data/local/tmp/tput` and some other workers' files (`llama`, `router`, `human.*`, `devcap.sh`, `ui_*`) remained on A and C; Bluetooth had been switched off again and the Wi-Fi Direct group removed (docs/benchmarks/2026-10-10-swarmlink-throughput.md). The clean-up rule says the end state is one Ustaad app, the models and the corpus (plans/briefs/_common.md); confirm | Phone B was reserved from 03:40 to about 07:20, then released (plans/briefs/_common.md) | see A |
+| Models | Reported: the default chat and embedder in `/sdcard/Android/data/com.swarmos.app/files/models/`; READY on all three after the memory run | same | same, plus the 30B file, copied into the app's models folder and left there (docs/benchmarks/2026-10-10-memorycloud-inapp.md); a copy also remained in `/data/local/tmp/llama/models/` before that run |
+| Warm caches | rpc tensor cache from the 30B run, 6792 MB (includes 1.4 GB of 4B tensors); gives the 65 s warm load | rpc tensor cache 5679 MB | not applicable (the driver reads the file) |
+| Demo corpus | Folders named `SwarmDemo` under Pictures and Documents (scripts/make-demo-corpus.py); `IMG_2231.jpg` is on B in the second run | same, with the bill photo `IMG_2231.jpg`; all-files access for `com.swarmos.app` was set to allow there (left in place, docs/benchmarks/2026-10-10-e2e2-data-union.md) | same |
+| Pairing secret | The debug dev secret `swarmos-dev-secret` on all three in the second run; unknown since | see A | see A |
+| Left over | At 06:21 `/data/local/tmp/tput` and some other workers' files remained on A and C (docs/benchmarks/2026-10-10-swarmlink-throughput.md); confirm against the clean-up rule (one Ustaad app, the models, the corpus, plans/briefs/_common.md) | Phone B was reserved from 03:40 to about 07:20, then released | The Wi-Fi Direct group of the memory run was stopped on all three |
 
 Network: the PC and the phones were on the access point "Chulbul" (192.168.242.x). Phone A once left it by itself for a saved network "iQOO" at 06:22, cause not found (docs/benchmarks/2026-10-10-e2e-choir.md, F5).
 
 ## What the founder must do by hand
 
-- On each phone, first-run setup: allow nearby devices, allow notifications, and turn off battery limits for Ustaad (the Android dialog); on vivo and iQOO also "Allow background start" (docs/SETUP.md section 4). No adb path exists for this on the demo build, and the battery exemption is untested (gates/gate-2-inference-baseline.md).
-- Install the demo build on all three phones, push the two models into `com.ustaad.app`'s own folder, name the phones in Settings (docs/SETUP.md sections 2, 3, 5).
-- Pair by QR scan in the demo build: host on one phone, scan on the others; or the paste route. The camera scan has never been exercised (docs/CLAIMS.md LK9); rehearse it.
+- On each phone, first-run setup: allow nearby devices, allow notifications, turn off battery limits for Ustaad (the Android dialog); on vivo and iQOO also "Allow background start" (docs/SETUP.md section 4). The demo build ignores adb extras, so there is no adb path for this.
+- Install the demo build on all three phones, push the two models into `com.ustaad.app`'s own folder and, for step 4 of the demo, the 30B file into Phone C's `com.ustaad.app` models folder (18.6 GB, USB cable); name the phones in Settings (docs/SETUP.md sections 2, 3, 5). Load the 30B once cold (319 s) before the judges arrive so the lenders keep their caches.
+- Pair by QR scan in the demo build: host on one phone, scan on the others; or the paste route (docs/SETUP.md section 7). Rehearse it: the camera scan has never been exercised.
 - Index each phone in the Data tab (Photos "Index", Documents "Pick folder"): the folder picker cannot be driven over adb.
-- Keep Ustaad in front with the screen on on every phone during the demo. The OS freezes it otherwise (docs/benchmarks/2026-10-10-swarmlink-g1.md). Phones cool, on chargers, fan on.
-- Decide the hackathon track and the closing ask (docs/PRD.md section 10 question 1 is unanswered; docs/DECK.md slide 11).
-
-## Open gates
-
-| Gate | What closes it |
-|---|---|
-| G3 Agent Choir | A gate-3 file with the two-phone arm re-measured on 20 problems with the strict scorer, both check settings, and a run on the demo build (docs/CLAIMS.md M3, CH11) |
-| G5 MemoryCloud | A three-phone run of the 30B model through the app that produces tokens, with load time, first token, decode tok/s, memory per phone and thermal state; fallback a 13 to 15 GB file of the same model (gates/gate-5-memorycloud.md) |
-| G6 ExpertMesh and polish | A measured ExpertMesh figure or the explanation kept as an explanation; the visual defects in docs/design/qa/REPORT.md reshot after fixes; a recorded rehearsal |
-| G1, G2 retakes | B to C over Direct on quiet phones; an in-app cool-start decode table and a 10-minute sustained run in the app (gates/gate-1-swarmlink.md, gates/gate-2-inference-baseline.md) |
-| G4 follow-up | Data Union timing on the GPU build, the PRD pair with the photo on B, an absent-phone ask that raises Incomplete, a person tapping a citation (gates/gate-4-private-data-union.md) |
+- Keep Ustaad in front with the screen on on every phone during the demo; phones cool, on chargers, fan on.
+- Decide the hackathon track and the closing ask (docs/PRD.md section 10 question 1 is unanswered; docs/DECK.md slide 12).
 
 ## Next (in this order)
 
-1. Let the second end-to-end run finish, commit scripts/e2e2-check.sh and its notes, and update docs/CLAIMS.md rows from the results.
-2. Run the three-phone 30B procedure (docs/CLAIMS.md M1). If it does not load, use the smaller file of the same model.
-3. Install the demo build on all three phones, run the three curl checks in docs/BUILD.md, and rehearse docs/DEMO.md once with a recording, thermal state logged. Record Choir `m2`, a Data Union ask and a Memory split on the demo build and reshoot the screenshots listed in docs/DECK.md.
-4. Run, by a person: camera QR scan, document scan, dictation, citation tap, a Verify of the audit log, the 20-minute screen-off soak, airplane mode with the Direct group, Office Kit mirroring (docs/CLAIMS.md M6 to M8).
-5. Fix the top visual defects (docs/design/qa/REPORT.md) and the open review items (docs/review/2026-10-10-second-review.md), starting with the Data Union index guard (an embedder stopping mid-run) and the debug-only intent extras.
+1. Install the demo build on all three phones, run the three curl checks in docs/BUILD.md, and run every demo step once on it: a swarm batch, the warranty question with the pair, Choir `m3`, the 30B split. Record the results in docs/benchmarks/ (a new e2e note) and update docs/CLAIMS.md.
+2. Rehearse docs/DEMO.md once with a recording and the thermal state logged; time the fresh start of the 30B split after a Stop with warm caches (only a re-plan, 65 s, was timed).
+3. Second visual pass (gate 6): reshoot the frames listed in docs/DECK.md on the demo build, including one real Choir run and one real swarm batch; fix the top defects in docs/design/qa/REPORT.md and the open items in docs/review/2026-10-10-second-review.md (the Data Union index guard when the embedder stops mid-run; the debug-only intent extras).
+4. When the running phone measurement finishes, put the Knowledge Bank replication timing in a note and into docs/CLAIMS.md (KB3, KB5, R28).
+5. By a person: camera QR scan, document scan, dictation, citation tap, a Verify of the audit log, the 20-minute screen-off soak, airplane mode with the Direct group, Office Kit mirroring (docs/CLAIMS.md M6 to M8).
 6. Do the final rename to `com.ustaad.app` for the debug build and the code identifiers last.
 
 ## Contradictions between documents (decide, then fix the older one)
 
 | Where | Says | Other says |
 |---|---|---|
-| docs/PRD.md sections 4, 5.1, 9 | Hotspot first, Ed25519, 4-byte framing; tap a citation and the photo opens on B; "0 bytes to WAN" | Section 12 of the same file, gate-1 and docs/CONTRACTS.md: Wi-Fi Direct first, HMAC, HTTP and JSON; a notification the owner taps; a "No internet" stamp (docs/CLAIMS.md PS2) |
+| docs/PRD.md section 12, MemoryCloud row | The 30B run on three phones "is pending" | gates/gate-5-memorycloud.md: it ran, one run |
+| docs/models.md "Large model status" | The 30B file is still to be pushed to phone C | It was copied into C's app models folder (docs/benchmarks/2026-10-10-memorycloud-inapp.md) |
+| docs/PRD.md R5.3 | 6 to 10 tok/s for the 30B on three phones | Measured 5.7 to 6.4 tok/s; the memory note calls this "inside the research estimate" |
+| docs/PRD.md sections 4, 5.1, 9 | Hotspot first, Ed25519, 4-byte framing; tap a citation and the photo opens on B; "0 bytes to WAN" | Section 12, gate-1 and docs/CONTRACTS.md: Wi-Fi Direct first, HMAC, HTTP and JSON; a notification the owner taps; a "No internet" stamp (docs/CLAIMS.md PS2) |
 | docs/PRD.md R3.1, section 7 | Alt-solver from a second model family | Built: one model, different prompt and temperature (docs/CLAIMS.md CH5) |
-| docs/PRD.md R5.2 | Qwen3-14B for two phones | docs/models.md pins no 14B file |
+| docs/PRD.md R5.2 | Qwen3-14B for two phones | docs/models.md pins no 14B file; gate-5 criterion was written for two phones and met on three |
 | CLAUDE.md, gate-0 | Wi-Fi Aware "feature flag absent" | Probes list `WIFI_FEATURE_AWARE` and a `wifi-aware0` interface; only the service is absent |
-| gates/gate-2 "sustained decode 4.9 to 6.1 tok/s" | Reads as a 10-minute run | docs/benchmarks/2026-10-10-inapp-llm.md: minutes 1 and 2 of a run killed at 6 min 18 s; the sustained GPU series is 12.3, 10.6, 6.8 tok/s (docs/benchmarks/2026-10-10-llama-cpu-baseline.md) |
-| docs/models.md "Large model status" | The 30B file is still to be pushed to phone C | The spike and the memory note ran it on C from `/data/local/tmp/llama/models/` |
+| gates/gate-3-agent-choir.md | One-phone score 14 of 20 | docs/benchmarks/2026-10-10-choir-answer-quality.md: 15 of 20 on phones A and B (a different run); the e2e2 file notes it |
+| gates/gate-4-private-data-union.md "Deltas from plan" | Acceptance pair not run | "Second run" in the same file: it ran |
 | docs/BUILD.md | An adb deep link works only on debug builds | MainActivity.kt: the `swarmos://pair` link is read by every build; the demo build asks for confirmation (not verified on a demo install) |
-| docs/CLAIMS.md section 0 | "Phone B took no part in any end-to-end run" | docs/design/qa/32-data-audit.png and fix-shell-choir.png show Phone B answering a Data Union ask and listed in Choir; those are QA frames, not benchmark runs |
-| docs/CLAIMS.md section 0 | 572 unit tests (inapp-llm) | 618 on the Choir branch (choir-answer-quality); the counts are of different commits |
-| docs/CLAIMS.md CH5 | "also remove from docs/PRD.md sections 3, 7 and R3.1" | Still in the PRD body; section 12 overrides it |
+| docs/CLAIMS.md section 0 | 572 unit tests (inapp-llm) | 618 on the Choir branch (choir-answer-quality); the reported 695 at 1f514b6 is in no file; counts of different commits |
 
 ## Worker briefs (plans/briefs/) and reviews
 
@@ -97,11 +100,16 @@ Network: the PC and the phones were on the access point "Chulbul" (192.168.242.x
 
 Also: plans/2026-10-09-build-plan.md and plans/2026-10-10-integration.md. Reviews: docs/review/2026-10-10-merged-app-review.md (first review; the status of its findings is at the top of the second review), docs/review/2026-10-10-second-review.md (open items by owner), docs/design/qa/REPORT.md (visual QA, 17 defects), docs/CLAIMS.md (claims ledger).
 
+## Where the evidence lives
+
+- Gates: gates/gate-0 to gate-5. Benchmarks: docs/benchmarks/ (the root README.md lists them by topic). Claims: docs/CLAIMS.md. Novelty and applications: docs/research/07, 08. Screenshots: docs/design/qa/ (QA on phone C), docs/design/shots/ (module frames, and the two measured MemoryCloud frames).
+- Scripts that produced the numbers: scripts/e2e-check.sh (first run), scripts/e2e2-check.sh with scripts/e2e/e2e2.py (second run); the three-phone MemoryCloud procedure is in docs/benchmarks/2026-10-10-memorycloud-inapp.md.
+
 ## Open questions for the founder
 
 1. Hackathon track: Productivity, Developer Tools or Open Innovation (docs/PRD.md section 10, question 1; not answered in any file).
 2. Whether the organisers allow three phones on stage and a laptop for Office Kit, how HackTracker counts Office Kit and creative phone use, and which of Red Light (phone only) or Green Light (phone and laptop) a mirror-only laptop is (docs/research/06-hackathon-context-and-landscape.md).
-3. The closing ask on the last slide (docs/DECK.md slide 11).
+3. The closing ask on the last slide (docs/DECK.md slide 12).
 4. Whether to file anything before further public disclosure: the novelty report notes India has no general grace period for a public demo and that this is not legal advice (docs/research/07-novelty-and-prior-art.md section 4).
 
 ## Tools

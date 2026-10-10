@@ -1,6 +1,6 @@
 # Ustaad setup: from a clean phone to a ready swarm
 
-Rewritten 2026-10-10 against master e2d41e4 (08:25 IST); every branch listed in the first version of this file has since been merged. Read docs/CLAIMS.md next to this file: it is the binding list of what may be said. A number in parentheses is followed by the file it comes from. "Not verified" means no code or benchmark file records it. The second end-to-end run is in progress; its results will be in 2026-10-10-e2e2-*.md (second run pending, names not fixed). Build commands live in docs/BUILD.md; this file adds the order of work, the by-hand steps and the checks.
+Updated 2026-10-10 against master 3a55086 (gates 0 to 5 closed, gate 6 polish open); every branch listed in the first version of this file has been merged. Read docs/CLAIMS.md next to this file: it is the binding list of what may be said. A number in parentheses is followed by the file it comes from. "Not verified" means no code or benchmark file records it. Build commands live in docs/BUILD.md; this file adds the order of work, the by-hand steps and the checks. One blank remains for a phone measurement that is running now (Knowledge Bank replication on the latest build).
 
 The product is Ustaad. Code identifiers keep the old name (package `com.swarmos.app`, deep link `swarmos://pair`) until the final rename (docs/CONTRACTS.md section 10).
 
@@ -14,7 +14,7 @@ PC (Windows 11, Git Bash): JDK 17 at `C:\Program Files\Microsoft\jdk-17.0.20.101
 | B | 10BFAU14Q6000XR | 192.168.242.23:5555 |
 | C | 10BFAT216Z000XQ | 192.168.242.76:5555 |
 
-All three phones are iQOO I2501 on Android 16 and OriginOS 6 (CLAUDE.md). `bash scripts/adb-connect.sh` reconnects them. Phone B was reserved from 03:40 and released at f8ed057, so no run in the repository used three phones for a workload (docs/CLAIMS.md section 0, limit 2).
+All three phones are iQOO I2501 on Android 16 and OriginOS 6 (CLAUDE.md). `bash scripts/adb-connect.sh` reconnects them. Phone B was reserved from 03:40 and released at f8ed057; the second end-to-end run and the three-phone MemoryCloud run used all three phones (docs/CLAIMS.md section 0, limit 2).
 
 ## 2. Build
 
@@ -82,11 +82,11 @@ done
 |---|---|---:|---|
 | `Qwen3.5-4B-Q4_K_M.gguf` | chat (Choir, Data Union answers) | 2,740,937,888 | `00fe7986` |
 | `embeddinggemma-300M-Q8_0.gguf` | embedder (Data Union, saved answers) | 333,590,944 | `b5ce9d77` |
-| `Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf` | MemoryCloud large model, not needed for the script | 18,556,686,752 | `6c997b8a` |
+| `Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf` | MemoryCloud, demo step 4: only on the driving phone (C); the lenders get their weights over the link | 18,556,686,752 | `6c997b8a` |
 
 All from docs/models.md. A push takes 14 minutes per 2.7 GB file over wireless ADB (2026-10-10-inapp-llm.md); use the USB cable for the 30B file (over an hour wireless, docs/models.md). Do not load Gemma 4 E4B for the demo: 7 of 10 valid JSON outputs (2026-10-10-inapp-llm.md). EmbeddingGemma 2 does not load on llama.cpp v0.6.0 (docs/models.md). Models are pushed with adb; the in-app download with its SHA-256 check is unit-tested and has not run on a phone (docs/CLAIMS.md R17).
 
-Backend. The chat model runs on the Adreno GPU by default and falls back to the CPU build; the Models tab shows a GPU or CPU chip. One run each on phone C from cool: prefill 201.9 tok/s on the GPU against 71.6 on the CPU, first token 2.59 against 7.20 s, server memory 1032 against 5952 MB, decode 17.31 against 16.47 tok/s (2026-10-10-inapp-llm.md). Quote it as one run each. The end-to-end runs used the CPU build because the GPU server failed to start then (2026-10-10-e2e-choir.md, finding F1); the fix is merged (2026-10-10-inapp-llm.md). Retake the Data Union and throughput numbers on the GPU (docs/CLAIMS.md M2; second run pending).
+Backend. The chat model runs on the Adreno GPU by default and falls back to the CPU build; the Models tab shows a GPU or CPU chip. One run each on phone C from cool: prefill 201.9 tok/s on the GPU against 71.6 on the CPU, first token 2.59 against 7.20 s, server memory 1032 against 5952 MB, decode 17.31 against 16.47 tok/s (2026-10-10-inapp-llm.md). Quote it as one run each. The end-to-end runs used the CPU build because the GPU server failed to start then (2026-10-10-e2e-choir.md, finding F1); the fix is merged (2026-10-10-inapp-llm.md). The second run used the GPU on all three phones (2026-10-10-e2e2-swarm-throughput.md, 2026-10-10-e2e2-data-union.md).
 
 Open the Models tab and wait for both servers to read READY. If nothing is loaded the one primary button is "Load models". Load time is 4 to 6 s warm and 19 to 31 s cold (gate-2-inference-baseline.md); the GPU chat server loaded in 13.3 s warm and 24.2 s with a cold file cache on phone C (2026-10-10-inapp-llm.md). A killed server restarts itself once: READY again after 15.9 s and 17.4 s in the one test (2026-10-10-inapp-llm.md).
 
@@ -98,13 +98,13 @@ python scripts/make-demo-corpus.py --push-only
 
 The script imports Pillow at the top, so install `pillow reportlab` even for `--push-only`. It pushes to `/sdcard/Pictures/SwarmDemo` and `/sdcard/Documents/SwarmDemo` on each phone and asks MediaStore to rescan (12 files for A, 12 for B, 11 for C, counted in docs/demo-corpus/). The story: `IMG_2231.jpg` (the laptop bill) belongs on B, `Laptop_Extended_Warranty_Certificate.pdf` on A, C holds unrelated files including a Hindi note, and `Private/Salary_Slip_Sep2026.pdf` on B must stay withheld.
 
-Check B before the demo. The acceptance pair (photo on B, certificate on A) was not run in the first end-to-end run because the photo was on no phone (2026-10-10-e2e-data-union.md); the second run covers it (second run pending, 2026-10-10-e2e2-*.md). The equivalent pair across A and C was run.
+Check B before the demo. The acceptance pair (photo on B, certificate on A) ran in the second end-to-end run with Phone B asking: both were cited, the photo first (2026-10-10-e2e2-data-union.md, gate-4-private-data-union.md). It was not run from another phone. The equivalent pair across A and C was run.
 
 On each phone, by hand, after both servers read READY: Data tab, Photos row "Index"; Documents row "Pick folder", choose `Documents/SwarmDemo`, then "Index". The folder picker cannot be driven over adb. Folders and scans are private until you tap "Share with the swarm"; a folder named Private can never be shared (gate-4-private-data-union.md). To show the withheld count, leave one folder unshared. Read the chunk count on the Data tab: it must be above zero, with the real embedder name beside it (`embeddinggemma-300M-Q8_0`). Reference run: 10 to 11 chunks per phone, index runs 0.3 to 2.4 s, OCR 161 and 165 ms per image (2026-10-10-e2e-data-union.md).
 
 Index first, load models for a split later. Indexing refuses to start without a real embedder, but if the embed server stops during a run (a split, a memory kill) placeholder vectors can be indexed under the real key; this second-review finding is open (docs/review/2026-10-10-second-review.md [pdu] HIGH).
 
-Knowledge Bank. Data tab, "Knowledge bank", and "Save to knowledge bank" under a finished answer that a real chat model wrote and that cites a source. It is covered by unit tests and has NOT been installed on a phone (2026-10-10-knowledge-bank.md: "procedure, not yet run"). Do not put it in the live script until that procedure has run (second run pending).
+Knowledge Bank. Data tab, "Knowledge bank", and "Save to knowledge bank" under a finished answer that a real chat model wrote and that cites a source. It ran on two phones through debug routes (2026-10-10-e2e2-knowledge-bank.md): an explicit sync moved a shared card, the other phone answered from it in 35 ms with the author's phone stopped, a revoke stopped its use, a tampered copy was refused. Replication by itself within a minute was not observed in that run, and nothing was seen on a screen. A push after a shared save and a revoke was merged afterwards and is unit-tested only; a phone measurement is running now (BLANK, file to be named). Do not put it in the live script until that measurement exists.
 
 ## 7. Pairing and the Wi-Fi Direct group
 
@@ -118,7 +118,7 @@ Zero-setup path, debug builds only: all phones on one access point with the dev 
 
 Measured link (A and C, 200 MiB): Wi-Fi Direct 640.7 to 724.9 Mbps raw and 790 to 920 Mbps with 4 to 8 streams; through the access point 89.2 to 102.2 Mbps raw (2026-10-10-swarmlink-throughput.md). Older pair A and B, 100 MiB: Direct 305 to 503 and LAN 96 to 104 Mbps (2026-10-10-swarmlink-g1.md). Round trip: TCP echo averages 6.3 to 8.3 ms on Direct; a signed request through the app averages 20 to 28 ms (2026-10-10-swarmlink-throughput.md). B to C over Direct was 93.2 to 121.0 Mbps while other jobs ran and was not retaken quiet (2026-10-10-swarmlink-g1.md). The Wi-Fi standard of the Direct interface cannot be read, so it is not quoted.
 
-Check on screen: the Swarm tab lists two online peers; open one and "Measure again (100 MB)"; the Frequency row must equal the station's frequency. The status strip says "No internet" only when no network has validated internet, otherwise a plain "online" word (and the model downloader's byte count); it is not a measurement of all traffic (docs/CLAIMS.md PS2).
+Check on screen: the Swarm tab lists two online peers; open one and "Measure again (100 MB)"; the Frequency row must equal the station's frequency. For demo step 4 the Direct group is hosted by Phone C, the driver, with A and B as clients: the weights travel over it (C to A 680 Mbps, C to B 245 Mbps, round trip about 7 ms, group at 5765 MHz, formed in 1.1 s each, 2026-10-10-memorycloud-inapp.md). In that run the group was formed with debug routes and the dev secret; with the demo build host it from C through "Host over Wi-Fi Direct (5 GHz)" (not run). The status strip says "No internet" only when no network has validated internet, otherwise a plain "online" word (and the model downloader's byte count); it is not a measurement of all traffic (docs/CLAIMS.md PS2).
 
 ## 8. Pre-demo checklist
 
@@ -139,10 +139,10 @@ Run it the day before and one hour before.
 | Swarm formed | Two online peers with DIRECT | section 7 |
 | Demo build closed | Run the three curl checks in docs/BUILD.md (200, 401, 401) and write the result down | docs/BUILD.md |
 | One Data Union ask, PRD pair | "Where is the warranty bill for my laptop?" from A; B's bill and A's certificate both cited | docs/PRD.md R4.4 |
-| One Choir run on the demo build | Run `m2` once; a phone row that says FAKE or "No model loaded, not asked" means the chat model is not READY there | docs/CLAIMS.md CH11 |
-| One MemoryCloud split | Memory tab, 4B across two phones, then Stop; chat and embedder come back READY | 2026-10-10-memorycloud-inapp.md |
+| One Choir run on the demo build | Run `m3` once (it needed a second round in both second-run passes and the Choir was right in both; `m2` was wrong in both, 2026-10-10-e2e2-choir.md). A phone row that says FAKE or "No model loaded, not asked" means the chat model is not READY there | docs/CLAIMS.md CH11 |
+| One MemoryCloud split | Memory tab on Phone C: the 30B file across A and B. Do one cold load before the judges arrive (319 s) and keep the lenders' caches; time a fresh start after Stop with warm caches (only a re-plan, 65 s, was timed). Then Stop; chat and embedder come back READY on all three | 2026-10-10-memorycloud-inapp.md, gate-5-memorycloud.md |
 | One Verify | Settings, Audit log, "Verify": Chain OK. No phone run is recorded (docs/CLAIMS.md PS6) | shell/SettingsSheet.kt |
-| Choir scoreboard | Run all 20 once on cool phones, strict scorer; keep the stored result | choir/ChoirRuntime.kt |
+| Choir scoreboard | Do not run the 20-problem scoreboard shortly before the demo: it heated all three phones to Thermal Status 2 to 3 in eight minutes, and the demo runs two or three problems (gate-3-agent-choir.md) | gate-3-agent-choir.md |
 | Spares | Second charger, USB cables, a travel router | docs/PRD.md section 7 |
 | Office Kit mirroring | Try it. Not verified; no claim until it has been tried (docs/CLAIMS.md R20) | docs/DEMO.md |
 
@@ -168,9 +168,12 @@ Run it the day before and one hour before.
 | Memory tab: splitting is slower than one phone | By design for a model that fits one phone: 6.86 and 6.98 tok/s split against 10.80 and 14.69 alone | Say so; do not use it as a speed result | 2026-10-10-memorycloud-inapp.md |
 | Memory tab: a phone "may not fit" | The planner's estimate adds 1.5 GB per phone; it is an estimate | Pick the other phones or skip one | 2026-10-10-memorycloud-inapp.md |
 | 30B on one or two phones | One phone: no token in 134 s, 23 apps killed. Two phones: did not load, driver thrashed | Never run it live on fewer than three phones | gate-5-memorycloud.md |
+| First 30B start fails in about 12 s with "port 50052 is still in use" on a lender | A stale listener held the port; the teardown left nothing behind and the second start worked; cause not found | Press load again; if it repeats, stop everything and retry | 2026-10-10-memorycloud-inapp.md, gate-5-memorycloud.md |
+| The DEGRADED screen says "Re-plan with 3 phones" for a few seconds after a phone is lost | The count uses the phones the registry still lists online | The button works either way; wait a few seconds | gate-5-memorycloud.md |
+| Cached apps on the driver are killed during the split load (camera, search, messaging) | Memory pressure; Ustaad itself was not killed while in front | Expect it; keep Ustaad in front | gate-5-memorycloud.md |
 | Worker phone seems to have lost its models after a split | The worker stops its own chat and embedder to lend memory and restores them on stop or 10 s after the driver stops renewing; the lease is unit-tested only | Memory tab "Stop lending"; "Load models" if needed | 2026-10-10-memorycloud-inapp.md |
 | adb offline | Wireless transport dropped | `bash scripts/adb-connect.sh` | docs/CONTRACTS.md section 7 |
 
 ## 10. What is merged
 
-Everything the first version of this file called "not on master" is merged: the demo build, the Data Union privacy fixes, the Swarm link phase 2 (response authentication, pairing confirmation, local-address rule, failover, Bluetooth), the scheduler panel (embedded in the Swarm screen), MemoryCloud and ExpertMesh (an explanation screen), the strict Choir answer scorer (01f79a6), the GPU start fix (71f2359) and the Knowledge Bank prototype (41316c7). Open review items are in docs/review/2026-10-10-second-review.md and the visual defects in docs/design/qa/REPORT.md (17 defects at commit 71f2359; several fixed since, not re-shot).
+Everything the first version of this file called "not on master" is merged, as are the Choir JSON-fragment rejection and number rounding (08a205f) and the Knowledge Bank push after save and revoke (924e720, unit-tested only): the demo build, the Data Union privacy fixes, the Swarm link phase 2 (response authentication, pairing confirmation, local-address rule, failover, Bluetooth), the scheduler panel (embedded in the Swarm screen), MemoryCloud and ExpertMesh (an explanation screen), the strict Choir answer scorer (01f79a6), the GPU start fix (71f2359) and the Knowledge Bank prototype (41316c7). Open review items are in docs/review/2026-10-10-second-review.md and the visual defects in docs/design/qa/REPORT.md (17 defects at commit 71f2359; several fixed since, not re-shot).
