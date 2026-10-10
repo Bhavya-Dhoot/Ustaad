@@ -41,8 +41,9 @@ data class DocInfo(val docId: String, val uri: String, val title: String, val ki
  * cosine is brute force over that matrix. All access is serialised on [lock].
  */
 class PduStore(path: String) : IndexBacking {
-    private val lock = Any()
-    private val db: SQLiteConnection = BundledSQLiteDriver().open(path)
+    // internal: the knowledge bank (package kb) keeps its tables in this same database file and takes the same lock
+    internal val lock = Any()
+    internal val db: SQLiteConnection = BundledSQLiteDriver().open(path)
 
     private var ids = LongArray(0)
     private var matrix = FloatArray(0)

@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -53,11 +55,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.swarmos.app.kb.KbDraft
+import com.swarmos.app.kb.KbHitCard
+import com.swarmos.app.kb.SaveCardPanel
+import com.swarmos.app.kb.SavedAnswerBlock
 import com.swarmos.app.ui.CitedText
 import com.swarmos.app.ui.LineIcon
 import com.swarmos.app.ui.SwarmIcon
 import com.swarmos.app.ui.SwarmTextField
 import com.swarmos.app.ui.Hairline
+import com.swarmos.app.ui.hardShadow
 import com.swarmos.app.ui.PhoneToken
 import com.swarmos.app.ui.PrimaryButton
 import com.swarmos.app.ui.SecondaryButton
@@ -98,6 +105,8 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
     var opened by remember { mutableStateOf<String?>(null) }
     val busy = q != null && q?.phase != "done"
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
 
     // voice: tap the mic to speak the question. Only the on-device recognizer is used (same class as Agent Choir); no network fallback.
     var listening by remember { mutableStateOf(false) }
@@ -126,41 +135,67 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         PageHeader("Data Union", onBack)
+        // two lines, so a long question shows its start instead of scrolling it out of the box
         SwarmTextField(
             text, { text = it }, "Question",
             helper = voiceHelper, error = if (listening || !voiceOk) null else voiceMessage,
+            singleLine = false, minLines = 2, maxLines = 4,
             trailing = { MicButton(listening, voiceOk, ::onMic) },
         )
         PrimaryButton(
             if (busy) "Searching" else "Ask",
-            { val t = text.trim(); if (t.isNotEmpty()) PduEngine.scope.launch { PduEngine.ask(t) } },
+            {
+                val t = text.trim()
+                if (t.isNotEmpty()) {
+                    keyboard?.hide() // the answer and the sources are the point now, not the keyboard
+                    focus.clearFocus()
+                    PduEngine.scope.launch { PduEngine.ask(t) }
+                }
+            },
             Modifier.fillMaxWidth(), enabled = !busy && text.isNotBlank(),
         )
 
         val cur = q
         if (cur != null) {
             TimingStrip(cur)
-            if (cur.lexicalOnly) Tag("keyword search only on this phone, embedder not usable")
+            if (cur.lexicalOnly) Text("Keyword search only: this phone's embedding model is not loaded.", style = SwarmType.label.copy(color = SwarmColors.graphite))
 
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("Sources")
-                Spacer(Modifier.width(10.dp))
-                if (cur.sources.isNotEmpty()) Tag(if (cur.sources.size == 1) "1 match" else "${cur.sources.size} matches")
-            }
-            if (cur.sources.isEmpty()) {
-                if (cur.phase == "searching") { Skeleton(96.dp); Skeleton(96.dp) }
-                else Text("No phone found anything relevant.", style = SwarmType.body.copy(color = SwarmColors.graphite))
-            }
-            for (s in cur.sources) SourceCard(s) {
-                scope.launch { opened = PduEngine.openSource(s).let { r -> if (r.opened) "opened on ${if (s.local) "this phone" else s.deviceName}" else "could not open: ${r.error}" } }
-            }
-            if (cur.incomplete) IncompleteNotice(cur)
-            opened?.let { Text(it, style = SwarmType.mono.copy(color = SwarmColors.graphite)) }
-
-            AnswerBlock(cur) { n ->
+            // the answer first, directly under the timings; the sources it cites follow
+            val savedHit = cur.savedAnswer
+            if (savedHit != null) SavedAnswerBlock(savedHit) { PduEngine.scope.launch { PduEngine.ask(cur.text, useSaved = false) } }
+            else AnswerBlock(cur) { n ->
                 cur.sources.getOrNull(n - 1)?.let { s ->
                     scope.launch { opened = PduEngine.openSource(s).let { r -> if (r.opened) "opened on ${if (s.local) "this phone" else s.deviceName}" else "could not open: ${r.error}" } }
                 }
+            }
+            val draft = KbDraft.of(cur)
+            var saving by remember(cur.qid) { mutableStateOf(false) }
+            var savedMessage by remember(cur.qid) { mutableStateOf<String?>(null) }
+            if (draft != null && savedMessage == null) {
+                if (saving) SaveCardPanel(draft, onSaved = { savedMessage = it; saving = false }, onCancel = { saving = false })
+                else SecondaryButton("Save to knowledge bank", { saving = true }, Modifier.fillMaxWidth())
+            }
+            savedMessage?.let { Tag(it) }
+
+            if (cur.cards.isNotEmpty()) {
+                SectionTitle("From the knowledge bank")
+                for (h in cur.cards) KbHitCard(h)
+            }
+            if (savedHit == null) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    SectionTitle("Sources")
+                    Spacer(Modifier.width(10.dp))
+                    if (cur.sources.isNotEmpty()) Tag(if (cur.sources.size == 1) "1 match" else "${cur.sources.size} matches")
+                }
+                if (cur.sources.isEmpty()) {
+                    if (cur.phase == "searching") { Skeleton(96.dp); Skeleton(96.dp) }
+                    else Text("No phone found anything relevant.", style = SwarmType.body.copy(color = SwarmColors.graphite))
+                }
+                for (s in cur.sources) SourceCard(s) {
+                    scope.launch { opened = PduEngine.openSource(s).let { r -> if (r.opened) "opened on ${if (s.local) "this phone" else s.deviceName}" else "could not open: ${r.error}" } }
+                }
+                if (cur.incomplete) IncompleteNotice(cur)
+                opened?.let { Text(it, style = SwarmType.mono.copy(color = SwarmColors.graphite)) }
             }
             SecondaryButton("Query audit", onAudit, Modifier.fillMaxWidth())
         }
@@ -194,9 +229,9 @@ private fun TimingStrip(q: QueryUi) {
     Column(Modifier.fillMaxWidth()) {
         Hairline()
         FlowRow(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(pair("embed", ms(t.embedMs)), style = SwarmType.mono)
+            Text(pair("embed", if (q.lexicalOnly) "-" else ms(t.embedMs)), style = SwarmType.mono)
             Text(pair("search", ms(t.localSearchMs)), style = SwarmType.mono)
-            for (d in q.devices.filter { !it.local }) Text(pair(d.name, if (d.status == "waiting") "-" else ms(d.rttMs)), style = SwarmType.mono)
+            for (d in q.devices.filter { !it.local }) Text(pair(d.name, PeerTiming.text(d)), style = SwarmType.mono)
             Text(pair("first word", ms(t.ttftMs)), style = SwarmType.mono)
             Text(pair("total", ms(t.totalMs)), style = SwarmType.mono)
         }
@@ -221,7 +256,7 @@ private fun SourceCard(s: SourceUi, onOpen: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         Hairline()
         Spacer(Modifier.height(8.dp))
-        Text(s.hit.snippet, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp), maxLines = 6, overflow = TextOverflow.Ellipsis)
+        Text(s.hit.snippet, style = SwarmType.body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SwarmColors.graphite), maxLines = 3, overflow = TextOverflow.Ellipsis)
         if (s.localPrivate) {
             Spacer(Modifier.height(6.dp))
             Tag("private folder, this phone only")
@@ -255,7 +290,8 @@ private fun AnswerBlock(q: QueryUi, onCite: (Int) -> Unit) {
         // a model name only when a real chat model wrote (or is writing) the answer; there is no placeholder text to label any more
         if (q.model.isNotEmpty()) Tag(q.model)
     }
-    SwarmCard {
+    // the answer carries the emphasis: larger text and a hard offset shadow like the primary button; the sources below are quieter
+    SwarmCard(Modifier.padding(end = 3.dp, bottom = 3.dp).hardShadow(3.dp, SwarmShape)) {
         val note = q.note
         if (q.answer.isEmpty()) {
             when {
@@ -264,11 +300,24 @@ private fun AnswerBlock(q: QueryUi, onCite: (Int) -> Unit) {
                 else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Skeleton(18.dp); Skeleton(18.dp); Skeleton(18.dp) }
             }
         } else {
-            CitedText(q.answer, streaming = q.phase == "answering", onCite = onCite, cites = 1..q.sources.size)
+            CitedText(
+                q.answer, streaming = q.phase == "answering", onCite = onCite, cites = 1..q.sources.size,
+                style = SwarmType.body.copy(fontSize = 19.sp, lineHeight = 27.sp),
+            )
             if (note != null) {
                 Spacer(Modifier.height(8.dp))
                 Text(note, style = SwarmType.label.copy(color = SwarmColors.graphite))
             }
         }
+    }
+}
+
+/** What the timing strip prints for a peer: its round trip only when it answered, otherwise why there is none. */
+internal object PeerTiming {
+    fun text(d: DeviceResult): String = when (d.status) {
+        "ok" -> "${d.rttMs} ms"
+        "waiting" -> "-"
+        "offline" -> "away"
+        else -> "no reply"
     }
 }
