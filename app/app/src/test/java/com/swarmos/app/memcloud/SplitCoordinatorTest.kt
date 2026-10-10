@@ -205,7 +205,7 @@ class SplitCoordinatorTest {
     private lateinit var env: FakeEnv
     private lateinit var scope: CoroutineScope
     private lateinit var c: SplitCoordinator
-    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1, firstTokenStallMs = 600, tokenStallMs = 150, stallPollMs = 10)
+    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1, firstTokenStallMs = 600, tokenStallMs = 150, stallPollMs = 10, degradedRestoreMs = 400)
 
     @Before fun setUp() {
         env = FakeEnv()
@@ -671,6 +671,48 @@ class SplitCoordinatorTest {
         val before = env.probeCount["10.0.0.3:8787"] ?: 0
         awaitCall("a dozen more checks") { (env.probeCount["10.0.0.3:8787"] ?: 0) >= before + 12 }
         assertEquals(Phase.READY, c.state.value.phase)
+    }
+
+    // ---------- finding 6: DEGRADED does not hold this phone's own models for ever ----------
+
+    private fun degradeByLosingC() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.peerList = env.peerList.map { if (it.nodeId == "c") it.copy(away = true) else it }
+        awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+    }
+
+    @Test fun aSplitThatStaysDegradedGivesThisPhoneItsModelsBackAndSaysSo() {
+        degradeByLosingC()
+        assertEquals("not at once: a quick re-plan stays quick", 0, env.count("restoreLocal chat small.gguf"))
+        val s = awaitState("restored automatically") { st -> st.notices.any { it.contains("restored automatically") } }
+        assertEquals("the split is still DEGRADED, only this phone is put right", Phase.DEGRADED, s.phase)
+        assertEquals(1, env.count("restoreLocal chat small.gguf"))
+        assertEquals(1, env.count("restoreLocal embed embed.gguf"))
+        assertTrue(s.notices.single().startsWith("Phone A's own chat and embedding models were restored automatically after"))
+        assertTrue(s.notices.single().contains("with no re-plan"))
+        assertTrue(s.pendingRestore.isEmpty())
+        assertEquals("the lenders were released with it", 1, env.count("rpcStop 10.0.0.2:8787"))
+    }
+
+    @Test fun aReplanBeforeTheTimeIsUpCancelsTheAutomaticRestore() {
+        degradeByLosingC()
+        assertNull(c.replan())
+        awaitState("READY again") { it.phase == Phase.READY && it.phones.size == 2 }
+        runBlocking { delay(timing.degradedRestoreMs + 200) }
+        assertEquals(0, env.count("restoreLocal chat small.gguf"))
+        assertTrue(c.state.value.notices.isEmpty())
+    }
+
+    @Test fun aReplanAfterTheAutomaticRestoreStopsThePhonesModelsAgain() {
+        degradeByLosingC()
+        awaitState("restored automatically") { st -> st.notices.any { it.contains("restored automatically") } }
+        awaitCall("the release is over") { env.local[Role.CHAT]!!.state == ServerState.READY }
+        assertNull(c.replan())
+        val s = awaitState("READY again") { it.phase == Phase.READY && it.phones.size == 2 }
+        assertTrue("a new split starts with no old notice", s.notices.none { it.contains("restored automatically") })
+        // stops of the chat server: for the first load, the split server killed by DEGRADED, and the restored model again for the second load
+        assertEquals(3, env.count("stopLocal chat"))
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {

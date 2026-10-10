@@ -22,7 +22,11 @@ data class Lending(
 
 /** What the lender does to the phone, so the lease runs on a desk with a fake clock (RpcLenderTest) and on the phone through [AndroidLenderEnv]. */
 interface LenderEnv {
+    /** Wall-clock time; it can be stepped by the user or the network, so nothing that measures a duration uses it. */
     fun nowMs(): Long
+
+    /** Time since boot, never stepped: the lease is measured on this clock. */
+    fun elapsedMs(): Long
     fun selfName(): String
 
     /** Addresses rpc-server may bind to: Wi-Fi, hotspot and Direct interfaces from the link module's advertisable set, never cellular. */
@@ -95,7 +99,7 @@ class RpcLender(private val env: LenderEnv) {
     /** What ending the loan would bring back right now (for tests and the state route). */
     internal val restoring: List<RestoreItem> get() = restoreItems
 
-    fun leaseMsLeft(): Long? = if (_lending.value == null) null else (leaseUntilMs - env.nowMs()).coerceAtLeast(0)
+    fun leaseMsLeft(): Long? = if (_lending.value == null) null else (leaseUntilMs - env.elapsedMs()).coerceAtLeast(0)
 
     suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): StartResult {
         val bind = (req.bind ?: viaAddress)?.trim().orEmpty()
@@ -150,8 +154,8 @@ class RpcLender(private val env: LenderEnv) {
             if (stopped != null) stop("rpc-server did not start") // the servers this phone stopped for the loan come back now
             return StartResult.Ok(false)
         }
-        val now = env.nowMs()
-        leaseUntilMs = now + LEASE_MS
+        val now = env.nowMs() // wall clock, only for the "since" the screen shows
+        leaseUntilMs = env.elapsedMs() + LEASE_MS
         val since = if (sameBind) cur?.sinceMs ?: now else now
         _lending.value = Lending(fromNode, driverName, env.selfName(), bind, where, since, LEASE_MS)
         env.setActivity(ACTIVITY_OWNER, "Lending memory to $driverName.") { stop("stopped from the banner") }
@@ -167,7 +171,7 @@ class RpcLender(private val env: LenderEnv) {
             stop("rpc-server is not running")
             return RenewResult.Refused("rpc-server is not running")
         }
-        leaseUntilMs = env.nowMs() + LEASE_MS
+        leaseUntilMs = env.elapsedMs() + LEASE_MS
         return RenewResult.Ok(LEASE_MS)
     }
 
@@ -193,6 +197,6 @@ class RpcLender(private val env: LenderEnv) {
             stop("rpc-server stopped")
             return
         }
-        if (env.nowMs() >= leaseUntilMs) stop("lease of ${cur.leaseMs / 1000} s expired: ${cur.driverName} did not renew it")
+        if (env.elapsedMs() >= leaseUntilMs) stop("lease of ${cur.leaseMs / 1000} s expired: ${cur.driverName} did not renew it")
     }
 }

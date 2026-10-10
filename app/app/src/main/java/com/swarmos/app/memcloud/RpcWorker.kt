@@ -1,5 +1,6 @@
 package com.swarmos.app.memcloud
 
+import android.os.SystemClock
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.llm.LlamaRuntime
@@ -24,6 +25,7 @@ import java.io.File
 /** [LenderEnv] on the real phone. */
 object AndroidLenderEnv : LenderEnv {
     override fun nowMs() = System.currentTimeMillis()
+    override fun elapsedMs() = SystemClock.elapsedRealtime() // the lease must not shrink or grow when the wall clock is stepped
     override fun selfName() = AppGraph.registry.self.value.name
     override fun linkAddresses() = AndroidSplitEnv.linkAddresses()
     override fun peerName(nodeId: String?) = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == nodeId }?.info?.name

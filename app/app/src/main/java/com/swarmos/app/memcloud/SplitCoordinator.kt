@@ -8,6 +8,7 @@ import com.swarmos.app.llm.ServerState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -69,6 +70,8 @@ class SplitCoordinator(
         val stallPollMs: Long = 1_000,
         /** A serving split is degraded when a participant's rpc-server fails this many state checks in a row. */
         val probeFailLimit: Int = 3,
+        /** A split that stays DEGRADED this long with no re-plan gives this phone's own chat and embedding models back. */
+        val degradedRestoreMs: Long = 120_000,
     )
 
     companion object {
@@ -112,6 +115,10 @@ class SplitCoordinator(
 
     /** Consecutive failed rpc-server state checks per participant while serving. */
     private val probeFailures = ConcurrentHashMap<String, Int>()
+
+    /** Waits [Timing.degradedRestoreMs] in DEGRADED, then restores; [degradedNote] says so in the state. */
+    private var degradedJob: Job? = null
+    @Volatile private var degradedNote: String? = null
 
     @Volatile private var baselinePending: String? = null
 
@@ -307,6 +314,8 @@ class SplitCoordinator(
                 onAppStart()
                 val old = synchronized(lock) { opJob }
                 old?.cancel()
+                degradedJob?.cancel()
+                degradedNote = null
                 teardownAll()
                 _state.update { MemCloudState(phase = Phase.IDLE, baseline = it.baseline, smallModel = it.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = it.steps.takeLast(30) + if (unconfirmed.isEmpty()) "Stopped; chat and embedding servers restored" else "Stopped; ${unconfirmed.keys.sorted().joinToString { k -> peerName(k) }} did not answer, its servers will be restored when it does", updatedAtMs = env.nowMs()) }
             } finally {
@@ -322,6 +331,8 @@ class SplitCoordinator(
         val prev = _state.value
         loadParser = LoadLogParser()
         probeFailures.clear()
+        degradedJob?.cancel()
+        degradedNote = null
         _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
@@ -457,7 +468,8 @@ class SplitCoordinator(
         _state.update { it.copy(pendingRestore = pendingText(), notices = noticesText()) }
     }
 
-    private fun noticesText(): List<String> = unconfirmed.keys.sorted().map { "${peerName(it)} has not got its models back yet" }
+    private fun noticesText(): List<String> =
+        unconfirmed.keys.sorted().map { "${peerName(it)} has not got its models back yet" } + listOfNotNull(degradedNote)
 
     /** Calls every peer that has not confirmed, every [Timing.restoreRetryMs], until all have. Skips a peer that is in a split being started or is away. */
     private fun startRestoreRetry() {
@@ -693,6 +705,33 @@ class SplitCoordinator(
         if (!changed) return
         cancelGeneration()
         if (ownsChat) { env.stopLocal(Role.CHAT); ownsChat = false }
+        startDegradedRestore()
+    }
+
+    /**
+     * DEGRADED leaves this phone's own chat and embedding models stopped so that a re-plan is quick. If nobody acts for
+     * [Timing.degradedRestoreMs], the phone gets them back by itself (the same release as Stop) and the state says so; the split stays
+     * DEGRADED, and a re-plan after that stops them again. The release is the running operation, so a re-plan has to wait for it.
+     */
+    private fun startDegradedRestore() {
+        degradedJob?.cancel()
+        degradedJob = scope.launch {
+            delay(timing.degradedRestoreMs)
+            val run = synchronized(lock) {
+                if (_state.value.phase != Phase.DEGRADED || opJob?.isActive == true) return@synchronized null
+                scope.launch(start = CoroutineStart.LAZY) {
+                    withContext(NonCancellable) { teardownAll() } // a Stop during the release must not leave a peer half released
+                    if (_state.value.phase == Phase.DEGRADED) {
+                        val minutes = timing.degradedRestoreMs / 60_000.0
+                        val after = if (minutes >= 1) "%.0f minutes".format(minutes) else "${timing.degradedRestoreMs / 1000} seconds"
+                        val note = "${env.selfName()}'s own chat and embedding models were restored automatically after $after in DEGRADED with no re-plan."
+                        degradedNote = note
+                        _state.update { it.copy(notices = noticesText(), steps = (it.steps + note).takeLast(60), updatedAtMs = env.nowMs()) }
+                    }
+                }.also { opJob = it }
+            }
+            run?.start()
+        }
     }
 
     /** Refreshes the per-phone numbers (and the log view) in [state]. */

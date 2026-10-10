@@ -1,6 +1,8 @@
 package com.swarmos.app.memcloud
 
 import android.content.Context
+import android.os.Looper
+import android.util.Log
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.LinkRoute
@@ -207,7 +209,13 @@ object AndroidSplitEnv : SplitEnv {
         e.putString("restore", SwarmJson.encodeToString(p.restore))
         e.putString("peers", SwarmJson.encodeToString(p.peerAddrs))
         if (p.baselinePending == null) e.remove("baseline_pending") else e.putString("baseline_pending", p.baselinePending)
-        e.apply()
+        // The record of what is owed to other phones must be on disk when this returns, not queued: commit() waits for the write, so it
+        // runs only off the main thread (every caller is on the coordinator's IO scope); on the main thread apply() is the fallback.
+        if (Looper.myLooper() == Looper.getMainLooper()) e.apply()
+        else if (!e.commit()) {
+            Log.w("MemCloud", "the restore record was not written; trying once more")
+            if (!e.commit()) Log.e("MemCloud", "the restore record could not be written")
+        }
     }
 
     /** Link addresses a worker may bind rpc-server to: Wi-Fi, hotspot and Direct interfaces only (the link module's advertisable set), never cellular. */

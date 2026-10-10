@@ -12,6 +12,7 @@ import org.junit.Test
 /** A worker phone with a clock the test moves. */
 private class FakeLender : LenderEnv {
     var now = 1_000_000L
+    var elapsed = 50_000L
     val calls = mutableListOf<String>()
     var ready = false
     var bind: String? = null
@@ -21,6 +22,7 @@ private class FakeLender : LenderEnv {
     var links = listOf(LinkAddr("192.168.242.23", false), LinkAddr("192.168.49.1", true))
 
     override fun nowMs() = now
+    override fun elapsedMs() = elapsed
     override fun selfName() = "Phone A"
     override fun linkAddresses() = links
     override fun peerName(nodeId: String?) = if (nodeId == "c") "Phone C" else null
@@ -92,10 +94,10 @@ class RpcLenderTest {
 
     @Test fun theLoanEndsWhenTheLeaseRunsOutWhateverTheDriverHeartbeatSays() {
         start()
-        env.now += RpcLender.LEASE_MS - 1_000
+        env.elapsed += RpcLender.LEASE_MS - 1_000
         lender.tick()
         assertNotNull(lender.lending.value)
-        env.now += 2_000
+        env.elapsed += 2_000
         lender.tick()
         assertNull(lender.lending.value)
         assertFalse(env.ready)
@@ -108,13 +110,13 @@ class RpcLenderTest {
     @Test fun renewingExtendsTheLeaseFromNowNotFromTheOldEnd() {
         start()
         repeat(5) {
-            env.now += RpcLender.LEASE_MS - 2_000
+            env.elapsed += RpcLender.LEASE_MS - 2_000
             assertEquals(RpcLender.RenewResult.Ok(RpcLender.LEASE_MS), lender.renew("c"))
             lender.tick()
             assertNotNull("renewed loan still alive after ${it + 1} renewals", lender.lending.value)
         }
         assertEquals(RpcLender.LEASE_MS, lender.leaseMsLeft())
-        env.now += RpcLender.LEASE_MS + 1
+        env.elapsed += RpcLender.LEASE_MS + 1
         lender.tick()
         assertNull(lender.lending.value)
     }
@@ -185,7 +187,7 @@ class RpcLenderTest {
 
     @Test fun theServersALenderStoppedItselfComeBackWhenTheLeaseRunsOutEvenIfTheDriverSentNoList() {
         start(restore = emptyList(), stopOwn = true)
-        env.now += RpcLender.LEASE_MS + 1
+        env.elapsed += RpcLender.LEASE_MS + 1
         lender.tick()
         assertNull(lender.lending.value)
         assertTrue(env.calls.contains("restore chat small.gguf"))
@@ -255,6 +257,43 @@ class RpcLenderTest {
         // the loan holds the weights now, so memory is low and the phone is warm; the same driver starting again must not be refused
         env.thermal = 5
         assertEquals(RpcLender.StartResult.Ok(true), start(needMb = 7_000))
+    }
+
+    // ---------- finding 6: the lease runs on elapsed time, not on the wall clock ----------
+
+    @Test fun aWallClockStepForwardDoesNotEndALoanThatHasTimeLeft() {
+        start()
+        env.now += 3_600_000 // the user or the network sets the clock an hour ahead
+        env.elapsed += 1_000
+        lender.tick()
+        assertNotNull(lender.lending.value)
+        assertTrue(lender.leaseMsLeft()!! in (RpcLender.LEASE_MS - 1_100)..(RpcLender.LEASE_MS - 900))
+    }
+
+    @Test fun aWallClockStepBackwardDoesNotExtendALoan() {
+        start()
+        env.now -= 3_600_000
+        env.elapsed += RpcLender.LEASE_MS + 1
+        lender.tick()
+        assertNull("the lease ran out in real time whatever the clock says", lender.lending.value)
+        assertTrue(env.calls.contains("restore chat small.gguf"))
+    }
+
+    @Test fun renewingMeasuresTheNewLeaseOnElapsedTime() {
+        start()
+        env.elapsed += RpcLender.LEASE_MS - 500
+        env.now += 7 * 24 * 3_600_000L
+        assertEquals(RpcLender.RenewResult.Ok(RpcLender.LEASE_MS), lender.renew("c"))
+        assertEquals(RpcLender.LEASE_MS, lender.leaseMsLeft())
+        env.now -= 30L * 24 * 3_600_000
+        env.elapsed += RpcLender.LEASE_MS - 1
+        lender.tick()
+        assertNotNull(lender.lending.value)
+    }
+
+    @Test fun theLendingSinceStaysOnTheWallClock() {
+        start()
+        assertEquals(1_000_000L, lender.lending.value!!.sinceMs)
     }
 
     @Test fun theLendingActivityOwnerIsNotTheDrivers() {
