@@ -1,7 +1,12 @@
 package com.swarmos.app.link
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -140,7 +145,7 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
 
         Column {
             MetricRow("This phone", "${self.name}  ${self.ip}:${Ports.NODE}")
-            MetricRow("Pairing secret", Pairing.fingerprint(AppGraph.pairingSecret))
+            MetricRow("Pairing code", Pairing.code(AppGraph.pairingSecret))
             MetricRow("Internet validated", if (internet) "yes" else "no")
         }
 
@@ -286,7 +291,7 @@ fun PairingConfirmDialog() {
         text = {
             Text(
                 "This phone will take that swarm's pairing secret and join it${if (p.p2p != null) ", including its Wi-Fi Direct group" else ""}. " +
-                    "Check that ${p.name} shows the code ${Pairing.fingerprint(p.secret)}.",
+                    "Check that ${p.name} shows the code ${Pairing.code(p.secret)}.",
                 style = SwarmType.body,
             )
         },
@@ -297,6 +302,18 @@ fun PairingConfirmDialog() {
 
 // ------------------------------------------------------------------ host
 
+private fun copyPairingLink(ctx: Context, link: String) {
+    ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Ustaad pairing link", link))
+    Toast.makeText(ctx, "Pairing link copied", Toast.LENGTH_SHORT).show()
+}
+
+private fun sharePairingLink(ctx: Context, link: String, hostName: String) {
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+        .putExtra(Intent.EXTRA_SUBJECT, "Join $hostName on Ustaad")
+        .putExtra(Intent.EXTRA_TEXT, link)
+    ctx.startActivity(Intent.createChooser(send, "Share pairing link").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+}
+
 @Composable
 private fun HostPage(onBack: () -> Unit) {
     val hosting by LinkRuntime.hosting.collectAsStateWithLifecycle()
@@ -304,6 +321,7 @@ private fun HostPage(onBack: () -> Unit) {
     val peers by PeerLinks.peers.collectAsStateWithLifecycle()
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -336,7 +354,12 @@ private fun HostPage(onBack: () -> Unit) {
                     MetricRow("band", if (h.payload.p2p != null) listOfNotNull(direct.band, direct.frequencyMhz?.let { "$it MHz" }).joinToString("  ").ifEmpty { "-" } else "-")
                     MetricRow("address", h.payload.ips.joinToString("  ") + ":" + h.payload.port)
                     direct.formationMs?.let { MetricRow("group formed in", "$it", "ms") }
-                    MetricRow("secret", Pairing.fingerprint(h.payload.secret))
+                    MetricRow("pairing code", Pairing.code(h.payload.secret))
+                    Text("The other phone shows this code before it pairs. Without a camera, copy or share the link and paste it on the Join page.", style = SwarmType.body.copy(fontSize = 12.sp, color = Dim))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SecondaryButton("Copy link", { copyPairingLink(ctx, link) }, Modifier.weight(1f))
+                        SecondaryButton("Share link", { sharePairingLink(ctx, link, self.name) }, Modifier.weight(1f))
+                    }
                 }
             }
             SectionTitle("Joined")

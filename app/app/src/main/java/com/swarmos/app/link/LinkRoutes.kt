@@ -214,6 +214,12 @@ fun Route.linkRoutes() {
     // returns what it was sent: used to measure request throughput over any path, Bluetooth included
     post("/echo") { call.respond(mapOf("echo" to call.receiveText())) }
 
+    post("/direct/drop") {
+        if (debugOnly()) return@post
+        DirectLink.dropFromOutside()
+        call.respond(mapOf("dropped" to true))
+    }
+
     post("/fault") {
         if (debugOnly()) return@post
         val r = body<FaultRequest>() ?: return@post bad("body must be {\"blockedFrom\":[\"192.168.49.1\"]} (empty list clears)")

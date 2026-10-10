@@ -72,8 +72,11 @@ object Pairing {
     /** `DIRECT-xy-<name>` as required by WifiP2pConfig.Builder; at most 32 bytes. */
     fun directSsid(nodeId: String): String = "DIRECT-sw-${nodeId.take(8)}"
 
-    /** Short public fingerprint of a secret so two phones can compare "same secret" without showing it. */
+    /** First 8 hex characters of SHA-256(secret): short enough to read out, used to confirm the right host and to compare "same secret" without showing it. */
     fun fingerprint(secret: String): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(secret.toByteArray(Charsets.UTF_8))
-            .take(2).joinToString("") { "%02x".format(it) }
+            .take(4).joinToString("") { "%02x".format(it) }
+
+    /** The pairing code a person reads or types: the fingerprint in two groups of four ("4146 a9c0"). */
+    fun code(secret: String): String = fingerprint(secret).chunked(4).joinToString(" ")
 }

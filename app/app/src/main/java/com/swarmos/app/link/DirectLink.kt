@@ -271,6 +271,17 @@ object DirectLink {
         creds
     }
 
+    /**
+     * Test hook: remove the group at the system level and nothing else, as if it vanished from outside (the host left, the
+     * radio was reset). State and stored credentials are untouched, so [watch] has to notice and re-form it.
+     */
+    suspend fun dropFromOutside() {
+        val ctx = AppGraph.appContext
+        val mgr = manager(ctx)
+        val ch = channel(ctx, mgr)
+        if (groupInfo(mgr, ch) != null) runCatching { action("removeGroup") { mgr.removeGroup(ch, it) } }
+    }
+
     /** The user ended the group: leave it and forget the credentials so nothing re-forms it. */
     suspend fun stop() = lock.withLock {
         val ctx = AppGraph.appContext

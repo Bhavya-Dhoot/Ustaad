@@ -50,7 +50,8 @@ class PairingPayloadTest {
         val ssid = Pairing.directSsid("1a2b3c4d")
         assertTrue("WifiP2pConfig needs DIRECT-xy-", Regex("^DIRECT-[a-zA-Z0-9]{2}-.+").matches(ssid))
         assertTrue(ssid.toByteArray().size <= 32)
-        assertEquals(4, Pairing.fingerprint("x").length)
+        assertEquals(8, Pairing.fingerprint("x").length)
+        assertEquals(Pairing.fingerprint("x").take(4) + " " + Pairing.fingerprint("x").drop(4), Pairing.code("x"))
     }
 }
 
