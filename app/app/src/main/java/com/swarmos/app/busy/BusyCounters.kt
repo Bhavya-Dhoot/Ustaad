@@ -8,7 +8,7 @@ import java.util.Locale
 /** How one filler job ended. [Stopped] is the owner switching the mode off (or Ustaad stopping) mid-job. */
 enum class BusyOutcome { Done, Cancelled, Failed, Stopped }
 
-/** The answer of `GET /v1/sched/busy`: the switch, the state and the counters since the switch was last turned on. */
+/** The answer of `GET /v1/sched/busy`: the switch, the state, the Hammer switch and the counters since the switch was last turned on. */
 @Serializable
 data class BusyReport(
     val enabled: Boolean,
@@ -20,6 +20,8 @@ data class BusyReport(
     val secondsGenerating: Double,
     /** Share of the last 60 s (0.0 to 1.0) this phone spent generating filler. */
     val share60s: Double,
+    /** The Hammer switch of this phone is on: it does not drop to half duty when warm. */
+    val hammer: Boolean = false,
 ) {
     /** The counters as one plain line for Settings. */
     fun line(): String = String.format(
@@ -73,7 +75,7 @@ class BusyCounters(private val clock: () -> Long = { System.nanoTime() / 1_000_0
         prune(end)
     }
 
-    fun report(enabled: Boolean, state: BusyState): BusyReport = synchronized(lock) {
+    fun report(enabled: Boolean, state: BusyState, hammer: Boolean = false): BusyReport = synchronized(lock) {
         val now = clock()
         prune(now)
         val inFlight = if (runningSince >= 0) (now - runningSince).coerceAtLeast(0L) else 0L
@@ -90,6 +92,7 @@ class BusyCounters(private val clock: () -> Long = { System.nanoTime() / 1_000_0
             tokens = tokens,
             secondsGenerating = round3((generatingMs + inFlight) / 1000.0),
             share60s = round3((inWindow.toDouble() / WINDOW_MS).coerceIn(0.0, 1.0)),
+            hammer = hammer,
         )
     }
 

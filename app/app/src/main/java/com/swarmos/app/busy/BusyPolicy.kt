@@ -9,6 +9,7 @@ import com.swarmos.app.core.ThermalLevel
 enum class BusyState(val id: String, val text: String, val stripWord: String?) {
     Off("off", "off", null),
     WaitingForIdle("waiting_for_idle", "waiting for the phone to be idle", null),
+    HammerCooldown("hammer_cooldown", "resting for a moment after Hammer", "resting"),
     Running("running", "running", "busy"),
     HalfDuty("half_duty", "running at half duty (warm phone)", "busy half"),
     PausedHot("paused_hot", "paused, the phone is hot", "paused hot"),
@@ -37,6 +38,10 @@ data class BusyConditions(
     /** -1 when unknown. */
     val batteryPct: Int,
     val charging: Boolean,
+    /** The owner's Hammer switch on this phone: no half duty when warm. Every other rule still applies. */
+    val hammer: Boolean = false,
+    /** Milliseconds since Hammer was last switched off; [Long.MAX_VALUE] when it never was (or the switch-off ended with Keep busy). */
+    val sinceHammerOffMs: Long = Long.MAX_VALUE,
 )
 
 /** The rules of the mode, with no clock and no phone in them. */
@@ -59,12 +64,18 @@ object BusyPolicy {
     /** After the chat server died during a filler job: no filler until it has been READY this long. */
     const val SETTLE_AFTER_DEATH_MS = 300_000L
 
+    /** After Hammer is switched off: no filler for this long, then the normal rule applies again. Real work is never held by it. */
+    const val HAMMER_COOLDOWN_MS = 90_000L
+
     /**
      * The state the loop is in, in this order: switch off, no real chat model, the chat server not READY for [BusyConditions.modelSettleMs]
      * yet, Ustaad in the background (allowed there only while charging with battery optimisations ignored: the vendor OS
      * froze and killed Ustaad and its model servers minutes after screen-off), real work seen in the last [IDLE_BEFORE_MS],
-     * hot (thermal status 3 or more, the shared definition of too hot), battery under the floor while not charging, then half
-     * duty at thermal status 2, else full duty. An unknown battery (-1) does not pause.
+     * Hammer switched off less than [HAMMER_COOLDOWN_MS] ago, hot (thermal status 3 or more, the shared definition of too
+     * hot; it carries on by itself when the status is under 3 again), battery under the floor while not charging, then half
+     * duty at thermal status 2, else full duty. An unknown battery (-1) does not pause. With [BusyConditions.hammer] on only the
+     * half-duty step is skipped (status 2 runs at full duty); every rule above it, the pauses for real work, heat and battery
+     * included, applies as before, and the cool-down does not apply while Hammer is on.
      */
     fun stateFor(c: BusyConditions): BusyState = when {
         !c.switchOn -> BusyState.Off
@@ -72,9 +83,10 @@ object BusyPolicy {
         c.modelReadyForMs < c.modelSettleMs -> BusyState.PausedModelRestarted
         !c.appInFront && !(c.charging && c.batteryOptimizationIgnored) -> BusyState.PausedBackground
         c.idleMs < IDLE_BEFORE_MS -> BusyState.WaitingForIdle
+        !c.hammer && c.sinceHammerOffMs < HAMMER_COOLDOWN_MS -> BusyState.HammerCooldown
         ThermalLevel.isTooHot(c.thermalStatus) -> BusyState.PausedHot
         !c.charging && c.batteryPct in 0 until BATTERY_FLOOR_PCT -> BusyState.PausedBattery
-        ThermalLevel.isDegraded(c.thermalStatus) -> BusyState.HalfDuty
+        !c.hammer && ThermalLevel.isDegraded(c.thermalStatus) -> BusyState.HalfDuty
         else -> BusyState.Running
     }
 

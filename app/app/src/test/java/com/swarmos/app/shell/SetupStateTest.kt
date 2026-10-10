@@ -1,5 +1,6 @@
 package com.swarmos.app.shell
 
+import com.swarmos.app.busy.BusyPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -70,6 +71,25 @@ class SetupStateTest {
     fun keepBusyLineSaysWhetherTheModeRunsWithTheScreenOff() {
         assertEquals("Also runs with the screen off while charging.", keepBusyScreenOffLine(batteryExempt = true))
         assertEquals("Runs only while Ustaad is on screen.", keepBusyScreenOffLine(batteryExempt = false))
+    }
+
+    @Test
+    fun hammerButtonTextShowsWhetherHammerIsOn() {
+        assertEquals("Hammer: maximum usage", hammerButtonText(on = false))
+        assertEquals("Hammer is on. Tap to stop.", hammerButtonText(on = true))
+    }
+
+    @Test
+    fun hammerHelperLineIsPlainAndWarnsAboutHeat() {
+        assertEquals(
+            "Keeps this phone generating all the time it can, even when it is warm. Answers get slower and the phone gets hot. " +
+                "It pauses while the phone is too hot and carries on when it has cooled. " +
+                "After you stop it the phone rests for 90 seconds, then normal Keep busy continues. " +
+                "Hammer is off again whenever Ustaad restarts.",
+            HAMMER_HELPER_LINE,
+        )
+        assertTrue("the line names the real rest", HAMMER_HELPER_LINE.contains("${BusyPolicy.HAMMER_COOLDOWN_MS / 1000} seconds"))
+        assertFalse("no dashes in user text", listOf(hammerButtonText(true), hammerButtonText(false), HAMMER_HELPER_LINE).any { '\u2014' in it || '\u2013' in it })
     }
 
     @Test

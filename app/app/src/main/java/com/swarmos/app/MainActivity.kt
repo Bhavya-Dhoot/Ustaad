@@ -113,6 +113,8 @@ class MainActivity : ComponentActivity() {
         if (i?.hasExtra(EXTRA_AGENT_FILES) == true) AgentAccess.setFiles(i.getBooleanExtra(EXTRA_AGENT_FILES, false))
         // `--ez keepBusy true` turns the "Keep busy" mode on (false turns it off); persisted like the Settings switch
         if (i?.hasExtra(EXTRA_KEEP_BUSY) == true) BusyMode.setEnabled(i.getBooleanExtra(EXTRA_KEEP_BUSY, false))
+        // `--ez hammer true` turns Hammer on (and Keep busy with it); false turns Hammer off (90 s rest, Keep busy stays on); not persisted, off at every start
+        if (i?.hasExtra(EXTRA_HAMMER) == true) BusyMode.setHammer(i.getBooleanExtra(EXTRA_HAMMER, false))
         // `--ez leanSources true` gives the Data Union model fewer, better sources (false restores today's prompt); persisted in the pref pdu_lean_sources
         if (i?.hasExtra(EXTRA_LEAN_SOURCES) == true) com.swarmos.app.pdu.PduEngine.setLeanSources(i.getBooleanExtra(EXTRA_LEAN_SOURCES, false))
         // `--ez choirMajority true` lets a majority in round 1 skip round 2 (false restores today's policy); persisted in the pref choir_majority_skips_round2
@@ -140,6 +142,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_AGENT_KEY = "agentKey"
         const val EXTRA_AGENT_FILES = "agentFiles"
         const val EXTRA_KEEP_BUSY = "keepBusy"
+        const val EXTRA_HAMMER = "hammer"
         const val EXTRA_GALLERY = "gallery"
         const val EXTRA_GALLERY_PAGE = "galleryPage"
     }

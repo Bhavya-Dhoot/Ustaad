@@ -51,6 +51,8 @@ class BusyLoopTest {
     @Volatile private var server: ChatServer? = ChatServer(1, 10 * 60_000L)
     @Volatile private var on = true
     @Volatile private var front = true
+    @Volatile private var hammer = false
+    @Volatile private var hammerOffAt: Long? = null
     @Volatile private var external = false
     @Volatile private var prompts = listOf(prompt("p1"), prompt("p2"))
 
@@ -87,6 +89,8 @@ class BusyLoopTest {
             val restore: () -> Unit = { restoreCalls.incrementAndGet() }
             restore
         },
+        hammer = { hammer },
+        hammerOffAtMs = { hammerOffAt },
     )
 
     private fun report() = counters.report(true, states.lastOrNull() ?: BusyState.Off)
@@ -119,6 +123,59 @@ class BusyLoopTest {
         assertEquals(2_000L, loop().step())
         assertEquals(BusyState.HalfDuty, states.last())
         assertEquals(1, report().jobsDone)
+    }
+
+    @Test fun hammerRunsAWarmPhoneAtFullDutyWithOnlyTheMinimumGap() = runBlocking {
+        health = health!!.copy(thermalStatus = 2)
+        execNow = 60_000
+        hammer = true
+        assertEquals("a 2 s job, yet no rest", BusyLoop.MIN_GAP_MS, loop().step())
+        assertEquals(BusyState.Running, states.last())
+        assertEquals(1, report().jobsDone)
+        hammer = false
+        assertEquals("hammer off: the rest is as long as the job", 2_000L, loop().step())
+        assertEquals(BusyState.HalfDuty, states.last())
+    }
+
+    @Test fun noJobDuringTheCooldownAfterHammerAndTheNormalRuleAfterIt() = runBlocking {
+        execNow = 60_000
+        loopNow = 100_000
+        hammerOffAt = 100_000L - 10_000L
+        val l = loop()
+        assertEquals("polled like the other pauses", BusyLoop.SETTLE_POLL_MS, l.step())
+        assertEquals(BusyState.HammerCooldown, states.last())
+        assertTrue("no job was started", requests.isEmpty())
+        assertEquals("real work would get the slot at once", 0, exec.running)
+        loopNow = 100_000L + 79_999L   // 89.999 s after Hammer went off
+        assertEquals(BusyLoop.SETTLE_POLL_MS, l.step())
+        assertTrue(requests.isEmpty())
+        loopNow += 1               // 90 s
+        assertEquals("the normal rule again: full duty, minimum gap", BusyLoop.MIN_GAP_MS, l.step())
+        assertEquals(BusyState.Running, states.last())
+        assertEquals(1, requests.size)
+    }
+
+    @Test fun hammerSwitchedOnAgainDuringTheCooldownRunsAtOnce() = runBlocking {
+        execNow = 60_000
+        loopNow = 100_000
+        hammerOffAt = 95_000
+        val l = loop()
+        l.step()
+        assertEquals(BusyState.HammerCooldown, states.last())
+        hammer = true      // setHammer(true) also clears the moment
+        hammerOffAt = null
+        assertEquals(BusyLoop.MIN_GAP_MS, l.step())
+        assertEquals(BusyState.Running, states.last())
+        assertEquals(1, requests.size)
+    }
+
+    @Test fun hammerStillPausesAHotPhone() = runBlocking {
+        health = health!!.copy(thermalStatus = 3)
+        execNow = 60_000
+        hammer = true
+        assertEquals(10_000L, loop().step())
+        assertEquals(BusyState.PausedHot, states.last())
+        assertTrue("no job was started", requests.isEmpty())
     }
 
     @Test fun hotPhonePausesAndLooksAgainInTenSeconds() = runBlocking {
