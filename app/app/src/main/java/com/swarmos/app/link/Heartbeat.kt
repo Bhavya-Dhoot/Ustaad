@@ -23,50 +23,54 @@ data class PeerStatus(
     val missesTotal: Int = 0,
     val awayCount: Int = 0,
     val maxGapMs: Long = 0,
+    /** Last known state of the peer app: true in front, false in the background (from X-Swarm-Fg and POST /link/fg). */
+    val peerForeground: Boolean? = null,
+    /** Why the path is away, when known: the peer left the foreground (OriginOS freezes the app shortly after). */
+    val awayReason: String? = null,
+    /** Smoothed heartbeat round trip (EWMA, alpha 0.3); the path policy ranks small requests on this. */
+    val ewmaRttMs: Double? = null,
+    /** Transport failures seen on this path (requests that had to move to another path, probes that broke). */
+    val lossCount: Int = 0,
+    /** Receiver-timed Mbps of the last bulk probe on this path. */
+    val lastMbps: Double? = null,
 ) {
     val key: String get() = "$nodeId/${link.name}"
     val hostPort: String get() = "$ip:$port"
 }
 
-/**
- * The one place that decides which path carries traffic to a peer that has several (LAN, DIRECT, later BT).
- * [PeerLinks.pathPolicy] holds the active policy; callers never pick a transport themselves.
- */
-fun interface PathPolicy {
-    fun choose(paths: List<PeerStatus>): PeerStatus?
-}
-
-/** Default: the Wi-Fi Direct path when it is up, else any online path, else whatever exists. */
-object PreferDirectOnline : PathPolicy {
-    override fun choose(paths: List<PeerStatus>): PeerStatus? =
-        paths.firstOrNull { it.link == LinkType.DIRECT && it.state == LinkState.ONLINE }
-            ?: paths.firstOrNull { it.state == LinkState.ONLINE }
-            ?: paths.firstOrNull()
-}
 
 /**
  * Pure state machine behind the 1 Hz heartbeat: [missesToAway] consecutive misses mark the peer away,
  * the next success brings it back. Both calls return true when the state changed.
  */
 class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = LinkState.ONLINE) {
+    @get:Synchronized
     var state: LinkState = start
         private set
+    @get:Synchronized
     var misses: Int = 0
         private set
+    @get:Synchronized
     var rttMs: Double? = null
         private set
+    @get:Synchronized
     var lastSeenMs: Long = 0
         private set
+    @get:Synchronized
     var beats: Int = 0
         private set
+    @get:Synchronized
     var missesTotal: Int = 0
         private set
+    @get:Synchronized
     var awayCount: Int = 0
         private set
     /** Longest time between two successful heartbeats. */
+    @get:Synchronized
     var maxGapMs: Long = 0
         private set
 
+    @Synchronized
     fun onSuccess(rttMs: Double, nowMs: Long): Boolean {
         val changed = state != LinkState.ONLINE
         if (lastSeenMs > 0) maxGapMs = maxOf(maxGapMs, nowMs - lastSeenMs)
@@ -78,6 +82,7 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
         return changed
     }
 
+    @Synchronized
     fun onMiss(): Boolean {
         misses++
         missesTotal++
@@ -91,6 +96,7 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
     }
 
     /** The peer told us it is leaving (POST /link/bye). */
+    @Synchronized
     fun onBye(): Boolean {
         misses = missesToAway
         rttMs = null

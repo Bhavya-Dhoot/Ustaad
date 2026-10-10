@@ -2,6 +2,7 @@ package com.swarmos.app.link
 
 import androidx.compose.runtime.Composable
 import com.swarmos.app.SwarmModule
+import com.swarmos.app.AppGraph
 import io.ktor.server.routing.Route
 import kotlinx.coroutines.flow.StateFlow
 
@@ -15,6 +16,18 @@ object LinkModule : SwarmModule {
     /** True while any network has validated internet. The StatsBar reads this for its WAN indicator. */
     val internetValidated: StateFlow<Boolean> get() = InternetState.validated
 
+    /** Same as [NodeClient.hostFor] on the app's client: where to send a control request to [peerNodeId] right now. */
+    fun hostFor(peerNodeId: String): String? = AppGraph.nodeClient.hostFor(peerNodeId)
+
+    /**
+     * The peer's IP on the fastest bulk path (measured Mbps, Wi-Fi Direct before LAN until measured), or null when no Wi-Fi
+     * path to it is up. Bluetooth is never returned: it carries control traffic only. For llama.cpp RPC (MemoryCloud) and
+     * any other bulk socket the caller opens itself.
+     */
+    fun bestBulkAddress(peerNodeId: String): java.net.InetAddress? =
+        PeerLinks.candidates(peerNodeId, Use.BULK).firstOrNull { it.link != LinkType.BT }
+            ?.let { runCatching { java.net.InetAddress.getByName(it.ip) }.getOrNull() }
+
     /** `swarmos://pair?d=<base64url>` (or a raw payload): adopt the host's secret and reach it. */
-    fun handleDeepLink(uri: String) = LinkRuntime.handleDeepLink(uri)
+    fun handleDeepLink(uri: String, confirmed: Boolean = false) = LinkRuntime.handleDeepLink(uri, confirmed)
 }

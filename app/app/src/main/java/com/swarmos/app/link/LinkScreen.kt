@@ -1,18 +1,25 @@
 package com.swarmos.app.link
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -21,15 +28,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,16 +44,36 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.Ports
+import com.swarmos.app.ui.BackLink
+import com.swarmos.app.ui.DoodleConnector
+import com.swarmos.app.ui.HeroMetric
+import com.swarmos.app.ui.Hairline
+import com.swarmos.app.ui.MetricRow
+import com.swarmos.app.ui.PhoneNode
+import com.swarmos.app.ui.PhoneToken
+import com.swarmos.app.ui.PrimaryButton
+import com.swarmos.app.ui.ScreenHeader
+import com.swarmos.app.ui.SecondaryButton
+import com.swarmos.app.ui.SectionTitle
+import com.swarmos.app.ui.Stamp
+import com.swarmos.app.ui.SwarmCard
+import com.swarmos.app.ui.SwarmColors
+import com.swarmos.app.ui.SwarmIcon
+import com.swarmos.app.ui.SwarmShape
+import com.swarmos.app.ui.SwarmTextField
+import com.swarmos.app.ui.SwarmType
+import com.swarmos.app.ui.Tag
+import com.swarmos.app.ui.TopologyPanel
 import kotlinx.coroutines.launch
 
 private sealed interface Page {
@@ -63,6 +88,9 @@ private val RUNTIME_PERMISSIONS = arrayOf(
     Manifest.permission.ACCESS_FINE_LOCATION,
     Manifest.permission.CAMERA,
     Manifest.permission.POST_NOTIFICATIONS,
+    Manifest.permission.BLUETOOTH_SCAN,
+    Manifest.permission.BLUETOOTH_ADVERTISE,
+    Manifest.permission.BLUETOOTH_CONNECT,
 )
 
 /** The Swarm tab: home (topology and peers), host (QR), join (scanner), link detail (probe result). */
@@ -76,28 +104,22 @@ fun LinkScreen() {
         if (missing.isNotEmpty()) launcher.launch(missing.toTypedArray())
     }
     BackHandler(page != Page.Home) { page = Page.Home }
-    // no Surface above the tab content, so set the text colour here (works for dark and light themes)
-    Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface) {
-        when (val p = page) {
-            Page.Home -> HomePage(onHost = { page = Page.Host }, onJoin = { page = Page.Join }, onLink = { page = Page.Detail(it) })
-            Page.Host -> HostPage(onBack = { page = Page.Home })
-            Page.Join -> JoinPage(onBack = { page = Page.Home })
-            is Page.Detail -> DetailPage(p.key, onBack = { page = Page.Home })
-        }
+    when (val p = page) {
+        Page.Home -> HomePage(onHost = { page = Page.Host }, onJoin = { page = Page.Join }, onLink = { page = Page.Detail(it) })
+        Page.Host -> HostPage(onBack = { page = Page.Home })
+        Page.Join -> JoinPage(onBack = { page = Page.Home })
+        is Page.Detail -> DetailPage(p.key, onBack = { page = Page.Home })
     }
 }
 
 @Composable
 private fun PageColumn(content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         content()
     }
 }
 
-@Composable
-private fun Back(text: String, onBack: () -> Unit) {
-    Text("< $text", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 4.dp))
-}
+private val Dim get() = SwarmColors.graphite
 
 // ------------------------------------------------------------------ home
 
@@ -109,6 +131,7 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
     val results by LinkRuntime.results.collectAsStateWithLifecycle()
     val internet by InternetState.validated.collectAsStateWithLifecycle()
     val message by LinkRuntime.message.collectAsStateWithLifecycle()
+    val serverError by LinkRuntime.serverError.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var ip by remember { mutableStateOf("") }
 
@@ -116,121 +139,180 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
     val firstOnline = peers.firstOrNull { it.state == LinkState.ONLINE }
 
     PageColumn {
-        Text("Swarm", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("${online + 1} phones online, ${peers.count { it.state == LinkState.ONLINE }} links", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ScreenHeader("Swarm", "${online + 1} phones online, ${peers.count { it.state == LinkState.ONLINE }} links")
+        serverError?.let { Text(it, style = SwarmType.body, fontWeight = androidx.compose.ui.text.font.FontWeight.W700) }
+        KeptAwakeLine()
 
         Column {
-            MetricRow("This phone", "${self.name}  ${self.ip}:${com.swarmos.app.core.Ports.NODE}")
-            MetricRow("Pairing secret", Pairing.fingerprint(AppGraph.pairingSecret))
-            MetricRow("Internet validated", if (internet) "yes" else "no", if (internet) OkColor else MaterialTheme.colorScheme.onSurface)
+            MetricRow("This phone", "${self.name}  ${self.ip}:${Ports.NODE}")
+            MetricRow("Pairing code", Pairing.code(AppGraph.pairingSecret))
+            MetricRow("Internet validated", if (internet) "yes" else "no")
         }
 
         Topology(self.name, peers, results)
 
-        Text("Peers", style = MaterialTheme.typography.titleMedium)
-        if (peers.isEmpty()) Text("No peers yet. Phones on the same Wi-Fi appear here on their own.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        peers.forEach { PeerRow(it) { onLink(it.key) } }
-        rejected.forEach {
-            Text("${it.name ?: it.ip} at ${it.ip} rejected our signature (different pairing secret)", color = WarnColor)
-        }
-        message?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        SectionTitle("Peers")
+        if (peers.isEmpty()) Text("No peers yet. Phones on the same Wi-Fi appear here on their own.", style = SwarmType.body.copy(color = Dim))
+        peers.groupBy { it.nodeId }.values.forEach { PeerCard(it) { key -> onLink(key) } }
+        capacityLine(peers, results)?.let { Text(it, style = SwarmType.mono.copy(fontSize = 12.sp, color = Dim)) }
+        rejected.forEach { Text("${it.name ?: it.ip} at ${it.ip}: ${it.reason ?: "rejected our signature"}", style = SwarmType.body) }
+        message?.let { Text(it, style = SwarmType.body.copy(color = Dim)) }
 
-        PrimaryBtn("Host a swarm", onClick = onHost)
+        // the scheduler's load panel (tokens per second across the phones); it scrolls inside its own box
+        com.swarmos.app.sched.ThroughputPanel(Modifier.height(340.dp))
+
+        PrimaryButton("Host a swarm", onHost, Modifier.fillMaxWidth(), icon = SwarmIcon.Plus)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryBtn("Join", Modifier.weight(1f), onClick = onJoin)
-            SecondaryBtn("Measure link", Modifier.weight(1f), enabled = firstOnline != null) { firstOnline?.let { onLink(it.key) } }
+            SecondaryButton("Join", onJoin, Modifier.weight(1f), icon = SwarmIcon.Join)
+            SecondaryButton("Measure link", { firstOnline?.let { onLink(it.key) } }, Modifier.weight(1f), enabled = firstOnline != null, icon = SwarmIcon.Gauge)
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(ip, { ip = it.trim() }, Modifier.weight(1f), singleLine = true, label = { Text("Peer IP or ip:port") })
-            SecondaryBtn("Add", enabled = ip.isNotEmpty()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
+            SwarmTextField(ip, { ip = it.trim() }, "Peer IP or ip:port", Modifier.weight(1f), mono = true)
+            SecondaryButton("Add", {
                 val host = ip.substringBefore(':')
-                val port = ip.substringAfter(':', "").toIntOrNull() ?: com.swarmos.app.core.Ports.NODE
+                val port = ip.substringAfter(':', "").toIntOrNull() ?: Ports.NODE
                 scope.launch { LinkRuntime.addPeer(host, port) }
-            }
+            }, enabled = ip.isNotEmpty())
         }
     }
 }
 
+/** One phone with every path to it as a small tag: live round trip and the last measured Mbps. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PeerRow(p: PeerStatus, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Token(p.name)
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(p.name, color = peerAccent(p.name), fontWeight = FontWeight.Bold)
-                Text(p.state.name.lowercase(), color = stateColor(p.state), fontSize = 12.sp)
+private fun PeerCard(paths: List<PeerStatus>, onClick: (String) -> Unit) {
+    val ordered = paths.sortedBy { it.link }
+    val up = ordered.filter { it.state == LinkState.ONLINE }
+    val head = up.firstOrNull() ?: ordered.first()
+    val best = MeasuredPolicy().order(up, Use.SMALL).firstOrNull() ?: head
+    Column(Modifier.fillMaxWidth().clickable { onClick(best.key) }.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PhoneToken(head.name, 32.dp)
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(head.name, style = SwarmType.title)
+                Text(best.ip, style = SwarmType.mono.copy(fontSize = 12.sp, color = Dim))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("${p.ip}:${p.port}", style = MonoStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(p.link.name, style = MonoStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (up.isEmpty()) Stamp("Offline", caution = true, small = true)
+            else Column(horizontalAlignment = Alignment.End) {
+                val bat = head.health?.batteryPct?.takeIf { it >= 0 }?.let { "$it%" } ?: "-"
+                Text("${fmt1(best.rttMs)} ms", style = SwarmType.mono)
+                Text("${thermalLabel(head.health?.thermalStatus)}  $bat", style = SwarmType.mono.copy(fontSize = 12.sp, color = Dim))
             }
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(if (p.rttMs != null) "${fmt1(p.rttMs)} ms" else "-", style = MonoStyle)
-            val bat = p.health?.batteryPct?.takeIf { it >= 0 }?.let { "$it%" } ?: "-"
-            Text("${thermalLabel(p.health?.thermalStatus)}  $bat", style = MonoStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ordered.forEach { p ->
+                val text = buildString {
+                    append(p.link.name)
+                    if (p.state == LinkState.ONLINE) {
+                        p.ewmaRttMs?.let { append("  ${"%.0f".format(it)} ms") }
+                        p.lastMbps?.let { append("  ${"%.0f".format(it)} Mbps") }
+                    } else append("  away")
+                }
+                Tag(text)
+            }
         }
+        // why a path is away, when the phone says so: a backgrounded app is frozen by the OS and returns on its own
+        ordered.firstOrNull { it.state == LinkState.AWAY && it.awayReason != null }?.let {
+            val text = if (it.awayReason == "left the foreground") "${it.name} left the foreground; it rejoins by itself when the app is back in front"
+            else "${it.name}: ${it.awayReason}"
+            Text(text, style = SwarmType.body.copy(fontSize = 12.sp, color = Dim))
+        }
+        if (up.isNotEmpty() && head.peerForeground == false) Text("${head.name} is in the background and may be frozen soon", style = SwarmType.body.copy(fontSize = 12.sp, color = Dim))
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+    Hairline()
 }
 
+/** One line of capacity from measured values only: the best single path and, if one was measured, the multipath total. */
+private fun capacityLine(peers: List<PeerStatus>, results: List<TputResult>): String? {
+    val online = peers.filter { it.state == LinkState.ONLINE && it.lastMbps != null }
+    val best = online.maxByOrNull { it.lastMbps!! } ?: return null
+    val multi = results.firstOrNull { it.toNodeId == best.nodeId && it.link.contains('+') && it.mbpsReceiver != null }
+    return "Capacity to ${best.name}: ${"%.0f".format(best.lastMbps)} Mbps over ${best.link.name}" +
+        (multi?.let { "; ${"%.0f".format(it.mbpsReceiver)} Mbps over ${it.link} together" } ?: "")
+}
+
+/** The swarm drawing: this phone on top, every peer below it, one connector per peer labelled with measured numbers. */
 @Composable
 private fun Topology(selfName: String, peers: List<PeerStatus>, results: List<TputResult>) {
     val nodes = peers.groupBy { it.nodeId }.values.map { g ->
-        g.firstOrNull { it.link == LinkType.DIRECT && it.state == LinkState.ONLINE } ?: g.firstOrNull { it.state == LinkState.ONLINE } ?: g.first()
+        MeasuredPolicy().order(g.filter { it.state == LinkState.ONLINE }, Use.SMALL).firstOrNull() ?: g.first()
     }
-    val line = MaterialTheme.colorScheme.onSurface
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant
-    BoxWithConstraints(
-        Modifier.fillMaxWidth().height(230.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)),
-    ) {
-        val w = maxWidth
-        val h = maxHeight
-        val r = 22.dp
-        val selfX = w / 2
-        val selfY = 48.dp
-        val peerY = h - 56.dp
-        fun peerX(i: Int) = w * (i + 1) / (nodes.size + 1)
-
-        Canvas(Modifier.fillMaxSize()) {
+    TopologyPanel(Modifier.height(220.dp)) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val w = maxWidth
+            val selfC = DpOffset(w / 2, 36.dp)
+            val peerY = 160.dp
+            fun peerC(i: Int) = DpOffset(w * (i + 1) / (nodes.size + 1), peerY)
             nodes.forEachIndexed { i, p ->
-                val away = p.state != LinkState.ONLINE
-                drawLine(
-                    color = if (away) dim else line,
-                    start = Offset(selfX.toPx(), selfY.toPx()),
-                    end = Offset(peerX(i).toPx(), peerY.toPx()),
-                    strokeWidth = if (p.link == LinkType.DIRECT) 3.dp.toPx() else 1.5.dp.toPx(),
-                    pathEffect = if (away) PathEffect.dashPathEffect(floatArrayOf(10f, 10f)) else null,
+                val mbps = results.firstOrNull { it.toNodeId == p.nodeId && it.link == p.link.name && it.mbpsReceiver != null }?.mbpsReceiver
+                val label = listOfNotNull(mbps?.let { "${fmt1(it)} Mbps" }, p.rttMs?.let { "${fmt1(it)} ms" }, if (p.state == LinkState.AWAY) "away" else null).joinToString("\n")
+                DoodleConnector(
+                    selfC, peerC(i), Modifier.fillMaxSize(), label = label.ifEmpty { null }, dashed = p.state != LinkState.ONLINE,
+                    gap = 26.dp, startGap = 30.dp, labelAt = 0.62f, seed = 7 + i,
                 )
             }
-        }
-        Column(Modifier.offset(selfX - r - 20.dp, selfY - r), horizontalAlignment = Alignment.CenterHorizontally) {
-            Token(selfName, r * 2)
-            Text(selfName, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
-        }
-        nodes.forEachIndexed { i, p ->
-            Column(Modifier.offset(peerX(i) - r - 20.dp, peerY - r), horizontalAlignment = Alignment.CenterHorizontally) {
-                Token(p.name, r * 2)
-                Text(p.name, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            Box(Modifier.offset(selfC.x - 45.dp, selfC.y - 17.dp).width(90.dp), contentAlignment = Alignment.TopCenter) { PhoneNode(selfName) }
+            nodes.forEachIndexed { i, p ->
+                val c = peerC(i)
+                Box(Modifier.offset(c.x - 45.dp, c.y - 17.dp).width(90.dp), contentAlignment = Alignment.TopCenter) { PhoneNode(p.name, away = p.state != LinkState.ONLINE) }
             }
-            val mbps = results.firstOrNull { it.toNodeId == p.nodeId && it.link == p.link.name && it.mbpsReceiver != null }?.mbpsReceiver
-            val label = listOfNotNull(mbps?.let { "${fmt1(it)} Mbps" }, p.rttMs?.let { "${fmt1(it)} ms" }, if (p.state == LinkState.AWAY) "away" else null).joinToString("\n")
-            if (label.isNotEmpty()) {
-                Text(
-                    label, style = MonoStyle.copy(fontSize = 11.sp), color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier
-                        .offset(selfX + (peerX(i) - selfX) * 0.62f - 36.dp, selfY + (peerY - selfY) * 0.62f - 16.dp)
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 4.dp),
-                )
-            }
+            if (nodes.isEmpty()) Text("no peers", Modifier.offset(w / 2 - 28.dp, 150.dp), style = SwarmType.mono.copy(color = Dim))
         }
-        if (nodes.isEmpty()) Text("no peers", Modifier.offset(w / 2 - 28.dp, h - 70.dp), color = dim)
     }
 }
 
+/** Says whether the screen is held on, from the window flag the activity really set, and which Wi-Fi lock is held. */
+@Composable
+private fun KeptAwakeLine() {
+    val ctx = LocalContext.current
+    val fg by AppForeground.foreground.collectAsStateWithLifecycle()
+    val lock by WifiLocks.held.collectAsStateWithLifecycle()
+    var act = ctx
+    while (act is android.content.ContextWrapper && act !is android.app.Activity) act = act.baseContext
+    val flag = ((act as? android.app.Activity)?.window?.attributes?.flags ?: 0) and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+    val awake = flag && fg
+    Text(
+        if (awake) "Kept awake: the screen stays on while this app is in front. Wi-Fi lock ${lock.name.lowercase()}."
+        else "Not kept awake: the app is in the background, so the system may freeze it and peers will lose this phone.",
+        style = SwarmType.body.copy(fontSize = 12.sp, color = Dim),
+    )
+}
+
+/** Asks before a scanned or opened pairing code replaces this phone's secret (the debug extra `confirm` skips it). */
+@Composable
+fun PairingConfirmDialog() {
+    val pending by LinkRuntime.pendingPairing.collectAsStateWithLifecycle()
+    val p = pending ?: return
+    AlertDialog(
+        onDismissRequest = { LinkRuntime.cancelPairing() },
+        containerColor = SwarmColors.sheet,
+        title = { Text("Pair with ${p.name}?", style = SwarmType.title) },
+        text = {
+            Text(
+                "This phone will take that swarm's pairing secret and join it${if (p.p2p != null) ", including its Wi-Fi Direct group" else ""}. " +
+                    "Check that ${p.name} shows the code ${Pairing.code(p.secret)}.",
+                style = SwarmType.body,
+            )
+        },
+        confirmButton = { TextButton(onClick = { LinkRuntime.confirmPairing() }) { Text("Pair", color = SwarmColors.ink) } },
+        dismissButton = { TextButton(onClick = { LinkRuntime.cancelPairing() }) { Text("Cancel", color = SwarmColors.ink) } },
+    )
+}
+
 // ------------------------------------------------------------------ host
+
+private fun copyPairingLink(ctx: Context, link: String) {
+    ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Ustaad pairing link", link))
+    Toast.makeText(ctx, "Pairing link copied", Toast.LENGTH_SHORT).show()
+}
+
+private fun sharePairingLink(ctx: Context, link: String, hostName: String) {
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+        .putExtra(Intent.EXTRA_SUBJECT, "Join $hostName on Ustaad")
+        .putExtra(Intent.EXTRA_TEXT, link)
+    ctx.startActivity(Intent.createChooser(send, "Share pairing link").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+}
 
 @Composable
 private fun HostPage(onBack: () -> Unit) {
@@ -239,6 +321,7 @@ private fun HostPage(onBack: () -> Unit) {
     val peers by PeerLinks.peers.collectAsStateWithLifecycle()
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -251,41 +334,56 @@ private fun HostPage(onBack: () -> Unit) {
     }
 
     PageColumn {
-        Back("Swarm", onBack)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Host a swarm", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            if (hosting != null) Text("host active", color = OkColor, fontWeight = FontWeight.SemiBold)
-        }
+        BackLink(onBack)
+        ScreenHeader("Host a swarm") { if (hosting != null) Stamp("Host active") }
         val h = hosting
         if (h != null) {
             val link = remember(h.payload) { Pairing.toLink(h.payload) }
             val bmp = remember(link) { QrCode.bitmap(link).asImageBitmap() }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Token(self.name)
-                Text("${self.name} (coordinator)", fontWeight = FontWeight.SemiBold)
+            SwarmCard(owner = self.name) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PhoneToken(self.name, 32.dp)
+                        Column(Modifier.padding(start = 10.dp)) {
+                            Text("${self.name} (coordinator)", style = SwarmType.title)
+                            Text("Local node", style = SwarmType.mono.copy(fontSize = 12.sp, color = Dim))
+                        }
+                    }
+                    Image(bmp, "Pairing QR", Modifier.fillMaxWidth().aspectRatio(1f).background(Color.White))
+                    MetricRow("network", h.payload.p2p?.ssid ?: "current Wi-Fi")
+                    MetricRow("band", if (h.payload.p2p != null) listOfNotNull(direct.band, direct.frequencyMhz?.let { "$it MHz" }).joinToString("  ").ifEmpty { "-" } else "-")
+                    h.payload.ips.forEachIndexed { i, ip -> MetricRow(if (i == 0) "address" else "", "$ip:${h.payload.port}") }
+                    direct.formationMs?.let { MetricRow("group formed in", "$it", "ms") }
+                    MetricRow("pairing code", Pairing.code(h.payload.secret))
+                    Text("The other phone shows this code before it pairs. Without a camera, copy or share the link and paste it on the Join page.", style = SwarmType.body.copy(fontSize = 12.sp, color = Dim))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SecondaryButton("Copy link", { copyPairingLink(ctx, link) }, Modifier.weight(1f))
+                        SecondaryButton("Share link", { sharePairingLink(ctx, link, self.name) }, Modifier.weight(1f))
+                    }
+                }
             }
-            Image(bmp, "Pairing QR", Modifier.fillMaxWidth().aspectRatio(1f).background(androidx.compose.ui.graphics.Color.White))
-            Column {
-                MetricRow("network", h.payload.p2p?.ssid ?: "current Wi-Fi")
-                MetricRow("band", if (h.payload.p2p != null) (direct.band ?: "5 GHz") + (direct.frequencyMhz?.let { "  $it MHz" } ?: "") else "-")
-                MetricRow("address", h.payload.ips.joinToString("  ") + ":" + h.payload.port)
-                direct.formationMs?.let { MetricRow("group formed in", "$it ms") }
-                MetricRow("secret", Pairing.fingerprint(h.payload.secret))
+            SectionTitle("Joined")
+            val joined = peers.filter { it.state == LinkState.ONLINE }.groupBy { it.nodeId }.values
+            if (joined.isEmpty()) Text("waiting for a phone to scan", style = SwarmType.body.copy(color = Dim))
+            joined.forEach { g ->
+                val p = g.first()
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PhoneToken(p.name, 28.dp)
+                    Text(p.name, Modifier.weight(1f).padding(start = 10.dp), style = SwarmType.title)
+                    Tag(g.joinToString(" ") { it.link.name })
+                }
+                Hairline()
             }
-            val joined = peers.filter { it.state == LinkState.ONLINE }
-            Text("Joined", style = MaterialTheme.typography.titleMedium)
-            if (joined.isEmpty()) Text("waiting for a phone to scan", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            joined.forEach { PeerRow(it) {} }
-            SecondaryBtn("Stop hosting", Modifier.fillMaxWidth()) { LinkRuntime.stopHosting() }
+            SecondaryButton("Stop hosting", { LinkRuntime.stopHosting() }, Modifier.fillMaxWidth())
         } else {
             Text(
                 "A fresh pairing secret is made when hosting starts. Phones that scan the code adopt it; phones still on the old secret drop out of the list.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = SwarmType.body.copy(color = Dim),
             )
-            PrimaryBtn(if (busy) "Starting..." else "Host over Wi-Fi Direct (5 GHz)", enabled = !busy) { start(true) }
-            SecondaryBtn("Use current Wi-Fi instead", Modifier.fillMaxWidth(), enabled = !busy) { start(false) }
+            PrimaryButton(if (busy) "Starting..." else "Host over Wi-Fi Direct", { start(true) }, Modifier.fillMaxWidth(), enabled = !busy)
+            SecondaryButton("Use current Wi-Fi instead", { start(false) }, Modifier.fillMaxWidth(), enabled = !busy)
         }
-        (error ?: direct.error)?.let { Text(it, color = BadColor) }
+        (error ?: direct.error)?.let { Text(it, style = SwarmType.body) }
     }
 }
 
@@ -302,27 +400,30 @@ private fun JoinPage(onBack: () -> Unit) {
     var scanned by remember { mutableStateOf(false) }
 
     PageColumn {
-        Back("Swarm", onBack)
-        Text("Join a swarm", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        BackLink(onBack)
+        ScreenHeader("Join a swarm")
         if (cameraOk) {
-            QrScanner(Modifier.fillMaxWidth().height(320.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))) { text ->
-                scanned = true
-                LinkRuntime.handleDeepLink(text)
+            // the box clips the camera view to its rounded outline (a TextureView otherwise paints over the text below it)
+            Box(Modifier.fillMaxWidth().height(320.dp).clip(SwarmShape).border(1.5.dp, SwarmColors.ink, SwarmShape)) {
+                QrScanner(Modifier.fillMaxSize()) { text ->
+                    scanned = true
+                    LinkRuntime.handleDeepLink(text)
+                }
             }
-            Text("Point at the host phone's code", fontWeight = FontWeight.Medium)
+            Text("Point at the host phone's code", style = SwarmType.title)
         } else {
-            Text("The camera permission is needed to scan the host's code.")
-            PrimaryBtn("Allow camera") { camLauncher.launch(Manifest.permission.CAMERA) }
+            Text("The camera permission is needed to scan the host's code.", style = SwarmType.body)
+            PrimaryButton("Allow camera", { camLauncher.launch(Manifest.permission.CAMERA) }, Modifier.fillMaxWidth(), icon = SwarmIcon.Camera)
         }
-        OutlinedTextField(
-            manual, { manual = it }, Modifier.fillMaxWidth(), label = { Text("Paste swarmos://pair link or code") }, maxLines = 3,
-        )
-        SecondaryBtn("Pair with pasted code", Modifier.fillMaxWidth(), enabled = manual.isNotBlank()) { LinkRuntime.handleDeepLink(manual) }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Token(self.name)
-            Column {
-                Text(self.name, fontWeight = FontWeight.SemiBold)
-                Text(message ?: if (scanned) "Pairing..." else "Awaiting pairing payload", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SwarmTextField(manual, { manual = it }, "Paste the pairing link or code", mono = true, minLines = 3, maxLines = 3, singleLine = false)
+        SecondaryButton("Pair with pasted code", { LinkRuntime.handleDeepLink(manual) }, Modifier.fillMaxWidth(), enabled = manual.isNotBlank())
+        SwarmCard(owner = self.name) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                PhoneToken(self.name, 32.dp)
+                Column(Modifier.padding(start = 10.dp)) {
+                    Text(self.name, style = SwarmType.title)
+                    Text(message ?: if (scanned) "Pairing..." else "Awaiting pairing payload", style = SwarmType.mono.copy(fontSize = 12.sp, color = Dim))
+                }
             }
         }
     }
@@ -340,9 +441,9 @@ private fun DetailPage(key: String, onBack: () -> Unit) {
     var lastError by remember { mutableStateOf<String?>(null) }
 
     PageColumn {
-        Back("Swarm", onBack)
+        BackLink(onBack)
         if (session == null) {
-            Text("That link is gone.")
+            Text("That link is gone.", style = SwarmType.body)
             return@PageColumn
         }
         val st by session.status.collectAsStateWithLifecycle()
@@ -350,41 +451,41 @@ private fun DetailPage(key: String, onBack: () -> Unit) {
         val last = runs.firstOrNull()
         val measuring = progress?.peerKey == key
 
-        Text("Link ${tokenLetter(self.name)} to ${tokenLetter(st.name)}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Token(self.name); Text(self.name, color = peerAccent(self.name)); Text("to"); Token(st.name); Text(st.name, color = peerAccent(st.name))
+        ScreenHeader("Link ${tokenLetter(self.name)} to ${tokenLetter(st.name)}")
+        SwarmCard(owner = self.name) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PhoneToken(self.name, 30.dp); Text(self.name, style = SwarmType.mono)
+                Text("to", style = SwarmType.mono.copy(color = Dim))
+                PhoneToken(st.name, 30.dp); Text(st.name, style = SwarmType.mono)
+            }
         }
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(fmt1(last?.mbpsReceiver), style = MonoBig)
-            Text("Mbps", Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
-            last?.let { Text("${it.megabytes} MB in ${fmt1(it.receiverSeconds)} s", style = MonoStyle, modifier = Modifier.padding(bottom = 8.dp)) }
-        }
+        HeroMetric(fmt1(last?.mbpsReceiver), "Mbps", note = last?.let { "${it.megabytes} MB in ${fmt1(it.receiverSeconds)} s" })
         Column {
-            MetricRow("Round trip avg", last?.rtt?.let { "${"%.2f".format(it.avgMs)} ms" } ?: "-")
-            MetricRow("p95", last?.rtt?.let { "${"%.2f".format(it.p95Ms)} ms" } ?: "-")
-            MetricRow("min", last?.rtt?.let { "${"%.2f".format(it.minMs)} ms" } ?: "-")
-            MetricRow("max", last?.rtt?.let { "${"%.2f".format(it.maxMs)} ms" } ?: "-")
+            MetricRow("Round trip avg", last?.rtt?.let { "%.2f".format(it.avgMs) } ?: "-", "ms")
+            MetricRow("p95", last?.rtt?.let { "%.2f".format(it.p95Ms) } ?: "-", "ms")
+            MetricRow("min", last?.rtt?.let { "%.2f".format(it.minMs) } ?: "-", "ms")
+            MetricRow("max", last?.rtt?.let { "%.2f".format(it.maxMs) } ?: "-", "ms")
             MetricRow("Standard", last?.local?.standard ?: "-")
-            MetricRow("PHY speed", last?.local?.phyMbps?.let { "$it Mbps" } ?: "-")
-            MetricRow("Frequency", last?.local?.frequencyMhz?.let { "$it MHz" } ?: "-")
+            MetricRow("PHY speed", last?.local?.phyMbps?.toString() ?: "-", "Mbps")
+            MetricRow("Frequency", last?.local?.frequencyMhz?.toString() ?: "-", "MHz")
             MetricRow("Link type", st.link.name)
-            MetricRow("Heartbeat", "${st.state.name.lowercase()}  ${fmt1(st.rttMs)} ms")
+            MetricRow("Heartbeat", "${st.state.name.lowercase()}  ${fmt1(st.rttMs)}", "ms")
         }
         progress?.takeIf { it.peerKey == key }?.let {
             val pct = if (it.totalBytes > 0) (100 * it.doneBytes / it.totalBytes).toInt() else 0
-            Text(if (it.phase == "rtt") "Measuring round trip..." else "Sending $pct%", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (it.phase == "rtt") "Measuring round trip..." else "Sending $pct%", style = SwarmType.body.copy(color = Dim))
         }
-        lastError?.let { Text(it, color = BadColor) }
+        lastError?.let { Text(it, style = SwarmType.body) }
 
-        Text("Earlier runs", style = MaterialTheme.typography.titleMedium)
-        if (runs.isEmpty()) Text("none yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        runs.drop(0).take(6).forEach {
+        SectionTitle("Earlier runs")
+        if (runs.isEmpty()) Text("none yet", style = SwarmType.body.copy(color = Dim))
+        runs.take(6).forEach {
             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(it.time.substringAfter('T').take(8), style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(it.link + (it.local?.band?.let { b -> "  $b" } ?: ""), style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${fmt1(it.mbpsReceiver)} Mbps", style = MonoStyle)
+                Text(it.time.substringAfter('T').take(8), style = SwarmType.mono.copy(color = Dim))
+                Text(it.link + (it.local?.band?.let { b -> "  $b" } ?: ""), style = SwarmType.mono.copy(color = Dim))
+                Text("${fmt1(it.mbpsReceiver)} Mbps", style = SwarmType.mono)
             }
+            Hairline()
         }
 
         fun run(mb: Int) {
@@ -394,7 +495,7 @@ private fun DetailPage(key: String, onBack: () -> Unit) {
                 lastError = r.error
             }
         }
-        PrimaryBtn(if (measuring) "Measuring..." else "Measure again (100 MB)", enabled = !measuring) { run(100) }
-        SecondaryBtn("Quick check (10 MB)", Modifier.fillMaxWidth(), enabled = !measuring) { run(10) }
+        PrimaryButton(if (measuring) "Measuring..." else "Measure again (100 MB)", { run(100) }, Modifier.fillMaxWidth(), enabled = !measuring && st.link != LinkType.BT, icon = SwarmIcon.Gauge)
+        SecondaryButton("Quick check (10 MB)", { run(10) }, Modifier.fillMaxWidth(), enabled = !measuring && st.link != LinkType.BT)
     }
 }

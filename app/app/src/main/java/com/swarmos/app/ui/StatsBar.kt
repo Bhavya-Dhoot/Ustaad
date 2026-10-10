@@ -35,10 +35,10 @@ import com.swarmos.app.core.ThermalLevel
 
 /**
  * The one compact status strip at the top of every screen: phone token and name (tap to rename),
- * thermal state, battery, free memory, link standard and speed, and the "0 B TO INTERNET" stamp.
- * [wanBytes] is the count of bytes that left over a WAN link; the stamp is an outline while it is
- * zero and turns into a hatched caution with the real count otherwise. (No byte counter exists
- * yet, so callers pass 0.) From thermal status 3 up ([hot]) a hatched HOT stamp replaces it.
+ * thermal state, battery, free memory, link standard and speed, and an internet stamp: outline "No internet" when no network has
+ * validated internet, otherwise hatched "Online" with [wanBytes] (the model downloader's byte count) beside it when above zero.
+ * (The old "0 B to internet" wording claimed more than the counter measures.)
+ * From thermal status 3 up ([hot]) a hatched HOT stamp replaces it.
  */
 @Composable
 fun StatsBar(
@@ -48,6 +48,7 @@ fun StatsBar(
     wanBytes: Long = com.swarmos.app.llm.ModelStore.wanBytes.collectAsStateWithLifecycle().value,
 ) {
     val self by AppGraph.registry.self.collectAsStateWithLifecycle()
+    val internet by com.swarmos.app.link.LinkModule.internetValidated.collectAsStateWithLifecycle()
     val h by AppGraph.health.state.collectAsStateWithLifecycle()
     val level = ThermalLevel.of(h.thermalStatus)
     val battery = if (h.batteryPct < 0) "?" else "${h.batteryPct}%" + if (h.charging) " chg" else ""
@@ -60,6 +61,7 @@ fun StatsBar(
         freeMemory = ram,
         link = link,
         wanBytes = wanBytes,
+        internet = internet,
         onEditName = onEditName,
         modifier = modifier,
         hot = level.tooHot,
@@ -78,6 +80,7 @@ fun StatusStrip(
     onEditName: () -> Unit,
     modifier: Modifier = Modifier,
     hot: Boolean = false,
+    internet: Boolean = false,
 ) {
     Column(
         modifier
@@ -110,8 +113,11 @@ fun StatusStrip(
                             style = SwarmType.title.copy(fontSize = 15.sp, lineHeight = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                         if (hot) Stamp("Hot", caution = true, small = true)
-                        else if (wanBytes == 0L) Stamp("0 B to internet", small = true)
-                        else Stamp("$wanBytes B to internet", caution = true, small = true)
+                        else if (!internet) Stamp("No internet", small = true) // outline: no network has validated internet
+                        else {
+                            Stamp("Online", caution = true, small = true) // hatched: some network reaches the internet
+                            if (wanBytes > 0L) Text(formatWan(wanBytes), style = SwarmType.mono.copy(fontSize = 11.sp, color = SwarmColors.graphite), modifier = Modifier.padding(start = 6.dp))
+                        }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                         val style = SwarmType.mono.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SwarmColors.graphite)
@@ -124,6 +130,14 @@ fun StatusStrip(
             }
         }
     }
+}
+
+/** Downloaded bytes in plain units (the model downloader's counter, shown next to the Online stamp). */
+private fun formatWan(b: Long): String = when {
+    b >= 1_000_000_000 -> "%.1f GB".format(b / 1e9)
+    b >= 1_000_000 -> "%.1f MB".format(b / 1e6)
+    b >= 1_000 -> "%.0f kB".format(b / 1e3)
+    else -> "$b B"
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFFF6F7F5, widthDp = 384)

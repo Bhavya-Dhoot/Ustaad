@@ -87,7 +87,10 @@ class MainActivity : ComponentActivity() {
      * setup or change the model settings. `adb shell am start -n com.swarmos.app/.MainActivity --es name "Phone A"` names the node.
      */
     private fun applyIntent(i: Intent?) {
-        i?.data?.takeIf { it.scheme == "swarmos" }?.let { com.swarmos.app.link.LinkModule.handleDeepLink(it.toString()) }
+        // pairing link: asks for confirmation in every build; debug builds accept `--ez confirm true` so adb-driven tests need no tap
+        i?.data?.takeIf { it.scheme == "swarmos" }?.let {
+            com.swarmos.app.link.LinkModule.handleDeepLink(it.toString(), confirmed = BuildConfig.DEBUG && i.getBooleanExtra("confirm", false))
+        }
         if (!BuildConfig.DEBUG) return
         i?.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() }?.let { AppGraph.setNodeName(it) }
         // `--ez setupDone true` marks the first-run setup done (false shows it again), so phones can be driven over adb
@@ -155,4 +158,5 @@ private fun SwarmRoot(galleryPage: Int, onLeaveGallery: () -> Unit) {
     }
 
     if (showSettings) SettingsSheet(onDismiss = { showSettings = false })
+    com.swarmos.app.link.PairingConfirmDialog() // a scanned or injected pairing code asks before it replaces the secret
 }

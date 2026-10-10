@@ -8,7 +8,7 @@ import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
 
-enum class LinkType { LAN, DIRECT }
+enum class LinkType { LAN, DIRECT, BT }
 
 /** One IPv4 address on one local interface. */
 data class LocalLink(val ifName: String, val address: String, val prefix: Int) {
@@ -47,6 +47,24 @@ object LinkRoute {
     fun findLocalFor(peerIp: String, links: List<LocalLink> = localLinks()): LocalLink? =
         links.firstOrNull { sameSubnet(it.address, peerIp, it.prefix) }
 
+    /**
+     * Peers are only ever on the local network: RFC 1918 private ranges (the Wi-Fi Direct group 192.168.49.x is inside
+     * 192.168/16) and IPv4 link-local. Anything else, WAN addresses included, is never contacted or remembered.
+     */
+    fun isLocalAddress(ip: String): Boolean {
+        val p = ip.split('.')
+        if (p.size != 4) return false
+        val v = p.map { it.toIntOrNull() ?: return false }
+        if (v.any { it !in 0..255 }) return false
+        return when {
+            v[0] == 10 -> true
+            v[0] == 172 && v[1] in 16..31 -> true
+            v[0] == 192 && v[1] == 168 -> true
+            v[0] == 169 && v[1] == 254 -> true
+            else -> false
+        }
+    }
+
     fun typeFor(peerIp: String, links: List<LocalLink> = localLinks()): LinkType =
         findLocalFor(peerIp, links)?.type ?: LinkType.LAN
 
@@ -71,6 +89,7 @@ object LinkRoute {
         val local = findLocalFor(peerIp)
         val s = Socket()
         try {
+            LinkTuning.apply(s)
             if (local != null) {
                 val net = ctx?.let { c ->
                     val cm = c.getSystemService(ConnectivityManager::class.java)

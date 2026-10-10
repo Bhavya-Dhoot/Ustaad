@@ -8,6 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.Socket
 
+private const val SECRET = "test-secret"
+
 class PairingPayloadTest {
     private val payload = PairingPayload(
         name = "Phone A", nodeId = "1a2b3c4d", ips = listOf("192.168.242.89", "192.168.49.1"), port = 8797,
@@ -48,7 +50,8 @@ class PairingPayloadTest {
         val ssid = Pairing.directSsid("1a2b3c4d")
         assertTrue("WifiP2pConfig needs DIRECT-xy-", Regex("^DIRECT-[a-zA-Z0-9]{2}-.+").matches(ssid))
         assertTrue(ssid.toByteArray().size <= 32)
-        assertEquals(4, Pairing.fingerprint("x").length)
+        assertEquals(8, Pairing.fingerprint("x").length)
+        assertEquals(Pairing.fingerprint("x").take(4) + " " + Pairing.fingerprint("x").drop(4), Pairing.code("x"))
     }
 }
 
@@ -135,10 +138,10 @@ class LinkRouteTest {
 
 class TputLoopbackTest {
     @Test fun probeMeasuresBytesAndRttOverRealSockets() {
-        val server = TputServer(0)
+        val server = TputServer(0, { SECRET })
         val port = server.start()
         try {
-            val client = TputClient { Socket("127.0.0.1", port) }
+            val client = TputClient({ SECRET }) { Socket("127.0.0.1", port) }
 
             val rtt = client.rtt(50)
             assertEquals(50, rtt.n)

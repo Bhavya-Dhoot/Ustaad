@@ -48,7 +48,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class SwarmService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var wakeLock: PowerManager.WakeLock? = null
-    private var wifiLock: WifiManager.WifiLock? = null
+    private var wifiLock: Boolean? = null
     private var server: NodeServer? = null
     private var startJob: Job? = null
     private val tornDown = AtomicBoolean(false)
@@ -138,15 +138,16 @@ class SwarmService : Service() {
                 .apply { setReferenceCounted(false); acquire() }
         }
         if (wifiLock == null) {
-            wifiLock = applicationContext.getSystemService(WifiManager::class.java)
-                .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "swarmos:wifi")
-                .apply { setReferenceCounted(false); acquire() }
+            // the Wi-Fi lock is managed by link/WifiLocks (low latency while in front with a swarm, high perf otherwise);
+            // this service only decides when it is held at all ([ServicePolicy.holdLocks])
+            com.swarmos.app.link.WifiLocks.start(applicationContext)
+            wifiLock = true
         }
     }
 
     @Synchronized
     private fun releaseLocks() {
-        wifiLock?.takeIf { it.isHeld }?.release()
+        if (wifiLock != null) com.swarmos.app.link.WifiLocks.stop()
         wifiLock = null
         wakeLock?.takeIf { it.isHeld }?.release()
         wakeLock = null
