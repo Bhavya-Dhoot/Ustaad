@@ -23,10 +23,11 @@ data class BusyReport(
     /** The Hammer switch of this phone is on: it does not drop to half duty when warm. */
     val hammer: Boolean = false,
 ) {
-    /** The counters as one plain line for Settings. */
+    /** The counters as one plain line for Settings. Failed jobs are named only when there were some. */
     fun line(): String = String.format(
-        Locale.US, "%,d %s done, %,d stopped by real work, %,d tokens, %.0f s generating.",
-        jobsDone, if (jobsDone == 1) "job" else "jobs", jobsCancelled, tokens, secondsGenerating,
+        Locale.US, "%,d %s done, %,d stopped by real work, %s%,d tokens, %.0f s generating.",
+        jobsDone, if (jobsDone == 1) "job" else "jobs", jobsCancelled,
+        if (jobsFailed > 0) String.format(Locale.US, "%,d failed, ", jobsFailed) else "", tokens, secondsGenerating,
     )
 }
 
