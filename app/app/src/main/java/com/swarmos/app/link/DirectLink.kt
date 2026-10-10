@@ -233,7 +233,11 @@ object DirectLink {
                 }
                 delay(200)
             }
-            if (owner == null || local == null) throw P2pException(-3, "did not join group ${creds.ssid} within 30 s")
+            if (owner == null || local == null) {
+                // the negotiation is still pending in the framework and keeps scanning the radio (300 to 670 ms spikes on the LAN): end it
+                runCatching { action("cancelConnect") { mgr.cancelConnect(ch, it) } }
+                throw P2pException(-3, "did not join group ${creds.ssid} within 30 s")
+            }
             val ms = (System.nanoTime() - t0) / 1_000_000
             val f = g?.let { frequencyOf(it) }
             _state.value = DirectState(
@@ -351,29 +355,42 @@ object DirectLink {
  * Decides when a phone with no Wi-Fi Direct group should join one, with no QR and no tap: when a paired peer is heard
  * (Bluetooth advertisement or a Wi-Fi path) that hosts a group. Credentials come from this phone's stored client
  * credentials, or from the peer: `GET /v1/link/p2p-creds` returns them sealed with the pairing secret ([SecretBox]).
+ * When this phone and the peer both host a group, the smaller node id keeps hosting and the other joins ([RendezvousPolicy]).
  */
 object DirectRendezvous {
     private const val TAG = "SwarmLink"
-    private val lastTry = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    internal val policy = RendezvousPolicy()
     private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
 
     suspend fun onPairedPeerHeard(nodeId: String, hostsDirect: Boolean) {
         val st = DirectLink.state.value
-        if (st.phase == "up" || st.phase == "starting") return
         val stored = DirectLink.stored()
-        if (!hostsDirect && stored?.role != "client") return
-        val now = System.currentTimeMillis()
-        if (now - (lastTry[nodeId] ?: 0) < 20_000 || !busy.compareAndSet(false, true)) return
-        lastTry[nodeId] = now
+        val selfId = AppGraph.registry.self.value.nodeId
+        val step = policy.decide(selfId, nodeId, st.role, st.phase, hostsDirect, stored?.role == "client")
+        if (step == RendezvousStep.SKIP || !busy.compareAndSet(false, true)) return
+        policy.noteTry(nodeId)
         try {
+            if (step == RendezvousStep.YIELD_AND_JOIN) {
+                // both phones host: the smaller node id keeps its group, this one tears its own down (and forgets it, so the
+                // watch loop does not re-create it) and joins the other's
+                Log.i(TAG, "rendezvous: $nodeId hosts too and has the smaller node id; closing our group to join it")
+                LinkRuntime.stopDirect()
+            }
             // the host's current credentials first (it may have made a new group with a new passphrase since the last join:
             // measured, a stored passphrase that is stale keeps the client in "starting" for ever); the stored ones when it cannot be asked
-            val creds = fetchCreds(nodeId) ?: stored?.takeIf { it.role == "client" }?.let { P2pCreds(it.ssid, it.pass) } ?: return
+            val creds = fetchCreds(nodeId) ?: DirectLink.stored()?.takeIf { it.role == "client" }?.let { P2pCreds(it.ssid, it.pass) }
+            if (creds == null) {
+                policy.onJoinFailed(nodeId)
+                return
+            }
             Log.i(TAG, "rendezvous: joining ${creds.ssid} because $nodeId was heard")
             val owner = DirectLink.join(creds)
+            policy.onJoined(nodeId)
             // reach the owner over the new group; the heartbeat session for DIRECT starts from here
             PeerLinks.connect(owner, com.swarmos.app.core.Ports.NODE)
         } catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException) throw t
+            policy.onJoinFailed(nodeId)
             Log.w(TAG, "rendezvous join failed: ${t.message}")
         } finally {
             busy.set(false)
