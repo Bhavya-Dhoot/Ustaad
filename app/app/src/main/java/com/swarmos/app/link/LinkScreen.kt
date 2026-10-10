@@ -158,8 +158,9 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
         rejected.forEach { Text("${it.name ?: it.ip} at ${it.ip}: ${it.reason ?: "rejected our signature"}", style = SwarmType.body) }
         message?.let { Text(it, style = SwarmType.body.copy(color = Dim)) }
 
-        // the scheduler's load panel (tokens per second across the phones); it scrolls inside its own box
-        com.swarmos.app.sched.ThroughputPanel(Modifier.height(340.dp))
+        // the scheduler's load panel (tokens per second across the phones); it sizes itself, so no fixed height here
+        // (its run buttons are secondary by default: "Host a swarm" below is this screen's one primary button)
+        com.swarmos.app.sched.ThroughputPanel()
 
         PrimaryButton("Host a swarm", onHost, Modifier.fillMaxWidth(), icon = SwarmIcon.Plus)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
