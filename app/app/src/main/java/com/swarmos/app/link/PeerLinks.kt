@@ -33,6 +33,7 @@ class PeerSession(initial: PeerStatus) {
     internal val tracker = HeartbeatTracker()
     @PublishedApi internal val probing = AtomicInteger(0)
     internal var job: Job? = null
+    internal val listing = PathListing()
 
     internal fun update(f: (PeerStatus) -> PeerStatus) = _status.update(f)
 }
@@ -400,8 +401,11 @@ object PeerLinks {
     internal fun ewma(prev: Double?, sample: Double, alpha: Double = 0.3): Double =
         if (prev == null) sample else prev + alpha * (sample - prev)
 
+    private fun listed(st: PeerStatus, now: Long): Boolean = sessions[st.key]?.listing?.update(st.link, st.state, now) ?: true
+
     private fun publish() {
-        _peers.value = sessions.values.map { it.status.value }.sortedWith(compareBy({ it.name }, { it.link }))
+        val now = System.currentTimeMillis()
+        _peers.value = sessions.values.map { it.status.value }.filter { listed(it, now) }.sortedWith(compareBy({ it.name }, { it.link }))
     }
 
     /** Keep AppGraph.registry in step: one entry per node, address = how we reach it, away only when every link is away. */
