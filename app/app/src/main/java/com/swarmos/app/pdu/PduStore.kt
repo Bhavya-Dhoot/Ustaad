@@ -182,6 +182,17 @@ class PduStore(path: String) : IndexBacking {
         ) { DocInfo(it.getText(0), it.getText(1), it.getText(2), it.getText(3), SharePolicy.effectivePrivate(it.getText(5), it.getLong(4) == 1L)) }.firstOrNull()
     }
 
+    /**
+     * True when any indexed file with this title is private (its folder is not shared, or it is a Private folder). A title is not
+     * unique, so one private match is enough; the knowledge bank uses this to decide whether a source may leave the phone.
+     */
+    fun anyPrivateTitled(title: String): Boolean = synchronized(lock) {
+        query(
+            "SELECT d.folder, COALESCE(f.isPrivate,1) FROM docs d LEFT JOIN folders f ON f.folder=d.folder WHERE d.title=?",
+            { it.bindText(1, title) },
+        ) { SharePolicy.effectivePrivate(it.getText(0), it.getLong(1) == 1L) }.any { it }
+    }
+
     /** Every file the index knows about, so an explicit re-index can read them all again after the wipe. */
     fun allDocRefs(): List<DocRef> = synchronized(lock) {
         query("SELECT uri, title, kind, folder, lastModified, dateMs FROM docs ORDER BY title", {}) {

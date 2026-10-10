@@ -177,26 +177,42 @@ internal fun AskPage(onBack: () -> Unit, onAudit: () -> Unit) {
             }
             savedMessage?.let { Tag(it) }
 
-            if (cur.cards.isNotEmpty()) {
+            val otherCards = cur.cards.filter { it.entry.card.id != savedHit?.entry?.card?.id }
+            if (otherCards.isNotEmpty()) {
                 SectionTitle("From the knowledge bank")
-                for (h in cur.cards) KbHitCard(h)
+                for (h in otherCards) KbHitCard(h)
             }
-            if (savedHit == null) {
+            val open = { s: SourceUi ->
+                scope.launch { opened = PduEngine.openSource(s).let { r -> if (r.opened) "opened on ${if (s.local) "this phone" else s.deviceName}" else "could not open: ${r.error}" } }
+                Unit
+            }
+            // once the answer is done the sources it cites come first; the others are listed as searched, not as support
+            val split = SourceSplit.of(cur)
+            if (cur.sources.isEmpty()) {
+                SectionTitle("Sources")
+                if (cur.phase == "searching") { Skeleton(96.dp); Skeleton(96.dp) }
+                else Text("No phone found anything relevant.", style = SwarmType.body.copy(color = SwarmColors.graphite))
+            }
+            if (split.cited.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     SectionTitle("Sources")
                     Spacer(Modifier.width(10.dp))
-                    if (cur.sources.isNotEmpty()) Tag(if (cur.sources.size == 1) "1 match" else "${cur.sources.size} matches")
+                    Tag(
+                        when {
+                            savedHit != null -> "cited by the saved answer"
+                            cur.phase != "done" -> if (split.cited.size == 1) "1 match" else "${split.cited.size} matches"
+                            else -> "${split.cited.size} cited"
+                        },
+                    )
                 }
-                if (cur.sources.isEmpty()) {
-                    if (cur.phase == "searching") { Skeleton(96.dp); Skeleton(96.dp) }
-                    else Text("No phone found anything relevant.", style = SwarmType.body.copy(color = SwarmColors.graphite))
-                }
-                for (s in cur.sources) SourceCard(s) {
-                    scope.launch { opened = PduEngine.openSource(s).let { r -> if (r.opened) "opened on ${if (s.local) "this phone" else s.deviceName}" else "could not open: ${r.error}" } }
-                }
-                if (cur.incomplete) IncompleteNotice(cur)
-                opened?.let { Text(it, style = SwarmType.mono.copy(color = SwarmColors.graphite)) }
+                for (s in split.cited) SourceCard(s) { open(s) }
             }
+            if (split.rest.isNotEmpty()) {
+                SectionTitle("Also searched")
+                for (s in split.rest) SourceCard(s) { open(s) }
+            }
+            if (cur.incomplete && savedHit == null) IncompleteNotice(cur)
+            opened?.let { Text(it, style = SwarmType.mono.copy(color = SwarmColors.graphite)) }
             SecondaryButton("Query audit", onAudit, Modifier.fillMaxWidth())
         }
     }
@@ -256,7 +272,7 @@ private fun SourceCard(s: SourceUi, onOpen: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         Hairline()
         Spacer(Modifier.height(8.dp))
-        Text(s.hit.snippet, style = SwarmType.body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SwarmColors.graphite), maxLines = 3, overflow = TextOverflow.Ellipsis)
+        if (s.hit.snippet.isNotBlank()) Text(s.hit.snippet, style = SwarmType.body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SwarmColors.graphite), maxLines = 3, overflow = TextOverflow.Ellipsis)
         if (s.localPrivate) {
             Spacer(Modifier.height(6.dp))
             Tag("private folder, this phone only")
@@ -293,6 +309,7 @@ private fun AnswerBlock(q: QueryUi, onCite: (Int) -> Unit) {
     // the answer carries the emphasis: larger text and a hard offset shadow like the primary button; the sources below are quieter
     SwarmCard(Modifier.padding(end = 3.dp, bottom = 3.dp).hardShadow(3.dp, SwarmShape)) {
         val note = q.note
+        val missing = MissingPhones.line(q.devices)
         if (q.answer.isEmpty()) {
             when {
                 note != null -> Text(note, style = SwarmType.body.copy(color = SwarmColors.graphite))
@@ -309,6 +326,33 @@ private fun AnswerBlock(q: QueryUi, onCite: (Int) -> Unit) {
                 Text(note, style = SwarmType.label.copy(color = SwarmColors.graphite))
             }
         }
+        if (missing != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(missing, style = SwarmType.label.copy(color = SwarmColors.ink))
+        }
+    }
+}
+
+/** The one line in the answer area when a phone did not answer: which one, so a gap in the sources is not mistaken for "nothing there". */
+internal object MissingPhones {
+    fun line(devices: List<DeviceResult>): String? {
+        val names = devices.filter { !it.local && it.status != "ok" && it.status != "waiting" }.map { it.name }
+        return when (names.size) {
+            0 -> null
+            1 -> "${names[0]} did not answer"
+            else -> names.dropLast(1).joinToString(", ") + " and " + names.last() + " did not answer"
+        }
+    }
+}
+
+/** The sources a finished answer cites ([n] markers) and the rest, which were searched but not cited. Before the answer is done, and for a saved answer, every source counts as cited. */
+internal object SourceSplit {
+    class Split(val cited: List<SourceUi>, val rest: List<SourceUi>)
+
+    fun of(q: QueryUi): Split {
+        if (q.phase != "done" || q.savedAnswer != null) return Split(q.sources, emptyList())
+        val numbers = KbDraft.cited(q.answer, q.sources.size).toSet()
+        return Split(q.sources.filter { it.n in numbers }, q.sources.filter { it.n !in numbers })
     }
 }
 

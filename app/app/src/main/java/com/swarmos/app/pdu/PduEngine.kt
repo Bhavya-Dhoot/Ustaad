@@ -444,7 +444,9 @@ object PduEngine {
         val saved = if (useSaved) kb.hits.firstOrNull()?.takeIf { KbSearch.answersByItself(it) } else null
         if (saved != null) {
             _query.value = QueryUi(
-                qid, text, "done", cards = kb.hits, savedAnswer = saved, timings = Timings(embedMs = kb.embedMs, totalMs = now() - t0),
+                qid, text, "done", cards = kb.hits, savedAnswer = saved,
+                sources = KbSearch.sourcesOf(saved.entry.card), // the files the saved text cites, numbered as it numbers them
+                timings = Timings(embedMs = kb.embedMs, totalMs = now() - t0),
                 auditHash = AppGraph.audit.append(
                     "pdu.ask_saved", JsonObject(mapOf("qid" to JsonPrimitive(qid), "card" to JsonPrimitive(saved.entry.card.id))),
                 ).hash,
@@ -627,6 +629,8 @@ object PduEngine {
 
     /** Local citation: open here. Remote citation: ask the owning phone to open it on its own screen. */
     suspend fun openSource(src: SourceUi): PduOpenResult {
+        // a source listed with a saved answer is a name and a date, not a file this phone can ask for
+        if (src.hit.uriHash.isEmpty()) return PduOpenResult(false, "none", error = "the file is on ${src.deviceName}; open it there")
         if (src.local) return openLocal(src.hit.uriHash)
         val peer = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == src.deviceId }
             ?: return PduOpenResult(false, "none", error = "${src.deviceName} is not in the registry")

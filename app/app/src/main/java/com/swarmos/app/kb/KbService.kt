@@ -68,6 +68,13 @@ class KbService(
     /** Appends an audit entry and returns its hash. */
     private val audit: (kind: String, payload: JsonObject) -> String,
     private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * Whether this phone itself holds the source as a private file. A source counts as private when the caller says so
+     * or when this says so: the caller can make a card more private, never less.
+     */
+    private val isPrivateSource: (KbSource) -> Boolean = { false },
+    /** Something other phones should hear about changed (a card was shared, a shared card was revoked): start a sync now. */
+    private val onChange: () -> Unit = {},
 ) {
     // ---- the owner's side -----------------------------------------------------------------------------------
 
@@ -81,7 +88,10 @@ class KbService(
         if (a.isEmpty() || a.length > KbLimits.MAX_ANSWER) return KbSave.Refused("The answer is empty or longer than ${KbLimits.MAX_ANSWER} characters")
         if (sources.isEmpty()) return KbSave.Refused("A card needs at least one source")
         if (sources.size > KbLimits.MAX_SOURCES) return KbSave.Refused("A card holds at most ${KbLimits.MAX_SOURCES} sources")
-        val clipped = sources.map { it.copy(phone = it.phone.take(KbLimits.MAX_FIELD), title = it.title.take(KbLimits.MAX_FIELD)) }
+        val clipped = sources.map {
+            val priv = it.priv || isPrivateSource(it) // decided here, from this phone's own files, for the button and the debug route alike
+            it.copy(phone = it.phone.take(KbLimits.MAX_FIELD), title = it.title.take(KbLimits.MAX_FIELD), priv = priv)
+        }
         if (share && clipped.any { it.priv }) return KbSave.Refused("A source is in a private folder, so this card cannot be shared")
         if (backing.all().size >= KbLimits.MAX_CARDS) return KbSave.Refused("The knowledge bank is full (${KbLimits.MAX_CARDS} cards)")
         val createdMs = clock()
@@ -92,6 +102,7 @@ class KbService(
         val card = KbCard(id, q, a, clipped, selfId(), selfName().take(KbLimits.MAX_FIELD), createdMs, auditHash, KbCanon.macOf(secret(), content, auditHash))
         val e = KbEntry(card, tier, null, everShared = share)
         backing.put(e)
+        if (share) onChange()
         return KbSave.Saved(e)
     }
 
@@ -99,11 +110,15 @@ class KbService(
     @Synchronized
     fun setShared(id: String, share: Boolean): String? {
         val e = backing.entry(id) ?: return "No such card"
-        if (share) KbPolicy.whyNotShareable(e, selfId())?.let { return it }
-        else if (e.card.authorId != selfId()) return "Only the author can change who this card is shared with"
+        if (share) {
+            KbPolicy.whyNotShareable(e, selfId())?.let { return it }
+            // a folder may have become private since the card was saved
+            if (e.card.sources.any { isPrivateSource(it) }) return "A source of this card is in a private folder, so it stays on this phone"
+        } else if (e.card.authorId != selfId()) return "Only the author can change who this card is shared with"
         val tier = if (share) KbTier.SWARM else KbTier.PRIVATE
         backing.put(e.copy(tier = tier, everShared = e.everShared || share))
         audit(if (share) "kb.share" else "kb.unshare", JsonObject(mapOf("id" to JsonPrimitive(id))))
+        if (share) onChange()
         return null
     }
 
@@ -116,6 +131,7 @@ class KbService(
         backing.put(e.copy(revokedMs = now))
         if (e.everShared) backing.putTombstone(KbCanon.tombstone(secret(), id, selfId(), now))
         audit("kb.revoke", JsonObject(mapOf("id" to JsonPrimitive(id))))
+        if (e.everShared) onChange()
         return null
     }
 
@@ -147,19 +163,23 @@ class KbService(
     fun lacksTombstone(id: String) = backing.tombstone(id) == null
 
     /** Stores what is pushed (after checking it), then answers with what was asked for. */
-    fun handleCards(c: KbCards): KbCards {
+    fun handleCards(c: KbCards, from: String = ""): KbCards {
         val rejected = ArrayList<String>()
-        var accepted = 0
+        var gotCards = 0
+        var gotTombstones = 0
         var bytes = 0
         for (t in c.tombstones.take(KbLimits.MAX_CARDS_PER_SYNC)) {
             val why = ingestTombstone(t)
-            if (why == null) accepted++ else rejected += "tombstone ${t.id.take(8)}: $why"
+            if (why == null) gotTombstones++ else rejected += "tombstone ${t.id.take(8)}: $why"
         }
         for (card in c.cards.take(KbLimits.MAX_CARDS_PER_SYNC)) {
             bytes += SwarmJson.encodeToString(card).length
             val why = if (bytes > KbLimits.MAX_BYTES_PER_SYNC) "over the byte limit for one sync" else ingestCard(card)
-            if (why == null) accepted++ else rejected += "card ${card.id.take(8)}: $why"
+            if (why == null) gotCards++ else rejected += "card ${card.id.take(8)}: $why"
         }
+        val accepted = gotCards + gotTombstones
+        // the receiving side writes its own line too (counts only, never card text)
+        if (accepted > 0 || rejected.isNotEmpty()) auditSync(from, KbSyncResult(gotCards = gotCards, gotTombstones = gotTombstones, rejected = rejected), "received")
         if (c.cards.size > KbLimits.MAX_CARDS_PER_SYNC) rejected += "${c.cards.size - KbLimits.MAX_CARDS_PER_SYNC} cards over the count limit for one sync"
         return KbCards(
             cards = cardsToSend(c.want), tombstones = tombstonesToSend(c.wantTombstones), accepted = accepted, rejected = rejected,
@@ -204,11 +224,11 @@ class KbService(
     }
 
     /** The audit line for a finished sync; the card texts are not logged. */
-    fun auditSync(peerId: String, r: KbSyncResult) {
+    fun auditSync(peerId: String, r: KbSyncResult, side: String = "started") {
         audit(
             "kb.sync",
             JsonObject(mapOf(
-                "peer" to JsonPrimitive(peerId), "sent" to JsonPrimitive(r.sentCards + r.sentTombstones),
+                "peer" to JsonPrimitive(peerId), "side" to JsonPrimitive(side), "sent" to JsonPrimitive(r.sentCards + r.sentTombstones),
                 "got" to JsonPrimitive(r.gotCards + r.gotTombstones), "rejected" to JsonPrimitive(r.rejected.size),
             )),
         )
