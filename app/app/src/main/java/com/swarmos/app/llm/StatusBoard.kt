@@ -6,6 +6,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicInteger
 
+private val RESTARTING_IN = Regex("""Restarting in \d+ s\.""")
+
+/** "Restarting in 2 s." is true only until the backoff is over; while the server loads again the banner says "Restarting now." */
+internal fun String.restartingNow(): String = replace(RESTARTING_IN, "Restarting now.")
+
 /** True when this server answers requests with a real model: READY and a model file behind it (RPC has none). */
 internal fun ServerStatus.isRealReady(): Boolean = state == ServerState.READY && modelPath != null
 

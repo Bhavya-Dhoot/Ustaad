@@ -41,6 +41,21 @@ class GpuLaunchTest {
         assertEquals("a\nb", ProcInfo.errorDetail(listOf("a", "", "  ", "b")))
     }
 
+    @Test fun theExitLineStaysWhenTheLogIsLongBecauseItIsAppendedLast() {
+        val log = (1..300).map { "log $it " + "y".repeat(60) }
+        val d = ProcInfo.errorDetail(log + "[exit] killed by signal 9 after 159 s")
+        assertTrue(d.length <= ProcInfo.ERROR_DETAIL_MAX)
+        assertTrue(d.endsWith("[exit] killed by signal 9 after 159 s"))
+    }
+
+    @Test fun restartBannerStopsPromisingABackoffOnceTheServerLoadsAgain() {
+        assertEquals(
+            "The server was killed (killed by signal 9). Restarting now.",
+            "The server was killed (killed by signal 9). Restarting in 2 s.".restartingNow(),
+        )
+        assertEquals("Running on the CPU build.", "Running on the CPU build.".restartingNow())
+    }
+
     @Test fun linkerFailureTextSurvivesIntact() {
         val msg = "CANNOT LINK EXECUTABLE \"$nativeDir/libllama-server-gpu.so\": library \"libOpenCL.so\" not found: needed by main executable"
         assertEquals(msg, ProcInfo.errorDetail(listOf(msg)))

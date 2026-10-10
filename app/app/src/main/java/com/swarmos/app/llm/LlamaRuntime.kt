@@ -309,7 +309,7 @@ object LlamaRuntime {
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
         val ring = LogRing()
         val restarts = if (auto) prior.restarts else 0
-        val startingNotice = fallbackNote ?: if (auto) prior.notice else null
+        val startingNotice = fallbackNote ?: if (auto) prior.notice?.restartingNow() else null
         val announced = board.setIfCurrent(role, epoch) {
             ServerStatus(role, ServerState.STARTING, null, modelPath, port, null, args, System.currentTimeMillis(), null, startingNotice, restarts, shownBackend)
         }
@@ -517,9 +517,9 @@ object LlamaRuntime {
     }
 
     /** The last lines the child printed (stderr included), at most 2 KB, for /v1/models/state `lastError`. Waits briefly for the output of a process that just exited. */
-    private fun errorDetail(run: Running?, ring: LogRing): String {
+    private fun errorDetail(run: Running?, ring: LogRing, lastLine: String? = null): String {
         if (run != null && !run.process.isAlive) runCatching { run.pumpThread?.join(1_500) }
-        return ProcInfo.errorDetail(ring.tail(60))
+        return ProcInfo.errorDetail(ring.tail(60) + listOfNotNull(lastLine))
     }
 
     /**
@@ -540,7 +540,8 @@ object LlamaRuntime {
             val role = run.role
             val cfg = run.cfg
             if (board.isCurrent(role, run.epoch)) {
-                lastErrors[role] = ProcInfo.errorDetail(listOf("$what after ${aliveMs / 1000} s") + run.ring.tail(60))
+                // the exit line goes last: the 2 KB cap drops the oldest lines, and how it died is the most useful part
+                lastErrors[role] = errorDetail(run, run.ring, "[exit] $what after ${aliveMs / 1000} s")
             }
             // Every step below is under the epoch this server was STARTED under (not the one at death time), so a stop()
             // between the death and the restart is honoured and never followed by a stale FAILED or STARTING.
