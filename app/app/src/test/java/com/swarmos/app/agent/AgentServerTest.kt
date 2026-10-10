@@ -1,0 +1,681 @@
+package com.swarmos.app.agent
+
+import com.swarmos.app.llm.ChatChunk
+import com.swarmos.app.llm.ChatRequest
+import com.swarmos.app.llm.ChatResult
+import com.swarmos.app.llm.ChatStats
+import com.swarmos.app.llm.LlmClient
+import com.swarmos.app.sched.FakePhone
+import com.swarmos.app.sched.GatedLlmClient
+import com.swarmos.app.sched.SchedNode
+import com.swarmos.app.sched.SwarmLlm
+import com.swarmos.app.sched.TestLlm
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Assume.assumeNotNull
+import org.junit.BeforeClass
+import org.junit.Test
+import java.net.Inet4Address
+import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+
+/** A model that streams one chunk and then waits forever, like a long generation, and notes when it is cancelled. */
+private class HangingLlm : LlmClient {
+    override val modelName = "H"
+    val started = AtomicInteger()
+    val cancelled = AtomicInteger()
+
+    override suspend fun ready() = true
+
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+        started.incrementAndGet()
+        try {
+            emit(ChatChunk("hello"))
+            awaitCancellation()
+        } catch (e: CancellationException) {
+            cancelled.incrementAndGet()
+            throw e
+        }
+    }
+
+    override suspend fun chat(req: ChatRequest): ChatResult {
+        started.incrementAndGet()
+        try {
+            awaitCancellation()
+        } catch (e: CancellationException) {
+            cancelled.incrementAndGet()
+            throw e
+        }
+    }
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
+}
+
+/** A model that answers fast and keeps the request it was given. */
+private class RecordingLlm : LlmClient {
+    override val modelName = "R"
+    val requests = CopyOnWriteArrayList<ChatRequest>()
+
+    override suspend fun ready() = true
+
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+        requests += req
+        emit(ChatChunk("ok"))
+        emit(ChatChunk("", done = true, stats = ChatStats(3, 1, 1.0, 1.0)))
+    }
+
+    override suspend fun chat(req: ChatRequest): ChatResult {
+        requests += req
+        return ChatResult("ok", ChatStats(3, 1, 1.0, 1.0))
+    }
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
+}
+
+/** The real engine, gate, scheduler and request path over loopback HTTP; only the models are test doubles. */
+class AgentServerTest {
+    companion object {
+        /** The app bundles an Android slf4j binding that cannot start on the JVM; trigger and swallow its failure once. */
+        @JvmStatic @BeforeClass fun quietLogging() {
+            runCatching { org.slf4j.LoggerFactory.getLogger("agent-test") }
+        }
+    }
+
+    private class Resp(val status: Int, private val headers: Map<String, List<String>>, val body: String) {
+        val json: JsonObject get() = Json.parseToJsonElement(body).jsonObject
+        fun header(name: String): String? = headers[name.lowercase()]?.firstOrNull()
+        fun hasHeader(prefix: String) = headers.keys.any { it.startsWith(prefix.lowercase()) }
+        val errorCode: String get() = json.getValue("error").jsonObject.getValue("code").jsonPrimitive.content
+        val errorMessage: String get() = json.getValue("error").jsonObject.getValue("message").jsonPrimitive.content
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(java.time.Duration.ofSeconds(5)).build()
+    private val key = "test-key-0123456789"
+    private val audit = CopyOnWriteArrayList<Pair<String, JsonObject>>()
+    private val served = AtomicInteger()
+    private var port = 0
+    private var server: AgentServer? = null
+
+    private lateinit var node: SchedNode
+    @Volatile private var chat: LlmClient = TestLlm("T", delayMs = 10)
+    @Volatile private var chatReady = true
+    @Volatile private var swarmReady = true
+    @Volatile private var embedReady = true
+    private val embedder = TestLlm("E")
+
+    @After fun tearDown() {
+        server?.stop()
+        scope.cancel()
+    }
+
+    private fun freePort() = ServerSocket(0).use { it.localPort }
+
+    /** Starts the listener. [maxWaitMs] is the gate's wait; [phones] are the swarm. */
+    private fun start(
+        maxWaitMs: Long = 400,
+        phones: List<FakePhone> = listOf(FakePhone("b", TestLlm("M"), scope, 1, isLocal = false, tokPerSec = 10.0)),
+    ) {
+        node = SchedNode(scope, { "a" }, { chat }, { embedder }, { null })
+        val backend = AgentBackend(
+            local = GatedLlmClient({ chat }, node, maxWaitMs),
+            localReady = { chatReady },
+            swarm = SwarmLlm({ phones }, scope, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100),
+            swarmReady = { swarmReady },
+            embedder = { embedder },
+            embedderReady = { embedReady },
+            selfName = { "Phone A" },
+            nameOf = { id -> if (id == "b") "Phone B" else id },
+        )
+        port = freePort()
+        server = AgentServer(
+            port, { key }, backend,
+            audit = { kind, payload -> audit += kind to payload },
+            onServed = { served.incrementAndGet() },
+            pingMs = 100,
+        )
+        assertNull(server!!.start())
+    }
+
+    private fun call(
+        method: String, path: String, body: String? = null, key: String? = this.key, headers: Map<String, String> = emptyMap(),
+    ): Resp {
+        val b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port$path")).timeout(java.time.Duration.ofSeconds(20))
+        if (key != null) b.header("Authorization", "Bearer $key")
+        if (body != null) b.header("Content-Type", "application/json")
+        for ((k, v) in headers) b.header(k, v)
+        b.method(method, if (body == null) HttpRequest.BodyPublishers.noBody() else HttpRequest.BodyPublishers.ofString(body))
+        val r = http.send(b.build(), HttpResponse.BodyHandlers.ofString())
+        return Resp(r.statusCode(), r.headers().map(), r.body())
+    }
+
+    private fun post(path: String, body: String, key: String? = this.key, headers: Map<String, String> = emptyMap()) = call("POST", path, body, key, headers)
+
+    private fun chatBody(extra: String = "", model: String = "ustaad-local", user: String = "hello") =
+        """{"model":"$model","messages":[{"role":"user","content":"$user"}]${if (extra.isEmpty()) "" else ",$extra"}}"""
+
+    private fun waitUntil(what: String, ms: Long = 5_000, cond: () -> Boolean) {
+        val end = System.nanoTime() + ms * 1_000_000
+        while (!cond()) {
+            if (System.nanoTime() > end) fail("timed out waiting for $what")
+            Thread.sleep(20)
+        }
+    }
+
+    private fun events(body: String): List<String> = body.split("\n\n").map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith(":") }
+
+    // ---- auth ----------------------------------------------------------------------------------------------
+
+    @Test fun noKeyIs401() {
+        start()
+        val r = call("GET", "/v1/models", key = null)
+        assertEquals(401, r.status)
+        assertEquals("invalid_api_key", r.errorCode)
+        assertEquals("Bearer", r.header("WWW-Authenticate"))
+        assertEquals("application/json", r.header("Content-Type")!!.substringBefore(';'))
+    }
+
+    @Test fun aWrongKeyIs401AndTheModelIsNeverCalled() {
+        start()
+        val llm = chat as TestLlm
+        assertEquals(401, call("GET", "/v1/models", key = "wrong").status)
+        assertEquals(401, post("/v1/chat/completions", chatBody(), key = "wrong").status)
+        assertEquals(401, post("/v1/chat/completions", chatBody(), key = key.dropLast(1)).status)
+        assertEquals(401, post("/v1/chat/completions", chatBody(), key = key + "x").status)
+        assertEquals(401, post("/v1/chat/completions", chatBody(), key = null, headers = mapOf("Authorization" to "Basic $key")).status)
+        assertEquals(0, llm.executed.size)
+        assertEquals(0, llm.streamCalls.get())
+    }
+
+    @Test fun theRightKeyIs200() {
+        start()
+        val r = call("GET", "/v1/models")
+        assertEquals(200, r.status)
+        assertEquals(listOf("ustaad-local", "ustaad-swarm"), r.json.getValue("data").jsonArray.map { it.jsonObject.getValue("id").jsonPrimitive.content })
+    }
+
+    @Test fun everyRouteNeedsTheKeyEvenUnknownOnes() {
+        start()
+        for ((m, p) in listOf("GET" to "/v1/models", "POST" to "/v1/chat/completions", "POST" to "/v1/embeddings", "GET" to "/nothing", "GET" to "/", "DELETE" to "/v1/models", "OPTIONS" to "/v1/models")) {
+            val r = call(m, p, body = if (m == "POST") "{}" else null, key = null)
+            assertEquals("$m $p", 401, r.status)
+        }
+    }
+
+    @Test fun anUnauthenticatedRequestIsRefusedBeforeItsBodyIsConsidered() {
+        start()
+        val s = rawRequest("POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 99999999\r\nConnection: close\r\n\r\n")
+        assertTrue(s, s.startsWith("HTTP/1.1 401"))
+    }
+
+    @Test fun noCorsHeadersAreEverSent() {
+        start()
+        val ok = call("GET", "/v1/models", headers = mapOf("Origin" to "https://example.com"))
+        assertFalse(ok.hasHeader("access-control-"))
+        val denied = call("GET", "/v1/models", key = null, headers = mapOf("Origin" to "https://example.com"))
+        assertFalse(denied.hasHeader("access-control-"))
+        val preflight = call("OPTIONS", "/v1/chat/completions", key = null, headers = mapOf("Origin" to "https://example.com", "Access-Control-Request-Method" to "POST", "Access-Control-Request-Headers" to "authorization"))
+        assertEquals(401, preflight.status)
+        assertFalse(preflight.hasHeader("access-control-"))
+    }
+
+    @Test fun thePortIsNotOpenOnAnyOtherAddress() {
+        start()
+        val other = NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp }.flatMap { it.inetAddresses.toList() }
+            .firstOrNull { it is Inet4Address && !it.isLoopbackAddress }
+        assumeNotNull(other)
+        try {
+            Socket().use { it.connect(InetSocketAddress(other, port), 2_000) }
+            fail("connected to the agent port on ${other!!.hostAddress}")
+        } catch (e: java.io.IOException) {
+            // refused or unreachable: the listener is on 127.0.0.1 only
+        }
+        assertEquals(200, call("GET", "/v1/models").status)
+    }
+
+    // ---- chat, not streamed ---------------------------------------------------------------------------------
+
+    @Test fun aChatAnswerHasTheOpenAiShapeAndNamesThePhone() {
+        start()
+        val r = post("/v1/chat/completions", chatBody())
+        assertEquals(200, r.status)
+        assertEquals("application/json", r.header("Content-Type")!!.substringBefore(';'))
+        val j = r.json
+        assertTrue(j.getValue("id").jsonPrimitive.content.startsWith("chatcmpl-"))
+        assertEquals("chat.completion", j.getValue("object").jsonPrimitive.content)
+        assertEquals("ustaad-local", j.getValue("model").jsonPrimitive.content)
+        assertEquals("ustaad:Phone A", j.getValue("system_fingerprint").jsonPrimitive.content)
+        val choice = j.getValue("choices").jsonArray.single().jsonObject
+        assertEquals("T:hello", choice.getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertEquals("assistant", choice.getValue("message").jsonObject.getValue("role").jsonPrimitive.content)
+        assertEquals("stop", choice.getValue("finish_reason").jsonPrimitive.content)
+        val u = j.getValue("usage").jsonObject
+        assertEquals(5, u.getValue("prompt_tokens").jsonPrimitive.int)
+        assertEquals(10, u.getValue("completion_tokens").jsonPrimitive.int)
+        assertEquals(15, u.getValue("total_tokens").jsonPrimitive.int)
+    }
+
+    @Test fun anAnswerThatUsedItsWholeBudgetSaysLength() {
+        start()
+        val r = post("/v1/chat/completions", chatBody(""""max_tokens":10"""))
+        assertEquals("length", r.json.getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+    }
+
+    @Test fun theRequestReachesTheModelAsAChatRequest() {
+        val rec = RecordingLlm()
+        start()
+        chat = rec
+        val schema = """{"type":"object","properties":{"a":{"type":"integer"}}}"""
+        val r = post(
+            "/v1/chat/completions",
+            """{"model":"ustaad-local","messages":[{"role":"system","content":"be brief"},{"role":"user","content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]}],""" +
+                """"max_completion_tokens":5000,"temperature":0.1,"stop":["X","Y"],"seed":7,"response_format":{"type":"json_schema","json_schema":{"name":"n","schema":$schema}}}""",
+        )
+        assertEquals(r.body, 200, r.status)
+        val q = rec.requests.single()
+        assertEquals(listOf("system" to "be brief", "user" to "a\nb"), q.messages.map { it.role to it.content })
+        assertEquals(1024, q.maxTokens)
+        assertEquals(0.1, q.temperature, 0.0)
+        assertEquals(listOf("X", "Y"), q.stop)
+        assertEquals(7, q.seed)
+        assertEquals(schema, q.jsonSchema)
+    }
+
+    @Test fun theSwarmModelNamesTheNodeThatRanIt() {
+        start()
+        val r = post("/v1/chat/completions", chatBody(model = "ustaad-swarm"))
+        assertEquals(r.body, 200, r.status)
+        assertEquals("ustaad-swarm", r.json.getValue("model").jsonPrimitive.content)
+        assertEquals("ustaad:Phone B", r.json.getValue("system_fingerprint").jsonPrimitive.content)
+        assertEquals("M:hello", r.json.getValue("choices").jsonArray.single().jsonObject.getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+    }
+
+    @Test fun theLocalModelDoesNotTouchTheSwarm() {
+        val b = FakePhone("b", TestLlm("M"), CoroutineScope(SupervisorJob()), 1, isLocal = false, tokPerSec = 10.0)
+        start(phones = listOf(b))
+        post("/v1/chat/completions", chatBody())
+        assertEquals(0, b.calls.get())
+        assertEquals(1, (chat as TestLlm).executed.size)
+    }
+
+    // ---- chat, streamed -------------------------------------------------------------------------------------
+
+    @Test fun aStreamIsEventsEndingWithDone() {
+        start()
+        val r = post("/v1/chat/completions", chatBody(""""stream":true"""), headers = mapOf("Accept" to "text/event-stream"))
+        assertEquals(r.body, 200, r.status)
+        assertEquals("text/event-stream", r.header("Content-Type")!!.substringBefore(';'))
+        val ev = events(r.body)
+        assertEquals("data: [DONE]", ev.last())
+        assertTrue(ev.dropLast(1).all { it.startsWith("data: {") })
+        val chunks = ev.dropLast(1).map { Json.parseToJsonElement(it.removePrefix("data: ")).jsonObject }
+        assertEquals("one id for the whole answer", 1, chunks.map { it.getValue("id").jsonPrimitive.content }.toSet().size)
+        assertTrue(chunks.all { it.getValue("object").jsonPrimitive.content == "chat.completion.chunk" })
+        assertTrue(chunks.all { it.getValue("system_fingerprint").jsonPrimitive.content == "ustaad:Phone A" })
+        val deltas = chunks.map { it.getValue("choices").jsonArray.single().jsonObject.getValue("delta").jsonObject }
+        assertEquals("assistant", deltas.first().getValue("role").jsonPrimitive.content)
+        assertEquals("stream:hello", deltas.mapNotNull { it["content"]?.jsonPrimitive?.content }.joinToString(""))
+        val last = chunks.last()
+        assertEquals("stop", last.getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals(15, last.getValue("usage").jsonObject.getValue("total_tokens").jsonPrimitive.int)
+        assertTrue(chunks.dropLast(1).none { "usage" in it })
+    }
+
+    @Test fun aStreamedSwarmAnswerIsFingerprintedSwarm() {
+        val local = FakePhone("a", TestLlm("M"), scope, 1, isLocal = true, tokPerSec = 10.0)
+        start(phones = listOf(local))
+        val r = post("/v1/chat/completions", chatBody(""""stream":true""", model = "ustaad-swarm"))
+        assertEquals(r.body, 200, r.status)
+        val first = Json.parseToJsonElement(events(r.body).first().removePrefix("data: ")).jsonObject
+        assertEquals("ustaad:swarm", first.getValue("system_fingerprint").jsonPrimitive.content)
+        assertEquals("data: [DONE]", events(r.body).last())
+        assertEquals(1, local.llm.streamCalls.get())
+    }
+
+    @Test fun aClientThatHangsUpMidStreamFreesTheModelSlot() {
+        val hang = HangingLlm()
+        start()
+        chat = hang
+        val s = Socket("127.0.0.1", port)
+        s.soTimeout = 5_000
+        val body = chatBody(""""stream":true""")
+        val head = "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $key\r\nContent-Type: application/json\r\nContent-Length: ${body.toByteArray().size}\r\nConnection: close\r\n\r\n"
+        s.getOutputStream().write(head.toByteArray() + body.toByteArray())
+        s.getOutputStream().flush()
+        val seen = StringBuilder()
+        val buf = ByteArray(4096)
+        while (!seen.contains("\"content\":\"hello\"")) {
+            val n = s.getInputStream().read(buf)
+            if (n < 0) fail("stream ended early: $seen")
+            seen.append(String(buf, 0, n))
+        }
+        assertEquals("the stream holds the slot while it runs", 1, node.chatExec.running)
+        s.close()
+        waitUntil("the slot to be freed") { node.chatExec.running == 0 }
+        waitUntil("the model call to be cancelled") { hang.cancelled.get() == 1 }
+        waitUntil("the audit entry of the unfinished stream") { audit.any { it.first == "agent.chat" && it.second["aborted"] != null } }
+        assertEquals("a stream the client abandoned is not a served request", 0, served.get())
+        chat = TestLlm("T", delayMs = 10)
+        assertEquals("a new request gets the slot", 200, post("/v1/chat/completions", chatBody()).status)
+    }
+
+    @Test fun aStreamThatCannotGetTheModelIs503NotAnEmpty200() {
+        val hang = HangingLlm()
+        start(maxWaitMs = 300)
+        chat = hang
+        val holder = Socket("127.0.0.1", port)
+        val body = chatBody(""""stream":true""")
+        holder.getOutputStream().write(("POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $key\r\nContent-Length: ${body.toByteArray().size}\r\n\r\n$body").toByteArray())
+        waitUntil("the first stream to hold the slot") { node.chatExec.running == 1 }
+        val r = post("/v1/chat/completions", chatBody(""""stream":true"""))
+        assertEquals(r.body, 503, r.status)
+        assertEquals("model_busy", r.errorCode)
+        holder.close()
+        waitUntil("the slot to be freed") { node.chatExec.running == 0 }
+    }
+
+    // ---- one at a time --------------------------------------------------------------------------------------
+
+    @Test fun twoRequestsAtOnceRunOneAfterTheOther() {
+        val slow = TestLlm("T", delayMs = 300)
+        start(maxWaitMs = 10_000)
+        chat = slow
+        val t0 = System.nanoTime()
+        val results = (1..2).map { i -> java.util.concurrent.CompletableFuture.supplyAsync { post("/v1/chat/completions", chatBody(user = "q$i")) } }
+        val responses = results.map { it.get(20, TimeUnit.SECONDS) }
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        assertEquals(listOf(200, 200), responses.map { it.status })
+        assertEquals("never two model calls at once", 1, slow.maxConcurrent.get())
+        assertTrue("the second one waited for the first ($ms ms)", ms >= 550)
+    }
+
+    @Test fun aRequestThatWaitsTooLongForTheModelIs503() {
+        val hang = HangingLlm()
+        start(maxWaitMs = 300)
+        chat = hang
+        val first = java.util.concurrent.CompletableFuture.supplyAsync { post("/v1/chat/completions", chatBody()) }
+        waitUntil("the first request to hold the slot") { node.chatExec.running == 1 }
+        val r = post("/v1/chat/completions", chatBody())
+        assertEquals(r.body, 503, r.status)
+        assertEquals("model_busy", r.errorCode)
+        assertEquals("server_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+        first.cancel(true)
+    }
+
+    // ---- refusals over the wire ------------------------------------------------------------------------------
+
+    @Test fun refusalsAreOpenAiErrorsAndTheModelIsNeverCalled() {
+        start()
+        val llm = chat as TestLlm
+        val cases = listOf(
+            chatBody(""""tools":[{"type":"function","function":{"name":"f"}}]""") to "tools",
+            chatBody(""""tool_choice":"auto"""") to "tool_choice",
+            chatBody(""""n":2""") to "`n`",
+            """{"model":"ustaad-local","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"http://x"}}]}]}""" to "content[0]",
+            """{"model":"ustaad-local","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AA","format":"wav"}}]}]}""" to "content[0]",
+            """{"model":"ustaad-local","messages":[${List(65) { """{"role":"user","content":"m"}""" }.joinToString(",")}]}""" to "messages",
+            "not json" to "JSON",
+        )
+        for ((body, mention) in cases) {
+            val r = post("/v1/chat/completions", body)
+            assertEquals(body.take(80), 400, r.status)
+            assertTrue("${r.errorMessage} should mention $mention", r.errorMessage.contains(mention))
+            assertEquals("invalid_request_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+        }
+        assertEquals(0, llm.executed.size + llm.streamCalls.get())
+    }
+
+    @Test fun anUnknownModelIs404() {
+        start()
+        val r = post("/v1/chat/completions", chatBody(model = "gpt-4o"))
+        assertEquals(404, r.status)
+        assertEquals("model_not_found", r.errorCode)
+    }
+
+    @Test fun aBodyOverOneMiBIs413() {
+        start()
+        val declared = rawRequest("POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $key\r\nContent-Length: ${(1 shl 20) + 1}\r\nConnection: close\r\n\r\n")
+        assertTrue(declared, declared.startsWith("HTTP/1.1 413"))
+        assertTrue(declared.contains("request_too_large"))
+    }
+
+    @Test fun aChunkedBodyOverOneMiBIs413TooAndIsNeverBufferedWhole() {
+        start()
+        val big = "a".repeat((1 shl 20) + 1)
+        val req = "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $key\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
+            Integer.toHexString(big.length) + "\r\n" + big + "\r\n0\r\n\r\n"
+        val resp = rawRequest(req)
+        assertTrue(resp, resp.startsWith("HTTP/1.1 413"))
+    }
+
+    @Test fun aBodyOfExactlyOneMiBIsAccepted() {
+        start()
+        val prefix = """{"model":"ustaad-local","messages":[{"role":"user","content":""""
+        val suffix = """"}]}"""
+        val pad = (1 shl 20) - prefix.length - suffix.length
+        val body = prefix + "a".repeat(pad) + suffix
+        assertEquals(1 shl 20, body.toByteArray().size)
+        assertEquals(200, post("/v1/chat/completions", body).status)
+    }
+
+    @Test fun noRealModelIs503AndThePlaceholderNeverAnswers() {
+        start()
+        chatReady = false
+        val llm = chat as TestLlm
+        val r = post("/v1/chat/completions", chatBody())
+        assertEquals(503, r.status)
+        assertEquals("No chat model is loaded on this phone", r.errorMessage)
+        assertEquals("model_not_loaded", r.errorCode)
+        val s = post("/v1/chat/completions", chatBody(""""stream":true"""))
+        assertEquals(503, s.status)
+        assertEquals(0, llm.executed.size + llm.streamCalls.get())
+        swarmReady = false
+        val w = post("/v1/chat/completions", chatBody(model = "ustaad-swarm"))
+        assertEquals(503, w.status)
+        assertEquals("No chat model is loaded on any phone in the swarm", w.errorMessage)
+    }
+
+    @Test fun errorsStayJsonWhateverTheClientAccepts() {
+        start()
+        val r = post("/v1/chat/completions", chatBody(""""tools":[]"""), headers = mapOf("Accept" to "text/event-stream"))
+        assertEquals(400, r.status)
+        assertEquals("unsupported_parameter", r.errorCode)
+    }
+
+    @Test fun unknownRoutesAndMethodsAre404WithAnErrorBody() {
+        start()
+        val a = call("GET", "/v1/nothing")
+        assertEquals(404, a.status)
+        assertEquals("unknown_route", a.errorCode)
+        assertEquals(404, call("GET", "/v1/chat/completions").status)
+        assertEquals(404, call("GET", "/").status)
+    }
+
+    // ---- embeddings -----------------------------------------------------------------------------------------
+
+    @Test fun embeddingsAnswerAStringAndAList() {
+        start()
+        val one = post("/v1/embeddings", """{"model":"ustaad-local","input":"abc"}""")
+        assertEquals(one.body, 200, one.status)
+        assertEquals("list", one.json.getValue("object").jsonPrimitive.content)
+        assertEquals("ustaad-local", one.json.getValue("model").jsonPrimitive.content)
+        val d = one.json.getValue("data").jsonArray.single().jsonObject
+        assertEquals(0, d.getValue("index").jsonPrimitive.int)
+        assertEquals(listOf(3f), (d.getValue("embedding") as JsonArray).map { it.jsonPrimitive.content.toFloat() })
+
+        val many = post("/v1/embeddings", """{"model":"ustaad-local","input":["a","bb","cccc"]}""")
+        assertEquals(listOf(1f, 2f, 4f), many.json.getValue("data").jsonArray.map { (it.jsonObject.getValue("embedding") as JsonArray)[0].jsonPrimitive.content.toFloat() })
+        assertEquals(listOf(0, 1, 2), many.json.getValue("data").jsonArray.map { it.jsonObject.getValue("index").jsonPrimitive.int })
+        assertEquals(2, embedder.embedCalls.get())
+    }
+
+    @Test fun embeddingsCanComeBackAsBase64() {
+        start()
+        val r = post("/v1/embeddings", """{"model":"ustaad-local","input":"abc","encoding_format":"base64"}""")
+        val text = r.json.getValue("data").jsonArray.single().jsonObject.getValue("embedding").jsonPrimitive
+        assertTrue(text.isString)
+        assertEquals(java.util.Base64.getEncoder().encodeToString(byteArrayOf(0, 0, 0x40, 0x40)), text.content) // 3.0f little-endian
+    }
+
+    @Test fun embeddingsRefuseWhatChatRefusesAndNeedARealEmbedder() {
+        start()
+        assertEquals(400, post("/v1/embeddings", """{"model":"ustaad-local","input":[[1,2]]}""").status)
+        assertEquals(404, post("/v1/embeddings", """{"model":"nope","input":"x"}""").status)
+        embedReady = false
+        val r = post("/v1/embeddings", """{"model":"ustaad-local","input":"x"}""")
+        assertEquals(503, r.status)
+        assertEquals("No embedding model is loaded on this phone", r.errorMessage)
+        assertEquals(0, embedder.embedCalls.get())
+    }
+
+    // ---- audit and counters ------------------------------------------------------------------------------------
+
+    @Test fun everyRequestIsAuditedWithCountsAndNeverWithText() {
+        start()
+        post("/v1/chat/completions", chatBody(user = "my secret prompt"))
+        post("/v1/chat/completions", chatBody(""""stream":true""", user = "another secret prompt"))
+        post("/v1/embeddings", """{"model":"ustaad-local","input":["private text one","private text two"]}""")
+        post("/v1/chat/completions", chatBody(""""n":3""", user = "refused secret"))
+        val kinds = audit.map { it.first }
+        assertEquals(listOf("agent.start", "agent.chat", "agent.chat", "agent.embed", "agent.chat"), kinds)
+
+        val plain = audit[1].second
+        assertEquals("ustaad-local", plain.getValue("model").jsonPrimitive.content)
+        assertEquals(200, plain.getValue("status").jsonPrimitive.int)
+        assertEquals("my secret prompt".length, plain.getValue("promptChars").jsonPrimitive.int)
+        assertEquals("T:my secret prompt".length, plain.getValue("completionChars").jsonPrimitive.int)
+        assertEquals(10, plain.getValue("completionTokens").jsonPrimitive.int)
+        assertNotNull(plain["ms"])
+
+        val streamed = audit[2].second
+        assertEquals("true", streamed.getValue("stream").jsonPrimitive.content)
+        assertEquals("stream:another secret prompt".length, streamed.getValue("completionChars").jsonPrimitive.int)
+
+        val embed = audit[3].second
+        assertEquals(2, embed.getValue("inputs").jsonPrimitive.int)
+        assertEquals("private text one".length * 2, embed.getValue("chars").jsonPrimitive.int)
+
+        assertEquals(400, audit[4].second.getValue("status").jsonPrimitive.int)
+
+        val all = audit.joinToString("\n") { it.second.toString() }
+        for (secret in listOf("secret prompt", "private text", "refused secret", "T:", "stream:")) assertFalse("audit must not hold '$secret'", all.contains(secret))
+    }
+
+    @Test fun onlyAnsweredRequestsCountAsServed() {
+        start()
+        call("GET", "/v1/models")
+        post("/v1/chat/completions", chatBody())
+        post("/v1/chat/completions", chatBody(""""stream":true"""))
+        post("/v1/embeddings", """{"model":"ustaad-local","input":"x"}""")
+        assertEquals(4, served.get())
+        call("GET", "/v1/models", key = "wrong")
+        post("/v1/chat/completions", chatBody(""""n":2"""))
+        post("/v1/chat/completions", chatBody(model = "nope"))
+        assertEquals(4, served.get())
+    }
+
+    // ---- lifecycle ------------------------------------------------------------------------------------------
+
+    @Test fun stoppingClosesThePortAndStartingOpensItAgain() {
+        start()
+        assertEquals(200, call("GET", "/v1/models").status)
+        server!!.stop()
+        try {
+            Socket("127.0.0.1", port).close()
+            fail("the port is still open")
+        } catch (e: java.net.ConnectException) {
+            // closed
+        }
+        assertEquals(listOf("agent.start", "agent.stop"), audit.map { it.first })
+        assertNull(server!!.start())
+        assertEquals(200, call("GET", "/v1/models").status)
+    }
+
+    @Test fun aPortThatIsTakenIsReportedNotThrown() {
+        ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { taken ->
+            val s = AgentServer(
+                taken.localPort, { key }, AgentBackend(TestLlmGate.gated(scope), { true }, SwarmLlm({ emptyList() }, scope), { true }, { TestLlm() }, { true }, { "A" }, { it }),
+                audit = { kind, payload -> audit += kind to payload },
+            )
+            val why = s.start()
+            assertNotNull(why)
+            assertTrue(why!!, why.contains("${taken.localPort}"))
+            assertEquals("agent.error", audit.last().first)
+            s.stop()
+        }
+    }
+
+    @Test fun anAuditFailureDoesNotBreakTheAnswer() {
+        val failing = AgentServer(
+            freePort().also { port = it }, { key },
+            AgentBackend(TestLlmGate.gated(scope), { true }, SwarmLlm({ emptyList() }, scope), { true }, { TestLlm() }, { true }, { "A" }, { it }),
+            audit = { _, _ -> error("disk full") },
+        )
+        server = failing
+        assertNull(failing.start())
+        assertEquals(200, post("/v1/chat/completions", chatBody()).status)
+    }
+
+    // ---- helpers ---------------------------------------------------------------------------------------------
+
+    /** Sends [raw] on a plain socket and returns everything the server answers (status line, headers, body). */
+    private fun rawRequest(raw: String): String {
+        Socket("127.0.0.1", port).use { s ->
+            s.soTimeout = 1_500
+            try {
+                s.getOutputStream().write(raw.toByteArray())
+                s.getOutputStream().flush()
+            } catch (e: java.io.IOException) {
+                // the server may answer and close before the whole body is sent; its answer is still readable
+            }
+            val out = StringBuilder()
+            val buf = ByteArray(4096)
+            try {
+                while (true) {
+                    val n = s.getInputStream().read(buf)
+                    if (n < 0) break
+                    out.append(String(buf, 0, n))
+                }
+            } catch (e: java.io.IOException) {
+                if (out.isEmpty()) throw e
+            }
+            return out.toString()
+        }
+    }
+
+    private object TestLlmGate {
+        fun gated(scope: CoroutineScope): LlmClient {
+            val llm = TestLlm("T", delayMs = 10)
+            return GatedLlmClient({ llm }, SchedNode(scope, { "a" }, { llm }, { llm }, { null }))
+        }
+    }
+}

@@ -9,23 +9,21 @@ import com.swarmos.app.sched.NoPhoneAvailableException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
-import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.applicationEnvironment
 import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.header
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.response.header
-import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytesWriter
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingCall
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -103,13 +101,11 @@ class AgentServer(
     }
 
     private fun Application.agentModule() {
-        install(ContentNegotiation) { json(SwarmJson) }
-
         intercept(ApplicationCallPipeline.Plugins) {
             val refusal = AgentGate.check(call.request.origin.remoteAddress, call.request.header(HttpHeaders.Authorization), key())
             if (refusal != null) {
                 if (refusal.status == 401) call.response.header(HttpHeaders.WWWAuthenticate, "Bearer")
-                call.respond(HttpStatusCode.fromValue(refusal.status), AgentWire.error(refusal))
+                call.respondJson(HttpStatusCode.fromValue(refusal.status), AgentWire.error(refusal))
                 finish()
             }
         }
@@ -117,14 +113,14 @@ class AgentServer(
         routing {
             route("/v1") {
                 get("/models") {
-                    call.respond(HttpStatusCode.OK, AgentWire.models(startedSec))
+                    call.respondJson(HttpStatusCode.OK, AgentWire.models(startedSec))
                     onServed()
                 }
                 post("/chat/completions") { call.chat() }
                 post("/embeddings") { call.embeddings() }
             }
             route("/{path...}") {
-                handle { call.respond(HttpStatusCode.NotFound, AgentWire.error("No such route: ${call.request.local.method.value} ${call.request.local.uri}", AgentRefusal.TYPE_INVALID_REQUEST, "unknown_route")) }
+                handle { call.respondJson(HttpStatusCode.NotFound, AgentWire.error("No such route: ${call.request.local.method.value} ${call.request.local.uri}", AgentRefusal.TYPE_INVALID_REQUEST, "unknown_route")) }
             }
         }
     }
@@ -153,14 +149,14 @@ class AgentServer(
             status = HttpStatusCode.fromValue(r.status)
             AgentWire.error(r)
         }
-        respond(status, body)
+        respondJson(status, body)
         if (status == HttpStatusCode.OK) onServed()
     }
 
     private class StreamState {
-        var chars = 0
-        var stats: ChatStats? = null
-        var finished = false
+        @Volatile var chars = 0
+        @Volatile var stats: ChatStats? = null
+        @Volatile var finished = false
     }
 
     private sealed interface Item {
@@ -185,10 +181,12 @@ class AgentServer(
             }
         }
         val state = StreamState()
+        var committed = false
         try {
             val first = upstream.receiveCatching().getOrNull()
             if (first is Item.Failed) throw first.error
             response.header(HttpHeaders.CacheControl, "no-cache")
+            committed = true
             try {
                 respondBytesWriter(ContentType.Text.EventStream) { writeStream(c, first, upstream, state) }
             } catch (e: CancellationException) {
@@ -196,10 +194,13 @@ class AgentServer(
             } catch (e: Exception) {
                 // the client closed the connection mid-stream; the audit entry below records that it did not finish
             }
-            auditChat(c, 200, state.chars, state.stats, t0, aborted = !state.finished)
-            if (state.finished) onServed()
         } finally {
             upstream.cancel()
+            // also when the call itself was cancelled because the client went away
+            if (committed) {
+                auditChat(c, 200, state.chars, state.stats, t0, aborted = !state.finished)
+                if (state.finished) onServed()
+            }
         }
     }
 
@@ -273,7 +274,7 @@ class AgentServer(
             status = HttpStatusCode.fromValue(r.status)
             AgentWire.error(r)
         }
-        respond(status, body)
+        respondJson(status, body)
         if (status == HttpStatusCode.OK) onServed()
     }
 
@@ -288,6 +289,13 @@ class AgentServer(
         if (bytes.size > max) throw tooLarge()
         return bytes.toString(Charsets.UTF_8)
     }
+
+    /**
+     * JSON answers are written as plain text, not through content negotiation: a client that sends `Accept: text/event-stream`
+     * (many streaming clients do) would otherwise get 406 instead of the real error.
+     */
+    private suspend fun ApplicationCall.respondJson(status: HttpStatusCode, body: JsonObject) =
+        respondText(SwarmJson.encodeToString(JsonObject.serializer(), body), ContentType.Application.Json, status)
 
     private fun tooLarge() = AgentRefusal(413, "The request body is over ${AgentRequests.MAX_BODY_BYTES} bytes.", "request_too_large")
 
