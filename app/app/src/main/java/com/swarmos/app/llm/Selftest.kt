@@ -43,6 +43,10 @@ data class SelftestResult(
 object Selftest {
     private const val SCHEMA = """{"type":"object","properties":{"city":{"type":"string"},"temp_c":{"type":"integer"},"tags":{"type":"array","items":{"type":"string"}}},"required":["city","temp_c","tags"],"additionalProperties":false}"""
 
+    /** Hard limits per model call: a hung server ends the selftest with an error instead of holding it (and the mutex) forever. */
+    private const val CALL_BUDGET_MS = 180_000L
+    private const val EMBED_BUDGET_MS = 60_000L
+
     private val mutex = Mutex()
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()
@@ -75,9 +79,11 @@ object Selftest {
 
         val sb = StringBuilder()
         var tps = 0.0
-        llm.chatStream(ChatRequest(listOf(ChatMessage("user", "Say hello in five words.")), maxTokens = 24, temperature = 0.0)).collect {
-            sb.append(it.delta)
-            it.stats?.let { s -> tps = s.decodeTokPerSec }
+        withChatBudgetOrFail("the streamed chat call", CALL_BUDGET_MS) {
+            llm.chatStream(ChatRequest(listOf(ChatMessage("user", "Say hello in five words.")), maxTokens = 24, temperature = 0.0)).collect {
+                sb.append(it.delta)
+                it.stats?.let { s -> tps = s.decodeTokPerSec }
+            }
         }
 
         var valid = 0
@@ -85,18 +91,20 @@ object Selftest {
         val runs = if (ModelCatalog.allowsSchema(llm.modelName)) schemaRuns else 0
         if (runs == 0) failures += "skipped: ${llm.modelName} is ${ModelCatalog.CHAT_ONLY_NOTE}"
         for (i in 0 until runs) {
-            val r = llm.chat(
-                ChatRequest(
-                    listOf(ChatMessage("user", "Invent a weather report for a random city. Variation $i.")),
-                    maxTokens = 160, temperature = 0.9, jsonSchema = SCHEMA, seed = 100 + i,
-                ),
-            )
+            val r = withChatBudgetOrFail("schema run $i", CALL_BUDGET_MS) {
+                llm.chat(
+                    ChatRequest(
+                        listOf(ChatMessage("user", "Invent a weather report for a random city. Variation $i.")),
+                        maxTokens = 160, temperature = 0.9, jsonSchema = SCHEMA, seed = 100 + i,
+                    ),
+                )
+            }
             val problem = validate(r.text)
             if (problem == null) valid++ else failures += "run $i: $problem :: ${r.text.take(120)}"
         }
 
         val texts = listOf("warranty bill for laptop", "laptop purchase receipt", "how to bake sourdough bread")
-        val v = embedder.embed(texts)
+        val v = withChatBudgetOrFail("the embedding call", EMBED_BUDGET_MS) { embedder.embed(texts) }
         val dims = v.map { it.size }
         val norms = v.map { x -> Math.sqrt(x.fold(0.0) { a, f -> a + f * f }) }
         val rel = LlamaJson.cosine(v[0], v[1])

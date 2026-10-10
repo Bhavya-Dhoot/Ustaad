@@ -3,6 +3,7 @@ package com.swarmos.app.llm
 import com.swarmos.app.AppGraph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
@@ -157,6 +158,16 @@ class ChatBudget(private val deadlineNanos: Long) : AbstractCoroutineContextElem
 /** Runs [block] with a hard deadline of [ms]: it is cancelled when the budget is spent, and model calls inside see the budget. */
 suspend fun <T> withChatBudget(ms: Long, block: suspend () -> T): T =
     withTimeout(ms) { withContext(ChatBudget(System.nanoTime() + ms * 1_000_000)) { block() } }
+
+/**
+ * [withChatBudget] for callers that record a failure instead of being cancelled (the selftest, the benchmark): a spent
+ * budget becomes an IllegalStateException with a readable message instead of a TimeoutCancellationException.
+ */
+internal suspend fun <T> withChatBudgetOrFail(what: String, ms: Long, block: suspend () -> T): T = try {
+    withChatBudget(ms, block)
+} catch (e: TimeoutCancellationException) {
+    throw IllegalStateException("$what did not finish within ${ms / 1000} s", e)
+}
 
 /** The connection of an in-flight request, so a cancelling caller can close it from another thread. */
 internal class ConnHolder {
