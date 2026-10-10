@@ -6,6 +6,7 @@ import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.Role
 import com.swarmos.app.llm.ServerState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,6 +26,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /** Cancels a load because a re-plan replaces it: the peers stay prepared, so the cleanup of a cancelled load is skipped. */
 private class ReplanCancel : CancellationException("re-plan")
@@ -61,6 +63,12 @@ class SplitCoordinator(
         /** A lender whose rpc port is still held is stopped, waited for this long and asked again, this many times. */
         val portRetries: Int = 2,
         val portRetryDelayMs: Long = 2_000,
+        /** A split answer that has produced no token for this long (120 s before the first token, 30 s after) has stopped. */
+        val firstTokenStallMs: Long = 120_000,
+        val tokenStallMs: Long = 30_000,
+        val stallPollMs: Long = 1_000,
+        /** A serving split is degraded when a participant's rpc-server fails this many state checks in a row. */
+        val probeFailLimit: Int = 3,
     )
 
     companion object {
@@ -101,6 +109,9 @@ class SplitCoordinator(
      */
     private val unconfirmed = ConcurrentHashMap<String, String>()
     private var retryJob: Job? = null
+
+    /** Consecutive failed rpc-server state checks per participant while serving. */
+    private val probeFailures = ConcurrentHashMap<String, Int>()
 
     @Volatile private var baselinePending: String? = null
 
@@ -310,6 +321,7 @@ class SplitCoordinator(
         cancelGeneration()
         val prev = _state.value
         loadParser = LoadLogParser()
+        probeFailures.clear()
         _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
@@ -628,6 +640,10 @@ class SplitCoordinator(
                     return@launch
                 }
                 refreshLive(final = false, rpcEvery = if (ph == Phase.LOADING) 1 else 2, tick = tick)
+                participants.firstOrNull { (probeFailures[it.nodeId] ?: 0) >= timing.probeFailLimit }?.let { p ->
+                    degrade(p, "its rpc-server failed ${timing.probeFailLimit} state checks in a row")
+                    return@launch
+                }
             }
         }
     }
@@ -653,9 +669,24 @@ class SplitCoordinator(
     /** Which peer a llama-server failure is about, judging by the endpoint named in its log. */
     private fun attribute(text: String): PeerInfo? = participants.firstOrNull { text.contains(it.host) }
 
-    private fun degrade(p: PeerInfo, reason: String) {
+    private fun degrade(p: PeerInfo, reason: String) = degrade(p.nodeId, p.name, reason)
+
+    /**
+     * The answer stopped coming from the split model. A phone that can be named is named (heartbeat gone, or rpc-server not answering);
+     * a hung rpc-server answers its state route like a healthy one, so then the split model as a whole is blamed.
+     */
+    private suspend fun stalled(idleMs: Long, beforeFirstToken: Boolean) {
+        val culprit = if (_state.value.phase == Phase.READY) lostPeer()?.first ?: unresponsivePeer() else null
+        val name = culprit?.name ?: "the split model"
+        _state.update { it.copy(generation = it.generation?.copy(running = false, error = "$name stopped answering")) }
+        if (_state.value.phase != Phase.READY) return
+        val reason = "no ${if (beforeFirstToken) "first " else ""}token for ${idleMs / 1000} s"
+        if (culprit != null) degrade(culprit, reason) else degrade("", name, reason)
+    }
+
+    private fun degrade(nodeId: String, name: String, reason: String) {
         val changed = synchronized(lock) {
-            val next = MemCloudLogic.degraded(_state.value, p.nodeId, p.name, reason, env.nowMs())
+            val next = MemCloudLogic.degraded(_state.value, nodeId, name, reason, env.nowMs())
             if (next != null) _state.value = next
             next != null
         }
@@ -673,6 +704,12 @@ class SplitCoordinator(
             if (final || tick % rpcEvery == 0) coroutineScope {
                 participants.map { p -> async { p.nodeId to Probe(runCatching { env.peerRpcState(p.addr) }.getOrNull(), env.tcpRttMs(p.host, Ports.RPC)) } }.awaitAll().toMap()
             } else emptyMap()
+        // a serving split counts state checks that fail or do not say READY; while loading, a busy link may make a check slow, so only the heartbeat decides
+        if (_state.value.phase == Phase.READY) {
+            for ((nodeId, probe) in probes) {
+                if (probe.rpc?.state == "READY") probeFailures.remove(nodeId) else probeFailures.merge(nodeId, 1, Int::plus)
+            }
+        }
         val reg = env.peers()
         val ownHealth = env.selfHealth()
         val own = env.local(Role.CHAT)
@@ -736,25 +773,53 @@ class SplitCoordinator(
     private suspend fun generate(prompt: String, maxTokens: Int) {
         _state.update { it.copy(generation = GenerationView(prompt)) }
         val t0 = System.nanoTime()
-        var first = 0L
+        val firstNs = AtomicLong(0)
+        val lastNs = AtomicLong(t0) // when anything last arrived from the stream (a token, or the end)
         var chunks = 0
         val text = StringBuilder()
         try {
             val llm = env.llm
             check(llm.modelName != "FAKE") { "the chat server is not running" }
-            llm.chatStream(ChatRequest(listOf(ChatMessage("user", prompt)), maxTokens = maxTokens, temperature = 0.7)).collect { c ->
-                if (c.delta.isNotEmpty()) {
-                    val n = System.nanoTime()
-                    if (first == 0L) first = n
-                    chunks++
-                    text.append(c.delta)
-                    val rate = if (n > first) (chunks - 1) * 1e9 / (n - first) else null
-                    _state.update { it.copy(generation = it.generation?.copy(text = text.toString(), ttftMs = (first - t0) / 1_000_000, decodeTokPerSec = rate, tokens = chunks)) }
-                }
-                c.stats?.let { s ->
-                    _state.update { it.copy(generation = it.generation?.copy(decodeTokPerSec = s.decodeTokPerSec.takeIf { v -> v > 0 }, tokens = s.completionTokens)) }
+            // The stream is read in its own job so that a stream that goes quiet can be abandoned: a hung rpc-server leaves the heartbeat
+            // fine, rpc-server READY, and the socket open for its full timeout. No token for the stall limit means the split has stopped.
+            val done = CompletableDeferred<Unit>()
+            val reader = scope.launch {
+                try {
+                    llm.chatStream(ChatRequest(listOf(ChatMessage("user", prompt)), maxTokens = maxTokens, temperature = 0.7)).collect { c ->
+                        lastNs.set(System.nanoTime())
+                        if (c.delta.isNotEmpty()) {
+                            val n = lastNs.get()
+                            firstNs.compareAndSet(0, n)
+                            val first = firstNs.get()
+                            chunks++
+                            text.append(c.delta)
+                            val rate = if (n > first) (chunks - 1) * 1e9 / (n - first) else null
+                            _state.update { it.copy(generation = it.generation?.copy(text = text.toString(), ttftMs = (first - t0) / 1_000_000, decodeTokPerSec = rate, tokens = chunks)) }
+                        }
+                        c.stats?.let { s ->
+                            _state.update { it.copy(generation = it.generation?.copy(decodeTokPerSec = s.decodeTokPerSec.takeIf { v -> v > 0 }, tokens = s.completionTokens)) }
+                        }
+                    }
+                    done.complete(Unit)
+                } catch (e: Throwable) {
+                    done.completeExceptionally(e)
                 }
             }
+            var idleMs: Long? = null
+            try {
+                while (withTimeoutOrNull(timing.stallPollMs) { done.join() } == null) {
+                    val limit = if (firstNs.get() == 0L) timing.firstTokenStallMs else timing.tokenStallMs
+                    val idle = (System.nanoTime() - lastNs.get()) / 1_000_000
+                    if (idle > limit) { idleMs = idle; break }
+                }
+            } finally {
+                reader.cancel()
+            }
+            if (idleMs != null) {
+                stalled(idleMs, firstNs.get() == 0L)
+                return
+            }
+            done.await() // the stream's own failure, if it ended with one, goes to the handlers below
             _state.update { it.copy(generation = it.generation?.copy(running = false)) }
         } catch (e: CancellationException) {
             _state.update { it.copy(generation = it.generation?.copy(running = false)) }

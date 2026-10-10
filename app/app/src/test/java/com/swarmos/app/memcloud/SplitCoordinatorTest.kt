@@ -17,6 +17,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -76,6 +77,14 @@ private class FakeEnv : SplitEnv {
         Role.RPC to LocalServer(ServerState.STOPPED, null, null),
     )
 
+    /** What the split model's stream does: answers, or goes quiet before or after its first token (a hung rpc-server). */
+    enum class Stream { NORMAL, HANG_BEFORE_FIRST, HANG_AFTER_FIRST }
+    @Volatile var streamMode = Stream.NORMAL
+
+    /** Peers whose every second /rpc/state check fails (a flapping link). */
+    val flaky = mutableSetOf<String>()
+    val probeCount = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     enum class Chat { READY, FAIL, HANG }
     @Volatile var chatMode = Chat.READY
     val chatStarts = AtomicInteger()
@@ -90,7 +99,9 @@ private class FakeEnv : SplitEnv {
         override suspend fun ready() = true
         override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
             llmStreams.incrementAndGet()
+            if (streamMode == Stream.HANG_BEFORE_FIRST) awaitCancellation()
             emit(ChatChunk("hello "))
+            if (streamMode == Stream.HANG_AFTER_FIRST) awaitCancellation()
             emit(ChatChunk("", done = true, stats = ChatStats(5, 2, 100.0, 300.0)))
         }
         override suspend fun chat(req: ChatRequest): ChatResult {
@@ -148,7 +159,9 @@ private class FakeEnv : SplitEnv {
     override suspend fun peerRpcRenew(addr: String): RpcStateDto { calls += "rpcRenew $addr"; return dto("READY") }
     override suspend fun peerRpcStop(addr: String) { reach(addr); calls += "rpcStop $addr" }
     override suspend fun peerRpcState(addr: String): RpcStateDto {
+        val n = probeCount.merge(addr, 1, Int::plus)!!
         if (addr in deadRpc) throw IllegalStateException("no answer")
+        if (addr in flaky && n % 2 == 0) throw IllegalStateException("one lost check")
         return dto("READY")
     }
     override fun reachable(host: String, port: Int) = true
@@ -192,7 +205,7 @@ class SplitCoordinatorTest {
     private lateinit var env: FakeEnv
     private lateinit var scope: CoroutineScope
     private lateinit var c: SplitCoordinator
-    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1)
+    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1, firstTokenStallMs = 600, tokenStallMs = 150, stallPollMs = 10)
 
     @Before fun setUp() {
         env = FakeEnv()
@@ -598,6 +611,66 @@ class SplitCoordinatorTest {
         val plan = c.previewPlan("model.gguf", listOf("Phone B"), SplitMode.EQUAL)
         assertEquals(plan.fits()[1].needMb, env.needMbSeen["10.0.0.2:8787"])
         assertTrue(plan.fits()[1].needMb > SplitPlanner.OVERHEAD_MB)
+    }
+
+    // ---------- finding 5: a hung split is noticed ----------
+
+    @Test fun aStreamThatGoesQuietAfterItsFirstTokenDegradesTheSplitAndKeepsTheText() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.streamMode = FakeEnv.Stream.HANG_AFTER_FIRST
+        assertNull(c.ask("hi", 20))
+        val s = awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+        assertEquals("rpc-server answers its state check, so no phone can be named", "the split model", s.lostPhone)
+        assertEquals("hello ", s.generation!!.text)
+        assertEquals("the split model stopped answering", s.generation!!.error)
+        assertFalse(s.generation!!.running)
+        assertTrue(s.failReason!!.contains("no token for"))
+        assertEquals("llama-server was killed", ServerState.STOPPED, env.local[Role.CHAT]!!.state)
+    }
+
+    @Test fun beforeTheFirstTokenTheStreamGetsTheLongerLimit() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.streamMode = FakeEnv.Stream.HANG_BEFORE_FIRST
+        assertNull(c.ask("hi", 20))
+        runBlocking { delay(300) } // twice the limit after a first token, half the limit before it
+        assertEquals(Phase.READY, c.state.value.phase)
+        assertTrue(c.state.value.generation!!.running)
+        val s = awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+        assertTrue(s.failReason!!.contains("no first token"))
+        assertEquals("the split model stopped answering", s.generation!!.error)
+    }
+
+    @Test fun aStallNamesThePhoneWhoseRpcServerStoppedAnswering() {
+        c = SplitCoordinator(env, scope, timing.copy(probeFailLimit = 1_000)) // only the stall path may decide here
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.deadRpc += "10.0.0.3:8787"
+        env.streamMode = FakeEnv.Stream.HANG_AFTER_FIRST
+        assertNull(c.ask("hi", 20))
+        val s = awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+        assertEquals("Phone C", s.lostPhone)
+        assertEquals("Phone C stopped answering", s.generation!!.error)
+        assertEquals(listOf(true, true, false), s.phones.map { it.online })
+    }
+
+    @Test fun threeFailedStateChecksInARowDegradeAServingSplitNamingThePhone() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.deadRpc += "10.0.0.3:8787"
+        val s = awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+        assertEquals("Phone C", s.lostPhone)
+        assertTrue(s.failReason!!.contains("3 state checks in a row"))
+    }
+
+    @Test fun anOccasionalLostStateCheckDoesNotDegradeTheSplit() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.flaky += "10.0.0.3:8787" // every second check fails, never three in a row
+        val before = env.probeCount["10.0.0.3:8787"] ?: 0
+        awaitCall("a dozen more checks") { (env.probeCount["10.0.0.3:8787"] ?: 0) >= before + 12 }
+        assertEquals(Phase.READY, c.state.value.phase)
     }
 
     @Test fun theActivityLineBelongsToTheDriverRoleOnly() {
