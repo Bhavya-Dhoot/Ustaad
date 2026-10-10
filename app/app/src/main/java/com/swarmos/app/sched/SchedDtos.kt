@@ -47,7 +47,7 @@ data class ChatJobResult(val jobId: String, val text: String, val stats: StatsDt
 data class ChunkDto(val delta: String)
 
 @Serializable
-data class StreamDone(val stats: StatsDto?, val nodeId: String, val modelName: String)
+data class StreamDone(val stats: StatsDto?, val nodeId: String, val modelName: String, val mac: String? = null)
 
 @Serializable
 data class CapacityRequest(val slots: Int)
