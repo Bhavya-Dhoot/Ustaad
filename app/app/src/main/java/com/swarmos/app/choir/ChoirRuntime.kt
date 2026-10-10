@@ -28,6 +28,7 @@ class RemoteParticipant(
     private val host: String,
     private val client: NodeClient,
     override val away: Boolean = false,
+    override val noModel: Boolean = false,
 ) : ChoirParticipant {
     override suspend fun solve(req: SolveRequest): NodeAnswer = client.post<NodeAnswer, SolveRequest>(host, "/choir/solve", req)
     override suspend fun revise(req: ReviseRequest): NodeAnswer = client.post<NodeAnswer, ReviseRequest>(host, "/choir/revise", req)
@@ -35,8 +36,10 @@ class RemoteParticipant(
     suspend fun setScript(script: FakeScript) { client.post<JsonObject, FakeScript>(host, "/choir/debug/script", script) }
 }
 
-/** The eval was refused before it started (for example the phone is too hot). */
-class EvalRefused(message: String) : IllegalStateException(message)
+/** A run or eval was refused before it started (no real chat model in a demo build, a phone that is too hot). */
+open class RunRefused(message: String) : IllegalStateException(message)
+
+class EvalRefused(message: String) : RunRefused(message)
 
 @Serializable data class DebugPeers(val ips: List<String>)
 @Serializable data class PeerAdded(val nodeId: String, val name: String, val ip: String)
@@ -71,8 +74,8 @@ object ChoirController {
     private val _run = MutableStateFlow<RunTrace?>(null)
     val run: StateFlow<RunTrace?> = _run.asStateFlow()
 
-    private val _eval = MutableStateFlow(EvalProgress())
-    val eval: StateFlow<EvalProgress> = _eval.asStateFlow()
+    private val evalSession by lazy { EvalSession(scope) }
+    val eval: StateFlow<EvalProgress> get() = evalSession.progress
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
@@ -85,7 +88,10 @@ object ChoirController {
     private fun remotePeers(): List<RemoteParticipant> =
         // phones whose link heartbeat says away stay in the list so the run shows them as away lanes; they are never asked
         AppGraph.registry.peers.value.map {
-            RemoteParticipant(it.info.nodeId, it.info.name, it.info.ip, AppGraph.nodeClient, away = it.away)
+            RemoteParticipant(
+                it.info.nodeId, it.info.name, it.info.ip, AppGraph.nodeClient, away = it.away,
+                noModel = !BuildConfig.DEBUG && !ChoirReadiness.peerHasRealModel(it.info.chatModel),
+            )
         }
 
     fun newTaskId(): String = "t-" + UUID.randomUUID().toString().take(8)
@@ -103,13 +109,14 @@ object ChoirController {
         scripts: Map<String, FakeScript> = emptyMap(),
         keepScripts: Boolean = false,
     ): RunTrace = gate.withLock {
+        refusal()?.let { throw RunRefused(it) }
         _busy.value = true
         val peers = remotePeers()
         // fake per-node answers exist in debug builds only
         val scripts = if (BuildConfig.DEBUG) scripts else emptyMap()
         try {
             if (scripts.isNotEmpty()) applyScripts(scripts, peers)
-            ChoirActivity.during(ChoirActivity.asking(1 + peers.count { !it.away })) {
+            ChoirActivity.during(ChoirActivity.asking(1 + peers.count { !it.away && !it.noModel })) {
                 coordinator.run(problem, newTaskId(), selfParticipant(), peers, options) { _run.value = it }.also { _run.value = it }
             }
         } finally {
@@ -122,10 +129,14 @@ object ChoirController {
         scope.launch { runCatching { runProblem(problem, options) } }
     }
 
-    /** Runs the built-in set (or the given ids) one after another; stores filesDir/choir-eval-<ts>.json. */
+    /** Runs the built-in set (or the given ids) one after another; stores filesDir/choir-eval-<ts>.json. Stop (see [cancelEval]) keeps the finished rows. */
     suspend fun runEval(ids: List<String>?, options: RunOptions = RunOptions(), withSamples: Boolean = true): EvalReport = gate.withLock {
+        refusal()?.let { reason ->
+            evalSession.refuse(reason)
+            throw RunRefused(reason)
+        }
         ChoirEval.refuseWhenHot(AppGraph.health.state.value.thermalStatus)?.let { reason ->
-            _eval.value = EvalProgress(error = reason)
+            evalSession.refuse(reason)
             throw EvalRefused(reason)
         }
         val list = if (ids == null) problems else ids.mapNotNull { id -> problems.firstOrNull { it.id == id } }
@@ -133,55 +144,42 @@ object ChoirController {
         var fake = false
         val nodes = mutableSetOf<String>()
         try {
-            _eval.value = EvalProgress(running = true, total = list.size, useProblemCheck = options.useProblemCheck)
-            ChoirActivity.set(ChoirActivity.check(0, list.size))
-            val rows = ChoirEval.run(
+            evalSession.run(
                 list,
                 runOne = { p ->
-                    val peers = remotePeers()
-                    coordinator.run(p, newTaskId(), selfParticipant(), peers, options) { _run.value = it }.also {
+                    coordinator.run(p, newTaskId(), selfParticipant(), remotePeers(), options) { _run.value = it }.also {
                         _run.value = it
                         fake = fake || it.fake
                         it.lanes.forEach { l -> nodes.add(l.name) }
                     }
                 },
                 runSamples = if (withSamples) ::samplesFor else null,
-                onProgress = { done, cur ->
-                    ChoirActivity.set(ChoirActivity.check(done.size, list.size))
-                    _eval.value = EvalProgress(
-                        running = cur != null, done = done.size, total = list.size, current = cur?.id,
-                        rows = done, summary = ChoirEval.summarize(done), fake = fake, useProblemCheck = options.useProblemCheck,
+                useProblemCheck = options.useProblemCheck,
+                newReport = { rows ->
+                    EvalReport(
+                        ts = System.currentTimeMillis(),
+                        model = AppGraph.llm.modelName,
+                        fake = fake || AppGraph.llm.modelName == "FAKE",
+                        nodes = nodes.toList().sorted(),
+                        useProblemCheck = options.useProblemCheck,
+                        deadlineMs = ChoirConfig().deadlineMs,
+                        summary = ChoirEval.summarize(rows),
+                        rows = rows,
                     )
                 },
+                dir = AppGraph.appContext.filesDir,
+                fakeSeen = { fake },
             )
-            val report = ChoirEval.store(
-                AppGraph.appContext.filesDir,
-                EvalReport(
-                    ts = System.currentTimeMillis(),
-                    model = AppGraph.llm.modelName,
-                    fake = fake || AppGraph.llm.modelName == "FAKE",
-                    nodes = nodes.toList().sorted(),
-                    useProblemCheck = options.useProblemCheck,
-                    deadlineMs = ChoirConfig().deadlineMs,
-                    summary = ChoirEval.summarize(rows),
-                    rows = rows,
-                ),
-            )
-            _eval.value = EvalProgress(
-                running = false, done = rows.size, total = list.size, lastFile = report.file,
-                summary = report.summary, rows = rows, fake = report.fake, useProblemCheck = options.useProblemCheck,
-            )
-            report
-        } catch (e: CancellationException) {
-            throw e
-        } catch (t: Throwable) {
-            _eval.value = _eval.value.copy(running = false, error = t.message ?: t::class.simpleName)
-            throw t
         } finally {
-            ChoirActivity.clear()
             _busy.value = false
         }
     }
+
+    /** Stops the running evaluation and keeps the problems it has finished. The Stop on the phone's live-state line calls this. */
+    fun cancelEval() = evalSession.cancel()
+
+    /** Why a run must not start on this phone, or null: demo builds need a real chat model on the coordinator. */
+    fun refusal(): String? = ChoirReadiness.refusal(BuildConfig.DEBUG, ChoirReadiness.realChatReady(AppGraph.llm))
 
     fun startEval(options: RunOptions = RunOptions(), withSamples: Boolean = true) {
         scope.launch { runCatching { runEval(null, options, withSamples) } }
@@ -219,7 +217,7 @@ object ChoirController {
                 node.script = sc.takeUnless { it.isEmpty() }
             } else {
                 // an away phone is not asked, so it gets no script either; a peer that cannot be reached is simply skipped
-                peers.firstOrNull { (it.nodeId == key || it.name.equals(key, true)) && !it.away }?.let { p ->
+                peers.firstOrNull { (it.nodeId == key || it.name.equals(key, true)) && !it.away && !it.noModel }?.let { p ->
                     try {
                         p.setScript(sc)
                     } catch (e: CancellationException) {
