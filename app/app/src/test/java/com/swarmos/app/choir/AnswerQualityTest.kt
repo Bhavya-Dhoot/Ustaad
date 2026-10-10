@@ -188,6 +188,31 @@ class AnswerQualityTest {
         assertTrue(a.retried)
     }
 
+    @Test fun jsonDebrisAsACodeAnswerIsInvalidAndRetried() = runBlocking {
+        // e2e2 pass 2, c1: the coordinator's answer was ,confidence": 1.0
+        val debris = ",confidence\": 1.0"
+        assertFalse(AnswerCheck.isValid(Kind.CODE, debris))
+        for (bad in listOf("\"37\"", "answer: 37", "confidence\":", ":37", "105}", "[105", "{\"a\": 1}")) assertFalse(bad, AnswerCheck.isValid(Kind.CODE, bad))
+        for (ok in listOf("37", "4 13", "[1, 2]", "[]", "True")) assertTrue(ok, AnswerCheck.isValid(Kind.CODE, ok))
+        val llm = ScriptedLlm(listOf("""{"key_steps": ["t = 37"], "answer": ",confidence\": 1.0", "confidence": 0.9}""", """{"key_steps": ["37"], "answer": "37", "confidence": 0.9}"""))
+        val code = "What does this Python program print?\ndef f(n):\n    return n\nprint(f(37))"
+        val a = node(llm).solve(SolveRequest("t", code, Kind.CODE, Role.SOLVER, 300, 10_000))
+        assertNull(a.error)
+        assertEquals("37", a.answer)
+        assertTrue(a.retried)
+    }
+
+    @Test fun aNumericAnswerIsRoundedToSixPlacesBeforeAnyArmSeesIt() = runBlocking {
+        // e2e2: one-phone answers came back as 486.0000000000000644 and 79999.9999999999999999
+        for ((raw, want) in listOf("486.0000000000000644" to "486", "79999.9999999999999999" to "80000", "164.5" to "164.5", "486" to "486", "0.1234567" to "0.123457")) {
+            val a = node(ScriptedLlm(listOf("""{"key_steps": ["x"], "answer": $raw, "confidence": 0.9}"""))).solve(req())
+            assertNull(a.error)
+            assertEquals(raw, want, a.answer)
+        }
+        assertNull("not a plain decimal: left to the strict reader", Normalizer.roundedDecimal("Rs 80,000"))
+        assertEquals("80000", Normalizer.roundedDecimal(" 80000.000 "))
+    }
+
     @Test fun aValidAnswerIsNeverRetried() = runBlocking {
         val llm = ScriptedLlm(listOf(goodAnswer))
         val a = node(llm).solve(req())
