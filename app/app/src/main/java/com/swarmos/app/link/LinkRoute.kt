@@ -54,14 +54,16 @@ object LinkRoute {
      * text is only used when the code had no Direct credentials, and it does not change the wording.
      */
     fun unreachableHostText(hostName: String, hostIps: List<String>, ours: List<LocalLink>, hadDirectCreds: Boolean): String {
+        // an address that nothing answered is remembered for PeerLinks.ENDPOINT_TTL_MS and then forgotten
+        val trying = "Ustaad keeps trying for ${PeerLinks.ENDPOINT_TTL_MS / 60_000} minutes. After that, scan the code again."
         val mine = ours.firstOrNull { it.type == LinkType.LAN } ?: ours.firstOrNull()
-            ?: return "secret adopted, but this phone has no Wi-Fi address. Connect it to the host's Wi-Fi. Will keep trying."
+            ?: return "secret adopted, but this phone has no Wi-Fi address. Connect it to the host's Wi-Fi. $trying"
         val valid = hostIps.filter { ipv4ToInt(it) != null }
-        if (valid.isEmpty()) return "secret adopted, host not reachable yet (will keep trying)"
+        if (valid.isEmpty()) return "secret adopted, but the code holds no usable address for the host. Scan the code again." // nothing is remembered, so nothing is retried
         if (valid.any { ip -> findLocalFor(ip, ours) != null })
-            return "secret adopted, host not reachable yet. Same network: check that Ustaad is open on $hostName. Will keep trying."
+            return "secret adopted, host not reachable yet. Same network: check that Ustaad is open on $hostName. $trying"
         return "secret adopted, but $hostName is on another network (its address ${valid.first()}, this phone ${mine.address}). " +
-            "Put both phones on the same Wi-Fi. Will keep trying."
+            "Put both phones on the same Wi-Fi. $trying"
     }
 
     /**
