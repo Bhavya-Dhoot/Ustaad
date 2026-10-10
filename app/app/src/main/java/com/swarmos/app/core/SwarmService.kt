@@ -26,6 +26,7 @@ import com.swarmos.app.link.NodeServer
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.Role
 import com.swarmos.app.llm.ServerState
+import com.swarmos.app.sched.Sched
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -204,6 +205,7 @@ class SwarmService : Service() {
     /** Stops the model servers, the node server and the locks. Blocking; always called off the main thread. */
     private fun teardown() {
         if (!tornDown.compareAndSet(false, true)) return
+        Sched.batches.stopAll() // the scheduler's scope outlives the service: a running batch would go on sending jobs to the other phones
         releaseLocks()
         LlamaRuntime.onServiceStopped()
         AppGraph.health.stop() // the 2 s sampler runs only while the service does (start() calls AppGraph.health.start() again)

@@ -7,8 +7,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -183,6 +185,19 @@ class SwarmLlmTest {
         val tookMs = (System.nanoTime() - started) / 1_000_000
         assertEquals("ok", r.nodeId)
         assertTrue("moved on after about two missed pings, took $tookMs ms", tookMs < 5_000)
+    }
+
+    @Test fun theResendToAPhoneThatCameBackIsNotEndedByTheSignalThatMarkedItDown() = runBlocking {
+        val p = phone("p", tps = 99.0).also { it.hang = true }
+        val llm = SwarmLlm({ listOf(p) }, scope, attemptTimeoutMs = 30_000, capsMaxAgeMs = 50, probeEveryMs = 100, heartbeatMs = 40, capsTimeoutMs = 100, msPerToken = 0)
+        val job = async { llm.chatJob("job-1", req("hello")) }
+        while (p.jobIds.isEmpty()) delay(5)
+        p.hang = false             // the second try is answered
+        p.capsFailures.set(2)      // two missed pings: the phone is marked down and the first try aborted; then it answers again
+        val r = withTimeout(10_000) { job.await() }
+        assertEquals("p", r.nodeId)
+        assertEquals("the same job id was sent twice, the second time to a phone that was back", listOf("job-1", "job-1"), p.jobIds.toList())
+        assertTrue("the phone was not marked down again by its own resend", llm.phoneViews().first { it.nodeId == "p" }.up)
     }
 
     @Test fun slotCountIncludesAPhoneThatIsDownSoItCanRejoinMidBatch() = runBlocking {

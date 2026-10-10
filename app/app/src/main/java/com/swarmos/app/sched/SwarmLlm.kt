@@ -465,7 +465,10 @@ class SwarmLlm(
                 // ask it once more for the same job id, which returns the stored result or shares the running job. Only then go elsewhere.
                 if (!ep.isLocal && (e is PhoneTimeoutException || e is IOException) && resent.add(ep.nodeId) && stillAnswers(ep)) {
                     try {
-                        return attempt(ep, abort, timeoutMs, call)
+                        // stillAnswers() may have brought the phone back up, and that replaces a fired abort signal with a new one:
+                        // the signal read before the first try would end this try at once
+                        val current = synchronized(lock) { states[ep.nodeId]?.abort } ?: abort
+                        return attempt(ep, current, timeoutMs, call)
                     } catch (again: CancellationException) {
                         throw again
                     } catch (again: Exception) {

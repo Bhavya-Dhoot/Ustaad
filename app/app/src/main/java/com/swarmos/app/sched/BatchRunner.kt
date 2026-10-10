@@ -5,6 +5,8 @@ import com.swarmos.app.llm.ChatMessage
 import com.swarmos.app.llm.ChatRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,10 +14,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.atomic.AtomicInteger
@@ -182,7 +186,8 @@ object Bench {
  * Runs batches in the background and keeps the latest report per mode ("swarm", "local") for the screen and the HTTP routes.
  * When [dir] gives a folder, the report of a running batch is written there as items finish (at most once a second, the final
  * one always), so after the app was killed the status route still answers for that id with what had finished, state
- * "interrupted". There is no resume. [audit] gets one entry if a batch ends with an error.
+ * "interrupted". There is no resume. [audit] gets one entry if a batch ends with an error. [stopAll] ends the batches that run.
+ * The first report is written before [start] returns the id, so an id that was handed out is never unknown after a restart.
  */
 class BatchStore(
     private val scope: CoroutineScope,
@@ -194,6 +199,9 @@ class BatchStore(
 ) {
     private val lock = Any()
     private val flows = LinkedHashMap<String, MutableStateFlow<BatchReport>>()
+    private val jobs = HashMap<String, Job>()                       // the coroutine of every batch that has not ended
+    private val pending = LinkedHashMap<String, BatchReport>()      // newest report per batch that waits for the writer
+    private var writing = false                                     // one writer at a time
     private val _latest = MutableStateFlow<Map<String, BatchReport>>(emptyMap())
     private var lastWriteMs = 0L
 
@@ -221,7 +229,8 @@ class BatchStore(
             }
         }
         publish(flow.value)
-        scope.launch {
+        persist(flow.value, force = true)   // the id is about to be handed out: it must be known after a restart too
+        val job = scope.launch {
             val report = try {
                 BatchRunner(client).run(id, mode, requests) { r ->
                     // updates come from several workers; never let an older snapshot overwrite a newer one
@@ -243,7 +252,29 @@ class BatchStore(
             publish(report)
             persist(report, force = true)
         }
+        synchronized(lock) { jobs[id] = job }
+        job.invokeOnCompletion { cause ->
+            synchronized(lock) { jobs.remove(id) }
+            // stopped ([stopAll], or the scope ended) before it finished, possibly before it ran a line: it will not go on, so it
+            // must not stay "running" here or on disk
+            if (cause != null && flow.value.state == RUNNING) {
+                val stopped = flow.value.copy(state = INTERRUPTED)
+                flow.value = stopped
+                publish(stopped)
+                persist(stopped, force = true)
+            }
+        }
         return id
+    }
+
+    /**
+     * Ends every batch that is running (Stop Ustaad): no more jobs go to the phones, and each report says "interrupted", the
+     * state a coordinator that was killed leaves behind. Blocking; waits at most [STOP_WAIT_MS] for the batches to wind up.
+     */
+    fun stopAll() {
+        val running = synchronized(lock) { jobs.values.toList() }
+        if (running.isEmpty()) return
+        runBlocking { withTimeoutOrNull(STOP_WAIT_MS) { running.forEach { it.cancelAndJoin() } } }
     }
 
     /** The batch's status: from memory, else from the file written while it ran (an id of an interrupted batch answers "interrupted"). */
@@ -251,22 +282,57 @@ class BatchStore(
 
     private fun publish(r: BatchReport) = _latest.update { it + (r.mode to r) }
 
+    /**
+     * Files [r] for the writer. One writer at a time: a caller that finds the writer busy leaves its report in [pending] (the
+     * newest per batch wins) and the writer takes it when it is done with the one it has, so no worker waits for the disk.
+     */
     private fun persist(r: BatchReport, force: Boolean) {
         val d = dir() ?: return
         synchronized(lock) {
             val now = clock()
             if (!force && now - lastWriteMs < WRITE_EVERY_MS) return
             lastWriteMs = now
+            val queued = pending[r.id]
+            // an older snapshot that arrives late must not replace a newer one
+            if (queued == null || force || r.done + r.failed >= queued.done + queued.failed) pending[r.id] = r
+            if (writing) return
+            writing = true
         }
+        while (true) {
+            val next = synchronized(lock) {
+                val first = pending.keys.firstOrNull()
+                if (first == null) {
+                    writing = false
+                    null
+                } else {
+                    pending.remove(first)
+                }
+            } ?: return
+            write(d, next)
+        }
+    }
+
+    /** Writes the report to a temporary file of its own and moves it over the real one, so a reader never sees half a report. */
+    private fun write(d: File, r: BatchReport) {
+        var tmp: File? = null
         try {
             d.mkdirs()
-            val tmp = File(d, "batch-${r.id}.tmp")
+            tmp = File.createTempFile("batch-${r.id}-", ".tmp", d)
             tmp.writeText(SwarmJson.encodeToString(r))
-            Files.move(tmp.toPath(), File(d, "batch-${r.id}.json").toPath(), StandardCopyOption.REPLACE_EXISTING)
+            val target = File(d, "batch-${r.id}.json").toPath()
+            try {
+                Files.move(tmp.toPath(), target, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(tmp.toPath(), target, StandardCopyOption.REPLACE_EXISTING)
+            }
             d.listFiles { f -> f.name.startsWith("batch-") && f.name.endsWith(".json") }
                 ?.sortedByDescending { it.lastModified() }?.drop(KEEP_FILES)?.forEach { it.delete() }
+            // a temporary file left by a write that was cut short (the app was killed)
+            val stale = System.currentTimeMillis() - STALE_TMP_MS
+            d.listFiles { f -> f.name.startsWith("batch-") && f.name.endsWith(".tmp") && f.lastModified() < stale }?.forEach { it.delete() }
         } catch (_: Exception) {
             // the status stays in memory; a full disk must not stop a batch
+            tmp?.delete()
         }
     }
 
@@ -290,6 +356,10 @@ class BatchStore(
         private const val KEEP = 8
         private const val KEEP_FILES = 16
         private const val WRITE_EVERY_MS = 1_000L
+        private const val STALE_TMP_MS = 60_000L
+
+        /** [BatchStore.stopAll] waits this long for the batches to end. */
+        const val STOP_WAIT_MS = 3_000L
         private val SAFE_ID = Regex("[A-Za-z0-9_-]{1,64}")
     }
 }

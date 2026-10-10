@@ -71,6 +71,12 @@ class BusyCountersTest {
         assertEquals("1 job done, 3 stopped by real work, 1,540 tokens, 38 s generating.", line)
     }
 
+    @Test fun theCounterLineNamesFailedJobsOnlyWhenThereWereSome() {
+        val line = BusyReport(true, "running", 4, 3, 2, 1_540, 38.0, 0.5).line()
+        assertEquals("4 jobs done, 3 stopped by real work, 2 failed, 1,540 tokens, 38 s generating.", line)
+        assertEquals("1,200 failed", true, BusyReport(true, "running", 0, 0, 1_200, 0, 0.0, 0.0).line().contains("1,200 failed, "))
+    }
+
     @Test fun theAuditPayloadHasCountsAndSecondsOnly() {
         val payload = BusyReport(true, "running", 4, 2, 1, 300, 12.5, 0.3).toAudit(900)
         assertEquals(setOf("jobsDone", "jobsCancelled", "jobsFailed", "tokens", "secondsGenerating", "secondsOn"), payload.keys)

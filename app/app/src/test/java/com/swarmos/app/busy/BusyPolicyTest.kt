@@ -136,6 +136,33 @@ class BusyPolicyTest {
         assertEquals("unknown battery does not pause", BusyState.Running, state(ok.copy(batteryPct = -1)))
     }
 
+    @Test fun freeMemoryUnderTheFloorPauses() {
+        assertEquals(BusyState.PausedMemory, state(ok.copy(ramAvailMb = BusyPolicy.MEM_FLOOR_MB - 1)))
+        assertEquals(BusyState.PausedMemory, state(ok.copy(ramAvailMb = 1)))
+        assertEquals("the floor itself is enough", BusyState.Running, state(ok.copy(ramAvailMb = BusyPolicy.MEM_FLOOR_MB)))
+        assertEquals("plenty", BusyState.Running, state(ok.copy(ramAvailMb = 4096)))
+        assertEquals("charging does not make up for memory", BusyState.PausedMemory, state(ok.copy(ramAvailMb = 500, charging = true)))
+    }
+
+    @Test fun unknownMemoryDoesNotPause() {
+        assertEquals(BusyState.Running, state(ok))   // the default is -1
+        assertEquals(BusyState.Running, state(ok.copy(ramAvailMb = -1)))
+        assertEquals("0 is what the health sample gives before its first reading", BusyState.Running, state(ok.copy(ramAvailMb = 0)))
+    }
+
+    @Test fun hammerDoesNotOverrideTheMemoryPause() {
+        assertEquals(BusyState.PausedMemory, state(ok.copy(hammer = true, ramAvailMb = 500)))
+        assertEquals(BusyState.PausedMemory, state(ok.copy(hammer = true, thermalStatus = 2, ramAvailMb = 500)))
+        assertEquals("known and enough: Hammer runs a warm phone at full duty", BusyState.Running, state(ok.copy(hammer = true, thermalStatus = 2, ramAvailMb = 4096)))
+    }
+
+    @Test fun memoryComesAfterHeatAndBatteryAndBeforeHalfDuty() {
+        assertEquals(BusyState.PausedHot, state(ok.copy(thermalStatus = 3, ramAvailMb = 500)))
+        assertEquals(BusyState.PausedBattery, state(ok.copy(batteryPct = 10, ramAvailMb = 500)))
+        assertEquals(BusyState.PausedMemory, state(ok.copy(thermalStatus = 2, ramAvailMb = 500)))
+        assertEquals(BusyState.WaitingForIdle, state(ok.copy(idleMs = 100, ramAvailMb = 500)))
+    }
+
     @Test fun heatBeatsBatteryAndBatteryBeatsHalfDuty() {
         assertEquals(BusyState.PausedHot, state(ok.copy(thermalStatus = 3, batteryPct = 10)))
         assertEquals(BusyState.PausedBattery, state(ok.copy(thermalStatus = 2, batteryPct = 10)))
@@ -161,6 +188,7 @@ class BusyPolicyTest {
         assertEquals("busy half", BusyState.HalfDuty.stripWord)
         assertEquals("paused hot", BusyState.PausedHot.stripWord)
         assertEquals("paused battery", BusyState.PausedBattery.stripWord)
+        assertEquals("paused memory", BusyState.PausedMemory.stripWord)
         assertEquals("paused model", BusyState.PausedModelRestarted.stripWord)
         assertEquals("resting", BusyState.HammerCooldown.stripWord)
         assertNull(BusyState.Off.stripWord)

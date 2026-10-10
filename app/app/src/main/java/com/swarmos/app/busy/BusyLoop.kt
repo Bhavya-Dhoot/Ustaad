@@ -29,7 +29,7 @@ data class ChatServer(val instance: Long, val readyForMs: Long)
  * The "Keep busy" loop of one phone. When the switch is on, a real chat model has been READY for a while, Ustaad is in front
  * (or the phone charges with battery optimisations ignored) and the phone has had no real model work for
  * [BusyPolicy.IDLE_BEFORE_MS], it runs short filler jobs one after another through [stream]: it borrows the slot from [exec]
- * (so real work waits for at most the time the filler needs to stop), re-reads heat and battery before every job
+ * (so real work waits for at most the time the filler needs to stop), re-reads heat, battery and free memory before every job
  * ([BusyPolicy.stateFor]) and stops the job in flight the moment real work asks for the slot. Filler goes only through this
  * phone's model, and its replies are dropped: nothing here calls `noteStats`, the benchmark, Choir or the batch runner.
  *
@@ -91,6 +91,7 @@ class BusyLoop(
                 thermalStatus = h?.thermalStatus ?: 0,
                 batteryPct = h?.batteryPct ?: -1,
                 charging = h?.charging ?: true,
+                ramAvailMb = h?.ramAvailMb?.toInt() ?: -1,
                 hammer = hammer(),
                 sinceHammerOffMs = hammerOffAtMs()?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE,
             ),
@@ -101,7 +102,7 @@ class BusyLoop(
             BusyState.NoModel -> NO_MODEL_POLL_MS
             BusyState.PausedModelRestarted, BusyState.PausedBackground, BusyState.HammerCooldown -> SETTLE_POLL_MS
             BusyState.WaitingForIdle -> (BusyPolicy.IDLE_BEFORE_MS - idle).coerceIn(MIN_POLL_MS, MAX_POLL_MS)
-            BusyState.PausedHot, BusyState.PausedBattery -> BusyPolicy.PAUSE_RECHECK_MS
+            BusyState.PausedHot, BusyState.PausedBattery, BusyState.PausedMemory -> BusyPolicy.PAUSE_RECHECK_MS
             BusyState.Running, BusyState.HalfDuty -> {
                 val ran = runOne(server ?: return RETRY_MS) ?: return RETRY_MS
                 when (ran.outcome) {
