@@ -67,6 +67,12 @@ class SetupStateTest {
     }
 
     @Test
+    fun keepBusyLineSaysWhetherTheModeRunsWithTheScreenOff() {
+        assertEquals("Also runs with the screen off while charging.", keepBusyScreenOffLine(batteryExempt = true))
+        assertEquals("Runs only while Ustaad is on screen.", keepBusyScreenOffLine(batteryExempt = false))
+    }
+
+    @Test
     fun backgroundStartRowIsForVivoAndIqooOnly() {
         assertTrue(isVivoFamily("vivo", "vivo"))
         assertTrue(isVivoFamily("vivo", "iQOO"))
