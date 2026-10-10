@@ -33,6 +33,10 @@ object BackendPlan {
      * and by the restart after a GPU server died twice. [reason] is the failure or the way it died.
      */
     fun fallbackNote(reason: String?): String = "The GPU server failed (${reason?.take(160) ?: "unknown reason"}). Running on the CPU build."
+
+    /** The banner when the one automatic GPU try after a CPU fallback failed too: no further try is made until the owner uses the GPU switch or loads by hand. */
+    fun gpuRetryFailedNote(reason: String?): String =
+        "The GPU was tried again and failed (${reason?.take(160) ?: "unknown reason"}). Running on the CPU build. Turn \"Use GPU for chat\" off and on to try again."
 }
 
 /**
