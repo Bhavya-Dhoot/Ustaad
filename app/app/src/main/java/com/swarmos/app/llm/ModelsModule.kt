@@ -37,6 +37,8 @@ data class RoleStateDto(
     val restarts: Int = 0,
     /** "GPU" (OpenCL build) or "CPU" for the chat server, null for the other roles and while stopped. */
     val backend: String? = null,
+    /** The last lines (at most 2 KB) the server printed when its start failed or fell back from the GPU to the CPU build; null after a clean start. */
+    val lastError: String? = null,
 )
 
 @Serializable
@@ -205,6 +207,7 @@ object ModelsModule : SwarmModule {
                 notice = st.notice,
                 restarts = st.restarts,
                 backend = st.backend?.name,
+                lastError = LlamaRuntime.lastError(r),
             )
         }
         val stats = LlamaRuntime.lastStats.value

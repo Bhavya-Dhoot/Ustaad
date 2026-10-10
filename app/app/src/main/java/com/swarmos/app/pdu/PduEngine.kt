@@ -9,6 +9,10 @@ import com.swarmos.app.link.PeerLinks
 import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.sched.Sched
 import com.swarmos.app.core.SwarmJson
+import com.swarmos.app.kb.KbEngine
+import com.swarmos.app.kb.KbHit
+import com.swarmos.app.kb.KbSearch
+import com.swarmos.app.kb.KbSearchResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -82,6 +86,10 @@ data class QueryUi(
     val auditHash: String? = null,
     /** True when this phone answered by keywords only, because no usable embedder was available. */
     val lexicalOnly: Boolean = false,
+    /** Saved answers (knowledge bank cards) that matched, best first; never revoked ones. */
+    val cards: List<KbHit> = emptyList(),
+    /** A card whose answer clears the relevance floor: shown at once as the answer, no live search ran. */
+    val savedAnswer: KbHit? = null,
 )
 
 /** Whether a real embedding model is loaded and answering. A fake or stopped one is never "ready". */
@@ -108,7 +116,7 @@ data class IndexRequest(
 )
 
 @Serializable
-data class AskRequest(val text: String, val k: Int = 5, val deadlineMs: Int = 1500)
+data class AskRequest(val text: String, val k: Int = 5, val deadlineMs: Int = 1500, val useSaved: Boolean = true)
 
 class LocalSearch(val candidates: List<Candidate>, val terms: List<String>, val embedMs: Long, val searchMs: Long, val dense: Boolean = true)
 
@@ -406,21 +414,47 @@ object PduEngine {
 
     // ---- the federated ask --------------------------------------------------------------------------------
 
-    /** Full flow: query every online peer and this phone, merge, show cards, stream the answer. Returns the final state. */
-    suspend fun ask(text: String, k: Int = 5, deadlineMs: Int = 1500): QueryUi =
+    /**
+     * Full flow: look in the knowledge bank, query every online peer and this phone, merge, show cards, stream the answer.
+     * Returns the final state. A saved answer that clears the relevance floor ends the ask at once (no peers, no model) unless
+     * [useSaved] is false, which is what "Ask again" passes.
+     */
+    suspend fun ask(text: String, k: Int = 5, deadlineMs: Int = 1500, useSaved: Boolean = true): QueryUi =
         try {
-            runAsk(text, k, deadlineMs)
+            runAsk(text, k, deadlineMs, useSaved)
         } finally {
             PduActivity.clear()
         }
 
-    private suspend fun runAsk(text: String, k: Int, deadlineMs: Int): QueryUi {
+    private suspend fun runAsk(text: String, k: Int, deadlineMs: Int, useSaved: Boolean): QueryUi {
         val t0 = now()
         val qid = UUID.randomUUID().toString().take(8)
         val self = AppGraph.registry.self.value
         val peers = AppGraph.registry.peers.value
         val q = PduQuery(qid, text, k, deadlineMs)
         val qBytes = SwarmJson.encodeToString(q).toByteArray().size
+
+        // the knowledge bank first: cards stay usable when the phone that held the files is away
+        val kb = try {
+            KbEngine.search(text)
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            KbSearchResult.NONE
+        }
+        val saved = if (useSaved) kb.hits.firstOrNull()?.takeIf { KbSearch.answersByItself(it) } else null
+        if (saved != null) {
+            _query.value = QueryUi(
+                qid, text, "done", cards = kb.hits, savedAnswer = saved, timings = Timings(embedMs = kb.embedMs, totalMs = now() - t0),
+                auditHash = AppGraph.audit.append(
+                    "pdu.ask_saved", JsonObject(mapOf("qid" to JsonPrimitive(qid), "card" to JsonPrimitive(saved.entry.card.id))),
+                ).hash,
+            )
+            return _query.value!!
+        }
+        val cardSources = kb.hits.mapIndexed { i, h ->
+            MergedHit(h.entry.card.authorId, h.entry.card.authorName, h.entry.card.authorId == self.nodeId, KbSearch.asHit(h, i + 1), 0.0)
+        }
+
         // the chat model is captured once; the placeholder client or a server that does not answer never writes an answer
         val chat = AppGraph.llm
         val chatReady = IndexGuard.usable(chat)
@@ -436,7 +470,7 @@ object PduEngine {
         }
         val online = peers.filter { !it.away }
         PduActivity.set(PduActivity.searching(online.size))
-        _query.value = QueryUi(qid, text, "searching", devices = results.values.toList(), model = model)
+        _query.value = QueryUi(qid, text, "searching", devices = results.values.toList(), model = model, cards = kb.hits)
         AppGraph.audit.append(
             "pdu.sent",
             JsonObject(mapOf("qid" to JsonPrimitive(qid), "peers" to JsonPrimitive(online.size), "bytes" to JsonPrimitive(qBytes * online.size))),
@@ -525,13 +559,13 @@ object PduEngine {
         val sb = StringBuilder()
         var ttft = -1L
         var note: String? = null
-        if (sources.isEmpty()) {
+        if (sources.isEmpty() && cardSources.isEmpty()) {
             sb.append(AnswerNotes.NOTHING_FOUND)
             if (incomplete) sb.append(" Some phones did not answer.")
         } else if (!chatReady) {
             note = AnswerNotes.NO_CHAT_MODEL // the sources above are the result; no model text, in any build
         } else {
-            PduActivity.set(PduActivity.answering(sources.size))
+            PduActivity.set(PduActivity.answering(sources.size + cardSources.size))
             // take the chat slot here, with a bound on the wait, instead of inside GatedLlmClient where a wait has no end
             val exec = Sched.node.chatExec
             var slot = false
@@ -550,7 +584,8 @@ object PduEngine {
                 note = AnswerNotes.GAVE_UP
             } else {
                 try {
-                    val merged = sources.map { MergedHit(it.deviceId, it.deviceName, it.local, it.hit, 0.0) }
+                    // a saved answer is listed as one source among the others; the model is not told it is more reliable
+                    val merged = sources.map { MergedHit(it.deviceId, it.deviceName, it.local, it.hit, 0.0) } + cardSources
                     chat.chatStream(PromptBuilder.build(text, merged)).collect { c ->
                         c.stats?.let(Sched.node::noteStats)
                         if (ttft < 0 && c.delta.isNotEmpty()) ttft = now() - t0

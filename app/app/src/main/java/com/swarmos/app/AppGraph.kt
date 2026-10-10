@@ -17,6 +17,7 @@ import com.swarmos.app.core.PairingSecret
 import com.swarmos.app.core.SwarmPrefs
 import com.swarmos.app.core.localIpv4
 import com.swarmos.app.core.toHex
+import com.swarmos.app.kb.KbModule
 import com.swarmos.app.link.LinkModule
 import com.swarmos.app.link.NodeClient
 import com.swarmos.app.llm.FakeLlmClient
@@ -94,7 +95,7 @@ object AppGraph {
 
     val nodeClient: NodeClient by lazy { NodeClient({ secret }, { registry.self.value.nodeId }) }
 
-    val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, MemCloudModule, SchedModule)
+    val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, KbModule, MemCloudModule, SchedModule)
 
     /** Starts loading everything that needs disk off the main thread; nothing here blocks Application.onCreate. */
     fun init(app: Application) {

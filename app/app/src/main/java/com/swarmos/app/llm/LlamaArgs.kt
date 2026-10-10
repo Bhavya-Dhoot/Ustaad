@@ -51,6 +51,19 @@ object LlamaArgs {
 
     fun binaryFor(role: Role, backend: Backend): String = if (role == Role.CHAT && backend == Backend.GPU) GPU_BINARY else role.binary
 
+    /** Vendor library directories that hold libOpenCL.so (Adreno) and its dependencies. */
+    val VENDOR_LIB_DIRS = listOf("/vendor/lib64", "/system/vendor/lib64")
+
+    /**
+     * LD_LIBRARY_PATH of the child. The GPU build links libOpenCL.so, which lives in the vendor partition. The manifest entry
+     * `uses-native-library libOpenCL.so` only opens that library to the app's own class loader; an exec'd child is linked by
+     * the linker's default namespace, which finds a vendor library only through LD_LIBRARY_PATH (directories on it count as
+     * accessible; an absolute LD_PRELOAD path does not). Measured on phone C: without the vendor directories the child
+     * stops with `library "libOpenCL.so" not found`. Every other child gets the native library directory only.
+     */
+    fun ldLibraryPath(nativeDir: String, role: Role, backend: Backend): String =
+        if (role == Role.CHAT && backend == Backend.GPU) (listOf(nativeDir) + VENDOR_LIB_DIRS).joinToString(":") else nativeDir
+
     /**
      * Flags follow docs/llama-server-api-notes.md ("Recommended production flags"). One deviation: the chat context is
      * 8192 total (4096 per slot with 2 slots) instead of 4096 total, because Choir and Data Union prompts can exceed 2048 tokens.
@@ -100,6 +113,28 @@ object LlamaArgs {
 
 /** Pure helpers for /proc parsing and the log ring buffer. */
 object ProcInfo {
+    /** Largest `lastError` the state route returns. */
+    const val ERROR_DETAIL_MAX = 2048
+
+    /**
+     * The newest whole non-blank lines of [lines] joined with newlines, at most [maxChars] characters: the oldest lines are
+     * dropped first, and a single line longer than the limit keeps its end.
+     */
+    fun errorDetail(lines: List<String>, maxChars: Int = ERROR_DETAIL_MAX): String {
+        val kept = ArrayDeque<String>()
+        var size = 0
+        for (l in lines.asReversed().filter { it.isNotBlank() }) {
+            val add = l.length + if (kept.isEmpty()) 0 else 1
+            if (size + add > maxChars) {
+                if (kept.isEmpty()) kept.addFirst(l.takeLast(maxChars))
+                break
+            }
+            kept.addFirst(l)
+            size += add
+        }
+        return kept.joinToString("\n")
+    }
+
     /** `VmRSS:   123456 kB` -> 123456 (kB) from the text of /proc/<pid>/status; null if absent. */
     fun statusKb(statusText: String, key: String): Long? =
         statusText.lineSequence()
