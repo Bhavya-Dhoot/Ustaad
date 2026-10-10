@@ -7,6 +7,7 @@ import com.swarmos.app.core.SwarmJson
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -203,6 +204,10 @@ object LinkRuntime {
         discovery?.stop(); discovery = null
         tputServer?.stop(); tputServer = null
         PeerLinks.stop()
+        // nothing launched by start() may outlive it: the next start() would add a second copy of each collector and loop
+        DirectLink.unwatch()
+        AppForeground.stop()
+        scope.coroutineContext[Job]?.children?.toList()?.forEach { it.cancel() }
     }
 
     /** Foreground changed: tell peers (best effort, a backgrounded app is frozen soon after) and, on return, re-join. */

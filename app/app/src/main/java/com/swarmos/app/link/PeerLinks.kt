@@ -6,6 +6,7 @@ import com.swarmos.app.core.NodeHealth
 import com.swarmos.app.core.NodeInfo
 import com.swarmos.app.core.Ports
 import io.ktor.http.HttpMethod
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,6 +62,11 @@ object PeerLinks {
     /** Bluetooth heartbeat request timeout (unchanged: the radio path answers in tens of ms or not at all). */
     const val HEARTBEAT_BT_TIMEOUT_MS = 3000L
     const val HELLO_TIMEOUT_MS = 2500L
+    /** A path that is away is probed this often (a phone that is gone is not worth a request every second). */
+    const val AWAY_HEARTBEAT_MS = 5000L
+    const val ENDPOINT_TTL_MS = 10 * 60_000L
+
+    internal fun beatPeriodMs(state: LinkState): Long = if (state == LinkState.AWAY) AWAY_HEARTBEAT_MS else HEARTBEAT_MS
 
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, PeerSession>()
@@ -76,7 +82,12 @@ object PeerLinks {
     private class Endpoint(val host: String, val port: Int) {
         @Volatile var failures = 0
         @Volatile var lastTryMs = 0L
+        /** Last time something said this address is alive: remembered again, or a session answered there. */
+        @Volatile var touchedMs = System.currentTimeMillis()
     }
+
+    /** An endpoint with no session that nothing has vouched for this long is forgotten (discovery re-adds a live one). */
+    internal fun endpointExpired(touchedMs: Long, nowMs: Long): Boolean = nowMs - touchedMs > ENDPOINT_TTL_MS
 
     private val endpoints = ConcurrentHashMap<String, Endpoint>()
     private var retryJob: Job? = null
@@ -126,19 +137,30 @@ object PeerLinks {
         if (retryJob?.isActive == true) return
         retryJob = scope.launch {
             while (isActive) {
-                val now = System.currentTimeMillis()
-                for (ep in endpoints.values) {
-                    val has = sessions.values.any { it.status.value.ip == ep.host && it.status.value.port == ep.port }
-                    if (has) { ep.failures = 0; continue }
-                    val interval = if (ep.failures < 10) 3_000L else 30_000L
-                    if (now - ep.lastTryMs < interval) continue
-                    ep.lastTryMs = now
-                    launch {
-                        val r = connect(ep.host, ep.port)
-                        if (r is ConnectResult.Ok) ep.failures = 0 else ep.failures++
-                    }
+                try {
+                    retryEndpoints(this)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "endpoint retry failed, carrying on: $e") // one bad round must not end the loop for good
                 }
                 delay(1_000)
+            }
+        }
+    }
+
+    private fun retryEndpoints(loop: CoroutineScope) {
+        val now = System.currentTimeMillis()
+        for (ep in endpoints.values) {
+            val has = sessions.values.any { it.status.value.ip == ep.host && it.status.value.port == ep.port }
+            if (has) { ep.failures = 0; ep.touchedMs = now; continue }
+            if (endpointExpired(ep.touchedMs, now)) { endpoints.remove("${ep.host}:${ep.port}", ep); continue } // never answered for 10 minutes
+            val interval = if (ep.failures < 10) 3_000L else 30_000L
+            if (now - ep.lastTryMs < interval) continue
+            ep.lastTryMs = now
+            loop.launch {
+                val r = try { connect(ep.host, ep.port) } catch (e: CancellationException) { throw e } catch (e: Exception) { ConnectResult.Failed("$e") }
+                if (r is ConnectResult.Ok) { ep.failures = 0; ep.touchedMs = System.currentTimeMillis() } else ep.failures++
             }
         }
     }
@@ -169,7 +191,7 @@ object PeerLinks {
     fun remember(host: String, port: Int) {
         if (!LinkRoute.isLocalAddress(host) || port !in 1..65535) return
         val k = "$host:$port"
-        endpoints.compute(k) { _, old -> old?.also { it.failures = 0; it.lastTryMs = 0 } ?: Endpoint(host, port) }
+        endpoints.compute(k) { _, old -> old?.also { it.failures = 0; it.lastTryMs = 0; it.touchedMs = System.currentTimeMillis() } ?: Endpoint(host, port) }
     }
 
     /** The pairing secret changed: let every remembered endpoint try again right away. */
@@ -229,7 +251,7 @@ object PeerLinks {
         _rejected.update { it.filterNot { r -> r.ip == host && r.port == port } }
 
         remember(host, port)
-        val (session, created) = upsert(info, health, host, port, LinkRoute.typeFor(host))
+        val (session, created) = upsert(info, health, host, port, LinkRoute.typeFor(host)) ?: return ConnectResult.Failed("SwarmLink was stopped while connecting")
         if (created && announce) scope.launch { announceTo(session) }
         return ConnectResult.Ok(session.status.value)
     }
@@ -256,14 +278,18 @@ object PeerLinks {
             return ConnectResult.Failed("health over bluetooth: ${t.message ?: t::class.simpleName}")
         }
         if (info.nodeId != nodeId || health.nodeId != nodeId) return ConnectResult.Failed("the Bluetooth channel for $nodeId answers as ${info.nodeId}")
-        val (session, _) = upsert(info, health, "bt:$nodeId", 0, LinkType.BT)
+        val (session, _) = upsert(info, health, "bt:$nodeId", 0, LinkType.BT) ?: return ConnectResult.Failed("SwarmLink was stopped while connecting")
         return ConnectResult.Ok(session.status.value)
     }
 
     private val json get() = com.swarmos.app.core.SwarmJson
 
-    /** Create the heartbeat session for (node, link) or refresh it; returns it and whether it is new. */
-    private fun upsert(info: NodeInfo, health: NodeHealth, host: String, port: Int, link: LinkType): Pair<PeerSession, Boolean> {
+    /**
+     * Create the heartbeat session for (node, link) or refresh it; returns it and whether it is new. A refreshed session
+     * whose heartbeat job is not running is started again. Null when [stop] has run: a connect that finishes after the
+     * stop must not leave a session whose heartbeat never beats.
+     */
+    private fun upsert(info: NodeInfo, health: NodeHealth, host: String, port: Int, link: LinkType): Pair<PeerSession, Boolean>? {
         val key = "${info.nodeId}/${link.name}"
         val now = System.currentTimeMillis()
         val fresh = PeerStatus(info.nodeId, info.name, host, port, link, LinkState.ONLINE, null, now, 0, health, info, peerForeground = peerFg[info.nodeId])
@@ -274,6 +300,7 @@ object PeerLinks {
         synchronized(this) {
             val old = sessions[key]
             before = old?.status?.value
+            if (!scope.isActive) return null
             if (old == null) {
                 created = true
                 session = PeerSession(fresh).also { s ->
@@ -283,6 +310,7 @@ object PeerLinks {
                 }
             } else {
                 session = old
+                if (old.job?.isActive != true) old.job = scope.launch { heartbeatLoop(old) }
                 val moved = old.status.value.ip != host || old.status.value.port != port
                 backOnline = old.tracker.onInbound(now) // the hello and signed health that got us here prove the peer is there
                 old.update {
@@ -315,8 +343,17 @@ object PeerLinks {
         var next = System.nanoTime()
         var n = 0
         while (currentCoroutineContext().isActive) {
-            if (!s.pause.paused()) beat(s, n++)
-            next += HEARTBEAT_MS * 1_000_000
+            if (!s.pause.paused()) {
+                try {
+                    beat(s, n++)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // an I/O or bookkeeping error in one beat must not end this peer's heartbeat for good
+                    Log.w(TAG, "heartbeat of ${s.status.value.name} ${s.status.value.link} failed, carrying on: $e")
+                }
+            }
+            next += beatPeriodMs(s.status.value.state) * 1_000_000
             val wait = (next - System.nanoTime()) / 1_000_000
             if (wait > 0) delay(wait) else next = System.nanoTime()
         }

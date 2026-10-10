@@ -102,6 +102,9 @@ class TputServer(
     /** Connections that were refused (bad token or over the connection cap), for tests and the status screen. */
     val refused = AtomicInteger(0)
 
+    /** Accept calls that failed while the server was still open (the loop carried on), for tests and the status screen. */
+    val acceptErrors = AtomicInteger(0)
+
     /** Binds and starts accepting. Returns the bound port (useful when constructed with port 0). */
     @Synchronized
     fun start(): Int {
@@ -113,7 +116,16 @@ class TputServer(
         server = ss
         Thread({
             while (!ss.isClosed) {
-                val c = try { ss.accept() } catch (_: Exception) { break }
+                val c = try {
+                    ss.accept()
+                } catch (e: Exception) {
+                    if (ss.isClosed) break // stop() closed the socket: the normal end
+                    // anything else (too many open files, a reset while accepting) must not end the probe server for good
+                    acceptErrors.incrementAndGet()
+                    runCatching { android.util.Log.w("SwarmLink", "probe accept failed, carrying on: $e") }
+                    runCatching { Thread.sleep(100) }
+                    continue
+                }
                 if (active.incrementAndGet() > limits.maxConnections) {
                     active.decrementAndGet(); refused.incrementAndGet(); runCatching { c.close() }
                     continue

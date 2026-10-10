@@ -12,6 +12,7 @@ import android.util.Log
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.SwarmJson
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,7 +67,7 @@ object DirectLink {
     private const val TAG = "SwarmLink"
     private val lock = Mutex()
     private var channel: WifiP2pManager.Channel? = null
-    private var watching = false
+    private var watchJob: Job? = null
 
     private val _state = MutableStateFlow(DirectState())
     val state: StateFlow<DirectState> = _state.asStateFlow()
@@ -301,9 +302,8 @@ object DirectLink {
      */
     @Synchronized
     fun watch(scope: CoroutineScope) {
-        if (watching) return
-        watching = true
-        scope.launch {
+        if (watchJob?.isActive == true) return
+        watchJob = scope.launch {
             var hostRetryAt = 0L
             while (isActive) {
                 delay(3_000)
@@ -337,6 +337,13 @@ object DirectLink {
                 }
             }
         }
+    }
+
+    /** Ends [watch] (the link runtime stopped); a later [watch] starts a fresh loop. */
+    @Synchronized
+    fun unwatch() {
+        watchJob?.cancel()
+        watchJob = null
     }
 }
 

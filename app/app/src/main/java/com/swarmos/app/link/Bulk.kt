@@ -48,19 +48,32 @@ object Striped {
  * Delivers chunks to [sink] in index order. Out-of-order chunks wait in memory; a stream that is more than
  * [maxBuffered] chunks ahead blocks until the gap closes (back-pressure, so a slow path cannot make memory grow).
  */
-class Reassembler(private val total: Int, private val maxBuffered: Int = 64, private val sink: (index: Int, data: ByteArray) -> Unit) {
+class Reassembler(
+    private val total: Int,
+    private val maxBuffered: Int = 64,
+    /** A stream that is too far ahead gives up after this long if the gap never closes (the stream that carries the missing chunk is gone). */
+    private val waitLimitMs: Long = 30_000,
+    private val sink: (index: Int, data: ByteArray) -> Unit,
+) {
     private val lock = java.lang.Object()
     private val pending = HashMap<Int, ByteArray>()
     private var next = 0
 
     val delivered: Int get() = synchronized(lock) { next }
 
-    /** Hand over chunk [index]. Throws on a duplicate or out-of-range index. The sink runs under the lock, so it is called strictly in order. */
+    /**
+     * Hand over chunk [index]. Throws on a duplicate or out-of-range index, or when the gap before it stays open for
+     * [waitLimitMs]. The sink runs under the lock, so it is called strictly in order.
+     */
     fun accept(index: Int, data: ByteArray) {
         synchronized(lock) {
             if (index < 0 || index >= total) throw IOException("chunk $index outside 0..${total - 1}")
             if (index < next || pending.containsKey(index)) throw IOException("duplicate chunk $index")
-            while (index != next && pending.size >= maxBuffered) lock.wait(50)
+            val giveUpAt = System.nanoTime() + waitLimitMs * 1_000_000
+            while (index != next && pending.size >= maxBuffered) {
+                if (System.nanoTime() > giveUpAt) throw IOException("chunk $next did not arrive within ${waitLimitMs / 1000.0} s; chunk $index gave up waiting")
+                lock.wait(50)
+            }
             if (index == next) {
                 sink(next, data); next++
                 while (true) { val d = pending.remove(next) ?: break; sink(next, d); next++ }
