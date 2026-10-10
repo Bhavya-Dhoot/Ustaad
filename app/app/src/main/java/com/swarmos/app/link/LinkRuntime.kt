@@ -323,10 +323,10 @@ object LinkRuntime {
     /** A pairing code that was scanned or opened and is waiting for the person to confirm. */
     val pendingPairing: StateFlow<PairingPayload?> = _pending.asStateFlow()
 
-    fun confirmPairing() {
-        val p = _pending.value ?: return
-        _pending.value = null
-        beginAdopt(p)
+    /** Adopts [shown], the code the dialog displayed. If another code has arrived since, nothing is adopted and that one stays pending. */
+    fun confirmPairing(shown: PairingPayload) {
+        if (!_pending.compareAndSet(shown, null)) return
+        beginAdopt(shown)
     }
 
     fun cancelPairing() {

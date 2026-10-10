@@ -306,7 +306,7 @@ fun PairingConfirmDialog() {
                 style = SwarmType.body,
             )
         },
-        confirmButton = { TextButton(onClick = { LinkRuntime.confirmPairing() }) { Text("Pair", color = SwarmColors.ink) } },
+        confirmButton = { TextButton(onClick = { LinkRuntime.confirmPairing(p) }) { Text("Pair", color = SwarmColors.ink) } },
         dismissButton = { TextButton(onClick = { LinkRuntime.cancelPairing() }) { Text("Cancel", color = SwarmColors.ink) } },
     )
 }
