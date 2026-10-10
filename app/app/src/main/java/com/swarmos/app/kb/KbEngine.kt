@@ -41,6 +41,10 @@ object KbEngine {
             selfId = { AppGraph.registry.self.value.nodeId },
             selfName = { AppGraph.registry.self.value.name },
             audit = { kind, payload -> AppGraph.audit.append(kind, payload).hash },
+            // decided on this phone from its own index: a title that matches a private file makes the source private
+            isPrivateSource = { KbPrivacy.isPrivate(it, AppGraph.registry.self.value.name, PduEngine.store::anyPrivateTitled) },
+            // a shared save or a revocation of a shared card goes to every online peer now, not at the next timer tick
+            onChange = { syncOnlinePeers() },
         )
     }
 
@@ -50,7 +54,7 @@ object KbEngine {
     val selfId: String get() = AppGraph.registry.self.value.nodeId
 
     private val embedLock = Mutex()
-    private val syncing = ConcurrentHashMap.newKeySet<String>()
+    private val locks = ConcurrentHashMap<String, Mutex>()
     private val lastSync = ConcurrentHashMap<String, Long>()
     private var started = false
 
@@ -148,25 +152,29 @@ object KbEngine {
         override suspend fun cards(c: KbCards) = AppGraph.nodeClient.post<KbCards, KbCards>(host(), "/kb/cards", c, 20_000)
     }
 
-    suspend fun syncWith(nodeId: String): KbSyncResult {
-        if (!syncing.add(nodeId)) return KbSyncResult(error = "a sync with that phone is already running")
-        lastSync[nodeId] = SystemClock.elapsedRealtime()
-        try {
-            val r = try {
-                KbSync.run(service, NodePeer(nodeId))
-            } catch (t: Throwable) {
-                if (t is CancellationException) throw t
-                KbSyncResult(error = "${t.javaClass.simpleName}: ${t.message}".take(160))
-            }
-            if (r.error == null && (r.sentCards + r.sentTombstones + r.gotCards + r.gotTombstones > 0 || r.rejected.isNotEmpty())) service.auditSync(nodeId, r)
-            if (r.gotCards + r.gotTombstones > 0) {
-                withContext(Dispatchers.IO) { refresh() }
-                PduEngine.scope.launch { embedMissing() }
-            }
-            return r
-        } finally {
-            syncing.remove(nodeId)
+    /** Same code path as the timer: one sync towards every peer that is online right now. */
+    fun syncOnlinePeers() {
+        PduEngine.scope.launch {
+            val online = PeerLinks.peers.value.filter { it.state == LinkState.ONLINE }.map { it.nodeId }.distinct()
+            for (n in online) launch { syncWith(n) }
         }
+    }
+
+    /** One sync with [nodeId]. A second call for the same phone waits for the first, so a card saved during a sync is offered by the next one. */
+    suspend fun syncWith(nodeId: String): KbSyncResult = locks.getOrPut(nodeId) { Mutex() }.withLock {
+        lastSync[nodeId] = SystemClock.elapsedRealtime()
+        val r = try {
+            KbSync.run(service, NodePeer(nodeId))
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            KbSyncResult(error = "${t.javaClass.simpleName}: ${t.message}".take(160))
+        }
+        if (r.error == null && (r.sentCards + r.sentTombstones + r.gotCards + r.gotTombstones > 0 || r.rejected.isNotEmpty())) service.auditSync(nodeId, r)
+        if (r.gotCards + r.gotTombstones > 0) {
+            withContext(Dispatchers.IO) { refresh() }
+            PduEngine.scope.launch { embedMissing() }
+        }
+        r
     }
 
     /** A node id, an address, or a name, as a tester writes it, to the node id of an online peer. */
