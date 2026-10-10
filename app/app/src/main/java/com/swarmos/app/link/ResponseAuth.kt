@@ -24,4 +24,18 @@ object ResponseAuth {
         if (sig == null) return false
         return MessageDigest.isEqual(sign(secret, status, reqId, body).toByteArray(), sig.lowercase().toByteArray())
     }
+
+    /**
+     * Streamed answers (server-sent events) cannot carry a header with a MAC of a body that is not complete yet, so the
+     * server puts the MAC in the data of its last event: `signStream(secret, reqId, finalEventData)`, where finalEventData
+     * is that event's own payload without the MAC field. The caller checks it with [verifyStream] and treats a stream
+     * whose last event fails, or that ends without one, as untrusted. Domain-separated from [sign].
+     */
+    fun signStream(secret: String, reqId: String, finalEventData: String): String =
+        Signer.hmacSha256Hex(secret, "stream\n$reqId\n$finalEventData")
+
+    fun verifyStream(secret: String, reqId: String, finalEventData: String, mac: String?): Boolean {
+        if (mac == null) return false
+        return MessageDigest.isEqual(signStream(secret, reqId, finalEventData).toByteArray(), mac.lowercase().toByteArray())
+    }
 }

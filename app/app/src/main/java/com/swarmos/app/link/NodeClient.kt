@@ -47,7 +47,15 @@ interface SmallTransport {
  * sent on the best path and, on a transport failure, retried on the next with the same X-Swarm-Req id; the
  * receiver replays the stored answer if it had already run the request, so it executes once.
  */
-class NodeClient(private val secret: () -> String, private val selfId: () -> String) {
+class NodeClient(
+    private val secret: () -> String,
+    private val selfId: () -> String,
+    /**
+     * Check the X-Swarm-Rsp of every answer. Always on in the app; JVM unit tests that serve a bare Ktor route with no node
+     * plugins have no signer, and the stub android.jar reports SDK_INT 0, so the check is skipped only there.
+     */
+    private val verifyResponses: Boolean = android.os.Build.VERSION.SDK_INT != 0,
+) {
     @PublishedApi internal val json = SwarmJson
 
     private val http = HttpClient(CIO) {
@@ -125,7 +133,7 @@ class NodeClient(private val secret: () -> String, private val selfId: () -> Str
         }
         val text = resp.bodyAsText()
         // only a holder of the pairing secret can produce this header; anything else is not a peer
-        if (!ResponseAuth.verify(secret(), resp.status.value, reqId, text, resp.headers[HEADER_RSP_SIG])) {
+        if (verifyResponses && !ResponseAuth.verify(secret(), resp.status.value, reqId, text, resp.headers[HEADER_RSP_SIG])) {
             throw UntrustedResponse("the answer from $hostPort is not authenticated (missing or wrong $HEADER_RSP_SIG)")
         }
         val node = resp.headers[Signer.HEADER_NODE]
@@ -137,6 +145,15 @@ class NodeClient(private val secret: () -> String, private val selfId: () -> Str
 
     suspend inline fun <reified T> get(host: String, path: String, timeoutMs: Long? = null): T =
         json.decodeFromString<T>(call(HttpMethod.Get, host, path, "", timeoutMs))
+
+    /**
+     * The `host` string other modules should pass to this client (or to a streaming client) to reach [nodeId] on the best
+     * path for [use]: "ip" or "ip:port", or "bt:<node id>" when Bluetooth is all that is up (a plain request then goes over
+     * Bluetooth, a streaming client cannot). Null when no path is up. Unlike the registry's `info.ip` it is evaluated now,
+     * with the path policy's hysteresis, so it follows a path switch.
+     */
+    fun hostFor(nodeId: String, use: Use = Use.SMALL): String? =
+        PeerLinks.candidates(nodeId, use).firstOrNull()?.let { if (it.link == LinkType.BT || it.port == Ports.NODE) it.ip else it.hostPort }
 
     /** GET on exactly this address, no path selection or failover (heartbeat, hello, per-path probes). */
     suspend inline fun <reified T> getPinned(host: String, path: String, timeoutMs: Long? = null): T =

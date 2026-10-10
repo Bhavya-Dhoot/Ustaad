@@ -22,6 +22,7 @@ import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.doublereceive.DoubleReceive
+import io.ktor.server.plugins.origin
 import io.ktor.server.request.header
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
@@ -124,6 +125,10 @@ class NodeServer {
 
     private suspend fun PipelineContext<Unit, PipelineCall>.requireSignature() {
         val req = call.request
+        if (BuildConfig.DEBUG && FaultInjection.blocks(req.origin.remoteAddress)) { // failover tests only
+            kotlinx.coroutines.delay(20_000)
+            return finish()
+        }
         if (req.httpMethod == HttpMethod.Get && req.path() == "/v1/hello") return
 
         val node = req.header(Signer.HEADER_NODE)
@@ -132,8 +137,14 @@ class NodeServer {
         if (node == null || ts == null || sig == null) return reject("missing X-Swarm-* headers")
 
         // cheap checks first: nothing is read from an oversized request or one that is out of the time window
-        val declared = req.header(HttpHeaders.ContentLength)?.toLongOrNull() ?: 0L
-        if (declared > MAX_BODY_BYTES) {
+        val hasBody = req.httpMethod in setOf(HttpMethod.Post, HttpMethod.Put, HttpMethod.Patch)
+        val declaredHeader = req.header(HttpHeaders.ContentLength)?.toLongOrNull()
+        if (hasBody && declaredHeader == null && req.header(HttpHeaders.TransferEncoding) != null) {
+            // a chunked body has no length to check before reading and would be read whole: it is not accepted (no Content-Length = empty)
+            call.respond(HttpStatusCode.LengthRequired, ErrorBody("Content-Length is required (chunked bodies are not accepted)"))
+            return finish()
+        }
+        if ((declaredHeader ?: 0L) > MAX_BODY_BYTES) {
             call.respond(HttpStatusCode.PayloadTooLarge, ErrorBody("body over $MAX_BODY_BYTES bytes"))
             return finish()
         }
@@ -143,7 +154,6 @@ class NodeServer {
             return finish()
         }
 
-        val hasBody = req.httpMethod in setOf(HttpMethod.Post, HttpMethod.Put, HttpMethod.Patch)
         val body = if (hasBody) call.receiveText() else ""
         // the signed path is the raw URI, query string included
         if (!Signer.verify(AppGraph.pairingSecret, req.httpMethod.value, req.uri, ts, body, sig)) {

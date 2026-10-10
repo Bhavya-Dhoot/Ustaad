@@ -71,6 +71,7 @@ data class PeersResponse(val self: SelfView, val peers: List<PeerView>, val reje
 )
 @Serializable data class HostRequest(val direct: Boolean = false, val rotate: Boolean = true, val freqMhz: Int? = null)
 @Serializable data class SleepResult(val slept: Long, val executions: Int)
+@Serializable data class FaultRequest(val blockedFrom: List<String> = emptyList())
 @Serializable data class FailoverRequest(val peerNodeId: String, val n: Int = 200, val intervalMs: Long = 100, val timeoutMs: Long = 10_000)
 @Serializable data class BleBenchRequest(val peerNodeId: String, val n: Int = 50, val bodyBytes: Int = 900)
 @Serializable data class AddPeerRequest(val ip: String, val port: Int? = null)
@@ -109,6 +110,16 @@ fun peerPaths(): List<PeerPaths> = PeerLinks.peers.value.groupBy { it.nodeId }.m
 }
 
 /** Counts how often the debug /sleep handler really ran (for the "executed once" check). */
+/**
+ * Debug-only fault injection for failover tests that must not touch a radio: while [blocked] addresses are set, requests
+ * that arrive from them are held and answered 20 s later (a silent path: the caller times out, its heartbeat on that path
+ * misses and the path goes away). Requests from other addresses, Bluetooth included, are untouched.
+ */
+object FaultInjection {
+    @Volatile var blocked: List<String> = emptyList()
+    fun blocks(remote: String): Boolean = blocked.any { remote == it }
+}
+
 object SleepCounter {
     private val n = java.util.concurrent.atomic.AtomicInteger()
     fun next() = n.incrementAndGet()
@@ -202,6 +213,13 @@ fun Route.linkRoutes() {
 
     // returns what it was sent: used to measure request throughput over any path, Bluetooth included
     post("/echo") { call.respond(mapOf("echo" to call.receiveText())) }
+
+    post("/fault") {
+        if (debugOnly()) return@post
+        val r = body<FaultRequest>() ?: return@post bad("body must be {\"blockedFrom\":[\"192.168.49.1\"]} (empty list clears)")
+        FaultInjection.blocked = r.blockedFrom
+        call.respond(r)
+    }
 
     post("/failover-test") {
         if (debugOnly()) return@post

@@ -44,29 +44,29 @@ data class PeerStatus(
  * the next success brings it back. Both calls return true when the state changed.
  */
 class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = LinkState.ONLINE) {
-    @Volatile
+    @get:Synchronized
     var state: LinkState = start
         private set
-    @Volatile
+    @get:Synchronized
     var misses: Int = 0
         private set
-    @Volatile
+    @get:Synchronized
     var rttMs: Double? = null
         private set
-    @Volatile
+    @get:Synchronized
     var lastSeenMs: Long = 0
         private set
-    @Volatile
+    @get:Synchronized
     var beats: Int = 0
         private set
-    @Volatile
+    @get:Synchronized
     var missesTotal: Int = 0
         private set
-    @Volatile
+    @get:Synchronized
     var awayCount: Int = 0
         private set
     /** Longest time between two successful heartbeats. */
-    @Volatile
+    @get:Synchronized
     var maxGapMs: Long = 0
         private set
 

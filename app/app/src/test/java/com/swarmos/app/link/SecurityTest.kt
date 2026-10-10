@@ -27,6 +27,17 @@ class ResponseAuthTest {
         assertFalse("garbage header", ResponseAuth.verify(KEY, 200, "req-1", "body", "deadbeef"))
     }
 
+    @Test fun aStreamsFinalEventCarriesAMacBoundToTheRequestAndTheEvent() {
+        val final = """{"done":true,"tokens":42}"""
+        val mac = ResponseAuth.signStream(KEY, "req-9", final)
+        assertTrue(ResponseAuth.verifyStream(KEY, "req-9", final, mac))
+        assertFalse("other request", ResponseAuth.verifyStream(KEY, "req-8", final, mac))
+        assertFalse("other event data", ResponseAuth.verifyStream(KEY, "req-9", """{"done":true,"tokens":43}""", mac))
+        assertFalse("other secret", ResponseAuth.verifyStream("x", "req-9", final, mac))
+        assertFalse("a stream with no final MAC", ResponseAuth.verifyStream(KEY, "req-9", final, null))
+        assertFalse("stream MAC is not a plain answer MAC", ResponseAuth.verify(KEY, 200, "req-9", final, mac))
+    }
+
     @Test fun errorAnswersAreAuthenticatedToo() {
         val body = """{"error":"clock skew","serverTimeMs":1}"""
         assertTrue(ResponseAuth.verify(KEY, 401, "r", body, ResponseAuth.sign(KEY, 401, "r", body)))
