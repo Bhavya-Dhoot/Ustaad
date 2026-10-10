@@ -1,0 +1,1 @@
+One phone could not get a single word out of an 18.6 GB AI model in 134 seconds. Ustaad linked three iQOO 15 phones directly and ran it at 6 tokens a second: no cloud, no accounts, files stay on their own phone. Every number in the video was measured on the phones.

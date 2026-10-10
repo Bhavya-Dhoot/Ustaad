@@ -20,3 +20,6 @@ third_party/
 
 # founder upload
 ustaad.zip
+
+# pitch video: working files of the render (frames, audio stems, caches); the finished video and its plan are kept
+brag-output/work/
