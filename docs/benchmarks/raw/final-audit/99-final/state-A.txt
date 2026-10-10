@@ -1,0 +1,4 @@
+chat {'state': 'READY', 'backend': 'GPU', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'rssMb': 815, 'loadMs': 18041}
+embed {'state': 'READY', 'file': 'embeddinggemma-300M-Q8_0.gguf', 'rssMb': 474, 'loadMs': 1335}
+rpc {'state': 'STOPPED'}
+thermal 2

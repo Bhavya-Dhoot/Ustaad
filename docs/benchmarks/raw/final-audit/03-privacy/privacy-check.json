@@ -1,0 +1,36 @@
+{
+ "baseline": [
+  200,
+  [
+   "IMG_1046_Mobile_Bill_Sept.jpg"
+  ],
+  0,
+  {
+   "Documents/SwarmDemo": false,
+   "Pictures/SwarmDemo": false
+  }
+ ],
+ "switch_and_kill": [
+  200,
+  {
+   "folder": "Pictures/SwarmDemo",
+   "shared": "false"
+  },
+  "",
+  0.2262415885925293
+ ],
+ "after_kill": [
+  0,
+  [],
+  null,
+  {},
+  null
+ ],
+ "shared_again": [
+  0,
+  0,
+  [],
+  null,
+  {}
+ ]
+}

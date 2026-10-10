@@ -1,0 +1,15 @@
+date: 2026-10-11 00:56:44 IST
+repo head: f4679ad (Claims: eleven rows reworded to what was measured, after the final audit's check)
+steps: s; chat file Qwen3.5-4B-Q4_K_M.gguf
+phone 1: Phone B 192.168.242.23:8787 node 477684c1; secret: SWARM_SECRET
+      versionName=0.1.0
+      lastUpdateTime=2026-10-11 00:06:46
+  
+  2740937888 2026-10-10 00:17 Qwen3.5-4B-Q4_K_M.gguf
+  333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf
+phone 2: Phone A 192.168.242.89:8787 node c6f72247; secret: SWARM_SECRET
+      versionName=0.1.0
+      lastUpdateTime=2026-10-11 00:29:01
+  
+  2740937888 2026-10-10 00:17 Qwen3.5-4B-Q4_K_M.gguf
+  333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf

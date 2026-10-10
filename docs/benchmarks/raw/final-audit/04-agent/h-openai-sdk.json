@@ -1,0 +1,18 @@
+{
+ "text": "Here are three common uses of a phone even when there is no internet connection:\n\n1.  **Making and Receiving Calls**: The primary function of a mobile phone is to handle voice communications via cellular networks, which operate independently of the internet. You can call contacts, set up voicemail, and receive calls without any data plan.\n2.  **Using Offline Maps and Navigation**: Most",
+ "usage": {
+  "completion_tokens": 80,
+  "prompt_tokens": 22,
+  "total_tokens": 102,
+  "completion_tokens_details": null,
+  "prompt_tokens_details": null
+ },
+ "seconds": 7.440100908279419,
+ "stream_first": 0.7621438503265381,
+ "stream_chunks": 52,
+ "embedding_dims": 256,
+ "models": [
+  "ustaad-local",
+  "ustaad-swarm"
+ ]
+}

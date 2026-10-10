@@ -1,0 +1,3 @@
+phase IDLE
+useGpu True chat backend GPU
+folders [{'folder': 'Documents/SwarmDemo', 'isPrivate': False, 'docs': 7}, {'folder': 'Pictures/SwarmDemo', 'isPrivate': False, 'docs': 4}]

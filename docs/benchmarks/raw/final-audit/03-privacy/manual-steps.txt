@@ -1,0 +1,6 @@
+00:49:49 relaunch A (script's own am start)
+Starting: Intent { cmp=com.swarmos.app/.MainActivity }
+Observation 00:48-00:49 on Phone A after run 1: app process 5807 (started 00:46:45, right after the script's force-stop) was alive, but dumpsys showed MainActivity task with visible=false, no services running, launcher in front, port 8787 refused. After a second plain `am start -n com.swarmos.app/.MainActivity` ("Activity not started, its current task has been brought to the front") the API answered at once.
+Folder Pictures/SwarmDemo on Phone A was left private by run 1 (the script's share-again call hit the refused port). Restore below with the script's own call.
+00:50:04 POST /v1/pdu/debug/share Pictures/SwarmDemo shared=true on A
+{"folder": "Pictures/SwarmDemo", "shared": "true"}

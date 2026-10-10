@@ -1,0 +1,206 @@
+{
+ "state": {
+  "phase": "READY",
+  "file": "Qwen3.5-4B-Q4_K_M.gguf",
+  "model": "Qwen3.5-4B",
+  "layers": 32,
+  "experts": null,
+  "expertsUsed": null,
+  "moeLayers": 0,
+  "fileBytes": 2740937888,
+  "ctx": 4096,
+  "args": [
+   "--rpc",
+   "192.168.242.89:50052",
+   "-ngl",
+   "17",
+   "-t",
+   "8",
+   "-c",
+   "4096",
+   "-np",
+   "1",
+   "-fit",
+   "off"
+  ],
+  "shares": [
+   {
+    "nodeId": "477684c1",
+    "name": "Phone B",
+    "isDriver": true,
+    "firstLayer": 0,
+    "layers": 16,
+    "range": "0-15",
+    "weightMb": 1551,
+    "needMb": 3088,
+    "haveMb": 7065,
+    "fits": true
+   },
+   {
+    "nodeId": "c6f72247",
+    "name": "Phone A",
+    "isDriver": false,
+    "firstLayer": 16,
+    "layers": 16,
+    "range": "16-31",
+    "weightMb": 1549,
+    "needMb": 3086,
+    "haveMb": 6533,
+    "fits": true
+   }
+  ],
+  "phones": [
+   {
+    "nodeId": "477684c1",
+    "name": "Phone B",
+    "isDriver": true,
+    "step": "Loading its layers 0-15 and feeding the others",
+    "online": true,
+    "rssMb": 2862,
+    "peakMb": 3769,
+    "receivedMb": null,
+    "cachedMb": null,
+    "loadFraction": 0.0,
+    "thermalStatus": 2,
+    "ramAvailMb": 9141,
+    "rttMs": null,
+    "tcpRttMs": null,
+    "freed": [
+     "chat Qwen3.5-4B-Q4_K_M.gguf, 1.8 GB",
+     "embed embeddinggemma-300M-Q8_0.gguf, 374 MB"
+    ],
+    "restore": [
+     "chat Qwen3.5-4B-Q4_K_M.gguf",
+     "embed embeddinggemma-300M-Q8_0.gguf"
+    ]
+   },
+   {
+    "nodeId": "c6f72247",
+    "name": "Phone A",
+    "isDriver": false,
+    "step": "Weights in place",
+    "online": true,
+    "rssMb": 1654,
+    "peakMb": 1655,
+    "receivedMb": 1650,
+    "cachedMb": 6792,
+    "loadFraction": 1.0,
+    "thermalStatus": 0,
+    "ramAvailMb": 8593,
+    "rttMs": 27.775521,
+    "tcpRttMs": 10.431615,
+    "freed": [
+     "chat Qwen3.5-4B-Q4_K_M.gguf, 1.3 GB",
+     "embed embeddinggemma-300M-Q8_0.gguf, 22 MB"
+    ],
+    "restore": [
+     "chat Qwen3.5-4B-Q4_K_M.gguf",
+     "embed embeddinggemma-300M-Q8_0.gguf"
+    ]
+   }
+  ],
+  "boundariesPerToken": 2,
+  "warnings": [],
+  "lostPhone": null,
+  "failReason": null,
+  "loadStartedAtMs": 1791659626586,
+  "loadMs": 39899,
+  "log": {
+   "offloaded": null,
+   "offloadableTotal": null,
+   "buffers": [],
+   "listening": false,
+   "error": null
+  },
+  "steps": [
+   "Reading the model header",
+   "Asking Phone A what it is running",
+   "Planned Phone B layers 0-15, Phone A layers 16-31",
+   "Measuring Qwen3.5-4B-Q4_K_M on this phone alone, for scale",
+   "Phone A: starting rpc-server on 192.168.242.89:50052 with the tensor cache",
+   "Phone A: stopped chat server Qwen3.5-4B-Q4_K_M.gguf (1.3 GB)",
+   "Phone A: stopped embed server embeddinggemma-300M-Q8_0.gguf (22 MB)",
+   "Phone B: stopping chat server Qwen3.5-4B-Q4_K_M.gguf (1.8 GB) to make room for Qwen3.5-4B-Q4_K_M.gguf",
+   "Phone B: stopping embed server embeddinggemma-300M-Q8_0.gguf (374 MB) to make room for Qwen3.5-4B-Q4_K_M.gguf",
+   "Loading: llama-server --rpc 192.168.242.89:50052 -ngl 17 -t 8 -c 4096 -np 1 -fit off",
+   "Ready after 39 s"
+  ],
+  "generation": null,
+  "baseline": null,
+  "smallModel": {
+   "name": "Qwen3.5-4B-Q4_K_M",
+   "tokPerSec": 10.790503278064975,
+   "tokens": 48
+  },
+  "pendingRestore": [
+   "Phone A: chat Qwen3.5-4B-Q4_K_M.gguf",
+   "Phone A: embed embeddinggemma-300M-Q8_0.gguf",
+   "Phone B: chat Qwen3.5-4B-Q4_K_M.gguf",
+   "Phone B: embed embeddinggemma-300M-Q8_0.gguf"
+  ],
+  "notices": [],
+  "rttMs": 27.775521,
+  "tcpRttMs": 10.431615,
+  "updatedAtMs": 1791659669538
+ },
+ "generation": {
+  "prompt": "Explain how a heat pump works, in about 60 words.",
+  "text": "A heat pump works by transferring heat rather than creating it. It uses a refrigerant cycle with a compressor and expansion valve to move thermal energy from a cooler source, like outside air or ground, to a warmer destination, such as your home. In winter, it extracts heat and pumps it indoors; in summer, it reverses the process to cool the interior.",
+  "running": false,
+  "ttftMs": 8394,
+  "decodeTokPerSec": 4.124909391348437,
+  "tokens": 74,
+  "error": null
+ },
+ "lender": {
+  "state": "READY",
+  "port": 50052,
+  "bind": "192.168.242.89",
+  "pid": 2137,
+  "rssMb": 1654,
+  "peakMb": 1655,
+  "anonMb": 1650,
+  "cachedBytes": 7122683904,
+  "cachedFiles": 113,
+  "reason": null,
+  "lastLog": [
+   "Client connection closed",
+   "Accepted client connection",
+   "Client connection closed",
+   "Accepted client connection",
+   "Client connection closed",
+   "Accepted client connection",
+   "Client connection closed",
+   "Accepted client connection"
+  ],
+  "thermalStatus": 0,
+  "ramAvailMb": 8593,
+  "args": [
+   "-H",
+   "127.0.0.1",
+   "-p",
+   "50052",
+   "-H",
+   "192.168.242.89",
+   "-t",
+   "8",
+   "-c"
+  ],
+  "lendingTo": "Phone B",
+  "leaseMsLeft": 9600,
+  "stoppedOwn": null,
+  "loan": null
+ },
+ "stale_stop": [
+  409,
+  {
+   "error": "the loan belongs to Phone B"
+  }
+ ],
+ "cache_clear": [
+  409,
+  {
+   "error": "this phone is lending memory to Phone B; stop the loan first"
+  }
+ ]
+}

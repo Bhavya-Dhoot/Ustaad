@@ -1,0 +1,8 @@
+00:43:33 after-hardening | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+00:46:11 after-memcloud | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+00:50:12 before-privacy-run2 | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+00:55:54 after-agent | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+00:57:03 before-local-bench | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+00:58:46 between-local-bench | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+01:01:48 before-hardening-gc | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+01:04:11 final | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2

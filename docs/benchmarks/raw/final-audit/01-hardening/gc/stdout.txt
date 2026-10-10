@@ -1,0 +1,5 @@
+INFO  phone 192.168.242.89  thermal 2  chat {'state': 'READY', 'backend': 'GPU', 'loadMs': 14909, 'restarts': 0}
+PASS  g-gpu-start  three reloads (state, backend, loadMs): [('READY', 'GPU', 17746), ('READY', 'GPU', 16850), ('READY', 'GPU', 17735)]; program cache files and kB: '5'; thermal 2
+PASS  c-cpu-fallback  two kills [(11532, ''), (11639, '')]: chat READY on CPU, restarts 1, notice 'The GPU server failed (killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer)). Running on the CPU build.'
+PASS  c-gpu-restored  after switching the GPU off and on: chat READY on GPU, loadMs 18041
+INFO  end  thermal 2  chat {'state': 'READY', 'backend': 'GPU', 'restarts': 0}

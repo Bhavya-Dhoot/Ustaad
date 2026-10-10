@@ -1,0 +1,2 @@
+B-local: 32/32 done, 0 failed, wall 98.9 s, 889 tokens, aggregate 8.99 tok/s | 4776 32 jobs 10.9 tok/s decode | thermal 2 -> 2
+A-local: 32/32 done, 0 failed, wall 95.5 s, 889 tokens, aggregate 9.31 tok/s | c6f7 32 jobs 11.2 tok/s decode | thermal 2 -> 2

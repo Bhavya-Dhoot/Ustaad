@@ -1,0 +1,19 @@
+INFO  phone 192.168.242.89:5555  Thermal Status: 0  mCurrentFocus=Window{4ee3f57 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
+INFO  adb forward: 8790
+PASS  a-auth  no key 401, wrong key 401, right key 200, models ['ustaad-local', 'ustaad-swarm']
+PASS  b-lan  TCP connect from the PC to 192.168.242.89:8790: ConnectionRefusedError
+PASS  c-other-uid  curl on the phone as uid 2000: ...index":0,"message":{"role":"assistant","content":"ready"},"finish_reason":"stop"}],"usage":{"prompt_tokens":19,"completion_tokens":2,"total_tokens":21}} HTTP200
+PASS  d-chat  HTTP 200, 6.89 s, usage {'prompt_tokens': 27, 'completion_tokens': 87, 'total_tokens': 114}, fingerprint ustaad:Phone A
+PASS  d-stream  first token 0.41260814666748047, total 6.70280909538269, 87 tokens, 13.8 tok/s after the first token, Thermal Status: 0
+PASS  d-schema  HTTP 200, 2.79 s, parsed {'city': 'Tokyo', 'population_millions': 13.96}
+PASS  d-embed  HTTP 200, 0.11 s, vectors 2, dimensions [256, 256]
+PASS  f-two-at-once  alone 7.15 s; together 6.92 s and 13.53 s (slower one is 1.89 times a single call)
+PASS  g-refusals  {'tools': 400, 'unknown_model': 404, 'n2': 400, 'image': 400, 'big': 413, 'many': 400}
+PASS  h-openai-sdk  chat 7.44 s, usage {'completion_tokens': 80, 'prompt_tokens': 22, 'total_tokens': 102, 'completion_tokens_details': None, 'prompt_tokens_details': None}; stream first token 0.7621438503265381, 52 chunks; embedding 256 dims
+PASS  i-background-5s  first token 0.4364769458770752, total 6.95504355430603, 87 tokens, 13.3 tok/s after the first token  [in front: first token 0.7918128967285156, total 7.358848810195923, 87 tokens, 13.2 tok/s after the first token]
+PASS  i-background-60s  first token 1.2716622352600098, total 7.88467264175415, 87 tokens, 13.2 tok/s after the first token  [in front: first token 0.7918128967285156, total 7.358848810195923, 87 tokens, 13.2 tok/s after the first token]
+PASS  i-background-180s  first token 0.4201688766479492, total 3.2054402828216553, 37 tokens, 13.3 tok/s after the first token  [in front: first token 0.7918128967285156, total 7.358848810195923, 87 tokens, 13.2 tok/s after the first token]
+INFO  back to front: Starting: Intent { cmp=com.swarmos.app/.MainActivity }
+Warning: Activity not sta mCurrentFocus=Window{4ee3f57 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
+PASS  j-switch  switch off: RemoteDisconnected: Remote end closed connection without response; on again: HTTP 200
+INFO  end  Thermal Status: 2  mCurrentFocus=Window{4ee3f57 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
