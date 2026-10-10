@@ -3,6 +3,7 @@ package com.swarmos.app.sched
 import com.swarmos.app.core.Ports
 import com.swarmos.app.core.Signer
 import com.swarmos.app.link.HEADER_REQ
+import com.swarmos.app.link.NodeClient
 import com.swarmos.app.link.NodeHttpException
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -70,6 +71,8 @@ class StreamClient(
 
     /** [host] is "ip" (default node port) or "ip:port"; [path] is relative to /v1. A non-2xx answer throws [NodeHttpException]. */
     fun post(host: String, path: String, body: String): Flow<SseEvent> = flow {
+        // "bt:<node id>" is a Bluetooth address, not a host: a stream needs Wi-Fi, so refuse before a URL is built from it
+        if (NodeClient.isBluetoothAddress(host)) throw PhoneUnusableException(BLUETOOTH_ONLY)
         val fullPath = "/v1$path"
         val ts = System.currentTimeMillis()
         val hostPort = if (host.contains(':')) host else "$host:${Ports.NODE}"

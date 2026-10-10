@@ -43,6 +43,11 @@ class RemoteLlmClient(
     private var seenModel: String? = null
 
     override val nodeId: String get() = peer.nodeId
+    override val unusableReason: String? get() = if (NodeClient.isBluetoothAddress(host)) BLUETOOTH_ONLY else null
+
+    private fun requireUsable() {
+        unusableReason?.let { throw PhoneUnusableException(it) }
+    }
     override val modelName: String get() = seenModel ?: peer.chatModel ?: "unknown"
 
     override suspend fun ready(): Boolean = runCatching { caps() }.isSuccess
@@ -57,6 +62,7 @@ class RemoteLlmClient(
      * out of time is a [PhoneTimeoutException]: the job was slow, which says nothing about whether the phone is there.
      */
     override suspend fun runChat(jobId: String, req: ChatRequest, pinModel: String?): ChatJobResult = mapErrors {
+        requireUsable()
         val budget = budgetMs(req.maxTokens)
         try {
             client.post<ChatJobResult, ChatJobRequest>(host, "/sched/chat", ChatJobRequest(jobId, req.toDto(), pinModel), budget)
@@ -69,6 +75,7 @@ class RemoteLlmClient(
     }
 
     override suspend fun runEmbed(jobId: String, texts: List<String>): EmbedJobResult = mapErrors {
+        requireUsable()
         client.post<EmbedJobResult, EmbedJobRequest>(host, "/sched/embed", EmbedJobRequest(jobId, texts))
     }
 
@@ -85,6 +92,7 @@ class RemoteLlmClient(
 
     /** Streams when this client can; false (nothing emitted) otherwise so the caller falls back to a whole-reply job. */
     override suspend fun streamIfFree(req: ChatRequest, pinModel: String?, out: FlowCollector<ChatChunk>): Boolean {
+        requireUsable()
         val sc = streams ?: return false
         remoteStream(sc, req, pinModel).collect { out.emit(it) }
         return true

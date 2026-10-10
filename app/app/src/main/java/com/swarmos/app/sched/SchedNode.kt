@@ -26,6 +26,12 @@ interface PhoneEndpoint {
 
     /** Local phone only: stream [req] into [out] if a slot is free right now and return true; otherwise return false untouched. */
     suspend fun streamIfFree(req: ChatRequest, pinModel: String?, out: FlowCollector<ChatChunk>): Boolean = false
+
+    /**
+     * Null when this phone can take model jobs and streams; else a plain sentence for the phone list. A phone reachable only
+     * over Bluetooth is up for control messages but is not a target for model work.
+     */
+    val unusableReason: String? get() = null
 }
 
 /**

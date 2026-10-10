@@ -44,6 +44,12 @@ class NoPhoneAvailableException(pinned: String?, tooHot: Boolean = false) :
 class PhoneTimeoutException(val nodeId: String, val afterMs: Long) :
     RuntimeException("phone $nodeId gave no answer within $afterMs ms")
 
+/** Why a phone that is up still takes no model jobs or streams. Not an I/O failure: the phone is fine, it is just not a target. */
+class PhoneUnusableException(message: String) : RuntimeException(message)
+
+/** Shown in the phone list for a phone that is reachable only over Bluetooth, which carries small control messages and no model jobs. */
+const val BLUETOOTH_ONLY = "reachable over Bluetooth only: model jobs and streams need Wi-Fi"
+
 /** No phone had a free slot within the time a call may wait for one (twice its generation budget). */
 class SwarmWaitTimeoutException(val waitedMs: Long) :
     RuntimeException("no phone in the swarm had a free slot within ${waitedMs / 1000} s")
@@ -65,6 +71,8 @@ data class PhoneView(
     val inflight: Int,
     /** Jobs this client has completed on the phone since it started. */
     val jobsDone: Int,
+    /** Why this phone takes no model jobs although it is reachable (for example Bluetooth only); null when it does. */
+    val note: String? = null,
 )
 
 /**
@@ -189,7 +197,7 @@ class SwarmLlm(
         var last: Throwable? = null
         val ordered = endpoints().sortedBy { if (it.isLocal) 0 else 1 }
         for (ep in ordered) {
-            if (!ep.isLocal && synchronized(lock) { states[ep.nodeId]?.down == true }) continue
+            if (ep.unusableReason != null || (!ep.isLocal && synchronized(lock) { states[ep.nodeId]?.down == true })) continue
             try {
                 val r = withTimeoutOrNull(EMBED_TIMEOUT_MS) { ep.runEmbed(jobId, texts) } ?: throw PhoneTimeoutException(ep.nodeId, EMBED_TIMEOUT_MS)
                 return r.vectors.map { it.toFloatArray() }
@@ -234,9 +242,10 @@ class SwarmLlm(
             eps.sumOf { ep ->
                 val st = states[ep.nodeId]
                 val c = st?.caps
-                if (!includeDown && st?.down == true) 0
+                if (ep.unusableReason != null) 0
+                else if (!includeDown && st?.down == true) 0
                 else if (c == null) 1
-                else if (Scheduler.eligible(c, pinModel, st!!.thermal.level)) c.capacity
+                else if (Scheduler.eligible(c, pinModel, st.thermal.level)) c.capacity
                 else 0
             }
         }.coerceAtLeast(1)
@@ -395,7 +404,9 @@ class SwarmLlm(
         return synchronized(lock) {
             eps.sortedBy { if (it.isLocal) 0 else 1 }.map { ep ->
                 val st = states[ep.nodeId]
-                PhoneView(ep.nodeId, ep.isLocal, st != null && !st.down && st.caps != null, st?.caps, st?.inflight ?: 0, st?.jobsDone ?: 0)
+                val note = ep.unusableReason
+                // a phone that takes no model work is listed as not up for it, with the reason beside it
+                PhoneView(ep.nodeId, ep.isLocal, note == null && st != null && !st.down && st.caps != null, st?.caps, st?.inflight ?: 0, st?.jobsDone ?: 0, note)
             }
         }
     }
@@ -469,7 +480,7 @@ class SwarmLlm(
                     if (st != null) {
                         // A lost connection says the phone is gone. Silence on one job does not: only pings decide that. An error
                         // answer says the job (or its model) failed.
-                        if (failure is IOException && failure !is PhoneTimeoutException) {
+                        if (failure is IOException) {
                             markDownLocked(st)
                         } else {
                             st.capsAt = 0
@@ -514,7 +525,7 @@ class SwarmLlm(
         var best: PhoneEndpoint? = null
         var bestScore = Double.NEGATIVE_INFINITY
         for (ep in eps) {
-            if (ep.nodeId in tried) continue
+            if (ep.nodeId in tried || ep.unusableReason != null) continue
             val st = states[ep.nodeId] ?: continue
             val caps = st.caps ?: continue
             if (st.down || st.busyUntil > now) continue
@@ -546,21 +557,22 @@ class SwarmLlm(
     private fun anyServable(eps: List<PhoneEndpoint>, pin: String?, tried: Set<String>): Boolean = synchronized(lock) {
         eps.any { ep ->
             val st = states[ep.nodeId]
-            ep.nodeId !in tried && st != null && !st.down && st.caps?.let { Scheduler.eligible(it, pin, st.thermal.level) } == true
+            ep.nodeId !in tried && ep.unusableReason == null && st != null && !st.down &&
+                st.caps?.let { Scheduler.eligible(it, pin, st.thermal.level) } == true
         }
     }
 
     /** Another phone that is up, runs the pinned model and is cooler than status 3: the reason a status-3 phone is passed over. */
     private fun coolerPhoneUpLocked(eps: List<PhoneEndpoint>, pin: String?, tried: Set<String>, except: PhoneEndpoint): Boolean =
         eps.any { o ->
-            val so = if (o.nodeId == except.nodeId || o.nodeId in tried) null else states[o.nodeId]
+            val so = if (o.nodeId == except.nodeId || o.nodeId in tried || o.unusableReason != null) null else states[o.nodeId]
             val c = so?.caps
             so != null && c != null && !so.down && so.thermal.level < ThermalLevel.TOO_HOT_FROM && Scheduler.eligible(c, pin, so.thermal.level)
         }
 
     /** True when at least one phone is up and every phone that is up is excluded for heat (status 4 or more). */
     private fun allUpPhonesTooHot(eps: List<PhoneEndpoint>): Boolean = synchronized(lock) {
-        val up = eps.mapNotNull { ep -> states[ep.nodeId]?.takeIf { !it.down && it.caps != null } }
+        val up = eps.filter { it.unusableReason == null }.mapNotNull { ep -> states[ep.nodeId]?.takeIf { !it.down && it.caps != null } }
         up.isNotEmpty() && up.all { it.thermal.level >= Scheduler.EXCLUDE_FROM_STATUS }
     }
 
@@ -575,7 +587,7 @@ class SwarmLlm(
         val eps = endpoints()
         return synchronized(lock) {
             eps.none { o ->
-                val so = if (o.nodeId == local.nodeId) null else states[o.nodeId]
+                val so = if (o.nodeId == local.nodeId || o.unusableReason != null) null else states[o.nodeId]
                 val c = so?.caps
                 so != null && c != null && !so.down && Scheduler.eligible(c, pin, so.thermal.level)
             }

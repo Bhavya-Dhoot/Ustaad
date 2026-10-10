@@ -24,6 +24,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -308,6 +309,86 @@ class SwarmHardeningTest {
         val r = swarm(listOf(first, second)).chatJob("job", req("hello"))
         assertEquals("second", r.nodeId)
         assertEquals("one try on the silent phone, none after it stopped answering", 1, calls.get())
+    }
+}
+
+/** A phone that is reachable over Bluetooth only (address "bt:<node id>") is a control-path peer: no model jobs, no streams. */
+class BluetoothOnlyTest {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    companion object {
+        @JvmStatic @BeforeClass fun quietLogging() {
+            runCatching { org.slf4j.LoggerFactory.getLogger("bt-only-test") }
+        }
+    }
+
+    @After fun tearDown() = scope.cancel()
+
+    private class BtOnly(val inner: FakePhone) : PhoneEndpoint by inner {
+        override val unusableReason: String? = BLUETOOTH_ONLY
+    }
+
+    private fun remote(address: String) = RemoteLlmClient(
+        NodeInfo("peer", "Phone B", "x", "10.0.0.2", "t", "T", null),
+        NodeClient({ "secret" }, { "me" }),
+        address = { address },
+    )
+
+    @Test fun aBluetoothAddressIsRefusedForEveryKindOfModelWork() = runBlocking {
+        val bt = remote("bt:abcd1234")
+        assertEquals(BLUETOOTH_ONLY, bt.unusableReason)
+        assertNull("a Wi-Fi address is fine", remote("192.168.242.23").unusableReason)
+        assertNull(remote("192.168.242.23:8787").unusableReason)
+        for (call in listOf<suspend () -> Unit>(
+            { bt.runChat("j", req("x"), null) },
+            { bt.runEmbed("j", listOf("x")) },
+            { bt.streamIfFree(req("x"), null, FlowCollector { }) },
+        )) {
+            try {
+                call()
+                fail("expected PhoneUnusableException")
+            } catch (e: PhoneUnusableException) {
+                assertTrue(e.message!!, e.message!!.contains("Bluetooth"))
+            }
+        }
+    }
+
+    @Test fun theStreamClientBuildsNoUrlFromABluetoothAddress() = runBlocking {
+        val sc = StreamClient({ "secret" }, { "me" })
+        try {
+            sc.post("bt:abcd1234", "/sched/chat-stream", "{}").collect { }
+            fail("expected PhoneUnusableException")
+        } catch (e: PhoneUnusableException) {
+            assertEquals(BLUETOOTH_ONLY, e.message)
+        }
+    }
+
+    @Test fun theSchedulerSendsNothingToItAndSaysSoInThePhoneList() = runBlocking {
+        val bt = FakePhone("bt", TestLlm(), scope, tokPerSec = 99.0)
+        val ok = FakePhone("ok", TestLlm(), scope, tokPerSec = 1.0)
+        val llm = SwarmLlm({ listOf(BtOnly(bt), ok) }, scope, capsMaxAgeMs = 50, probeEveryMs = 100, msPerToken = 0)
+        assertEquals("ok", llm.chatJob("a", req("x")).nodeId)
+        assertTrue("nothing was sent to the Bluetooth phone", bt.jobIds.isEmpty())
+        val views = llm.phoneViews().associateBy { it.nodeId }
+        assertEquals(false, views.getValue("bt").up)
+        assertEquals(BLUETOOTH_ONLY, views.getValue("bt").note)
+        assertEquals(true, views.getValue("ok").up)
+        assertNull(views.getValue("ok").note)
+        assertEquals("its slots are not counted", 1, llm.slotCount())
+        assertEquals("a stream goes to the Wi-Fi phone too", "T:hi", llm.chatStream(req("hi")).toList().filter { !it.done }.joinToString("") { it.delta })
+        assertTrue(bt.jobIds.isEmpty())
+    }
+
+    @Test fun whenItIsTheOnlyPhoneTheCallerGetsAPlainNoPhoneError() = runBlocking {
+        val bt = FakePhone("bt", TestLlm(), scope)
+        val llm = SwarmLlm({ listOf(BtOnly(bt)) }, scope, capsMaxAgeMs = 50, msPerToken = 0)
+        try {
+            llm.chatJob("a", req("x"))
+            fail("expected NoPhoneAvailableException")
+        } catch (e: NoPhoneAvailableException) {
+            assertTrue(e.message!!, e.message!!.contains("no phone"))
+        }
+        assertTrue(bt.jobIds.isEmpty())
     }
 }
 
