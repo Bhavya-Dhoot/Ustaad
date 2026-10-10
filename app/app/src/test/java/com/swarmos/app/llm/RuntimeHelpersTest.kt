@@ -31,8 +31,10 @@ class RuntimeHelpersTest {
     @Test fun benchIsRefusedFromSevereUpOnly() {
         assertNull(Bench.blockReasonFor(0))
         assertNull(Bench.blockReasonFor(2))
-        assertTrue(Bench.blockReasonFor(3)!!.contains("SEVERE"))
-        assertTrue(Bench.blockReasonFor(4)!!.contains("CRITICAL"))
+        // the reason uses the shared words (Cool, Warm, Hot, Severe), never the raw enum names
+        assertTrue(Bench.blockReasonFor(3)!!.startsWith("Phone is Severe."))
+        assertTrue(Bench.blockReasonFor(4)!!.startsWith("Phone is Severe."))
+        assertTrue(!Bench.blockReasonFor(3)!!.contains("SEVERE") && !Bench.blockReasonFor(3)!!.contains("MODERATE"))
     }
 
     @Test fun slotsComeFromTheLastParallelFlag() {

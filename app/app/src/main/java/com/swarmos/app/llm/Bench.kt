@@ -86,7 +86,7 @@ object Bench {
      */
     fun blockReasonFor(thermalStatus: Int): String? =
         if (ThermalLevel.isTooHot(thermalStatus)) {
-            "Phone is ${HealthMonitor.thermalName(thermalStatus)} (thermal status $thermalStatus). Benchmark is off until it cools to MODERATE or lower."
+            "Phone is ${ThermalLevel.of(thermalStatus).word}. Benchmark is off until it cools to ${ThermalLevel.Hot.word} or lower."
         } else {
             null
         }
@@ -104,7 +104,7 @@ object Bench {
         _error.value = null
         _text.value = ""
         try {
-            announced(ModelsActivity.benchText(null, 0)) { runOnce() }.also { _last.value = it }
+            announced(ModelsActivity.benchText(null, 0)) { runOnce() }.also { record(it) }
         } catch (e: Exception) {
             _error.value = if (e is kotlinx.coroutines.CancellationException) "Benchmark stopped." else e.message ?: e.toString()
             throw e
@@ -130,7 +130,7 @@ object Bench {
                     val now = ((System.nanoTime() - start) / 60_000_000_000L).toInt().coerceAtMost(minutes - 1)
                     ModelsActivity.update(BENCH_KEY, ModelsActivity.benchText(now + 1, minutes))
                     val r = runOnce()
-                    _last.value = r
+                    record(r)
                     lastThermal = r.thermal
                     val minute = ((System.nanoTime() - start) / 60_000_000_000L).toInt().coerceAtMost(minutes - 1)
                     perMinute.getOrPut(minute) { mutableListOf() }.add(r.decodeTokPerSec)
@@ -144,6 +144,19 @@ object Bench {
         } finally {
             _running.value = false
         }
+    }
+
+    /** Keeps the result as "last" and shows its numbers on the chat row of the Models tab (labelled as a benchmark). */
+    private fun record(r: BenchResult) {
+        _last.value = r
+        LlamaRuntime.publishSpeed(
+            Role.CHAT,
+            SpeedSample(
+                r.model, SpeedSource.BENCH, r.atEpochMs, r.promptTokens, r.completionTokens,
+                prefillTokPerSec = r.prefillTokPerSec.takeIf { it > 0 },
+                decodeTokPerSec = r.decodeTokPerSec.takeIf { it > 0 },
+            ),
+        )
     }
 
     private const val BENCH_KEY = "bench"

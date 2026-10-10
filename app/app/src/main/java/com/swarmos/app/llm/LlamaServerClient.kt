@@ -128,7 +128,7 @@ class LlamaServerClient(
             }
             all
         }
-        if (texts.isNotEmpty()) LlamaRuntime.lastEmbedMsPerText.value = (System.nanoTime() - t0) / 1e6 / texts.size
+        if (texts.isNotEmpty()) LlamaRuntime.recordEmbed(modelName, (System.nanoTime() - t0) / 1e6 / texts.size)
         return out
     }
 
