@@ -1,5 +1,8 @@
 package com.swarmos.app.pdu
 
+import com.swarmos.app.llm.FakeLlmClient
+import com.swarmos.app.llm.LlmClient
+
 /** What the guard needs from the store. [PduStore] implements it; tests use an in-memory copy. */
 interface IndexBacking {
     val chunkCount: Int
@@ -33,6 +36,10 @@ object IndexGuard {
     }
 
     fun isReal(modelName: String): Boolean = modelName != FAKE && modelName.isNotBlank()
+
+    /** A real model (never the placeholder client) whose server answers right now. */
+    suspend fun usable(client: LlmClient): Boolean =
+        client !is FakeLlmClient && isReal(client.modelName) && runCatching { client.ready() }.getOrDefault(false)
 
     /** True when chunks exist that were embedded under another embedder or document prefix. */
     fun reindexNeeded(b: IndexBacking, embedName: String, documentPrefix: String): Boolean =

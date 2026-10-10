@@ -7,11 +7,6 @@ import com.swarmos.app.choir.VoiceInput
 import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
-import com.swarmos.app.llm.ChatChunk
-import com.swarmos.app.llm.ChatRequest
-import com.swarmos.app.llm.ChatStats
-import com.swarmos.app.llm.FakeLlmClient
-import com.swarmos.app.llm.LlmClient
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.header
 import io.ktor.server.request.receiveText
@@ -20,9 +15,6 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import java.io.File
@@ -36,21 +28,6 @@ data class DebugOcrReport(val chars: Int, val latinChars: Int, val devanagariCha
 
 @Serializable
 data class DebugShareRequest(val folder: String, val shared: Boolean)
-
-@Serializable
-data class DebugCannedRequest(val text: String)
-
-/** Debug builds only: streams a fixed answer, so the answer card and its citation chips can be checked. */
-private class CannedLlm(private val text: String) : LlmClient by FakeLlmClient() {
-    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
-        val words = text.split(' ')
-        for ((i, w) in words.withIndex()) {
-            delay(25)
-            emit(ChatChunk(if (i == 0) w else " $w"))
-        }
-        emit(ChatChunk("", done = true, stats = ChatStats(0, words.size, 0.0, words.size * 25.0)))
-    }
-}
 
 @Serializable
 data class DebugPeersRequest(val ips: List<String>)
@@ -74,6 +51,8 @@ data class AskTimings(val embedMs: Long, val localSearchMs: Long, val firstCards
 data class AskReport(
     val qid: String, val question: String, val answer: String, val model: String, val incomplete: Boolean, val lexicalOnly: Boolean,
     val withheldPrivate: Int, val sources: List<AskSource>, val devices: List<AskDevice>, val timings: AskTimings,
+    /** Why the answer pane shows sources only, or what the model run said besides the answer; null when there is nothing to add. */
+    val note: String? = null,
 )
 
 @Serializable
@@ -104,6 +83,7 @@ fun QueryUi.toReport(): AskReport = AskReport(
         )
     },
     timings = AskTimings(timings.embedMs, timings.localSearchMs, timings.firstCardsMs, timings.ttftMs, timings.totalMs),
+    note = note,
 )
 
 /**
@@ -163,13 +143,6 @@ fun Route.pduRoutes() {
             File(r.path).copyTo(copy, overwrite = true)
             PduEngine.debugScanFile = copy
             call.respond(mapOf("queued" to copy.name))
-        }
-
-        // lets the citation chips be seen before a real model exists: the chat client answers with this text (still labelled FAKE)
-        post("/debug/canned-answer") {
-            val r = SwarmJson.decodeFromString<DebugCannedRequest>(call.receiveText())
-            AppGraph.llm = if (r.text.isBlank()) FakeLlmClient() else CannedLlm(r.text)
-            call.respond(mapOf("llm" to AppGraph.llm.modelName, "canned" to r.text.isNotBlank().toString()))
         }
 
         post("/debug/prefixes") {

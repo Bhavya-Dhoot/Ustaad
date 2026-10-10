@@ -192,6 +192,16 @@ class BatchEmbedderTest {
     @Test fun theFakeClientIsNeverUsableEvenAsTheCapturedOne() = runBlocking {
         val fake = FakeLlmClient()
         assertFalse(BatchEmbedder.usable(fake, fake))
+        assertFalse(IndexGuard.usable(fake))
+    }
+
+    @Test fun onlyARealModelWhoseServerAnswersIsUsable() = runBlocking {
+        val e = StubEmbedder()
+        assertTrue(IndexGuard.usable(e))
+        e.up = false
+        assertFalse(IndexGuard.usable(e))
+        assertFalse(IndexGuard.usable(StubEmbedder(modelName = "FAKE")))
+        assertFalse(IndexGuard.usable(StubEmbedder(modelName = "")))
     }
 }
 

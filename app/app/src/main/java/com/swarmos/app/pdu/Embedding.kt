@@ -1,6 +1,5 @@
 package com.swarmos.app.pdu
 
-import com.swarmos.app.llm.FakeLlmClient
 import com.swarmos.app.llm.LlmClient
 
 /** The embedding server went away (or was swapped for the placeholder client) mid-run. Nothing from the file in hand was stored. */
@@ -14,9 +13,7 @@ class EmbedderStopped : RuntimeException("Embedder stopped")
 object BatchEmbedder {
     const val BATCH = 16
 
-    suspend fun usable(client: LlmClient, current: LlmClient): Boolean =
-        client === current && client !is FakeLlmClient && IndexGuard.isReal(client.modelName) &&
-            runCatching { client.ready() }.getOrDefault(false)
+    suspend fun usable(client: LlmClient, current: LlmClient): Boolean = client === current && IndexGuard.usable(client)
 
     suspend fun embedAll(client: LlmClient, current: () -> LlmClient, texts: List<String>): List<FloatArray> {
         val out = ArrayList<FloatArray>(texts.size)
