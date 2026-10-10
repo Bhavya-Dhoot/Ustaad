@@ -76,7 +76,12 @@ class SwarmLlm(
     /** How long a phone that answered 429 is skipped. */
     private val busyBackoffMs: Long = 200,
     /** How often a phone marked down is probed again. */
-    private val probeEveryMs: Long = 3_000,
+    private val probeEveryMs: Long = 1_000,
+    /**
+     * A phone that looks busy because of somebody else's job, or that missed a ping, is asked again this often instead of
+     * every [capsMaxAgeMs]: a stale "busy" is exactly what would keep a ready phone idle.
+     */
+    private val suspectRecheckMs: Long = 250,
     /** While jobs run on a remote phone it is pinged this often; two missed pings abort its jobs so they move on. */
     private val heartbeatMs: Long = 1_000,
 ) : LlmClient {
@@ -233,7 +238,8 @@ class SwarmLlm(
             val stale = eps.filter { ep ->
                 synchronized(lock) {
                     val st = states.getOrPut(ep.nodeId) { State() }
-                    !st.down && (force || ep.isLocal || t - st.capsAt >= capsMaxAgeMs)
+                    val maxAge = if (st.misses > 0 || busyWithOthers(st)) suspectRecheckMs else capsMaxAgeMs
+                    !st.down && (force || ep.isLocal || t - st.capsAt >= maxAge)
                 }
             }
             if (stale.isNotEmpty()) coroutineScope { stale.map { async { fetch(it) } }.awaitAll() }
@@ -241,6 +247,7 @@ class SwarmLlm(
     }
 
     private suspend fun fetch(ep: PhoneEndpoint) {
+        val inflightBefore = synchronized(lock) { states.getOrPut(ep.nodeId) { State() }.inflight }
         val caps = if (ep.isLocal) runCatching { ep.caps() }.getOrNull()
         else withTimeoutOrNull(capsTimeoutMs) { runCatching { ep.caps() }.getOrNull() }
         synchronized(lock) {
@@ -248,18 +255,22 @@ class SwarmLlm(
             st.capsAt = clock()
             if (caps != null) {
                 st.caps = caps
-                st.mineAtSample = st.inflight
+                // the report was taken somewhere between asking and answering: whichever of our jobs were there at either end are ours
+                st.mineAtSample = maxOf(inflightBefore, st.inflight)
                 st.down = false
                 st.misses = 0
                 if (st.abort.isCompleted) st.abort = CompletableDeferred()
             } else {
                 st.misses++
-                // a phone that is busy with our jobs gets one more chance: it may just be slow to answer
-                if (st.down || st.misses >= (if (st.inflight > 0) MISS_LIMIT else 1)) markDownLocked(st)
+                // one missed ping is not a verdict (the phone may be decoding with every core); two in a row are
+                if (st.down || st.misses >= MISS_LIMIT) markDownLocked(st)
             }
         }
         changes.tryEmit(Unit)
     }
+
+    /** The last report says jobs we did not send occupy the phone's slots. That is the state that goes stale fastest. */
+    private fun busyWithOthers(st: State): Boolean = st.caps?.let { it.running - st.mineAtSample > 0 } == true
 
     private fun markDownLocked(st: State) {
         st.down = true
