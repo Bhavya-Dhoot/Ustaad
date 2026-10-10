@@ -1,0 +1,378 @@
+{
+ "id": "357cdfd66a8648a9",
+ "mode": "local",
+ "state": "done",
+ "total": 32,
+ "done": 32,
+ "failed": 0,
+ "wallMs": 110662.456989,
+ "totalTokens": 1262,
+ "aggTokPerSec": 11.404048259342774,
+ "fake": false,
+ "models": [
+  "Qwen3.5-4B-Q4_K_M"
+ ],
+ "perPhone": [
+  {
+   "nodeId": "82d2676d",
+   "jobs": 32,
+   "tokens": 1262,
+   "tokPerSec": 11.404048259342774,
+   "decodeTokPerSec": 13.396238474232552
+  }
+ ],
+ "items": [
+  {
+   "index": 0,
+   "jobId": "357cdfd66a8648a9-0",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings distinct wet and dry seasons to large regions of the world, most notably South Asia, East Africa, and parts of Australia.\n\nHere is a breakdown of how it works:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3405.179,
+   "error": null
+  },
+  {
+   "index": 1,
+   "jobId": "357cdfd66a8648a9-1",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **lighthouse** is a tower with a light on top, used to warn ships of dangerous areas or to guide them safely to shore.\n\nHere are the key aspects of a lighthouse:\n\n*   **Purpose**: Its primary",
+   "promptTokens": 18,
+   "completionTokens": 48,
+   "genMs": 3415.842,
+   "error": null
+  },
+  {
+   "index": 2,
+   "jobId": "357cdfd66a8648a9-2",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Binary search is an efficient algorithm that repeatedly divides a sorted list in half to locate a target value.",
+   "promptTokens": 4,
+   "completionTokens": 21,
+   "genMs": 1508.059,
+   "error": null
+  },
+  {
+   "index": 3,
+   "jobId": "357cdfd66a8648a9-3",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Moon is Earth's only natural satellite, a rocky body that orbits our planet and reflects sunlight to cause lunar phases and tides.",
+   "promptTokens": 17,
+   "completionTokens": 28,
+   "genMs": 2095.276,
+   "error": null
+  },
+  {
+   "index": 4,
+   "jobId": "357cdfd66a8648a9-4",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings distinct wet and dry seasons to large regions of the world, most notably South Asia and Southeast Asia.\n\nHere is how it works:\n\n*   **Seasonal Wind Shift",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3582.384,
+   "error": null
+  },
+  {
+   "index": 5,
+   "jobId": "357cdfd66a8648a9-5",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **transistor** is a semiconductor device used to amplify or switch electronic signals and electrical power. It is one of the most important inventions in modern electronics, serving as the fundamental building block of computers, smartphones, and virtually all digital devices",
+   "promptTokens": 17,
+   "completionTokens": 48,
+   "genMs": 3603.861,
+   "error": null
+  },
+  {
+   "index": 6,
+   "jobId": "357cdfd66a8648a9-6",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that drastically changes weather patterns, primarily bringing heavy rainfall to specific regions. The term comes from the Arabic word *mausim*, meaning \"season.\"\n\nHere is how it works:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3593.835,
+   "error": null
+  },
+  {
+   "index": 7,
+   "jobId": "357cdfd66a8648a9-7",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Silk Road was a vast network of trade routes connecting the East and West, facilitating the exchange of goods, ideas, and culture between civilizations.",
+   "promptTokens": 4,
+   "completionTokens": 30,
+   "genMs": 2254.191,
+   "error": null
+  },
+  {
+   "index": 8,
+   "jobId": "357cdfd66a8648a9-8",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a whole number greater than 1 that has exactly two distinct positive divisors: **1** and itself.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller whole numbers. If you",
+   "promptTokens": 18,
+   "completionTokens": 48,
+   "genMs": 3588.838,
+   "error": null
+  },
+  {
+   "index": 9,
+   "jobId": "357cdfd66a8648a9-9",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of prevailing winds that brings distinct wet and dry seasons to specific regions, primarily in South Asia, East Asia, and parts of Africa.\n\nHere is how it works:\n\n*   **Season",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3622.607,
+   "error": null
+  },
+  {
+   "index": 10,
+   "jobId": "357cdfd66a8648a9-10",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3653.371,
+   "error": null
+  },
+  {
+   "index": 11,
+   "jobId": "357cdfd66a8648a9-11",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The printing press is a device that uses movable type to mass-produce printed material, revolutionizing the spread of information.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 1849.257,
+   "error": null
+  },
+  {
+   "index": 12,
+   "jobId": "357cdfd66a8648a9-12",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings heavy rainfall to specific regions, primarily in South Asia, Southeast Asia, and East Africa. The term comes from the Arabic word *mausim*, meaning \"season.\"\n\n",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3552.21,
+   "error": null
+  },
+  {
+   "index": 13,
+   "jobId": "357cdfd66a8648a9-13",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3589.504,
+   "error": null
+  },
+  {
+   "index": 14,
+   "jobId": "357cdfd66a8648a9-14",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings distinct wet and dry seasons to large regions of the world, most notably South Asia, Southeast Asia, and East Africa.\n\nHere is how it works:\n\n*   **",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3555.781,
+   "error": null
+  },
+  {
+   "index": 15,
+   "jobId": "357cdfd66a8648a9-15",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Coral reefs are vibrant underwater ecosystems built by colonies of tiny marine animals called corals that secrete calcium carbonate skeletons.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 1850.285,
+   "error": null
+  },
+  {
+   "index": 16,
+   "jobId": "357cdfd66a8648a9-16",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A lighthouse is a tower equipped with a powerful rotating light that guides ships away from dangerous coastlines.",
+   "promptTokens": 4,
+   "completionTokens": 22,
+   "genMs": 1624.464,
+   "error": null
+  },
+  {
+   "index": 17,
+   "jobId": "357cdfd66a8648a9-17",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you try",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3595.115,
+   "error": null
+  },
+  {
+   "index": 18,
+   "jobId": "357cdfd66a8648a9-18",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Bread yeast is a single-celled fungus used in baking to ferment dough by converting sugars into carbon dioxide and alcohol.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 1885.344,
+   "error": null
+  },
+  {
+   "index": 19,
+   "jobId": "357cdfd66a8648a9-19",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Glaciers are massive, slow-moving rivers of ice formed by the accumulation and compaction of snow over many years.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 1829.934,
+   "error": null
+  },
+  {
+   "index": 20,
+   "jobId": "357cdfd66a8648a9-20",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you try",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3586.914,
+   "error": null
+  },
+  {
+   "index": 21,
+   "jobId": "357cdfd66a8648a9-21",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **heart** is a vital, muscular organ located in the center of the chest that serves as the body's primary pump. Its main function is to circulate blood throughout the entire body, delivering essential nutrients and oxygen to cells while removing",
+   "promptTokens": 17,
+   "completionTokens": 48,
+   "genMs": 3597.025,
+   "error": null
+  },
+  {
+   "index": 22,
+   "jobId": "357cdfd66a8648a9-22",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3609.411,
+   "error": null
+  },
+  {
+   "index": 23,
+   "jobId": "357cdfd66a8648a9-23",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a form of error-detecting code that is calculated from a block of data. It is used to verify the integrity of data transmission or storage by ensuring that the data has not been corrupted or altered during the process",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3607.109,
+   "error": null
+  },
+  {
+   "index": 24,
+   "jobId": "357cdfd66a8648a9-24",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Bees are social insects that live in colonies and produce honey while pollinating plants.",
+   "promptTokens": 4,
+   "completionTokens": 18,
+   "genMs": 1357.79,
+   "error": null
+  },
+  {
+   "index": 25,
+   "jobId": "357cdfd66a8648a9-25",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a form of error-detecting code that is calculated from a block of data. It acts like a digital fingerprint or a mathematical \"hash\" of the information.\n\nHere is how it works:\n1.",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3606.232,
+   "error": null
+  },
+  {
+   "index": 26,
+   "jobId": "357cdfd66a8648a9-26",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. For example:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3631.214,
+   "error": null
+  },
+  {
+   "index": 27,
+   "jobId": "357cdfd66a8648a9-27",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a form of error-detecting code that is calculated from a block of data. It is used to verify the integrity of data transmission or storage by ensuring that the data has not been corrupted or altered during processing.",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3649.283,
+   "error": null
+  },
+  {
+   "index": 28,
+   "jobId": "357cdfd66a8648a9-28",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Chess openings are the initial moves made by both players to develop their pieces, control the center, and prepare for a strategic plan.",
+   "promptTokens": 4,
+   "completionTokens": 27,
+   "genMs": 2037.908,
+   "error": null
+  },
+  {
+   "index": 29,
+   "jobId": "357cdfd66a8648a9-29",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The water cycle is a continuous process where water evaporates from surfaces, condenses into clouds, and falls back to Earth as precipitation.",
+   "promptTokens": 4,
+   "completionTokens": 28,
+   "genMs": 2086.448,
+   "error": null
+  },
+  {
+   "index": 30,
+   "jobId": "357cdfd66a8648a9-30",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **prime number** is a natural number greater than 1 that has exactly two distinct positive divisors: **1 and itself**.\n\nIn simpler terms, a prime number cannot be formed by multiplying two smaller natural numbers. If you try",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 3677.347,
+   "error": null
+  },
+  {
+   "index": 31,
+   "jobId": "357cdfd66a8648a9-31",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Tea is a popular hot or cold beverage prepared by steeping cured leaves of the Camellia sinensis plant in hot water.",
+   "promptTokens": 4,
+   "completionTokens": 28,
+   "genMs": 2103.531,
+   "error": null
+  }
+ ]
+}

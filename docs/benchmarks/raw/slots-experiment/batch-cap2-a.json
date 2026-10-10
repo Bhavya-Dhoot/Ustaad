@@ -1,0 +1,378 @@
+{
+ "id": "c1675a2d1fb44ab8",
+ "mode": "local",
+ "state": "done",
+ "total": 32,
+ "done": 32,
+ "failed": 0,
+ "wallMs": 180642.522119,
+ "totalTokens": 1128,
+ "aggTokPerSec": 6.244376942749499,
+ "fake": false,
+ "models": [
+  "Qwen3.5-4B-Q4_K_M"
+ ],
+ "perPhone": [
+  {
+   "nodeId": "82d2676d",
+   "jobs": 32,
+   "tokens": 1128,
+   "tokPerSec": 6.244376942749499,
+   "decodeTokPerSec": 3.369146293125912
+  }
+ ],
+ "items": [
+  {
+   "index": 0,
+   "jobId": "c1675a2d1fb44ab8-0",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings distinct wet and dry seasons to large regions of the world, most notably South Asia, East Africa, and parts of Australia.\n\nHere is a breakdown of how it works:",
+   "promptTokens": 18,
+   "completionTokens": 48,
+   "genMs": 14432.611,
+   "error": null
+  },
+  {
+   "index": 1,
+   "jobId": "c1675a2d1fb44ab8-1",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A lighthouse is a tower equipped with a powerful light that guides ships away from dangerous coastlines.",
+   "promptTokens": 18,
+   "completionTokens": 21,
+   "genMs": 6165.018,
+   "error": null
+  },
+  {
+   "index": 2,
+   "jobId": "c1675a2d1fb44ab8-2",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Binary search is an efficient algorithm that repeatedly divides a sorted list in half to locate a target value.",
+   "promptTokens": 17,
+   "completionTokens": 21,
+   "genMs": 6118.185,
+   "error": null
+  },
+  {
+   "index": 3,
+   "jobId": "c1675a2d1fb44ab8-3",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Moon is Earth's only natural satellite that reflects sunlight to illuminate our planet and enables life through its interaction with the atmosphere.",
+   "promptTokens": 17,
+   "completionTokens": 26,
+   "genMs": 7821.038,
+   "error": null
+  },
+  {
+   "index": 4,
+   "jobId": "c1675a2d1fb44ab8-4",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings distinct wet and dry seasons to large regions of the world, most notably South Asia and Southeast Asia.\n\nHere is how it works:\n\n*   **Seasonal Wind Shift",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14438.062,
+   "error": null
+  },
+  {
+   "index": 5,
+   "jobId": "c1675a2d1fb44ab8-5",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A transistor is a semiconductor device that acts as an electronic switch or amplifier by controlling the flow of electric current.",
+   "promptTokens": 17,
+   "completionTokens": 23,
+   "genMs": 6720.599,
+   "error": null
+  },
+  {
+   "index": 6,
+   "jobId": "c1675a2d1fb44ab8-6",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that drastically changes weather patterns, primarily bringing heavy rainfall to specific regions. The term comes from the Arabic word *mausim*, meaning \"season.\"\n\nHere is how it works:",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14417.21,
+   "error": null
+  },
+  {
+   "index": 7,
+   "jobId": "c1675a2d1fb44ab8-7",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Silk Road was a vast network of trade routes connecting the East and West, facilitating the exchange of goods, ideas, and culture between civilizations.",
+   "promptTokens": 4,
+   "completionTokens": 30,
+   "genMs": 8884.615,
+   "error": null
+  },
+  {
+   "index": 8,
+   "jobId": "c1675a2d1fb44ab8-8",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A prime number is a natural number greater than 1 that has exactly two distinct positive divisors: 1 and itself.",
+   "promptTokens": 18,
+   "completionTokens": 26,
+   "genMs": 7880.398,
+   "error": null
+  },
+  {
+   "index": 9,
+   "jobId": "c1675a2d1fb44ab8-9",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of prevailing winds that brings distinct wet and dry seasons to specific regions, primarily in South Asia, East Asia, and parts of Africa.\n\nHere is how it works:\n\n*   **Season",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14425.755,
+   "error": null
+  },
+  {
+   "index": 10,
+   "jobId": "c1675a2d1fb44ab8-10",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A compiler is a program that translates source code written in a high-level programming language into machine code that a computer can execute.",
+   "promptTokens": 17,
+   "completionTokens": 26,
+   "genMs": 7647.478,
+   "error": null
+  },
+  {
+   "index": 11,
+   "jobId": "c1675a2d1fb44ab8-11",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Volcanoes are openings in the Earth's crust that allow molten rock, known as magma, to escape onto the Earth's surface.",
+   "promptTokens": 4,
+   "completionTokens": 29,
+   "genMs": 8725.247,
+   "error": null
+  },
+  {
+   "index": 12,
+   "jobId": "c1675a2d1fb44ab8-12",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings heavy rainfall to specific regions, primarily in South Asia, Southeast Asia, and East Africa. The term comes from the Arabic word *mausim*, meaning \"season.\"\n\n",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14442.722,
+   "error": null
+  },
+  {
+   "index": 13,
+   "jobId": "c1675a2d1fb44ab8-13",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A magnet is an object that produces a magnetic field, allowing it to attract ferromagnetic materials like iron and repel other magnets.",
+   "promptTokens": 17,
+   "completionTokens": 28,
+   "genMs": 8262.384,
+   "error": null
+  },
+  {
+   "index": 14,
+   "jobId": "c1675a2d1fb44ab8-14",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The **monsoon** is a seasonal reversal of winds that brings distinct wet and dry seasons to large regions of the world, most notably South Asia, Southeast Asia, and East Africa.\n\nHere is how it works:\n\n*   **",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14395.917,
+   "error": null
+  },
+  {
+   "index": 15,
+   "jobId": "c1675a2d1fb44ab8-15",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Coral reefs are vibrant underwater ecosystems built by colonies of tiny marine animals called corals that secrete calcium carbonate skeletons.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 7392.326,
+   "error": null
+  },
+  {
+   "index": 16,
+   "jobId": "c1675a2d1fb44ab8-16",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The speed of light is the maximum speed at which all conventional matter and information in the universe can travel, approximately 299,792,458 meters per second in a vacuum.",
+   "promptTokens": 4,
+   "completionTokens": 42,
+   "genMs": 12832.797,
+   "error": null
+  },
+  {
+   "index": 17,
+   "jobId": "c1675a2d1fb44ab8-17",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **sundial** is a simple timekeeping device that uses the position of the sun to tell the time. It consists of a flat surface (the dial) marked with hour lines, and a pointer or rod (called the **gn",
+   "promptTokens": 18,
+   "completionTokens": 48,
+   "genMs": 14329.711,
+   "error": null
+  },
+  {
+   "index": 18,
+   "jobId": "c1675a2d1fb44ab8-18",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Bread yeast is a single-celled fungus used in baking to ferment dough by converting sugars into carbon dioxide and alcohol.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 7390.901,
+   "error": null
+  },
+  {
+   "index": 19,
+   "jobId": "c1675a2d1fb44ab8-19",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Glaciers are massive, slow-moving rivers of ice formed by the accumulation and compaction of snow over many years.",
+   "promptTokens": 4,
+   "completionTokens": 25,
+   "genMs": 7613.291,
+   "error": null
+  },
+  {
+   "index": 20,
+   "jobId": "c1675a2d1fb44ab8-20",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a simple error-detecting code used to verify the integrity of data. It works by generating a fixed-size string of numbers (or characters) based on the specific content of a file, message, or data block",
+   "promptTokens": 17,
+   "completionTokens": 48,
+   "genMs": 14409.71,
+   "error": null
+  },
+  {
+   "index": 21,
+   "jobId": "c1675a2d1fb44ab8-21",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The heart is a muscular organ that pumps blood throughout the body to deliver oxygen and nutrients.",
+   "promptTokens": 17,
+   "completionTokens": 19,
+   "genMs": 5510.665,
+   "error": null
+  },
+  {
+   "index": 22,
+   "jobId": "c1675a2d1fb44ab8-22",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A telescope is an optical instrument designed to magnify distant objects by using lenses or mirrors to gather and focus light.",
+   "promptTokens": 17,
+   "completionTokens": 24,
+   "genMs": 7124.803,
+   "error": null
+  },
+  {
+   "index": 23,
+   "jobId": "c1675a2d1fb44ab8-23",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a form of error-detecting code that is calculated from a block of data. It acts like a digital fingerprint or a mathematical \"hash\" of the information.\n\nHere is how it works:\n1.",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14344.675,
+   "error": null
+  },
+  {
+   "index": 24,
+   "jobId": "c1675a2d1fb44ab8-24",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "The Pythagorean theorem states that in a right-angled triangle, the square of the length of the hypotenuse (the side opposite the right angle) is equal to the sum of the squares of the lengths of the other two sides",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14493.707,
+   "error": null
+  },
+  {
+   "index": 25,
+   "jobId": "c1675a2d1fb44ab8-25",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a simple error-detecting algorithm used to verify the integrity of data. It works by taking a block of data (such as a file, a message, or a network packet) and performing a mathematical calculation on",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14430.37,
+   "error": null
+  },
+  {
+   "index": 26,
+   "jobId": "c1675a2d1fb44ab8-26",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A fuse is a safety device containing a thin metal wire that melts and breaks the electrical circuit when current exceeds a safe level, preventing damage or fire.",
+   "promptTokens": 17,
+   "completionTokens": 31,
+   "genMs": 9307.846,
+   "error": null
+  },
+  {
+   "index": 27,
+   "jobId": "c1675a2d1fb44ab8-27",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **checksum** is a form of error-detecting code that is calculated from a block of data. It is used to verify the integrity of data transmission or storage by ensuring that the data has not been corrupted or altered during processing.",
+   "promptTokens": 4,
+   "completionTokens": 48,
+   "genMs": 14083.303,
+   "error": null
+  },
+  {
+   "index": 28,
+   "jobId": "c1675a2d1fb44ab8-28",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Chess openings are the initial moves made by both players to develop their pieces, control the center, and prepare for a strategic plan.",
+   "promptTokens": 4,
+   "completionTokens": 27,
+   "genMs": 7763.6,
+   "error": null
+  },
+  {
+   "index": 29,
+   "jobId": "c1675a2d1fb44ab8-29",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Static electricity is an imbalance of electric charges within or on the surface of a material, typically caused by the transfer of electrons between materials.",
+   "promptTokens": 4,
+   "completionTokens": 28,
+   "genMs": 8613.775,
+   "error": null
+  },
+  {
+   "index": 30,
+   "jobId": "c1675a2d1fb44ab8-30",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "A **rainbow** is a natural optical phenomenon that occurs when sunlight shines through water droplets in the atmosphere, such as after rain. It appears as a multicolored arc in the sky.\n\nHere is how it works:\n\n",
+   "promptTokens": 17,
+   "completionTokens": 48,
+   "genMs": 12082.701,
+   "error": null
+  },
+  {
+   "index": 31,
+   "jobId": "c1675a2d1fb44ab8-31",
+   "nodeId": "82d2676d",
+   "modelName": "Qwen3.5-4B-Q4_K_M",
+   "text": "Tea is a popular hot or cold beverage prepared by steeping cured leaves of the Camellia sinensis plant in hot water.",
+   "promptTokens": 4,
+   "completionTokens": 28,
+   "genMs": 8301.495,
+   "error": null
+  }
+ ]
+}
