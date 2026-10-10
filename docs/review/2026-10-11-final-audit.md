@@ -1,6 +1,6 @@
 # Final audit of the implementation (2026-10-11)
 
-Working copy: filled in as each reviewer reports. Plan: plans/2026-10-11-final-audit.md. Code state audited: master f62da67 (the commits after it change documents and scripts only), 1453 unit tests, 0 failures, the same build on phones A, B and C.
+Plan: plans/2026-10-11-final-audit.md. Code state audited: master f62da67 (the commits after it changed documents and scripts only), 1453 unit tests, 0 failures, the same build on phones A, B and C. State after the fixes: master fa8b5cd, 1499 unit tests, 0 failures.
 
 Who looked: Codex (gpt-6.1-sol, high effort, read-only, raw output in `2026-10-11-codex-audit.txt`), three Sonnet reviewers with one lens each (resources and keep busy; failure paths and stuck states; the fixes and claims of 2026-10-10), one Sonnet device tester on phones A and B (docs/benchmarks/2026-10-11-final-regression.md). Every finding below was read against the code by the orchestrator before it was counted.
 
@@ -94,7 +94,7 @@ Raw output: `2026-10-11-codex-audit.txt` (8 high, 18 medium, 1 low). Of the 23 f
 | C12 | kb/KbEngine.kt:144 | The Knowledge Bank's cards are sealed with a key from the pairing secret. A new secret adopted and the app killed before the bank has re-sealed them leaves them unreadable. | Written down. Pairing was done three times tonight with no kill in between. |
 | C13 | AppGraph.kt:100, choir/ChoirRuntime.kt:73 | Choir and the split use the gated model client without the guard that refuses the placeholder model. If the chat model is stopped while a Choir voice waits for its slot, that voice can answer "[FAKE] No chat model is loaded on this phone." The text is labelled; it would count as one voice's answer. | Written down: do not stop a model during a Choir run. |
 | C14 | busy/BusyLoop.kt:143 | Switching Hammer off, the phone getting too hot, the battery falling or the app going to the background do not stop a filler job that is already running; they take effect at the next job. A job is a few seconds, and at most 60 s after R2. | Written down. |
-| C15 | busy/BusyApp.kt:76 | Claim about the bundled model server: filler jobs sent with the prompt cache off may still push real conversations' cached prompts out of the server's cache, and a real request may be given the slot meant for filler. Read from native code Codex says it mostly did not examine. | Not decided by reading. To be measured on a phone: the same question twice with filler in between, with keep busy on and off. |
+| C15 | busy/BusyApp.kt:76 | Claim about the bundled model server: filler jobs sent with the prompt cache off may still push real conversations' cached prompts out of the server's cache, and a real request may be given the slot meant for filler. Read from native code Codex says it mostly did not examine. | Measured on Phone A and not borne out for one conversation: 0.33 to 0.35 s for the repeated prompt after 18 filler jobs (see the last section). |
 | C16 | llm/LlamaRuntime.kt:711 | A model server death during filler uses up the one automatic restart; a second death within two minutes, during real work, leaves the phone without a chat model until the owner loads it. | Written down with R8. |
 | C17 | memcloud/MemCloudLogic.kt:137 | DEGRADED after its own release still counts as in use (S1), found independently. | Fix now (S1). |
 | C18 | sched/SwarmLlm.kt:441 | Says the overall deadline of a job is not enforced across phones, each attempt getting a fresh budget. Reviewer 1 read the same function as ending at twice the budget. | Not settled; written down as a disagreement between two readers. |
@@ -107,3 +107,38 @@ Raw output: `2026-10-11-codex-audit.txt` (8 high, 18 medium, 1 low). Of the 23 f
 | C27 | llm/ModelStore.kt:239 | A failed model counts as in use (S6), found independently. | Fix now (S6). |
 
 Three findings were made independently by Codex and by a reviewer (the lost slot, DEGRADED after release, the failed model in use), and two more overlap in substance (the memory check, a lender's restore). None of the three readers found a way for an unpaired device to read data or run a model.
+
+## What was fixed (merged on master as 5724511 and fa8b5cd, plus 574c1fd; 1499 unit tests, 0 failures)
+
+Seventeen findings were fixed by two Sonnet builders in separate worktrees and one by the orchestrator. Where the table says "failed before", the builder ran the new test against the old code and saw it fail.
+
+| Finding | Fix | Held by |
+|---|---|---|
+| R1, C3 lost slot | The job's coroutine is started so that it always runs its first lines, and leaves through the normal clean-up when it finds itself cancelled. | `JobExecutorCancelBeforeStartTest` (immediate slot, queued job, job queued behind filler); 3 of 4 failed before |
+| R7 slot lost in a timeout | The slot taken inside the timeout block is remembered and given back if the block's value is lost. | No test: the race needs two threads at the right instant |
+| R6 filler slot | Nothing that can throw sits between taking the filler slot and the try; the slot is given back even if restoring the shared figures throws. | Two tests in `BusyLoopTest`; both failed before |
+| R2 filler time limit | `BusyPolicy.FILLER_TIMEOUT_MS` = 60 s. A job over it is cancelled, waited for, and counted as failed, with the existing ten-second back-off. | Tests at 59.999 s and 60 s; a preemption at 10 s still counts as cancelled |
+| R5 Hammer | The switch-off time is written before the flag; Keep busy off ends a rest that was running; "Stop Ustaad" switches Hammer off; audit entries are written in order by one writer off the caller's thread. | Four tests in `BusyModeTest`; all failed before |
+| R3 heat | Chat, stream and embedding work from another phone is refused at Thermal Status 4 or more, the way a full phone refuses it. The owner's own requests are not. The status is the phone's two-second health reading. | `SchedHeatTest` (refused at 4, 5, 6; accepted at 3; the owner's four paths accepted at 4) |
+| S1, C17 released DEGRADED | The state records that the degraded split has given the phone back; that state no longer counts as in use and no longer shows the banner. A re-plan, a new start, a stop or a failure clears it. | Five tests |
+| R4 baseline, stop | Every exit of the single-phone baseline ends in IDLE with a result, the flags cleared and the phone's own models back. Stop reaches IDLE even if its teardown throws. | Three tests |
+| C6 baseline twice | The baseline takes its phase in the same step that admits it, so a second call is refused. | One test: second call refused, one server start |
+| S3 READY over DEGRADED | READY is written only if the phase is still LOADING. | One test that degrades the split during the final refresh |
+| S2 lender's restore | The lender waits up to 5 s for the rpc server's process to be gone before it starts its own models (outside its lock; the Stop lending button no longer waits on the main thread). The driver reloads a role it finds FAILED as it does one it finds STOPPED. | Ordering tests for stop, a driver's stop and lease expiry; two driver tests |
+| C4 loan token | The token of a loan stays with the record of a release that could not be confirmed, is sent on every retry, and is stored with it. A retry that finishes after a new split has taken the phone no longer clears that split's record. | Tests in both test classes, including after an app restart |
+| S4 failed ask | Any exception in an ask ends it as done with the note "Something went wrong while answering. Ask again." and is passed on as before. | `AskFailureTest`, on the pure step that closes the ask |
+| S5 Choir busy | The flag is set immediately before the try that clears it. | Reordering, no test |
+| S6, C27 failed model | "In use" now means READY or STARTING, for delete, for the models list and for the rpc cache. | Tests in `ModelsUiTest` and `RuntimeHelpersTest` |
+| S7 pairing text | "Ustaad keeps trying for 10 minutes. After that, scan the code again." (the figure comes from the code's own constant) | `UnreachableHostTextTest` |
+| C1 pairing confirm | The Pair button adopts the code its dialog showed; if another has arrived, nothing is adopted. | `PairingConfirmTest` |
+
+Not verified by a unit test and waiting for a phone: the lender's wait for the rpc server (S2) on a real split, above all the 30B split on three phones; "Stop Ustaad" switching Hammer off; the released state on a real degraded split.
+
+One test is unreliable and is not from these changes: `SchedStreamTest.aStreamThatBreaksAfterTokensIsNotRetriedOnAnotherPhone` failed in 2 of 6 partial runs on the unchanged tree and passed in every full run.
+
+## Measured on phones for this audit
+
+- Regression on the build before the fixes, phones A and B (docs/benchmarks/2026-10-11-final-regression.md): fault injection 6 of 6 on Phone A, MemoryCloud between B and A 9 of 9, agent endpoint 14 of 14, setup checks 12 of 12. The privacy check failed once and passed on the second run: after a forced stop Ustaad on Phone A was a live process that served nothing for over 90 s, until it was opened a second time. Cause not found.
+- Not run: the batch checks across two phones. The permission layer of the session refused them for the tester (they switch Keep busy off and force-stop an app during a batch), and they were not attempted another way.
+- C15, prompt cache under filler (raw/final-audit/prompt-cache/): on Phone A at half duty a repeated 214-token question read its prompt in 2.0 to 2.1 s the first time and in 0.33 to 0.35 s the second time, with 0, 6 and 18 filler jobs in between. Filler did not push it out of the cache. One conversation, one run; a cache already full of other conversations was not tried.
+- Hammer for 25 minutes on Phone A: docs/benchmarks/2026-10-11-hammer.md.
