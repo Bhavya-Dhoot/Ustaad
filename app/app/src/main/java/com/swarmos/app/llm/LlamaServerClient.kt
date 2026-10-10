@@ -15,8 +15,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -58,8 +60,10 @@ class LlamaServerClient(
             val c = LlamaHttp.newPost("$base/v1/chat/completions", readTimeout)
             if (!holder.attach(c)) return@launch // cancelled before the socket was opened
             val flight = InFlight.begin(port, readTimeout.toLong())
+            var requestSent = false
             try {
                 LlamaHttp.send(c, body)
+                requestSent = true
                 if (c.responseCode !in 200..299) throw LlamaServerException(LlamaHttp.errorText(c), c.responseCode)
                 BufferedReader(InputStreamReader(c.inputStream, Charsets.UTF_8)).use { r ->
                     while (true) {
@@ -90,6 +94,12 @@ class LlamaServerClient(
                 // Our own disconnect (the caller gave up) makes the blocked read fail with "Socket closed": that is a
                 // cancellation, not a server error, so it must not replace the caller's TimeoutCancellationException.
                 if (holder.isCancelled) throw kotlinx.coroutines.CancellationException("chat cancelled by the caller")
+                // Once the request is out, an I/O failure of the read (server killed, socket reset, chunked body ended early) is the
+                // same as a clean end of file: the model stopped mid-answer. A read timeout is a silent server, not a dead one, and a
+                // failure to connect (the request never left) keeps its own meaning; neither is relabelled.
+                if (requestSent && e is IOException && e !is SocketTimeoutException) {
+                    throw ModelStoppedMidAnswerException(partial.toString(), chunks).also { it.initCause(e) }
+                }
                 throw e
             } finally {
                 InFlight.end(flight)
