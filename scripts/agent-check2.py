@@ -22,6 +22,8 @@ PORT = int(os.environ.get("AGENT_PORT", "8790"))
 LPORT = int(os.environ.get("AGENT_LOCAL_PORT", str(PORT)))  # a second phone can be forwarded to another local port
 BASE = f"http://127.0.0.1:{LPORT}"
 os.makedirs(OUT, exist_ok=True)
+# AGENT_NO_SWARM=1: never ask the paired phones (used while a phone is reserved by the founder): searches use scope "phone" only
+NO_SWARM = os.environ.get("AGENT_NO_SWARM") == "1"
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # answers contain Devanagari; a Windows console defaults to cp1252
 
 WEATHER = {"type": "function", "function": {"name": "get_weather", "description": "Current weather for a city.",
@@ -240,17 +242,21 @@ if "w" in STEPS:
     s, b, dt, rows = search("When is my electricity bill due?", "phone")
     out["phone_electricity"] = [s, b]
     show("w-phone", s == 200 and any("Electricity" in (t or "") for _, t in rows), f"scope phone, {dt:.2f} s: {rows}")
-    s2, b2, dt2, rows2 = search("warranty bill for my laptop", "swarm")
+    if NO_SWARM:
+        bad = sorted(keys_in(b) & BAD_KEYS)
+        show("w-shape", not bad, f"keys present {sorted(keys_in(b))}; forbidden keys found {bad}; swarm scope not run (AGENT_NO_SWARM)")
+        save("w-files.json", out)
+    s2, b2, dt2, rows2 = (0, {}, 0, []) if NO_SWARM else search("warranty bill for my laptop", "swarm")
     out["swarm_warranty"] = [s2, b2]
-    show("w-swarm", s2 == 200 and any(t == "IMG_2231.jpg" for _, t in rows2) and any("Warranty_Certificate" in (t or "") for _, t in rows2),
+    if not NO_SWARM: show("w-swarm", s2 == 200 and any(t == "IMG_2231.jpg" for _, t in rows2) and any("Warranty_Certificate" in (t or "") for _, t in rows2),
          f"scope swarm, {dt2:.2f} s: {rows2}; phones {b2.get('phones') if isinstance(b2, dict) else b2}; incomplete {b2.get('incomplete') if isinstance(b2, dict) else None}")
-    s3, b3, dt3, rows3 = search("What is my salary for September 2026?", "swarm", 10)
+    s3, b3, dt3, rows3 = (0, {}, 0, []) if NO_SWARM else search("What is my salary for September 2026?", "swarm", 10)
     out["swarm_salary"] = [s3, b3]
     leak = [r for r in rows3 if "salary" in (r[1] or "").lower() or "private" in (r[1] or "").lower()]
-    show("w-swarm-private", s3 == 200 and not leak, f"salary question across the swarm, {dt3:.2f} s: {rows3}")
+    if not NO_SWARM: show("w-swarm-private", s3 == 200 and not leak, f"salary question across the swarm, {dt3:.2f} s: {rows3}")
     bad = sorted((keys_in(b) | keys_in(b2) | keys_in(b3)) & BAD_KEYS)
     longest = max([len(d.get("snippet") or "") for x in (b, b2, b3) if isinstance(x, dict) for d in x.get("data", [])] or [0])
-    show("w-shape", not bad and longest <= 400, f"keys present {sorted(keys_in(b2))}; forbidden keys found {bad}; longest snippet {longest} characters")
+    if not NO_SWARM: show("w-shape", not bad and longest <= 400, f"keys present {sorted(keys_in(b2))}; forbidden keys found {bad}; longest snippet {longest} characters")
     out["limits"] = [call("/v1/files/search", {"query": ""})[:2], call("/v1/files/search", {"query": "x" * 1001})[:2],
                      call("/v1/files/search", {"query": "bill", "scope": "internet"})[:2], call("/v1/files/search", {"query": "bill", "max_results": 50})[:2]]
     show("w-limits", all(x[0] == 400 for x in out["limits"][:3]), f"empty query {out['limits'][0][0]}, 1001 characters {out['limits'][1][0]}, unknown scope {out['limits'][2][0]}, max_results 50 {out['limits'][3][0]}")
@@ -271,6 +277,8 @@ if "x" in STEPS:
     LOOPS = [("Where is the warranty bill for my laptop?", ["IMG_2231", "Phone B"]),
              ("When is my electricity bill due and how much is it?", ["24-Sep", "24 Sep", "September 24", "2,410", "2410"]),
              ("When is the yoga class?", ["6:30", "Monday", "7:00"])]
+    if NO_SWARM:
+        LOOPS = LOOPS[1:2]  # the electricity bill is on Phone C itself
     all_steps, good = {}, 0
     for n, (question, want) in enumerate(LOOPS, 1):
         msgs = [{"role": "system", "content": SYS}, {"role": "user", "content": question}]
@@ -281,7 +289,7 @@ if "x" in STEPS:
         steps = {"first": [s, b]}
         final, rows, d2, d3 = None, [], None, None
         if cs and cs[0][0] == "search_files":
-            s2, b2, d2, rows = search(str(cs[0][1].get("query", "")), "swarm")
+            s2, b2, d2, rows = search(str(cs[0][1].get("query", "")), "phone" if NO_SWARM else "swarm")
             steps["search"] = [s2, b2]
             msgs.append({"role": "assistant", "content": None, "tool_calls": m["tool_calls"]})
             msgs.append({"role": "tool", "tool_call_id": cs[0][2], "content": json.dumps(b2.get("data", []) if isinstance(b2, dict) else [], ensure_ascii=False)})
