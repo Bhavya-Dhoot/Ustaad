@@ -28,7 +28,7 @@ fun QrScanner(modifier: Modifier = Modifier, onCode: (String) -> Unit) {
     val owner = LocalLifecycleOwner.current
     val callback = rememberUpdatedState(onCode)
     // TextureView-backed preview: the default SurfaceView ignores Compose clipping inside a scrolling column
-    val previewView = remember { PreviewView(ctx).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE } }
+    val previewView = remember { PreviewView(ctx).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FILL_CENTER; clipToOutline = true } }
 
     DisposableEffect(owner) {
         val executor = Executors.newSingleThreadExecutor()

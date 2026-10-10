@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -379,9 +380,12 @@ private fun JoinPage(onBack: () -> Unit) {
         BackLink(onBack)
         ScreenHeader("Join a swarm")
         if (cameraOk) {
-            QrScanner(Modifier.fillMaxWidth().height(320.dp).border(1.5.dp, SwarmColors.ink, SwarmShape)) { text ->
-                scanned = true
-                LinkRuntime.handleDeepLink(text)
+            // the box clips the camera view to its rounded outline (a TextureView otherwise paints over the text below it)
+            Box(Modifier.fillMaxWidth().height(320.dp).clip(SwarmShape).border(1.5.dp, SwarmColors.ink, SwarmShape)) {
+                QrScanner(Modifier.fillMaxSize()) { text ->
+                    scanned = true
+                    LinkRuntime.handleDeepLink(text)
+                }
             }
             Text("Point at the host phone's code", style = SwarmType.title)
         } else {
@@ -420,7 +424,7 @@ private fun DetailPage(key: String, onBack: () -> Unit) {
             return@PageColumn
         }
         val st by session.status.collectAsStateWithLifecycle()
-        val runs = results.filter { it.toNodeId == st.nodeId && it.link.contains(st.link.name) }
+        val runs = results.filter { it.toNodeId == st.nodeId && it.link == st.link.name }
         val last = runs.firstOrNull()
         val measuring = progress?.peerKey == key
 
