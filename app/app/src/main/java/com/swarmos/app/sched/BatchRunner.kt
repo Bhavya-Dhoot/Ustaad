@@ -22,6 +22,7 @@ import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -185,8 +186,8 @@ object Bench {
 /**
  * Runs batches in the background and keeps the latest report per mode ("swarm", "local") for the screen and the HTTP routes.
  * When [dir] gives a folder, the report of a running batch is written there as items finish (at most once a second, the final
- * one always), so after the app was killed the status route still answers for that id with what had finished, state
- * "interrupted". There is no resume. [audit] gets one entry if a batch ends with an error. [stopAll] ends the batches that run.
+ * one always, and before the batch is reported done), so after the app was killed the status route still answers for that id
+ * with what had finished, state "interrupted". There is no resume. [audit] gets one entry if a batch ends with an error. [stopAll] ends the batches that run.
  * The first report is written before [start] returns the id, so an id that was handed out is never unknown after a restart.
  */
 class BatchStore(
@@ -201,7 +202,7 @@ class BatchStore(
     private val flows = LinkedHashMap<String, MutableStateFlow<BatchReport>>()
     private val jobs = HashMap<String, Job>()                       // the coroutine of every batch that has not ended
     private val pending = LinkedHashMap<String, BatchReport>()      // newest report per batch that waits for the writer
-    private var writing = false                                     // one writer at a time
+    private var writer: CompletableFuture<Unit>? = null             // the writer at work (one at a time), completed when it is done
     private val _latest = MutableStateFlow<Map<String, BatchReport>>(emptyMap())
     private var lastWriteMs = 0L
 
@@ -248,9 +249,9 @@ class BatchStore(
             } finally {
                 SchedActivity.clear()
             }
+            persist(report, force = true)   // on disk first: a status that says "done" never has a file that still says "running"
             flow.value = report
             publish(report)
-            persist(report, force = true)
         }
         synchronized(lock) { jobs[id] = job }
         job.invokeOnCompletion { cause ->
@@ -285,30 +286,40 @@ class BatchStore(
     /**
      * Files [r] for the writer. One writer at a time: a caller that finds the writer busy leaves its report in [pending] (the
      * newest per batch wins) and the writer takes it when it is done with the one it has, so no worker waits for the disk.
+     * A forced report (the last of a batch, or the one that says it was stopped) is the exception: it returns only when the
+     * writer is done, which is after that report is on disk.
      */
     private fun persist(r: BatchReport, force: Boolean) {
         val d = dir() ?: return
-        synchronized(lock) {
+        val mine = CompletableFuture<Unit>()
+        val busy = synchronized(lock) {
             val now = clock()
             if (!force && now - lastWriteMs < WRITE_EVERY_MS) return
             lastWriteMs = now
             val queued = pending[r.id]
             // an older snapshot that arrives late must not replace a newer one
             if (queued == null || force || r.done + r.failed >= queued.done + queued.failed) pending[r.id] = r
-            if (writing) return
-            writing = true
+            writer ?: run {
+                writer = mine
+                null
+            }
         }
-        while (true) {
-            val next = synchronized(lock) {
-                val first = pending.keys.firstOrNull()
-                if (first == null) {
-                    writing = false
-                    null
-                } else {
-                    pending.remove(first)
-                }
-            } ?: return
-            write(d, next)
+        if (busy != null) {
+            if (force) busy.join()
+            return
+        }
+        try {
+            while (true) {
+                val next = synchronized(lock) {
+                    val first = pending.keys.firstOrNull()
+                    if (first == null) writer = null   // together with the look at [pending], so no report is left behind
+                    first?.let { pending.remove(it) }
+                } ?: break
+                write(d, next)
+            }
+        } finally {
+            synchronized(lock) { if (writer === mine) writer = null }
+            mine.complete(Unit)
         }
     }
 

@@ -99,6 +99,28 @@ class BatchStoreFilesTest {
         assertEquals("no temporary file is left", emptyList<String>(), real.list()!!.filter { it.endsWith(".tmp") })
     }
 
+    @Test fun whenTheStatusSaysDoneTheFileSaysDoneEvenWithASlowWriter() = runBlocking {
+        val real = tempDir()
+        // every write takes 40 ms, much longer than an item: the writer is always busy when the last report arrives
+        val dir = object : File(real.path) {
+            override fun mkdirs(): Boolean {
+                Thread.sleep(40)
+                return super.mkdirs()
+            }
+        }
+        val now = AtomicLong(1_000)
+        val llm = swarm(phone("me", delayMs = 5))
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir }, clock = { now.addAndGet(2_000) })
+        val id = store.start((0 until 12).map { req("p$it") }, BatchStore.MODE_LOCAL)
+        until { store.status(id)?.value?.state == "done" }
+        // read at once, with no waiting: a restart at this moment must find the final report
+        val report = read(File(real, "batch-$id.json"))
+        assertEquals("done", report.state)
+        assertEquals(12, report.done)
+        val reborn = BatchStore(scope, { llm }, { llm }, dir = { real })
+        assertEquals("done", reborn.status(id)!!.value.state)
+    }
+
     // ---- stopping ---------------------------------------------------------------------------------------------
 
     @Test fun stopAllEndsARunningBatchSoItSendsNoMoreJobsAndItsReportSaysInterrupted() = runBlocking {

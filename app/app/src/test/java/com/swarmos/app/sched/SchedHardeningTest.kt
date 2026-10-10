@@ -541,7 +541,9 @@ class BatchHardeningTest {
         val first = BatchStore(scope, { llm }, { llm }, dir = { dir })
         val id = first.start((0 until 4).map { req("p$it") }, BatchStore.MODE_LOCAL)
         until { first.status(id)?.value?.state == "done" }
-        until { File(dir, "batch-$id.json").isFile }
+        // the file exists from the start (the first report is written before the id is returned): wait for the final report in it
+        val file = File(dir, "batch-$id.json")
+        until { runCatching { SwarmJson.decodeFromString<BatchReport>(file.readText()).state }.getOrNull() == "done" }
         val reborn = BatchStore(scope, { llm }, { llm }, dir = { dir })      // the app was restarted: nothing in memory
         val report = reborn.status(id)!!.value
         assertEquals("done", report.state)
