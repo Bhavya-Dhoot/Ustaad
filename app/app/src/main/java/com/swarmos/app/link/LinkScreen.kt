@@ -169,8 +169,9 @@ private fun HomePage(onHost: () -> Unit, onJoin: () -> Unit, onLink: (String) ->
             SecondaryButton("Measure link", { firstOnline?.let { onLink(it.key) } }, Modifier.weight(1f), enabled = firstOnline != null, icon = SwarmIcon.Gauge)
         }
 
-        // the scheduler's load panel (tokens per second across the phones); it scrolls inside its own box
-        com.swarmos.app.sched.ThroughputPanel(Modifier.height(340.dp))
+        // the scheduler's load panel (tokens per second across the phones), after the actions; it sizes itself, so no fixed height here
+        // (its run buttons are secondary by default: "Host a swarm" above is this screen's one primary button)
+        com.swarmos.app.sched.ThroughputPanel()
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
             SwarmTextField(ip, { ip = it.trim() }, "Peer IP or ip:port", Modifier.weight(1f), mono = true)
@@ -261,7 +262,7 @@ private fun Topology(selfName: String, peers: List<PeerStatus>, results: List<Tp
                 val label = listOfNotNull(mbps?.let { "${fmt1(it)} Mbps" }, p.rttMs?.let { "${fmt1(it)} ms" }, if (p.state == LinkState.AWAY) "away" else null).joinToString("\n")
                 DoodleConnector(
                     selfC, peerC(i), Modifier.fillMaxSize(), label = label.ifEmpty { null }, dashed = p.state != LinkState.ONLINE,
-                    gap = 26.dp, startGap = 30.dp, labelAt = 0.62f, seed = 7 + i,
+                    gap = 26.dp, startGap = 30.dp, labelAt = 0.62f, seed = 7 + i, fromCaption = 36.dp,
                 )
             }
             Box(Modifier.offset(selfC.x - 45.dp, selfC.y - 17.dp).width(90.dp), contentAlignment = Alignment.TopCenter) { PhoneNode(selfName) }

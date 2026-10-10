@@ -54,6 +54,15 @@ enum class ThermalLevel(val word: String, private val firstStatus: Int) {
 
         /** [ThermalLevel.tooHot] straight from a raw status. */
         fun isTooHot(status: Int): Boolean = status >= TOO_HOT_FROM
+
+        /** The word for a stored PowerManager name ("NONE", "LIGHT", "MODERATE", "SEVERE" and worse); an unknown text is returned as it is. */
+        fun wordForName(name: String): String = when (name.uppercase()) {
+            "NONE" -> Cool.word
+            "LIGHT" -> Warm.word
+            "MODERATE" -> Hot.word
+            "SEVERE", "CRITICAL", "EMERGENCY", "SHUTDOWN" -> Severe.word
+            else -> name
+        }
     }
 }
 

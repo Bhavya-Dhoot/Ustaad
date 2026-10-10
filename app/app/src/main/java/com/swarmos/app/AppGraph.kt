@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import com.swarmos.app.choir.ChoirModule
 import com.swarmos.app.core.AuditLog
 import com.swarmos.app.core.HealthMonitor
@@ -15,8 +16,10 @@ import com.swarmos.app.core.NodeInfo
 import com.swarmos.app.core.NodeRegistry
 import com.swarmos.app.core.PairingSecret
 import com.swarmos.app.core.SwarmPrefs
+import com.swarmos.app.core.followSelf
 import com.swarmos.app.core.localIpv4
 import com.swarmos.app.core.toHex
+import com.swarmos.app.kb.KbModule
 import com.swarmos.app.link.LinkModule
 import com.swarmos.app.link.NodeClient
 import com.swarmos.app.llm.FakeLlmClient
@@ -32,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -94,7 +98,7 @@ object AppGraph {
 
     val nodeClient: NodeClient by lazy { NodeClient({ secret }, { registry.self.value.nodeId }) }
 
-    val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, MemCloudModule, SchedModule)
+    val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, KbModule, MemCloudModule, SchedModule)
 
     /** Starts loading everything that needs disk off the main thread; nothing here blocks Application.onCreate. */
     fun init(app: Application) {
@@ -115,6 +119,13 @@ object AppGraph {
                 audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))
                 // restore models and release lenders if a MemoryCloud session was killed mid-way
                 runCatching { com.swarmos.app.memcloud.MemCloud.onAppStart() }
+                // registry.self carries this phone's model names and address: follow the runtime and the network
+                launch {
+                    registry.followSelf(
+                        snapshotFlow { llm.modelName to embedder.modelName },
+                        health.state.map { localIpv4() },
+                    )
+                }
             } finally {
                 ready = true
                 readyGate.complete(Unit)
