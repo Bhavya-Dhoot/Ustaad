@@ -108,12 +108,12 @@ object LlamaRuntime {
      * [automatic]: the app made this start by itself (load at app start, restore after a MemoryCloud split or loan), not the owner;
      * a refusal by the heat gate or the memory check is then retried ([StartRetry]). A restart after a death is automatic too, through `auto`.
      * [gpuRetry]: this start is the one automatic GPU try after a CPU fallback ([SelfRecovery.gpuWatch]); it ignores the remembered GPU failure,
-     * says so if the GPU fails again, and never starts another watcher.
+     * says so if the GPU fails again, and never starts another watcher. [revivals]: starts made after the restarts ran out ([SelfRecovery.revival]).
      */
     private data class StartConfig(
         val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>,
         val cpuOnly: Boolean = false, val readyTimeoutMs: Long = READY_TIMEOUT_MS, val fallbackNote: String? = null,
-        val automatic: Boolean = false, val gpuRetry: Boolean = false,
+        val automatic: Boolean = false, val gpuRetry: Boolean = false, val revivals: Int = 0,
     )
 
     private class Running(
@@ -775,7 +775,8 @@ object LlamaRuntime {
             }
             // Every step below is under the epoch this server was STARTED under (not the one at death time), so a stop()
             // between the death and the restart is honoured and never followed by a stale FAILED or STARTING.
-            board.reportUnexpectedExit(
+            val reviveLater = cfg.revivals < SelfRecovery.MAX_REVIVALS
+            val decision = board.reportUnexpectedExit(
                 role, run.epoch, run.wasReady, { serviceUp }, aliveMs, cfg.extraArgs, what,
                 failedStatus = {
                     ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, null, it.restarts, it.backend)
@@ -792,7 +793,17 @@ object LlamaRuntime {
                     startInternal(role, again, run.epoch, auto = true) // a heat or memory refusal of this restart is retried by [refused]
                 },
                 backend = run.backend,
+                reviveLater = reviveLater,
             )
+            // the restarts ran out: a few more starts, far apart (a refusal by a gate counts as a failed try; the next try is 5 minutes away)
+            if (decision == RestartPolicy.Decision.GiveUp && reviveLater) {
+                val path = cfg.modelPath
+                board.reviveFailed(
+                    role, run.epoch, cfg.revivals, File(path ?: "").name,
+                    serviceUp = { serviceUp }, fileExists = { path != null && File(path).isFile }, nowMs = { System.currentTimeMillis() },
+                    wait = { delay(it) },
+                ) { n -> startInternal(role, cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU, fallbackNote = null, revivals = n), run.epoch, auto = true) { } }
+            }
         }
     }
 

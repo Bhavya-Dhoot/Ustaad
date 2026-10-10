@@ -2,12 +2,16 @@ package com.swarmos.app.llm
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.ZoneOffset
 
 /**
- * The bounded self-recoveries: the GPU is tried once more after the chat server fell back to the CPU build by itself. The decision is
- * [SelfRecovery.gpuWatch]; the loop runs on a real [StatusBoard] with the clock, the wait and the start injected, as the runtime wires them.
+ * The two bounded self-recoveries: the GPU is tried once more after the chat server fell back to the CPU build by itself, and a server whose
+ * automatic restarts ran out is started again, three times at most. The decisions are [SelfRecovery.gpuWatch] and [SelfRecovery.revival]; the loops
+ * run on a real [StatusBoard] with the clock, the wait and the start injected, as the runtime wires them.
  */
 class SelfRecoveryTest {
     private val min = 60_000L
@@ -161,5 +165,133 @@ class SelfRecoveryTest {
         var tries = 0
         b.runWatch(epoch, c, outside = { SelfRecovery.Outside(retryUsed = true) }) { tries++ }
         assertEquals(0, tries)
+    }
+
+    // ---- the revival: the decision ----
+
+    @Test fun aServerWhoseRestartsRanOutIsStartedAgainFiveMinutesLaterThreeTimes() {
+        val first = SelfRecovery.revival(0, 0, ZoneOffset.UTC) as SelfRecovery.Revival.Wait
+        assertEquals(5 * min, first.afterMs)
+        assertEquals("Not loaded: the server stopped and could not be restarted. Ustaad starts it again at 00:05 (try 1 of 3).", first.text)
+        assertTrue((SelfRecovery.revival(2, 12 * min, ZoneOffset.UTC) as SelfRecovery.Revival.Wait).text.endsWith("at 00:17 (try 3 of 3)."))
+    }
+
+    @Test fun afterTheThirdTryTheStatusTellsTheOwnerToTapLoad() {
+        val last = SelfRecovery.revival(3, 0, ZoneOffset.UTC) as SelfRecovery.Revival.GiveUp
+        assertEquals("Not loaded: the server stopped and 3 tries to start it again failed. Tap Load to start it.", last.text)
+        assertTrue(SelfRecovery.revival(7, 0) is SelfRecovery.Revival.GiveUp)
+    }
+
+    // ---- the revival: the loop ----
+
+    private val role = Role.CHAT
+    private val model = "/models/q.gguf"
+
+    /** The role FAILED under a fresh epoch, the way a death with no restarts left leaves it. */
+    private fun failedBoard(): Pair<StatusBoard, Int> {
+        val b = StatusBoard()
+        val epoch = b.newEpoch(role)
+        assertTrue(b.setIfCurrent(role, epoch) { ServerStatus(role, ServerState.FAILED, "killed", model, role.defaultPort, restarts = 1) })
+        return b to epoch
+    }
+
+    private class Revive {
+        val waits = mutableListOf<Long>()
+        val attempts = mutableListOf<Int>()
+        var serviceUp = true
+        var fileExists = true
+    }
+
+    private fun StatusBoard.runRevive(epoch: Int, r: Revive, so: Int = 0, wait: suspend (Long) -> Unit = { r.waits += it }, attempt: suspend (Int) -> Unit) = runBlocking {
+        reviveFailed(role, epoch, so, "q.gguf", { r.serviceUp }, { r.fileExists }, { 0L }, wait) { n -> r.attempts += n; attempt(n) }
+    }
+
+    @Test fun threeFailedTriesEndWithATapLoadMessageAndTheStatusSaysWhenTheNextOneIs() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        val seen = mutableListOf<String?>()
+        b.runRevive(epoch, r, wait = { r.waits += it; seen += b.statusOf(role).reason }) { /* the start fails again: still FAILED */ }
+        assertEquals(listOf(5 * min, 5 * min, 5 * min), r.waits)
+        assertEquals(listOf(1, 2, 3), r.attempts)
+        assertTrue(seen[0]!!.contains("(try 1 of 3)") && seen[2]!!.contains("(try 3 of 3)"))
+        assertEquals(ServerState.FAILED, b.statusOf(role).state)
+        assertEquals("Not loaded: the server stopped and 3 tries to start it again failed. Tap Load to start it.", b.statusOf(role).reason)
+        assertNull(b.statusOf(role).notice)
+    }
+
+    @Test fun aTryThatWorksEndsTheLoop() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        b.runRevive(epoch, r) { n -> if (n == 2) b.setIfCurrent(role, epoch) { it.copy(state = ServerState.READY, reason = null) } }
+        assertEquals(listOf(1, 2), r.attempts)
+        assertEquals(2, r.waits.size)
+        assertEquals(ServerState.READY, b.statusOf(role).state)
+    }
+
+    @Test fun revivalsAlreadyMadeCount() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        b.runRevive(epoch, r, so = 2) { }
+        assertEquals("only the third try is left", listOf(3), r.attempts)
+    }
+
+    @Test fun theOwnersStopEndsTheLoopWithoutATry() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        b.runRevive(epoch, r, wait = { r.waits += it; b.stop(role) { null } }) { }
+        assertTrue(r.attempts.isEmpty())
+        assertEquals(ServerState.STOPPED, b.statusOf(role).state)
+    }
+
+    @Test fun aNewLoadByTheOwnerEndsTheLoopWithoutATry() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        b.runRevive(epoch, r, wait = { r.waits += it; b.newEpoch(role) }) { }
+        assertTrue(r.attempts.isEmpty())
+    }
+
+    @Test fun theLoopEndsWhenTheServiceStops() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        b.runRevive(epoch, r, wait = { r.waits += it; r.serviceUp = false }) { }
+        assertTrue(r.attempts.isEmpty())
+    }
+
+    @Test fun theLoopEndsWhenTheRoleIsNoLongerFailed() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        b.runRevive(epoch, r, wait = { r.waits += it; b.setIfCurrent(role, epoch) { s -> s.copy(state = ServerState.READY) } }) { }
+        assertTrue(r.attempts.isEmpty())
+    }
+
+    @Test fun theLoopEndsWhenTheFileIsGoneAndTheStatusSaysSo() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        b.runRevive(epoch, r, wait = { r.waits += it; r.fileExists = false }) { }
+        assertTrue(r.attempts.isEmpty())
+        assertEquals(StartRetry.fileGone("q.gguf"), b.statusOf(role).reason)
+    }
+
+    // ---- the death report: no "tap Load" while a revival is coming ----
+
+    private fun ready() = ServerStatus(role, ServerState.READY, null, model, role.defaultPort, 4242L, listOf("-t", "4"), 1L, 9_000L, null, 1, Backend.CPU)
+
+    private fun StatusBoard.death(reviveLater: Boolean) = runBlocking {
+        val epoch = newEpoch(role)
+        setIfCurrent(role, epoch) { ready() }
+        reportUnexpectedExit(
+            role, epoch, wasReady = true, serviceUp = { true }, aliveMs = 30_000, extraArgs = emptyList(), what = "killed by signal 9",
+            failedStatus = { it.copy(state = ServerState.FAILED, reason = "killed", pid = null) }, wait = {}, restart = {}, backend = Backend.CPU, reviveLater = reviveLater,
+        )
+    }
+
+    @Test fun whenARevivalFollowsTheGiveUpWritesNoTapLoadNoticeAndSaysItGaveUp() {
+        val b = StatusBoard()
+        assertEquals(RestartPolicy.Decision.GiveUp, b.death(reviveLater = true))
+        assertNull(b.statusOf(role).notice)
+        val c = StatusBoard()
+        assertEquals(RestartPolicy.Decision.GiveUp, c.death(reviveLater = false))
+        assertTrue(c.statusOf(role).notice!!.endsWith("Tap Load to start it."))
+        assertFalse(c.statusOf(role).notice!!.contains("tries"))
     }
 }

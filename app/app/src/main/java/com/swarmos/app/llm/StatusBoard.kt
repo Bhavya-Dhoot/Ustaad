@@ -71,6 +71,8 @@ internal class StatusBoard {
      * @param wait the backoff sleep (injected so tests can interleave a stop with it)
      * @param restart starts the server again; called at most once. Its argument is true when the restart must use the CPU build (a GPU chat server that died twice)
      * @param backend the build the dead server ran on ([RestartPolicy.decide])
+     * @param reviveLater a GiveUp is followed by [reviveFailed], which says what happens next, so no "tap Load" notice is written now
+     * @return what [RestartPolicy] decided, null when the exit was stale (a stop or a newer start came first)
      */
     suspend fun reportUnexpectedExit(
         role: Role, epoch: Int, wasReady: Boolean, serviceUp: () -> Boolean, aliveMs: Long, extraArgs: List<String>, what: String,
@@ -78,18 +80,20 @@ internal class StatusBoard {
         wait: suspend (Long) -> Unit,
         restart: suspend (cpuFallback: Boolean) -> Unit,
         backend: Backend? = null,
-    ) {
+        reviveLater: Boolean = false,
+    ): RestartPolicy.Decision? {
         var restartsUsed = 0
-        if (!setIfCurrent(role, epoch) { restartsUsed = it.restarts; failedStatus(it) }) return
-        when (val d = RestartPolicy.decide(role, wasReady, serviceUp(), restartsUsed, aliveMs, extraArgs, backend)) {
+        if (!setIfCurrent(role, epoch) { restartsUsed = it.restarts; failedStatus(it) }) return null
+        val d = RestartPolicy.decide(role, wasReady, serviceUp(), restartsUsed, aliveMs, extraArgs, backend)
+        when (d) {
             RestartPolicy.Decision.Ignore -> {}
-            RestartPolicy.Decision.GiveUp -> setIfCurrent(role, epoch) {
+            RestartPolicy.Decision.GiveUp -> if (!reviveLater) setIfCurrent(role, epoch) {
                 it.copy(notice = "The server was killed again ($what), so it is not restarted. Tap Load to start it.")
             }
             is RestartPolicy.Decision.CpuFallback -> {
                 // the same banner a GPU start that did not get READY shows, then one start on the CPU build
                 val announced = setIfCurrent(role, epoch) { it.copy(state = ServerState.STARTING, notice = BackendPlan.fallbackNote(what)) }
-                if (!announced) return
+                if (!announced) return d
                 wait(d.delayMs)
                 if (serviceUp() && isCurrent(role, epoch)) restart(true)
             }
@@ -101,10 +105,11 @@ internal class StatusBoard {
                         restarts = d.attempt,
                     )
                 }
-                if (!announced) return
+                if (!announced) return d
                 wait(d.delayMs)
                 if (serviceUp() && isCurrent(role, epoch)) restart(false)
             }
         }
+        return d
     }
 }
