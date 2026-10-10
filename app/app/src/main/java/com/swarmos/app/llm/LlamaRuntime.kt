@@ -107,11 +107,13 @@ object LlamaRuntime {
      * [fallbackNote]: set when this start IS a fallback from a GPU server that died twice; shown as the banner of the CPU server.
      * [automatic]: the app made this start by itself (load at app start, restore after a MemoryCloud split or loan), not the owner;
      * a refusal by the heat gate or the memory check is then retried ([StartRetry]). A restart after a death is automatic too, through `auto`.
+     * [gpuRetry]: this start is the one automatic GPU try after a CPU fallback ([SelfRecovery.gpuWatch]); it ignores the remembered GPU failure,
+     * says so if the GPU fails again, and never starts another watcher. [revivals]: starts made after the restarts ran out ([SelfRecovery.revival]).
      */
     private data class StartConfig(
         val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>,
         val cpuOnly: Boolean = false, val readyTimeoutMs: Long = READY_TIMEOUT_MS, val fallbackNote: String? = null,
-        val automatic: Boolean = false,
+        val automatic: Boolean = false, val gpuRetry: Boolean = false, val revivals: Int = 0,
     )
 
     private class Running(
@@ -454,7 +456,8 @@ object LlamaRuntime {
         // set when this start is itself a fallback from a GPU server that died twice
         var fallbackNote: String? = cfg.fallbackNote
         var gpuFailed = cfg.fallbackNote != null
-        if (Backend.GPU in plan && GpuFailureMemory.skipGpu(ModelStore.gpuFailedStamp(), ModelStore.appStamp())) {
+        val gpuWanted = Backend.GPU in BackendPlan.choose(role, cfg.extraArgs, ModelStore.useGpu.value, File(libDir, LlamaArgs.GPU_BINARY).exists(), cpuOnly = false)
+        if (!cfg.gpuRetry && Backend.GPU in plan && GpuFailureMemory.skipGpu(ModelStore.gpuFailedStamp(), ModelStore.appStamp())) {
             // the GPU build failed on this install before: do not pay its start timeout again (cleared by the GPU switch or an app update)
             plan = listOf(Backend.CPU)
             fallbackNote = GpuFailureMemory.SKIPPED_NOTE
@@ -466,11 +469,40 @@ object LlamaRuntime {
             if (!a.retry) break
             // The GPU server did not get READY: say so, then try the CPU build (the next entry of the plan).
             gpuFailed = true
-            fallbackNote = BackendPlan.fallbackNote(last.reason)
+            fallbackNote = if (cfg.gpuRetry) BackendPlan.gpuRetryFailedNote(last.reason) else BackendPlan.fallbackNote(last.reason)
         }
         // remember a GPU failure only once the CPU build has served the same model: a broken model file fails on both and says nothing about the GPU
         if (gpuFailed && last.state == ServerState.READY && last.backend == Backend.CPU) ModelStore.markGpuFailed()
+        if (cfg.gpuRetry && last.state == ServerState.READY && last.backend == Backend.GPU) ModelStore.clearGpuFailed() // the GPU works again
+        // a chat server on the CPU build because the GPU failed (now, in an earlier start, or after dying twice) gets one more GPU try when the phone is quiet
+        if (role == Role.CHAT && gpuWanted && !cfg.gpuRetry && fallbackNote != null && last.state == ServerState.READY && last.backend == Backend.CPU) watchCpuFallback(cfg, epoch)
         last
+    }
+
+    @Volatile private var gpuWatcher: Job? = null
+
+    /** The epoch under which chat has had its one automatic GPU try; no second try in the same epoch, whatever came of the first. */
+    @Volatile private var gpuRetriedEpoch = -1
+
+    private fun watchCpuFallback(cfg: StartConfig, epoch: Int) {
+        gpuWatcher?.cancel()
+        gpuWatcher = scope.launch {
+            board.watchCpuFallback(
+                epoch,
+                outside = {
+                    SelfRecovery.Outside(
+                        serviceUp = serviceUp, gpuAllowed = ModelStore.useGpu.value && ModelStore.gpuFailedStamp() != null, retryUsed = gpuRetriedEpoch == epoch,
+                        inFront = AppGraph.foreground.value, realIdleMs = Sched.node.chatExec.realIdleMs(),
+                        heatAllows = ThermalGate.decide(Bench.thermalStatusNow(), WorkKind.MODEL_LOAD).allowed,
+                    )
+                },
+                nowMs = { System.currentTimeMillis() }, wait = { delay(it) },
+                retry = {
+                    gpuRetriedEpoch = epoch
+                    startInternal(Role.CHAT, cfg.copy(cpuOnly = false, fallbackNote = null, automatic = true, gpuRetry = true), epoch, auto = false)
+                },
+            )
+        }
     }
 
     /**
@@ -743,7 +775,8 @@ object LlamaRuntime {
             }
             // Every step below is under the epoch this server was STARTED under (not the one at death time), so a stop()
             // between the death and the restart is honoured and never followed by a stale FAILED or STARTING.
-            board.reportUnexpectedExit(
+            val reviveLater = cfg.revivals < SelfRecovery.MAX_REVIVALS
+            val decision = board.reportUnexpectedExit(
                 role, run.epoch, run.wasReady, { serviceUp }, aliveMs, cfg.extraArgs, what,
                 failedStatus = {
                     ServerStatus(role, ServerState.FAILED, reason, cfg.modelPath, cfg.port, null, it.args, it.startedAtMs, null, null, it.restarts, it.backend)
@@ -760,7 +793,17 @@ object LlamaRuntime {
                     startInternal(role, again, run.epoch, auto = true) // a heat or memory refusal of this restart is retried by [refused]
                 },
                 backend = run.backend,
+                reviveLater = reviveLater,
             )
+            // the restarts ran out: a few more starts, far apart (a refusal by a gate counts as a failed try; the next try is 5 minutes away)
+            if (decision == RestartPolicy.Decision.GiveUp && reviveLater) {
+                val path = cfg.modelPath
+                board.reviveFailed(
+                    role, run.epoch, cfg.revivals, File(path ?: "").name,
+                    serviceUp = { serviceUp }, fileExists = { path != null && File(path).isFile }, nowMs = { System.currentTimeMillis() },
+                    wait = { delay(it) },
+                ) { n -> startInternal(role, cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU, fallbackNote = null, revivals = n), run.epoch, auto = true) { } }
+            }
         }
     }
 

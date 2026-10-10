@@ -174,6 +174,11 @@ object ModelStore {
         prefs().edit().putString(KEY_GPU_FAILED, appStamp()).apply()
     }
 
+    /** Forgets that failure: the automatic GPU try after a CPU fallback worked. */
+    fun clearGpuFailed() {
+        prefs().edit().remove(KEY_GPU_FAILED).apply()
+    }
+
     private fun prefs() = AppGraph.appContext.getSharedPreferences("swarm_llm", Context.MODE_PRIVATE)
 
     // ---- download ----
