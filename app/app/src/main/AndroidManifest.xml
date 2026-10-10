@@ -38,6 +38,7 @@
     <application
         android:name=".SwarmApp"
         android:label="Ustaad"
+        android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"
         android:extractNativeLibs="true"
         android:usesCleartextTraffic="true"

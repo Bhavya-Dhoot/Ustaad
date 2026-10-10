@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher mark: the letter U as one marker stroke joining three phone tokens (Phone A teal, B tangerine, C magenta;
+     palette of docs/design/DESIGN.md section 2). Everything sits inside the 66 dp safe circle of the 108 dp icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M38,36 L38,54 A16,16 0 0 0 70,54 L70,36"
+        android:strokeColor="#FF15171A"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M31,36 a7,7 0 1 0 14,0 a7,7 0 1 0 -14,0"
+        android:fillColor="#FF1E9BB0"
+        android:strokeColor="#FF15171A"
+        android:strokeWidth="2" />
+    <path
+        android:pathData="M47,70 a7,7 0 1 0 14,0 a7,7 0 1 0 -14,0"
+        android:fillColor="#FFE08A3C"
+        android:strokeColor="#FF15171A"
+        android:strokeWidth="2" />
+    <path
+        android:pathData="M63,36 a7,7 0 1 0 14,0 a7,7 0 1 0 -14,0"
+        android:fillColor="#FFC8457E"
+        android:strokeColor="#FF15171A"
+        android:strokeWidth="2" />
+</vector>
