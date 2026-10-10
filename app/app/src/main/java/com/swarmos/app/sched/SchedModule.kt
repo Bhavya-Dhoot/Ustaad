@@ -47,7 +47,8 @@ object Sched {
      * PathPolicy, Wi-Fi Direct before LAN), else the address in the registry. When SwarmLink phase 2 adds its best-address
      * API (bestBulkAddress), call it in this function and nowhere else.
      */
-    private fun addressOf(peer: NodeInfo): String = PeerLinks.find(peer.nodeId)?.status?.value?.hostPort ?: peer.ip
+    private fun addressOf(peer: NodeInfo): String =
+        com.swarmos.app.link.LinkModule.hostFor(peer.nodeId) ?: PeerLinks.find(peer.nodeId)?.status?.value?.hostPort ?: peer.ip
 
     private fun remoteFor(peer: NodeInfo): RemoteLlmClient =
         remotes.compute(peer.nodeId) { _, old ->

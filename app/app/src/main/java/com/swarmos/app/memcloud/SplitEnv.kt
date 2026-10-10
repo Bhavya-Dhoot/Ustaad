@@ -113,7 +113,7 @@ object AndroidSplitEnv : SplitEnv {
     override fun selfHealth() = AppGraph.health.state.value.let { Health(it.ramAvailMb, it.thermalStatus) }
 
     override fun peers() = AppGraph.registry.peers.value.map {
-        PeerInfo(it.info.nodeId, it.info.name, it.info.ip, it.away, it.health?.ramAvailMb, it.health?.thermalStatus)
+        PeerInfo(it.info.nodeId, it.info.name, com.swarmos.app.link.LinkModule.bestBulkAddress(it.info.nodeId)?.hostAddress ?: it.info.ip, it.away, it.health?.ramAvailMb, it.health?.thermalStatus)
     }
 
     override fun heartbeatRttMs(nodeId: String) = PeerLinks.find(nodeId)?.status?.value?.rttMs
