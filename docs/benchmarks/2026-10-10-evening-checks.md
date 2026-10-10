@@ -41,7 +41,7 @@ Switch on, app in front, charging, 16:44 to 17:29 (2687 s, sampled every 15 s), 
 
 What it shows:
 - Over 45 minutes the share is about half, not the 63 % and 84 % of the 16-minute runs in `2026-10-10-hardening-checks.md`: both phones reach Thermal Status 2 within minutes and then stay on half duty (median share while on half duty 0.497 and 0.495). Neither reached status 3, so the pause at 3 is still not exercised on a phone.
-- Real work on Phone B kept its speed while the phone was held at status 2 (13.4 to 13.6 against 13.9 cool, 3 % down). Phone C lost a fifth (10.8 against 13.6). Same build, same room, same duty; the two phones throttle differently.
+- Real work on Phone B kept its speed while the phone was held at status 2 (13.4 to 13.6 against 13.9 cool, 3 % down). Phone C lost a fifth (10.8 against 13.6). Section 9 shows this is not a difference between the phones: each has a fast and a slow level inside status 2.
 - Memory of the chat server stayed between 1.1 and 1.6 GB for the whole run with the bounded prompt cache. It did not grow.
 - The repeated real question took 683 and 688 ms of prompt time the first time and 328 to 424 ms afterwards, with filler jobs in between: the prompt cache of real work survives filler.
 - For the last 2.8 minutes Phone B's filler stood aside (state `waiting_for_idle`) because other real work was running on that phone. It was not sent by these scripts and was not identified. The ninth real request shared the model with it and decoded at 2.3 tok/s. Two generations at once on one phone are that slow (see `2026-10-10-slots-experiment.md`); the scheduler's one-job limit did not cover whatever that other caller was.
@@ -99,5 +99,24 @@ Phone B coordinating, Phone C as the peer, the 32-job batch, `scripts/batch-fail
 
 What it shows: no job was lost or failed in any case; a phone that dies is dropped within about two seconds and its work is taken over; a phone that joins is used as soon as its model is loaded; a dead coordinator leaves a report marked interrupted and does not block the next batch. What it does not show: the interrupted batch is not resumed (25 jobs were never run), one job that had finished was missing from the saved report (8 done at the last poll, 7 in the report), and how many jobs were re-run after the peer died cannot be read from the result (it records the final phone only; one, by the timing). The mixed run also shows a phone on the older build working in the same batch as two on the new one.
 
+## 9. Keep busy for two hours (18:46 to 20:46, new build), with the phones handled by hand in between
+Same set-up as section 2, a real request every ten minutes, raw under `raw/gate-9b/soak-2h/`. Two things happened that were not part of the plan, and both are in the figures: at 19:11 the app was reinstalled on both phones (the build with the app icon), which restarts the model; and between about 19:29 and 19:51 somebody was using both phones (the app was sent to the background several times, and Phone C's screen was switched off at 19:51 and stayed off).
+
+| | Phone B | Phone C |
+|---|---|---|
+| Before the reinstall (25 min) | generating 49.4 % of the time, 276 jobs, 0 failed | 58.1 %, 315 jobs, 0 failed |
+| After the reinstall | 44.6 % over 95 min, 1155 jobs, 0 failed; Thermal Status 2 for 72 of those minutes | 52.0 % over the 39 min until the screen went off, 487 jobs, 0 failed |
+| Screen off | did not happen | from 19:51: the app answered nothing for 61 minutes, until it was woken by hand at 20:52; it then carried on where it had stopped (job count 487 before, 496 a minute after waking; no model restart) |
+| Whole two hours | 45.5 % (3275 of 7194 s), 1431 jobs, 0 failed | 28.0 % (2058 of 7350 s), 802 jobs, 0 failed |
+| Chat server restarts | 0 (apart from the reinstall) | 0 (apart from the reinstall) |
+| Chat server memory | at most 1830 MB | at most 1847 MB |
+| Real requests | 9 of 10 answered; decode 10.7 and 10.8 tok/s for the first two, 13.1 to 13.7 for the other seven; 0.07 to 0.19 s outside the model | 6 of 10 answered (the four sent while the screen was off got no answer); decode 10.6 to 10.9 for four, 13.1 for two; 0.05 to 0.88 s outside the model |
+
+What it shows:
+- With the app on screen the mode holds for two hours: about half the time generating, no failed job, no server restart, memory bounded under 1.9 GB.
+- With the screen off the phone drops out completely: no filler, no answers to other phones. The app was not killed and resumed by itself when the screen came back, but for 61 minutes Phone C did nothing. The battery exemption is not granted on these phones; whether it would change this is not measured.
+- With the app in the background on a lit screen the API stalls: four status reads of Phone B timed out between 19:29 and 19:40, and one real request was refused with HTTP 401 "clock skew" after waiting 39 s (the request had aged past the 30 s the signature allows before the app got to it).
+- Decode speed at Thermal Status 2 is not one number. Phone B read 13.4 to 13.6 tok/s in section 2, 10.7 to 10.8 at the start of this run and 13.1 to 13.7 later, all at status 2; Phone C read 10.6 to 10.9 and twice 13.1. The earlier remark that Phone B holds its speed and Phone C does not is withdrawn: both phones have a fast and a slow level inside the same status.
+
 ## Not measured
-Anything planned with Phone A (the large-model split, Choir, the two switches that are off, a three-phone run with all phones on one build). Keep busy on battery, with the battery exemption, or beyond 45 minutes. A phone that is really out of memory. A before and after of the one-shot change on a batch spread over two phones (the two-phone runs of section 8 are after the change only, and warm).
+Anything planned with Phone A (the large-model split, Choir, the two switches that are off, a three-phone run with all phones on one build). Keep busy on battery or with the battery exemption granted. A phone that is really out of memory. A before and after of the one-shot change on a batch spread over two phones (the two-phone runs of section 8 are after the change only, and warm).
