@@ -1,4 +1,4 @@
-# Keep busy watched from outside, phones B and C (2026-10-10, 21:21 to 22:34)
+# Keep busy watched from outside, phones B and C (2026-10-10, 21:21 to 00:06)
 
 Read-only watch of both phones for 40 minutes while the founder was using them: `scripts/throttle-watch.py`, one sample every 10 s (237 per phone) of `dumpsys thermalservice` and the signed `GET /v1/sched/busy`. No job was sent, nothing was started or changed on a phone. Build on both phones: 1ac22c5, both charging, app in front, keep busy on. Raw: `raw/gate-9b/throttle-passive/B.jsonl` and `C.jsonl`. One window, one run.
 
@@ -62,7 +62,7 @@ The second window (section 5) has two more fields per sample: the decode speed o
 
 Nothing is changed on the phones. The present rule (half duty at Thermal Status 2) cannot see the step. On Phone C it happened to recover from step 7 by itself in five and a half minutes; on Phone B it has not recovered in 73 minutes, so every real request on Phone B runs at 10.9 tok/s where 13.4 is available, and its filler makes about a fifth fewer tokens for the same share of time.
 
-A rule that reads the step is written and not merged (branch `worktree-agent-a718f09290a81f34a`, commits f3cd864 and e2452fe, 1462 unit tests, 0 failures; the second commit, written after section 6, makes the filler also run lightly from 39.6 C shell temperature, which is what should keep a phone out of the slow step in the first place): at `gpu` step 7 or more the filler runs lightly, resting four times the length of each job, until the step is left; `GET /v1/sched/busy` reports the step as `gpuStep` and the shell temperature as `shellC`; the three numbers of the rule can be set on a debug build without a rebuild. It goes to master only after a before and after on a phone: real decode, filler tokens and share of time generating over 30 minutes each. If the light phase does not end, or costs more share than it wins in speed, it is dropped.
+A rule that reads the step is written and not merged (branch `worktree-agent-a718f09290a81f34a`, commits f3cd864 and e2452fe, 1462 unit tests, 0 failures; the second commit, written after section 6, makes the filler also run lightly from 39.6 C shell temperature, which is what should keep a phone out of the slow step in the first place): at `gpu` step 7 or more the filler runs lightly, resting four times the length of each job, until the step is left; `GET /v1/sched/busy` reports the step as `gpuStep` and the shell temperature as `shellC`; the three numbers of the rule can be set on a debug build without a rebuild. It was to go to master only after a before and after on a phone. That run is section 7; the rule is not merged.
 
 ## 5. Second window (22:06 to 22:34): the cooling step is the signal
 
@@ -98,8 +98,28 @@ From the third watch (`B-3.jsonl`, `C-3.jsonl`, which also records the kernel's 
 - The app's own user can read that zone too (`thermal_zone<N>/type` is `tz_shell`, `temp` in thousandths of a degree; checked with `run-as` on both phones, where N and the number of the `gpu` cooling device differ).
 - In the nine and a half minutes after 22:57 the filler generated 50 % of the time on both phones (Phone B 112 jobs, Phone C 119 jobs, 0 failed).
 
+## 7. The duty rule on Phone B against Phone C (23:16 to 00:06)
+
+Phone B ran the branch build (e2452fe: filler runs lightly from 39.6 C shell temperature and at `gpu` step 7), Phone C the master build (1b9d60b) at the same time. One real 48-token request every five minutes on each (`scripts/real-every.py`), the same watch on both. Raw: `raw/gate-9b/duty-rule/` and `B-3.jsonl`, `C-3.jsonl`. One run. It ended after 50 of the planned 60 minutes, when the next build was installed.
+
+| 50 minutes | Phone B, with the rule | Phone C, without |
+|---|---|---|
+| Real requests | 11 of 11 answered | 11 of 11 answered |
+| Real decode, tok/s | 13.2 to 13.7, median 13.5 | 10.6 to 13.3, median 10.8 |
+| Time outside the model | 0.07 to 0.36 s | 0.07 to 0.72 s |
+| Samples at `gpu` step 7 | 0 % | 69 % |
+| Share of time generating filler | 36.4 % | 56.3 % |
+| Filler tokens per minute | 214 | 284 |
+| Filler speed while generating, with prompt time | 9.77 tok/s | 8.41 tok/s |
+| Failed filler jobs | 0 of 501 | 0 of 661 |
+| Shell temperature (`tz_shell`) | 38.6 to 39.98 C, median 39.57 | 39.0 to 40.01 C, median 39.41 |
+
+- The rule did what it was written for: Phone B never reached 40.0 C, never entered step 7, and every real request ran at the fast level. The app read the step and the shell temperature in its own process (`gpuStep` 5 and `shellC` 39.6 in the first answer of `GET /v1/sched/busy` after the install).
+- It cost a third of the filler. Against what was written down before the run: real decode passed (13.5 against the 12.5 asked), no filler job failed (model server restarts were not read), and filler tokens per minute failed, 75 % of Phone C's where 85 % was asked. The share of time stayed above the 30 % line as a whole and fell to 27 % in the second ten minutes.
+- Phone C was a better control than expected. It left step 7 by itself twice (23:28:09 at `tz_shell` 39.41 C and 23:36:45 at 39.79 C) and went back both times at 40.01 C, and it spent 49 of 291 samples at Thermal Status 1, where it runs at full duty.
+- Not merged. At 23:45, before the run ended, the founder decided that the app should not trade usage for speed by itself; he wants to set the level of usage himself (the Hammer button, 2026-10-11-hammer.md). The rule stays on its branch with these figures as the other side of that trade: about 36 % filler with real work at 13.5 tok/s, against about 56 % with real work at 10.8.
+
 ## Not measured
 - Where the step is left on the way down, and why a restart of the app resets it. The third watch runs until about 01:04.
-- The rule of section 4 on a phone: how long the light phase lasts, whether step 5 then holds, the share of time it costs.
-- Whether the app's own process may read the step (the check used `run-as`).
+- How long the rule's light phase needs to get a phone out of step 7 once it is in it: Phone B started the run at step 5 and never entered it.
 - Phone A.
