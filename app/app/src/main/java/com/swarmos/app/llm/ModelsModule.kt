@@ -2,6 +2,7 @@ package com.swarmos.app.llm
 
 import androidx.compose.runtime.Composable
 import com.swarmos.app.AppGraph
+import com.swarmos.app.BuildConfig
 import com.swarmos.app.SwarmModule
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
@@ -72,7 +73,15 @@ data class ModelsStateDto(
  * longer than the 45 s the node server keeps an idle connection: answer 202 and poll GET /state).
  */
 @Serializable
-data class LoadRequest(val role: String, val file: String = "", val wait: Boolean? = null)
+data class LoadRequest(
+    val role: String,
+    val file: String = "",
+    val wait: Boolean? = null,
+    /** Debug builds only ([DebugLoad]): llama-server tuning flags for this one load, for example `["-ub","1024"]`. Never a default. */
+    val args: List<String> = emptyList(),
+    /** Debug builds only ([DebugLoad]): `GGML_*` environment variables of the child for this one load, for example `{"GGML_OPENCL_Q4K_DENSE_DP4A":"1"}`. */
+    val env: Map<String, String> = emptyMap(),
+)
 
 /** role "chat" | "embed" | "rpc" | "all" (every server this app started). */
 @Serializable
@@ -95,7 +104,14 @@ object ModelsModule : SwarmModule {
         post("/load") {
             val req = runCatching { SwarmJson.decodeFromString<LoadRequest>(call.receiveText()) }.getOrNull()
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("body must be {\"role\":\"chat|embed\",\"file\":\"<name>.gguf\"}"))
+            val extras = when (val c = DebugLoad.check(req.args, req.env, BuildConfig.DEBUG)) {
+                is DebugLoad.Result.Refused -> return@post call.respond(HttpStatusCode.BadRequest, ErrorBody(c.reason))
+                is DebugLoad.Result.Ok -> c.accepted
+            }
             if (req.role.trim().equals("defaults", ignoreCase = true)) { // the models a service start would load
+                if (extras.args.isNotEmpty() || extras.env.isNotEmpty()) {
+                    return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("args and env go with one chat or embed load, not with defaults"))
+                }
                 val jobs = LlamaRuntime.loadDefaults()
                 if (req.wait == true) jobs.forEach { it.await() }
                 return@post call.respond(if (req.wait == true) HttpStatusCode.OK else HttpStatusCode.Accepted, stateDto())
@@ -103,13 +119,16 @@ object ModelsModule : SwarmModule {
             val role = Role.parse(req.role)
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("role must be chat, embed, rpc or defaults"))
             if (role == Role.RPC) { // rpc-server takes no model: {"role":"rpc","file":""} starts it on 127.0.0.1:50052
+                if (extras.args.isNotEmpty() || extras.env.isNotEmpty()) {
+                    return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("args and env go with one chat or embed load, not with rpc"))
+                }
                 val st = LlamaRuntime.start(Role.RPC, null)
                 return@post call.respond(if (st.state == ServerState.READY) HttpStatusCode.OK else HttpStatusCode.Conflict, stateDto())
             }
             if (req.file != File(req.file).name || !ModelStore.fileOf(req.file).isFile) {
                 return@post call.respond(HttpStatusCode.NotFound, ErrorBody("no such model file: ${req.file}"))
             }
-            val job = loadModelAsync(role, req.file)
+            val job = loadModelAsync(role, req.file, extras.args, extras.env)
             if (req.wait != false) {
                 job.await()
                 call.respond(stateDto())
@@ -234,8 +253,11 @@ object ModelsModule : SwarmModule {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Loads [file] as [role]. Only the catalog defaults load at service start, whatever was loaded by hand before. */
-    internal fun loadModelAsync(role: Role, file: String): Deferred<ServerStatus> = scope.async {
-        LlamaRuntime.start(role, ModelStore.fileOf(file).absolutePath)
+    /**
+     * Loads [file] as [role]. Only the catalog defaults load at service start, whatever was loaded by hand before.
+     * [args] and [env] come only from a debug build's load request ([DebugLoad]); with them the memory preflight is skipped, like any load with extra arguments.
+     */
+    internal fun loadModelAsync(role: Role, file: String, args: List<String> = emptyList(), env: Map<String, String> = emptyMap()): Deferred<ServerStatus> = scope.async {
+        LlamaRuntime.start(role, ModelStore.fileOf(file).absolutePath, extraArgs = args, env = env)
     }
 }
