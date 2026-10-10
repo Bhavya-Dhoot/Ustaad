@@ -1,0 +1,34 @@
+e2e2-check 2026-10-10 08:25:08 results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e2-results/main phones=192.168.242.23:8787 192.168.242.76:8787 192.168.242.89:8787  steps=d
+INFO  d-perm-1  Phone B: all-files access already allowed
+INFO  d-perm-2  Phone C: all-files access already allowed
+INFO  d-perm-3  Phone A: all-files access already allowed
+PASS  d-index-1  Phone B folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 7 of 8 in 1812 ms (OCR avg 99 ms), documents 4 of 4 in 556 ms; folders private as indexed: 1 of 3
+PASS  d-index-2  Phone C folders SwarmDemo: 10 chunks with 'embeddinggemma-300M-Q8_0'; pictures 5 of 6 in 918 ms (OCR avg 77 ms), documents 5 of 5 in 401 ms; folders private as indexed: 0 of 2
+PASS  d-index-3  Phone A folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 4 of 5 in 1023 ms (OCR avg 110 ms), documents 7 of 7 in 1061 ms; folders private as indexed: 0 of 2
+PASS  d-pre-share-restaurant  from Phone C: 'What was the total on the restaurant bill?' -> sources=4 ttftMs=3747 totalMs=5156 incomplete=false withheld=0 peers=ok; thermal start Phone B=0 Phone C=0 Phone A=1; answer MAC ok
+INFO  d-private-default  folders private as indexed: Phone B=1 of 3 Phone C=0 of 2 Phone A=0 of 2 
+FAIL  d-private-default  before sharing: withheld by Phone B = 0, or a file of Phone B was shown to Phone C
+INFO  d-share-1  Phone B: Pictures/SwarmDemo and Documents/SwarmDemo marked shared (debug route)
+INFO  d-share-2  Phone C: Pictures/SwarmDemo and Documents/SwarmDemo marked shared (debug route)
+INFO  d-share-3  Phone A: Pictures/SwarmDemo and Documents/SwarmDemo marked shared (debug route)
+PASS  d-warranty-1  from Phone B: 'Where is the warranty bill for my laptop?' -> sources=4 ttftMs=5336 totalMs=11451 incomplete=false withheld=0 peers=ok; thermal start Phone B=0 Phone C=0 Phone A=1; answer MAC ok
+PASS  d-cite-bill  the bill photo IMG_2231.jpg cited as Phone B (local)
+PASS  d-cite-certificate  Laptop_Extended_Warranty_Certificate.pdf cited from a peer (Phone A)
+PASS  d-electricity  from Phone B: 'When is my electricity bill due and how much is it?' -> sources=5 ttftMs=561 totalMs=3643 incomplete=false withheld=0 peers=ok; thermal start Phone B=0 Phone C=0 Phone A=1; answer MAC ok
+PASS  d-cite-peer  IMG_3301_Electricity_Bill.jpg cited from a peer
+PASS  d-unrelated  from Phone B: 'What is the boiling point of liquid nitrogen?' -> sources=0 ttftMs=-1 totalMs=122 incomplete=false withheld=0 peers=ok; thermal start Phone B=0 Phone C=0 Phone A=0; answer MAC ok
+PASS  d-hindi-warranty  from Phone B: 'मेरे लैपटॉप का वारंटी बिल कहाँ है?' -> sources=3 ttftMs=4191 totalMs=12912 incomplete=false withheld=0 peers=ok; thermal start Phone B=0 Phone C=0 Phone A=0; answer MAC ok
+PASS  d-hindi-note  from Phone B: 'दूध वाले को कितने रुपये देने हैं?' -> sources=1 ttftMs=1433 totalMs=2737 incomplete=false withheld=0 peers=ok; thermal start Phone B=0 Phone C=0 Phone A=0; answer MAC ok
+PASS  d-restaurant  from Phone B: 'What was the total on the restaurant bill?' -> sources=4 ttftMs=4773 totalMs=6585 incomplete=false withheld=0 peers=ok; thermal start Phone B=0 Phone C=0 Phone A=0; answer MAC ok
+PASS  d-yoga  from Phone B: 'When is the yoga class?' -> sources=6 ttftMs=4991 totalMs=9281 incomplete=false withheld=0 peers=ok; thermal start Phone B=1 Phone C=0 Phone A=0; answer MAC ok
+PASS  d-cab  from Phone B: 'How much was the cab ride?' -> sources=1 ttftMs=1405 totalMs=3634 incomplete=false withheld=0 peers=ok; thermal start Phone B=1 Phone C=0 Phone A=0; answer MAC ok
+PASS  d-warranty-2-repeat  from Phone B: 'Where is the warranty bill for my laptop?' -> sources=4 ttftMs=554 totalMs=5332 incomplete=false withheld=0 peers=ok; thermal start Phone B=1 Phone C=0 Phone A=0; answer MAC ok
+PASS  d-salary-from-peer  from Phone C: 'What is my salary for September 2026?' -> sources=4 ttftMs=2565 totalMs=4733 incomplete=false withheld=1 peers=ok; thermal start Phone B=1 Phone C=0 Phone A=0; answer MAC ok
+PASS  d-withheld  asked from Phone C: Phone B withheld 1 private item(s) (its Private folder) and no salary source reached Phone C
+PASS  d-scores  calibration recorded for 3 questions on every phone
+INFO  d-incomplete  Phone C app force-stopped at 08:27:58
+PASS  d-incomplete-electricity  from Phone B: 'When is my electricity bill due and how much is it?' -> sources=4 ttftMs=4296 totalMs=7846 incomplete=true withheld=0 peers=Phone C:unreachable; thermal start Phone B=1 Phone C=0 Phone A=0; answer MAC ok
+INFO  d-incomplete  Phone C app relaunched, API back
+INFO  d-incomplete  Phone B lists Phone C online again
+RESPONSE-MAC  ok=46 wrong=0 missing=0 (calls made from the main shell only; problems in rsp-problems.log)
+SUMMARY  pass=20 fail=1 warn=0  results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e2-results/main

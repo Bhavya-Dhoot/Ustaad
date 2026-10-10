@@ -1,0 +1,48 @@
+05:26:31 d-choir-run A start-thermal=1
+05:26:31 d-choir-run C start-thermal=0
+choir-run	thermal start A=1 C=0	peak A=1 C=0
+05:27:01 e-slice-1 A start-thermal=1
+05:27:01 e-slice-1 C start-thermal=0
+eval-slice-1	thermal start A=1 C=0	peak A=3 C=1	356s
+05:47:57 f-index A start-thermal=1
+05:47:57 f-index C start-thermal=0
+05:48:13 f-pre-share-electricity A start-thermal=1
+05:48:13 f-pre-share-electricity C start-thermal=0
+pdu-ask-pre-share-electricity	thermal start A=1 C=0
+05:48:35 f-warranty-1 A start-thermal=1
+05:48:35 f-warranty-1 C start-thermal=0
+pdu-ask-warranty-1	thermal start A=1 C=0
+05:48:46 f-warranty-2 A start-thermal=1
+05:48:46 f-warranty-2 C start-thermal=0
+pdu-ask-warranty-2	thermal start A=1 C=0
+05:48:54 f-warranty-3 A start-thermal=1
+05:48:54 f-warranty-3 C start-thermal=0
+pdu-ask-warranty-3	thermal start A=1 C=0
+05:49:03 f-electricity A start-thermal=1
+05:49:03 f-electricity C start-thermal=0
+pdu-ask-electricity	thermal start A=1 C=0
+05:49:22 f-unrelated A start-thermal=1
+05:49:22 f-unrelated C start-thermal=0
+pdu-ask-unrelated	thermal start A=1 C=0
+05:50:27 f-hindi-warranty A start-thermal=1
+05:50:27 f-hindi-warranty C start-thermal=0
+pdu-ask-hindi-warranty	thermal start A=1 C=0
+05:50:42 f-hindi-note A start-thermal=1
+05:50:42 f-hindi-note C start-thermal=0
+pdu-ask-hindi-note	thermal start A=1 C=0
+05:50:55 f-salary A start-thermal=1
+05:50:55 f-salary C start-thermal=0
+pdu-ask-salary	thermal start A=1 C=0
+05:53:18 g-local-1 A start-thermal=1
+g-local-1	thermal start A=1 C=-	peak A=2 C=-
+05:59:47 g-swarm-1 A start-thermal=1
+05:59:47 g-swarm-1 C start-thermal=0
+g-swarm-1	thermal start A=1 C=0	peak A=2 C=1
+06:03:38 g-local-2 A start-thermal=1
+g-local-2	thermal start A=1 C=-	peak A=2 C=-
+06:10:15 g-swarm-2 A start-thermal=1
+06:10:15 g-swarm-2 C start-thermal=0
+g-swarm-2	thermal start A=1 C=0	peak A=2 C=0
+06:15:06 e-slice-2 A start-thermal=1
+06:15:06 e-slice-2 C start-thermal=0
+eval-slice-2	thermal start A=1 C=0	peak A=3 C=0	338s

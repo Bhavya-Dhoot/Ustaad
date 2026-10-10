@@ -1,0 +1,147 @@
+e2e-check 2026-10-10 05:25:51 results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e-results/20261010-052551 A=192.168.242.89:8787 C=192.168.242.76:8787 steps=a,b,c,d,e,f,g
+PASS  a1-hello-A  HTTP 200 in 100 ms, Phone A node c6f72247, chat 'FAKE', embed 'FAKE'
+PASS  a2-health-A  signed GET /v1/health HTTP 200 in 82 ms (secret: secret published by the debug build (/v1/link/pairing-payload)); thermal 1, battery 100 %, ram avail 9873 MB, link 11ac 433 Mbps
+PASS  a3-unsigned-A  unsigned GET /v1/health -> 401 (missing X-Swarm-* headers)
+PASS  a1-hello-C  HTTP 200 in 87 ms, Phone C node 82d2676d, chat 'Qwen3.5-4B-Q4_K_M', embed 'embeddinggemma-300M-Q8_0'
+PASS  a2-health-C  signed GET /v1/health HTTP 200 in 79 ms (secret: secret published by the debug build (/v1/link/pairing-payload)); thermal 0, battery 100 %, ram avail 6985 MB, link 11ac 390 Mbps
+PASS  a3-unsigned-C  unsigned GET /v1/health -> 401 (missing X-Swarm-* headers)
+PASS  b-peers-A  C listed online after 388 ms (link=LAN rttMs=31.260573 thermal=0)
+PASS  b-peers-C  A listed online after 361 ms (link=LAN rttMs=38.184791 thermal=1)
+INFO  c-models-A  chat STOPPED (None); embed STOPPED (None); loading defaults
+INFO  models  A: chat STOPPED (None); embed STOPPED (None); loading
+PASS  c-models-A  chat=Qwen3.5-4B-Q4_K_M.gguf loadMs=25336 rssMb=5557; embed=embeddinggemma-300M-Q8_0.gguf; thermal=1; node reports chat 'Qwen3.5-4B-Q4_K_M'
+PASS  c-models-C  chat=Qwen3.5-4B-Q4_K_M.gguf loadMs=3730 rssMb=5190; embed=embeddinggemma-300M-Q8_0.gguf; thermal=0; node reports chat 'Qwen3.5-4B-Q4_K_M'
+INFO  d-choir-run  problem m8 from A with C as peer; thermal at start A=1 C=0
+PASS  d-choir-run  answer=, method=MAJORITY verified=false check=NOT_CHECKABLE basis=none rounds=2 tokens=327 wallMs=27194 known=486 choirCorrect=false choirToolCorrect=false (HTTP 200, 27347 ms at the client; thermal start A=1 C=0)
+INFO  e-slice-1  problems m1,p1,q1,c1,m2; thermal at start A=1 C=0
+INFO  e-slice-1  0/5 done, current m1, thermal A=2 C=0, 16 s
+INFO  e-slice-1  0/5 done, current m1, thermal A=2 C=0, 32 s
+INFO  e-slice-1  0/5 done, current m1, thermal A=2 C=0, 48 s
+INFO  e-slice-1  1/5 done, current p1, thermal A=2 C=0, 64 s
+INFO  e-slice-1  1/5 done, current p1, thermal A=2 C=0, 80 s
+INFO  e-slice-1  1/5 done, current p1, thermal A=2 C=0, 96 s
+INFO  e-slice-1  1/5 done, current p1, thermal A=2 C=0, 113 s
+INFO  e-slice-1  1/5 done, current p1, thermal A=2 C=0, 129 s
+INFO  e-slice-1  2/5 done, current q1, thermal A=2 C=0, 145 s
+INFO  e-slice-1  2/5 done, current q1, thermal A=2 C=0, 161 s
+INFO  e-slice-1  2/5 done, current q1, thermal A=3 C=0, 177 s
+INFO  e-slice-1  3/5 done, current c1, thermal A=3 C=0, 193 s
+INFO  e-slice-1  3/5 done, current c1, thermal A=3 C=0, 209 s
+INFO  e-slice-1  3/5 done, current c1, thermal A=3 C=0, 225 s
+INFO  e-slice-1  4/5 done, current m2, thermal A=3 C=0, 241 s
+INFO  e-slice-1  4/5 done, current m2, thermal A=3 C=0, 258 s
+INFO  e-slice-1  4/5 done, current m2, thermal A=3 C=1, 274 s
+INFO  e-slice-1  4/5 done, current m2, thermal A=3 C=1, 291 s
+INFO  e-slice-1  4/5 done, current m2, thermal A=3 C=1, 307 s
+INFO  e-slice-1  4/5 done, current m2, thermal A=3 C=0, 323 s
+INFO  e-slice-1  4/5 done, current m2, thermal A=3 C=0, 339 s
+INFO  e-slice-1  5/5 done, current , thermal A=3 C=0, 356 s
+INFO  e-slice-2  thermal A=3 C=0: waiting 60 s (waited 0 s)
+INFO  e-slice-2  thermal A=3 C=0: waiting 60 s (waited 60 s)
+INFO  e-slice-2  thermal A=2 C=0: waiting 60 s (waited 120 s)
+INFO  e-slice-2  thermal A=2 C=0: waiting 60 s (waited 180 s)
+INFO  e-slice-2  A still hot after 3 min: model servers stopped while it cools
+INFO  e-slice-2  thermal A=2 C=0: waiting 60 s (waited 240 s)
+INFO  e-slice-2  thermal A=2 C=0: waiting 60 s (waited 300 s)
+INFO  e-slice-2  thermal A=2 C=0: waiting 60 s (waited 360 s)
+INFO  e-slice-2  thermal A=2 C=0: waiting 60 s (waited 420 s)
+INFO  models  A: models/state HTTP 000; loading
+INFO  models  A still not ready: models/state HTTP 000
+INFO  models  C: models/state HTTP 000; loading
+FAIL  e-slice-2  models not ready on every phone
+FAIL  e-slice-2  slice produced no rows
+FAIL  e-eval  5 of 20 problems evaluated (minimum 10), failed=1
+INFO  e-arms  | Arm | n | Correct | Accuracy | Mean wall-clock per problem (ms) |
+INFO  e-arms  |---|---|---|---|---|
+INFO  e-arms  | One phone alone (coordinator's own first answer) | 5 | 2 | 40 % | 14582 |
+INFO  e-arms  | One phone, three samples, majority | 5 | 4 | 80 % | 41069 |
+INFO  e-arms  | Choir, two phones, no tool check | 5 | 4 | 80 % | 28551 |
+INFO  e-arms  | Choir, two phones, with tool check | 5 | 4 | 80 % | 28551 (same run) |
+WARN  f-perm-A  was 'No operations.
+Default mode: default'; set MANAGE_EXTERNAL_STORAGE allow for com.swarmos.app (app permission, needed to index a folder without a picker; left in place)
+WARN  f-perm-C  was 'No operations.
+Default mode: default'; set MANAGE_EXTERNAL_STORAGE allow for com.swarmos.app (app permission, needed to index a folder without a picker; left in place)
+INFO  models  A: chat STOPPED (None); embed STOPPED (None); loading
+PASS  f-index-A  folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 4 indexed of 5 seen in 1731 ms (OCR avg 161 ms), documents 7 of 7 in 2399 ms; folders private as indexed: 2 of 2
+PASS  f-index-C  folders SwarmDemo: 10 chunks with 'embeddinggemma-300M-Q8_0'; pictures 5 indexed of 6 seen in 1659 ms (OCR avg 165 ms), documents 5 of 5 in 795 ms; folders private as indexed: 2 of 2
+PASS  f-pre-share-electricity  'When is my electricity bill due and how much is it?' -> sources=3 ttftMs=11380 totalMs=14988 incomplete=false withheld=1; thermal start A=1 C=0
+PASS  f-private-default  before sharing, Phone C withheld 1 private item(s) and no source from C reached A
+INFO  f-share-A  Pictures/SwarmDemo and Documents/SwarmDemo marked shared through POST /v1/pdu/debug/share
+INFO  f-share-C  Pictures/SwarmDemo and Documents/SwarmDemo marked shared through POST /v1/pdu/debug/share
+PASS  f-warranty-1  'Where is the warranty bill for my laptop?' -> sources=1 ttftMs=4473 totalMs=8358 incomplete=false withheld=0; thermal start A=1 C=0
+PASS  f-warranty-2  'Where is the warranty bill for my laptop?' -> sources=1 ttftMs=486 totalMs=5336 incomplete=false withheld=0; thermal start A=1 C=0
+PASS  f-warranty-3  'Where is the warranty bill for my laptop?' -> sources=1 ttftMs=295 totalMs=5713 incomplete=false withheld=0; thermal start A=1 C=0
+PASS  f-cite-certificate  Laptop_Extended_Warranty_Certificate.pdf cited as Phone A (local)
+INFO  f-cite-bill  the photographed bill (IMG_2231.jpg) belongs to phone B's corpus; B is reserved, so the A+B citation pair of PRD 5.4 was not tested
+PASS  f-electricity  'When is my electricity bill due and how much is it?' -> sources=4 ttftMs=12436 totalMs=16052 incomplete=false withheld=0; thermal start A=1 C=0
+PASS  f-cite-peer  IMG_3301_Electricity_Bill.jpg cited as Phone C (peer)
+PASS  f-unrelated  'What is the boiling point of liquid nitrogen?' -> sources=0 ttftMs=-1 totalMs=94 incomplete=false withheld=0; thermal start A=1 C=0
+INFO  f-hindi-warranty  thermal A=2 C=0: waiting 60 s (waited 0 s)
+PASS  f-hindi-warranty  'मेरे लैपटॉप का वारंटी बिल कहाँ है?' -> sources=1 ttftMs=4762 totalMs=11740 incomplete=false withheld=0; thermal start A=1 C=0
+PASS  f-hindi-note  'दूध वाले को कितने रुपये देने हैं?' -> sources=1 ttftMs=3228 totalMs=4693 incomplete=false withheld=0; thermal start A=1 C=0
+PASS  f-scores  calibration recorded for 3 questions on A and C (tables/pdu.md)
+INFO  f-private  temporary Documents/SwarmDemo/Private/Salary_Slip_Sep2026.pdf indexed on C: 1 new document(s)
+PASS  f-salary  'What is my salary for September 2026?' -> sources=4 ttftMs=11764 totalMs=15089 incomplete=false withheld=1; thermal start A=1 C=0
+PASS  f-withheld  Phone C withheld 1 private item(s) and no source from the Private folder reached A
+INFO  f-private  temporary file removed from C and C re-indexed; chunks now 10 (before: 10)
+INFO  g-local-1  thermal A=2 C=0: waiting 60 s (waited 0 s)
+INFO  g-local-1  thermal A=2 C=0: waiting 60 s (waited 60 s)
+PASS  g-local-1  local: wallMs=116415 tokens=916 aggTokPerSec=7.87 phones=1; thermal start A=1 C=-, peak A=2 C=-
+INFO  g-swarm-1  thermal A=2 C=0: waiting 60 s (waited 0 s)
+INFO  g-swarm-1  thermal A=2 C=0: waiting 60 s (waited 60 s)
+INFO  g-swarm-1  thermal A=2 C=0: waiting 60 s (waited 120 s)
+INFO  g-swarm-1  thermal A=2 C=0: waiting 60 s (waited 180 s)
+INFO  g-swarm-1  A still hot after 3 min: model servers stopped while it cools
+INFO  models  A: chat STOPPED (None); embed STOPPED (None); loading
+PASS  g-swarm-1  swarm: wallMs=44784 tokens=916 aggTokPerSec=20.45 phones=2; thermal start A=1 C=0, peak A=2 C=1
+INFO  g-local-2  thermal A=2 C=0: waiting 60 s (waited 0 s)
+INFO  g-local-2  thermal A=2 C=0: waiting 60 s (waited 60 s)
+INFO  g-local-2  thermal A=2 C=0: waiting 60 s (waited 120 s)
+PASS  g-local-2  local: wallMs=122896 tokens=916 aggTokPerSec=7.45 phones=1; thermal start A=1 C=-, peak A=2 C=-
+INFO  g-swarm-2  thermal A=2 C=0: waiting 60 s (waited 0 s)
+INFO  g-swarm-2  thermal A=2 C=0: waiting 60 s (waited 60 s)
+INFO  g-swarm-2  thermal A=2 C=0: waiting 60 s (waited 120 s)
+INFO  g-swarm-2  thermal A=2 C=0: waiting 60 s (waited 180 s)
+INFO  g-swarm-2  A still hot after 3 min: model servers stopped while it cools
+INFO  models  A: chat STOPPED (None); embed STOPPED (None); loading
+PASS  g-swarm-2  swarm: wallMs=88802 tokens=916 aggTokPerSec=10.32 phones=2; thermal start A=1 C=0, peak A=2 C=0
+INFO  g-ratio  Local mean 7.66 tokens/s over 2 run(s) (7.87, 7.45); swarm mean 15.38 tokens/s over 2 run(s) (20.45, 10.32); ratio swarm / local 2.01.
+models stopped on A: HTTP 200
+models stopped on C: HTTP 200
+SUMMARY  pass=31 fail=3 warn=2  results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e-results/20261010-052551
+e2e-check 2026-10-10 06:13:03 results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e-results/20261010-052551 A=192.168.242.89:8787 C=192.168.242.76:8787 steps=e
+INFO  e-slice-2  thermal A=2 C=0: waiting 60 s (waited 0 s)
+INFO  models  A: chat STOPPED (None); embed STOPPED (None); loading
+INFO  models  C: chat STOPPED (None); embed STOPPED (None); loading
+INFO  e-slice-2  problems m3,p2,q2,c2,m4; thermal at start A=1 C=0
+INFO  e-slice-2  0/5 done, current m3, thermal A=1 C=0, 16 s
+INFO  e-slice-2  0/5 done, current m3, thermal A=2 C=0, 33 s
+INFO  e-slice-2  0/5 done, current m3, thermal A=2 C=0, 50 s
+INFO  e-slice-2  0/5 done, current m3, thermal A=2 C=0, 67 s
+INFO  e-slice-2  0/5 done, current m3, thermal A=2 C=0, 84 s
+INFO  e-slice-2  1/5 done, current p2, thermal A=2 C=0, 100 s
+INFO  e-slice-2  1/5 done, current p2, thermal A=2 C=0, 117 s
+INFO  e-slice-2  1/5 done, current p2, thermal A=2 C=0, 133 s
+INFO  e-slice-2  1/5 done, current p2, thermal A=2 C=0, 150 s
+INFO  e-slice-2  1/5 done, current p2, thermal A=2 C=0, 167 s
+INFO  e-slice-2  2/5 done, current q2, thermal A=3 C=0, 184 s
+INFO  e-slice-2  2/5 done, current q2, thermal A=3 C=0, 201 s
+INFO  e-slice-2  2/5 done, current q2, thermal A=3 C=0, 218 s
+INFO  e-slice-2  3/5 done, current c2, thermal A=3 C=0, 235 s
+INFO  e-slice-2  3/5 done, current c2, thermal A=3 C=0, 251 s
+INFO  e-slice-2  3/5 done, current c2, thermal A=3 C=0, 269 s
+INFO  e-slice-2  4/5 done, current m4, thermal A=3 C=0, 286 s
+INFO  e-slice-2  4/5 done, current m4, thermal A=3 C=0, 304 s
+INFO  e-slice-2  4/5 done, current m4, thermal A=3 C=0, 321 s
+INFO  e-slice-2  5/5 done, current , thermal A=3 C=0, 338 s
+INFO  e-slice-3  thermal A=3 C=0: waiting 60 s (waited 0 s)
+INFO  e-slice-3  thermal A=3 C=0: waiting 60 s (waited 60 s)
+INFO  e-slice-3  thermal A=? C=0: waiting 60 s (waited 120 s)
+INFO  e-slice-3  thermal A=? C=0: waiting 60 s (waited 180 s)
+INFO  e-slice-3  A still hot after 3 min: model servers stopped while it cools
+INFO  e-slice-3  thermal A=? C=0: waiting 60 s (waited 240 s)
+INFO  e-slice-3  thermal A=? C=0: waiting 60 s (waited 300 s)
+INTERRUPTED
+models stopped on A: HTTP 000
+models stopped on C: HTTP 200
+SUMMARY  pass=0 fail=1 warn=0  results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e-results/20261010-052551

@@ -1,0 +1,8 @@
+# memcloud run notes (raw, for the benchmark doc)
+- 04:56 first 4B split, C driver / A worker, -t 8 on rpc-server in background cpuset 0-5: READY 40.3 s (cache warm), 200-token ask running at 0.3 tok/s (64 tokens in ~3.5 min), TTFT 7.99 s. Cause: 8 threads on 6 allowed cores (Cpus_allowed_list 0-5, cpuset /background), spin barriers. Fixed with -t = allowed cores.
+- 05:09:51 start (gate 05:09:44: A thermal 1, C thermal 0; no standalone procs). Args: --rpc 192.168.49.1:50052 -ngl 17 -t 6 -c 4096 -np 1 -fit off. rpc-server on A: -H 192.168.49.1 -t 6 -c (cpuset 0-5). READY after 11.3 s (A cache already 1361 MB; model in page cache). small model 14.69 tok/s (48 tok) measured before stop.
+- 05:10:18 ask 200 tokens: TTFT 2314 ms, decode 6.98 tok/s (server timings) 200 tokens. End: A thermal 2, C thermal 0. RSS C 2684 MB (peak 3769), A 1151 MB (peak 1657), A anon recv 1147 MB; A cache 1361 MB.
+- rtt heartbeat C-A: 20-39 ms during run; ping C->A direct 5.9 ms avg, LAN 8.5 ms (during the slow 0.3 tok/s run)
+- 05:11 pull test 1: 200-token ask running (7 tokens, TTFT 2204 ms), `am force-stop com.swarmos.app` on A at T0 (command 131 ms). C state DEGRADED naming Phone A at T0+1207 ms (first poll after 499 ms still READY). Generation error EOFException, server killed. rpc-server on A gone (pidof exit 1).
+- 05:12:59 re-plan after A relaunched (05:12:48): READY after 12.0 s (cache warm). Same flags.
+- 05:13:47 COLD load (A rpc cache cleared: 65 files 1363 MB removed; A thermal 2, C thermal 0 at start): READY after 28 s; A received 1640 MB anon, cache 1361 MB, via Direct link 192.168.49.1. Progress seen: 24% at +15 s, 60% +22 s, 81% +30 s.

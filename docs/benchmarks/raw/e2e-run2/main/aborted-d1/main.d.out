@@ -1,0 +1,14 @@
+e2e2-check 2026-10-10 08:22:05 results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e2-results/main phones=192.168.242.23:8787 192.168.242.76:8787 192.168.242.89:8787  steps=d
+WARN  d-perm-1  Phone B: was 'No operations. Default mode: default'; set MANAGE_EXTERNAL_STORAGE allow for com.swarmos.app (left in place)
+INFO  d-perm-2  Phone C: all-files access already allowed
+INFO  d-perm-3  Phone A: all-files access already allowed
+INFO  d-index  thermal Phone B=0 Phone C=0 Phone A=2 : waiting 60 s (waited 0 s)
+INFO  d-index  thermal Phone B=0 Phone C=0 Phone A=2 : waiting 60 s (waited 60 s)
+PASS  d-index-1  Phone B folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 7 of 8 in 2110 ms (OCR avg 117 ms), documents 4 of 4 in 701 ms; folders private as indexed: 3 of 3
+PASS  d-index-2  Phone C folders SwarmDemo: 10 chunks with 'embeddinggemma-300M-Q8_0'; pictures 5 of 6 in 1289 ms (OCR avg 116 ms), documents 5 of 5 in 658 ms; folders private as indexed: 0 of 2
+PASS  d-index-3  Phone A folders SwarmDemo: 11 chunks with 'embeddinggemma-300M-Q8_0'; pictures 4 of 5 in 1509 ms (OCR avg 174 ms), documents 7 of 7 in 1655 ms; folders private as indexed: 0 of 2
+PASS  d-pre-share-electricity  from Phone B: 'When is my electricity bill due and how much is it?' -> sources=5 ttftMs=5774 totalMs=8911 incomplete=false withheld=0 peers=ok; thermal start Phone B=0 Phone C=0 Phone A=1; answer MAC ok
+FAIL  d-private-default  before sharing: withheld by peers = 0, or a peer source was shown
+INTERRUPTED
+RESPONSE-MAC  ok=16 wrong=0 missing=0 (calls made from the main shell only; problems in rsp-problems.log)
+SUMMARY  pass=4 fail=2 warn=1  results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e2-results/main
