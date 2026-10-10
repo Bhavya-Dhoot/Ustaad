@@ -7,6 +7,7 @@ import com.swarmos.app.core.Ports
 import com.swarmos.app.link.ConnectResult
 import com.swarmos.app.link.PeerLinks
 import com.swarmos.app.llm.FakeLlmClient
+import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.core.SwarmJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -169,8 +170,7 @@ object PduEngine {
     }
 
     /** The embedder this phone has right now. Never ready for the fake client or a server that does not answer. */
-    suspend fun embedderStatus(): EmbedderStatus {
-        val e = AppGraph.embedder
+    suspend fun embedderStatus(e: LlmClient = AppGraph.embedder): EmbedderStatus {
         val real = e !is FakeLlmClient && IndexGuard.isReal(e.modelName)
         val ok = real && runCatching { e.ready() }.getOrDefault(false)
         return EmbedderStatus(e.modelName, ok).also { _embedder.value = it }
@@ -194,23 +194,36 @@ object PduEngine {
         if (!indexLock.tryLock()) return IndexReport(label, error = "an index run is already in progress")
         return try {
             withContext(Dispatchers.IO) {
-                val st = embedderStatus()
+                // the embedder is captured once; every batch checks it is still this real, answering client (see BatchEmbedder)
+                val client = AppGraph.embedder
+                val st = embedderStatus(client)
                 val g = IndexGuard.prepare(store, st.name, st.ready, PduEmbedConfig.documentPrefix, ownerForce)
                 if (g is IndexGuard.Outcome.Refused) return@withContext refuse(label, g.reason)
+                val run = IndexRun(
+                    store, client, { AppGraph.embedder }, PduEmbedConfig.documentPrefix,
+                    replacing = g is IndexGuard.Outcome.ProceedReplacing,
+                )
                 val stats = IndexStats(label)
                 val t0 = now()
                 _progress.value = IndexProgress(true, label, current = "listing files")
                 PduActivity.set(PduActivity.listing())
                 val refs = list()
-                refs.forEachIndexed { i, ref ->
+                var stoppedAt = -1
+                for ((i, ref) in refs.withIndex()) {
                     _progress.value = IndexProgress(true, label, i, refs.size, ref.title)
                     PduActivity.set(PduActivity.indexing(refs.size, i))
-                    PduIndexer.ingest(AppGraph.appContext, store, ref, stats)
+                    try {
+                        PduIndexer.ingest(AppGraph.appContext, store, ref, stats, run)
+                    } catch (e: EmbedderStopped) {
+                        stoppedAt = i
+                        break
+                    }
                     refresh()
                 }
                 stats.totalMs = now() - t0
                 store.setMeta("lastRunMs", System.currentTimeMillis().toString())
                 refresh()
+                if (stoppedAt >= 0) return@withContext abort(label, stats, refs.size, stoppedAt)
                 val report = stats.report()
                 _progress.value = IndexProgress(false, label, refs.size, refs.size, "", report)
                 AppGraph.audit.append(
@@ -232,6 +245,19 @@ object PduEngine {
             indexLock.unlock()
         }
     }
+
+    /** The embedder went away mid-run. [done] files were stored before it; the file in hand and the rest were not touched. */
+    private fun abort(label: String, stats: IndexStats, total: Int, done: Int): IndexReport {
+        val r = stats.report().copy(error = embedderStoppedMessage(done))
+        _progress.value = IndexProgress(false, label, done, total, "", r)
+        AppGraph.audit.append(
+            "pdu.index_aborted",
+            JsonObject(mapOf("label" to JsonPrimitive(label), "done" to JsonPrimitive(done), "total" to JsonPrimitive(total))),
+        )
+        return r
+    }
+
+    fun embedderStoppedMessage(done: Int) = "Embedder stopped, index unchanged past file $done"
 
     /** The run did not start: nothing was read, written or wiped. The reason is shown in the library. */
     private fun refuse(label: String, reason: String): IndexReport {
@@ -302,9 +328,11 @@ object PduEngine {
         if (!indexLock.tryLock()) return IndexReport("scan", error = "an index run is already in progress")
         return try {
             withContext(Dispatchers.IO) {
-                val st = embedderStatus()
+                val client = AppGraph.embedder
+                val st = embedderStatus(client)
                 val g = IndexGuard.prepare(store, st.name, st.ready, PduEmbedConfig.documentPrefix, false)
                 if (g is IndexGuard.Outcome.Refused) return@withContext refuse("scan", g.reason)
+                val run = IndexRun(store, client, { AppGraph.embedder }, PduEmbedConfig.documentPrefix, replacing = false)
                 val stats = IndexStats("scan")
                 val t0 = now()
                 PduActivity.set(PduActivity.indexingScan())
@@ -313,7 +341,11 @@ object PduEngine {
                 val folder = PduIndexer.scanFolder(share)
                 if (share) store.setFolderPrivate(folder, false)
                 val ref = DocRef(imageUri, title, "scan", folder, modifiedMs, nowMs)
-                PduIndexer.ingest(AppGraph.appContext, store, ref, stats, preText = text)
+                try {
+                    PduIndexer.ingest(AppGraph.appContext, store, ref, stats, run, preText = text)
+                } catch (e: EmbedderStopped) {
+                    return@withContext IndexReport("scan", error = "Embedder stopped, the scan was not indexed")
+                }
                 stats.totalMs = now() - t0
                 store.setMeta("lastRunMs", nowMs.toString())
                 refresh()
