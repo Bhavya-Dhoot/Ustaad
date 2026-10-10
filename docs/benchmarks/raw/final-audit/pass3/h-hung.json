@@ -1,0 +1,24 @@
+{
+ "pid": 31773,
+ "kill": "",
+ "first_change": [
+  85.5,
+  "STARTING",
+  "0.14.819.022 I srv  llama_server: listening on http://127.0.0.1:8080\n0.14.819.023 W srv  llama_server: notice: server default port will be changed to :9931 in a future release (ref: https://github.com/ggml-org/llama.cpp/pull/26508)\n0.15.321.051 I slot get_availabl: id  1 | task -1 | selected slot by LRU, t_last = -1\n0.15.321.290 I slot launch_slot_: id  1 | task 0 | processing task, is_child = 0\n0.16.862.806 I slot print_timing: id  1 | task 0 | prompt eval time =     843.03 ms /    13 tokens (   64.85 ms per token,    15.42 tokens per second)\n0.16.862.834 I slot print_timing: id  1 | task 0 |        eval time =     698.42 ms /     8 tokens (   99.77 ms per token,    10.02 tokens per second)\n0.16.862.839 I slot print_timing: id  1 | task 0 |       total time =    1541.45 ms /    21 tokens\n0.16.862.842 I slot print_timing: id  1 | task 0 |    graphs reused =          7\n0.16.862.913 I slot      release: id  1 | task 0 | stop processing: n_tokens = 20, truncated = 0\n2.18.151.191 I slot get_availabl: id  1 | task -1 | selected slot by id (1)\n2.18.194.661 I slot launch_slot_: id  1 | task 10 | processing task, is_child = 0\n2.20.280.839 I slot print_timing: id  1 | task 10 | prompt eval time =     978.10 ms /    78 tokens (   12.54 ms per token,    79.75 tokens per second)\n2.20.280.891 I slot print_timing: id  1 | task 10 |        eval time =    1107.97 ms /    12 tokens (  100.72 ms per token,     9.93 tokens per second)\n2.20.280.897 I slot print_timing: id  1 | task 10 |       total time =    2086.07 ms /    90 tokens\n2.20.280.900 I slot print_timing: id  1 | task 10 |    graphs reused =         17\n2.20.280.985 I slot      release: id  1 | task 10 | stop processing: n_tokens = 89, truncated = 0\n2.20.315.654 I slot get_availabl: id  1 | task -1 | selected slot by id (1)\n2.20.358.328 I slot launch_slot_: id  1 | task 23 | processing task, is_child = 0\n[exit] stopped answering /health for 30 s, killed by Ustaad; killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer) after 228 s"
+ ],
+ "after": {
+  "state": "READY",
+  "model": "Qwen3.5-4B-Q4_K_M",
+  "file": "Qwen3.5-4B-Q4_K_M.gguf",
+  "reason": null,
+  "pid": 369,
+  "port": 8080,
+  "rssMb": 814,
+  "loadMs": 18145,
+  "structuredOutput": true,
+  "notice": "Restarted automatically after the server was killed.",
+  "restarts": 1,
+  "backend": "GPU",
+  "lastError": "0.14.819.022 I srv  llama_server: listening on http://127.0.0.1:8080\n0.14.819.023 W srv  llama_server: notice: server default port will be changed to :9931 in a future release (ref: https://github.com/ggml-org/llama.cpp/pull/26508)\n0.15.321.051 I slot get_availabl: id  1 | task -1 | selected slot by LRU, t_last = -1\n0.15.321.290 I slot launch_slot_: id  1 | task 0 | processing task, is_child = 0\n0.16.862.806 I slot print_timing: id  1 | task 0 | prompt eval time =     843.03 ms /    13 tokens (   64.85 ms per token,    15.42 tokens per second)\n0.16.862.834 I slot print_timing: id  1 | task 0 |        eval time =     698.42 ms /     8 tokens (   99.77 ms per token,    10.02 tokens per second)\n0.16.862.839 I slot print_timing: id  1 | task 0 |       total time =    1541.45 ms /    21 tokens\n0.16.862.842 I slot print_timing: id  1 | task 0 |    graphs reused =          7\n0.16.862.913 I slot      release: id  1 | task 0 | stop processing: n_tokens = 20, truncated = 0\n2.18.151.191 I slot get_availabl: id  1 | task -1 | selected slot by id (1)\n2.18.194.661 I slot launch_slot_: id  1 | task 10 | processing task, is_child = 0\n2.20.280.839 I slot print_timing: id  1 | task 10 | prompt eval time =     978.10 ms /    78 tokens (   12.54 ms per token,    79.75 tokens per second)\n2.20.280.891 I slot print_timing: id  1 | task 10 |        eval time =    1107.97 ms /    12 tokens (  100.72 ms per token,     9.93 tokens per second)\n2.20.280.897 I slot print_timing: id  1 | task 10 |       total time =    2086.07 ms /    90 tokens\n2.20.280.900 I slot print_timing: id  1 | task 10 |    graphs reused =         17\n2.20.280.985 I slot      release: id  1 | task 10 | stop processing: n_tokens = 89, truncated = 0\n2.20.315.654 I slot get_availabl: id  1 | task -1 | selected slot by id (1)\n2.20.358.328 I slot launch_slot_: id  1 | task 23 | processing task, is_child = 0\n[exit] stopped answering /health for 30 s, killed by Ustaad; killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer) after 228 s"
+ }
+}

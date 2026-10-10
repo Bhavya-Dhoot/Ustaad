@@ -1,6 +1,6 @@
 # Final audit of the implementation (2026-10-11)
 
-Plan: plans/2026-10-11-final-audit.md. Code state audited: master f62da67 (the commits after it changed documents and scripts only), 1453 unit tests, 0 failures, the same build on phones A, B and C. State after the fixes: master fa8b5cd, 1499 unit tests, 0 failures.
+Plan: plans/2026-10-11-final-audit.md. Code state audited: master f62da67 (the commits after it changed documents and scripts only), 1453 unit tests, 0 failures, the same build on phones A, B and C. State after the fixes: master 02b15c2, 1499 unit tests, 0 failures.
 
 Who looked: Codex (gpt-6.1-sol, high effort, read-only, raw output in `2026-10-11-codex-audit.txt`), three Sonnet reviewers with one lens each (resources and keep busy; failure paths and stuck states; the fixes and claims of 2026-10-10), one Sonnet device tester on phones A and B (docs/benchmarks/2026-10-11-final-regression.md). Every finding below was read against the code by the orchestrator before it was counted.
 
@@ -142,3 +142,32 @@ One test is unreliable and is not from these changes: `SchedStreamTest.aStreamTh
 - Not run: the batch checks across two phones. The permission layer of the session refused them for the tester (they switch Keep busy off and force-stop an app during a batch), and they were not attempted another way.
 - C15, prompt cache under filler (raw/final-audit/prompt-cache/): on Phone A at half duty a repeated 214-token question read its prompt in 2.0 to 2.1 s the first time and in 0.33 to 0.35 s the second time, with 0, 6 and 18 filler jobs in between. Filler did not push it out of the cache. One conversation, one run; a cache already full of other conversations was not tried.
 - Hammer for 25 minutes on Phone A: docs/benchmarks/2026-10-11-hammer.md.
+
+## Second and third pass on Phone A, and one fault the fixes introduced
+
+Second pass, fixed build fa8b5cd on Phone A alone (docs/benchmarks/2026-10-11-final-regression.md, second section): agent endpoint 14 of 14; eight forced restarts in a row with Ustaad answering after 1.1 to 2.1 s and the chat model ready after 15 to 17 s, so the restart fault of the first pass did not show again (it had shown once in two runs; whether a fix cured it or its trigger was something else is not known); keep busy counting again after the two-minute settle, 29 jobs in 62 s, 0 failed; a local batch 32 of 32 at 9.41 tok/s. On the same build "Stop Ustaad" pressed with Hammer on switched Hammer off, and it was off after "Start Ustaad" (R5).
+
+Fault injection gave 5 of 6. The failure was real and came from a fix: with the chat server frozen, the watch that kills and restarts a frozen server took 207.7 s where the build before the fixes had taken 98.9 s. The 60 s limit on filler jobs (R2) started a new filler call every 70 s, and the watch does not count a missed ping while a call is in flight, so its three misses took three rounds. Corrected in 02b15c2: a filler job that ran past its limit is followed by a 45 s wait, which leaves the watch its three pings. Third pass on that build, Phone A (raw/final-audit/pass3/): the same check passed, the frozen server was killed after 85.5 s and came back READY on the GPU.
+
+All unit tests were green on the build that had this fault. It was the phone that showed it.
+
+## Tally and what is open
+
+| | Count |
+|---|---:|
+| Findings fixed, each read against the code first | 18, plus the correction above |
+| Written down with a reason | 32 |
+| Judged not a fault | 1 (C8) |
+| Measured on a phone and not borne out | 1 (C15) |
+| Claims reworded in docs/CLAIMS.md | 11 |
+| Unit tests | 1453 before, 1499 after, 0 failures |
+
+Open, in the order they matter for a demo:
+1. The fixes are on Phone A only. Phones B and C were in use by the founder from about 00:25 and 01:15 (remote-control sessions) and still carry f62da67. Phone B went off adb and off its own node port at 02:33, which looks like a restart.
+2. The MemoryCloud fixes (S1, S2, S3, R4, C4, C6) are held by unit tests and have not run on a phone. The 30B split on three phones has not been run since the memory check before a load was added on 2026-10-10; the lender's restore (S2) is the part to watch.
+3. Keep busy is paused on any phone where Ustaad is not in front, until the battery exemption is granted. Only the founder can grant it.
+4. The batch checks across two phones (a peer dying, a peer joining, the coordinator dying) were last run on the build of 2026-10-10 evening and not on this one: the permission layer of the session refused them for the tester.
+5. Nothing was run on Phone C in this audit.
+6. The 32 findings written down, of which these three should be known before a pitch: in the debug build, which the phones run, another app can replace the pairing secret with no tap (C2); the text of the last file deleted from a shared folder stays searchable until the folder is unshared (C21); a model stopped during a Choir run can put a labelled placeholder line among the voices (C13).
+
+"Production grade" stays unproven (docs/CLAIMS.md HD9). What can be said is what this file lists: who read the code, what they found, what was fixed and how it is held, what was run on phones, and what was left.
