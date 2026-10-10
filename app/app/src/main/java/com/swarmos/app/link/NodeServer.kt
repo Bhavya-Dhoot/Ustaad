@@ -172,6 +172,11 @@ class NodeServer {
             val key = "$node/$reqId"
             when (val b = NodeDedup.cache.begin(key)) {
                 RequestDedup.Begin.Run -> call.attributes.put(NodeDedup.ID, key)
+                RequestDedup.Begin.Busy -> {
+                    // the first run of this request is still going: do not hold this connection for ever
+                    call.respond(HttpStatusCode.Conflict, ErrorBody("the same request (X-Swarm-Req) is still running"))
+                    finish()
+                }
                 is RequestDedup.Begin.Replay -> {
                     call.response.headers.append(HEADER_REPLAY, "1")
                     call.respondBytes(b.stored.body, b.stored.contentTypeOrJson(), HttpStatusCode.fromValue(b.stored.status))

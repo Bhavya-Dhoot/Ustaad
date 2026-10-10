@@ -10,6 +10,7 @@ import io.ktor.server.application.hooks.ResponseBodyReadyForSend
 import io.ktor.server.application.hooks.ResponseSent
 import io.ktor.util.AttributeKey
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 
 /** A finished response kept so a duplicate request gets the same answer without running the handler again. */
@@ -27,10 +28,14 @@ class RequestDedup(
     private val maxEntries: Int = 256,
     private val maxBytes: Long = 32L * 1024 * 1024,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** How long a duplicate waits for the first run before it is answered with 409. */
+    private val waitMs: Long = MAX_WAIT_MS,
 ) {
     sealed interface Begin {
         data object Run : Begin
         class Replay(val stored: StoredResponse) : Begin
+        /** The first run with this id is still going after [waitMs]: answer 409 instead of holding the connection. */
+        data object Busy : Begin
     }
 
     private class Entry {
@@ -39,21 +44,33 @@ class RequestDedup(
         @Volatile var finishedAt = 0L
     }
 
+    private class Waited(val response: StoredResponse?)
+
     private val entries = ConcurrentHashMap<String, Entry>()
 
     val size: Int get() = entries.size
 
-    /** [Begin.Run] when the caller should execute the request, [Begin.Replay] when the stored answer should be sent. */
+    /**
+     * [Begin.Run] when the caller should execute the request, [Begin.Replay] when the stored answer should be sent,
+     * [Begin.Busy] when the first run has not finished within [waitMs] (a duplicate must not wait without bound).
+     */
     suspend fun begin(id: String): Begin {
+        val deadline = System.nanoTime() + waitMs * 1_000_000
         while (true) {
             evict()
             val mine = Entry()
             val prev = entries.putIfAbsent(id, mine) ?: return Begin.Run
-            val st = prev.done.await()
+            val left = (deadline - System.nanoTime()) / 1_000_000
+            val w = (if (left > 0) withTimeoutOrNull(left) { Waited(prev.done.await()) } else null) ?: return Begin.Busy
+            val st = w.response
             if (st != null) return Begin.Replay(st)
             // the first run failed and was forgotten: try to become the runner ourselves
             entries.remove(id, prev)
         }
+    }
+
+    companion object {
+        const val MAX_WAIT_MS = 30_000L
     }
 
     fun complete(id: String, response: StoredResponse) {

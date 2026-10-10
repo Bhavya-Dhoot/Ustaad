@@ -36,6 +36,7 @@ private class FakeServer {
             body
         }
         is RequestDedup.Begin.Replay -> String(b.stored.body)
+        RequestDedup.Begin.Busy -> "busy"
     }
 }
 
