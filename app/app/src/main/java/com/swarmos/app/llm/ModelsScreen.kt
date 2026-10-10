@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -49,7 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
-import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.core.ThermalLevel
 import com.swarmos.app.ui.EmptyHint
 import com.swarmos.app.ui.ErrorNote
 import com.swarmos.app.ui.Hairline
@@ -97,11 +99,11 @@ private fun ModelsPage(onBench: () -> Unit) {
     val downloads by ModelStore.downloads.collectAsStateWithLifecycle()
     val wan by ModelStore.wanBytes.collectAsStateWithLifecycle()
     val tick by ModelStore.tick.collectAsStateWithLifecycle()
-    val bench by Bench.last.collectAsStateWithLifecycle()
-    val lastStats by LlamaRuntime.lastStats.collectAsStateWithLifecycle()
-    val embedMs by LlamaRuntime.lastEmbedMsPerText.collectAsStateWithLifecycle()
+    val speed by LlamaRuntime.speed.collectAsStateWithLifecycle()
     val autoload by ModelStore.autoload.collectAsStateWithLifecycle()
     val useGpu by ModelStore.useGpu.collectAsStateWithLifecycle()
+    val benchRunning by Bench.running.collectAsStateWithLifecycle()
+    val health by AppGraph.health.state.collectAsStateWithLifecycle()
 
     // The file list can change without a state change (adb push), so re-list every 2 s while visible.
     var present by remember { mutableStateOf<List<PresentModel>>(emptyList()) }
@@ -121,6 +123,8 @@ private fun ModelsPage(onBench: () -> Unit) {
     val rpc = status.getValue(Role.RPC)
     val serverMb = rss.values.filterNotNull().sum() / 1024
     val anyRunning = status.values.any { it.state != ServerState.STOPPED }
+    val header = headerUi(chat.state, Bench.blockReasonFor(health.thermalStatus), benchRunning)
+    var loadNote by remember { mutableStateOf<String?>(null) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp),
@@ -128,27 +132,46 @@ private fun ModelsPage(onBench: () -> Unit) {
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Models", style = SwarmType.display)
-            PrimaryButton("Run benchmark", onClick = onBench, icon = SwarmIcon.Play)
+            PrimaryButton(
+                primaryText(header.primary),
+                onClick = {
+                    when (header.primary) {
+                        PrimaryAction.LoadModels -> {
+                            val started = LlamaRuntime.loadDefaults(onlyMissing = true)
+                            loadNote = if (started.isEmpty()) "The default models are not on this phone. Download them below." else null
+                        }
+                        PrimaryAction.RunBenchmark -> onBench()
+                        PrimaryAction.Loading -> {}
+                    }
+                },
+                enabled = header.primaryEnabled,
+                icon = if (header.primary == PrimaryAction.RunBenchmark) SwarmIcon.Play else null,
+            )
         }
+        // No real chat model yet: the benchmark is a disabled secondary with its reason, never a second primary.
+        if (header.showDisabledBench) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SecondaryButton("Run benchmark", onClick = {}, enabled = false)
+                header.benchReason?.let { Text(it, Modifier.weight(1f), style = GraphiteLabel) }
+            }
+        } else if (header.benchReason != null) {
+            Text(header.benchReason, style = GraphiteLabel)
+        }
+        loadNote?.let { Text(it, style = GraphiteLabel) }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
             SectionTitle("Loaded on this phone")
             if (serverMb > 0) Text(fmtBytes(serverMb * 1024 * 1024), style = SwarmType.mono)
         }
         ServerCard(
-            tag = "CHAT", st = chat, rssKb = rss[Role.CHAT],
-            metrics = listOf(
-                "prefill" to (bench?.prefillTokPerSec?.let { fmt1(it) + " tok/s" } ?: "-"),
-                "decode" to (lastStats?.decodeTokPerSec?.takeIf { it > 0 }?.let { fmt1(it) + " tok/s" } ?: "-"),
-            ),
+            tag = "CHAT", st = chat, rssKb = rss[Role.CHAT], sample = speedFor(chat, speed[Role.CHAT]),
             fakeNote = "No chat model is loaded: replies on this phone are canned.",
         )
         ServerCard(
-            tag = "EMBEDDER", st = embed, rssKb = rss[Role.EMBED],
-            metrics = listOf("latency" to (embedMs?.let { fmt1(it) + " ms per text" } ?: "-")),
+            tag = "EMBEDDER", st = embed, rssKb = rss[Role.EMBED], sample = speedFor(embed, speed[Role.EMBED]),
             fakeNote = "No embedding model is loaded: vectors on this phone are placeholders.",
         )
-        if (rpc.state != ServerState.STOPPED) ServerCard("RPC", rpc, rss[Role.RPC], emptyList(), null)
+        if (rpc.state != ServerState.STOPPED) ServerCard("RPC", rpc, rss[Role.RPC], null, null)
 
         SettingRow(
             "Load models at start", autoload,
@@ -159,9 +182,13 @@ private fun ModelsPage(onBench: () -> Unit) {
             "The chat model runs on the phone's GPU and falls back to the CPU if that fails. Applies from the next load.",
             "The chat model runs on the CPU. Applies from the next load.",
         ) { ModelStore.setUseGpu(it) }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SecondaryButton("Unload all", onClick = { LlamaRuntime.stopAll() }, enabled = anyRunning)
-            SecondaryButton("Load defaults", onClick = { LlamaRuntime.loadDefaults() })
+        if (anyRunning || embedderMissing(chat.state, embed.state)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (embedderMissing(chat.state, embed.state)) {
+                    SecondaryButton("Load embedder", onClick = { LlamaRuntime.loadDefaults(onlyMissing = true) })
+                }
+                if (anyRunning) SecondaryButton("Unload all", onClick = { LlamaRuntime.stopAll() })
+            }
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
@@ -191,18 +218,20 @@ private fun Metric(label: String, value: String) {
     }
 }
 
-/** One llama.cpp server of this phone: name from the GGUF file, state stamp, measured numbers, Stop and the log. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * One llama.cpp server of this phone: name from the GGUF file, backend, state mark, measured numbers (only those that were
+ * measured, with what they were measured on and when), Stop and the log. While it loads: the kit Skeleton and the elapsed seconds.
+ */
 @Composable
-private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: List<Pair<String, String>>, fakeNote: String?) {
+private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, sample: SpeedSample?, fakeNote: String?) {
     var showLog by remember { mutableStateOf(false) }
     val role = st.role
     // Loaded servers are flat rows separated by hairlines (ui-kit/screens/models); only model files are boxed cards.
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Tag(tag)
-            // which llama-server build runs the chat model: GPU (OpenCL) or CPU (fallback)
-            st.backend?.let { if (st.state != ServerState.STOPPED) { Spacer(Modifier.width(4.dp)); Tag(it.name) } }
+            // which llama-server build runs this model: GPU (OpenCL) or CPU
+            backendLabel(st)?.let { Spacer(Modifier.width(4.dp)); Tag(it) }
             Spacer(Modifier.width(8.dp))
             Text(
                 st.modelName ?: "not loaded",
@@ -212,24 +241,33 @@ private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: Lis
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(8.dp))
-            when (st.state) {
-                ServerState.READY -> Stamp("READY", small = true)
-                ServerState.FAILED -> Stamp("FAILED", caution = true, small = true)
-                ServerState.STARTING -> Tag(if (st.restarts > 0) "restarting" else "loading")
-                ServerState.STOPPED -> if (fakeNote != null) Stamp("FAKE", caution = true, small = true) else Tag("stopped")
+            when (rowMark(role, st)) {
+                RowMark.READY -> Stamp("READY", small = true)
+                RowMark.FAILED -> Stamp("FAILED", caution = true, small = true)
+                RowMark.LOADING -> Tag("loading")
+                RowMark.RESTARTING -> Tag("restarting")
+                RowMark.STOPPED -> Tag("stopped")
+                RowMark.FAKE -> Stamp("FAKE", caution = true, small = true)
             }
         }
         Spacer(Modifier.height(10.dp))
         when (st.state) {
-            ServerState.STARTING -> Skeleton(18.dp)
+            ServerState.STARTING -> {
+                var now by remember(st.startedAtMs) { mutableLongStateOf(System.currentTimeMillis()) }
+                LaunchedEffect(st.startedAtMs) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
+                Skeleton(18.dp)
+                Spacer(Modifier.height(6.dp))
+                Text(loadingLabel(now - st.startedAtMs, st.restarts > 0), style = SwarmType.mono)
+            }
             ServerState.STOPPED -> if (fakeNote != null) Text(fakeNote, style = GraphiteLabel)
-            else -> {
+            ServerState.FAILED -> {}
+            ServerState.READY -> {
                 // plain rows of three: a FlowRow inside the intrinsic-height card would clip its second line
                 val all = buildList {
                     st.modelPath?.let { p -> add("size" to fmtBytes(File(p).length())) }
-                    addAll(metrics)
-                    add("memory" to (rssKb?.let { fmtBytes(it * 1024) } ?: "-"))
-                    add("load time" to (st.readyAfterMs?.let { fmt1(it / 1000.0) + " s" } ?: "-"))
+                    addAll(speedMetrics(role, sample))
+                    rssKb?.let { add("memory" to fmtBytes(it * 1024)) }
+                    st.readyAfterMs?.let { add("load time" to fmt1(it / 1000.0) + " s") }
                     add("port" to st.port.toString())
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -240,10 +278,10 @@ private fun ServerCard(tag: String, st: ServerStatus, rssKb: Long?, metrics: Lis
                         }
                     }
                 }
+                sample?.let { Spacer(Modifier.height(6.dp)); Text(measuredCaption(it), style = GraphiteLabel) }
             }
         }
         if (st.state == ServerState.FAILED) {
-            Spacer(Modifier.height(10.dp))
             ErrorNote(st.reason ?: "The server stopped.")
         }
         // Banner for a server that was killed: restarting, restarted, or given up on (see RestartPolicy).
@@ -308,13 +346,18 @@ private fun InkSwitch(checked: Boolean) {
     }
 }
 
-/** A GGUF file of this phone: kind, name from the file, size, state, and the actions that file allows. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * A GGUF file of this phone: kind, name from the file, size, and ONE clear action chosen from the catalog role
+ * ([cardAction]). Delete sits behind a quiet link and a confirmation; it is not a third button.
+ */
 @Composable
 private fun FileCard(file: String, entry: CatalogEntry?, p: PresentModel?, dl: DownloadState?, status: Map<Role, ServerStatus>) {
     val loadedAs = Role.entries.firstOrNull { r ->
         status.getValue(r).let { it.state != ServerState.STOPPED && it.modelPath?.endsWith("/$file") == true }
     }
+    val action = cardAction(entry, p, dl, loadedAs)
+    var choosing by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     SwarmCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Tag(entry?.role?.let { if (it == Role.EMBED) "EMBEDDER" else "CHAT" } ?: "GGUF")
@@ -360,21 +403,55 @@ private fun FileCard(file: String, entry: CatalogEntry?, p: PresentModel?, dl: D
             }
             null -> {}
         }
-        if (dl == null || dl is DownloadState.Failed) {
+
+        val label = cardActionLabel(action, entry?.bytes ?: 0)
+        if (label != null) {
             Spacer(Modifier.height(12.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (p != null && p.complete) {
-                    SecondaryButton("Load as chat", onClick = { ModelsModule.loadModelAsync(Role.CHAT, file) }, modifier = Modifier.fillMaxWidth())
-                    SecondaryButton("Load as embedder", onClick = { ModelsModule.loadModelAsync(Role.EMBED, file) }, modifier = Modifier.fillMaxWidth())
-                    SecondaryButton("Delete", onClick = { ModelStore.delete(file) }, enabled = loadedAs == null)
-                } else if (entry != null) {
-                    // Two taps on purpose: a download is the only thing in the app that uses the internet.
-                    var armed by remember { mutableStateOf(false) }
-                    val size = if (entry.bytes > 0) " " + fmtBytes(entry.bytes) else ""
-                    SecondaryButton(
-                        if (armed) "Tap again: uses the internet$size" else if (p != null) "Resume download" else "Download$size",
-                        onClick = { if (armed) { armed = false; ModelStore.download(entry) } else armed = true },
-                        enabled = entry.url.isNotBlank(),
+            // Two taps for a download on purpose: it is the only thing in the app that uses the internet.
+            var armed by remember { mutableStateOf(false) }
+            val shown = if (action is CardAction.Download && armed) "Tap again: uses the internet" else label
+            SecondaryButton(
+                shown,
+                onClick = {
+                    when (action) {
+                        is CardAction.Load -> ModelsModule.loadModelAsync(action.role, file)
+                        CardAction.Choose -> choosing = !choosing
+                        is CardAction.Download -> if (armed) { armed = false; entry?.let { ModelStore.download(it) } } else armed = true
+                        CardAction.None -> {}
+                    }
+                },
+                enabled = action !is CardAction.Download || entry?.url?.isNotBlank() == true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (choosing && action == CardAction.Choose) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SecondaryButton("As chat", onClick = { choosing = false; ModelsModule.loadModelAsync(Role.CHAT, file) })
+                    SecondaryButton("As embedder", onClick = { choosing = false; ModelsModule.loadModelAsync(Role.EMBED, file) })
+                }
+            }
+        }
+
+        if (canDelete(p, loadedAs) && (dl == null || dl is DownloadState.Failed)) {
+            Spacer(Modifier.height(4.dp))
+            if (!confirmDelete) {
+                Text(
+                    "Delete from this phone",
+                    Modifier.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).clickable { confirmDelete = true },
+                    style = SwarmType.label.copy(textDecoration = TextDecoration.Underline),
+                )
+            } else {
+                Text("Delete ${file.removeSuffix(".gguf")} (${fmtBytes(p?.bytes ?: 0)}) from this phone?", style = SwarmType.body)
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Text(
+                        "Delete",
+                        Modifier.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).clickable { confirmDelete = false; ModelStore.delete(file) },
+                        style = SwarmType.label.copy(textDecoration = TextDecoration.Underline, fontWeight = FontWeight.W700),
+                    )
+                    Text(
+                        "Keep",
+                        Modifier.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).clickable { confirmDelete = false },
+                        style = SwarmType.label.copy(textDecoration = TextDecoration.Underline),
                     )
                 }
             }
@@ -401,6 +478,7 @@ private fun BenchPage(onBack: () -> Unit) {
     val health by AppGraph.health.state.collectAsStateWithLifecycle()
     val blocked = Bench.blockReasonFor(health.thermalStatus) // heavy generation is refused when the phone is SEVERE or hotter
     val r = last
+    val view = benchView(chat, r)
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp),
@@ -420,27 +498,24 @@ private fun BenchPage(onBack: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(self.name, style = SwarmType.label)
-                Text(r?.model ?: chat.modelName ?: "no chat model loaded", style = SwarmType.mono.copy(color = SwarmColors.graphite))
+                Text(chat.modelName ?: "no chat model loaded", style = SwarmType.mono.copy(color = SwarmColors.graphite))
             }
         }
 
-        SwarmCard {
-            Box(Modifier.fillMaxWidth()) {
-                HeroMetric(r?.let { fmt1(it.decodeTokPerSec) } ?: "-", "tok/s decode")
-                if (blocked != null) Box(Modifier.align(Alignment.TopEnd)) { Stamp("TOO HOT", caution = true) }
+        when (view) {
+            BenchView.NONE -> {
+                EmptyHint("No benchmark has run on this phone yet.", Modifier.fillMaxWidth())
+                if (blocked != null) Stamp("TOO HOT", caution = true)
             }
-            Spacer(Modifier.height(10.dp))
-            MetricRow("Prefill", r?.let { fmt1(it.prefillTokPerSec) } ?: "-", "tok/s")
-            MetricRow("Prompt tokens", r?.promptTokens?.toString() ?: "-")
-            MetricRow("Generated tokens", r?.completionTokens?.toString() ?: "-")
-            MetricRow("Time to first token", r?.let { fmt1(it.ttftMs / 1000.0) } ?: "-", "s")
-            MetricRow("Server memory", r?.rssMb?.toString() ?: "-", "MB")
-            MetricRow("Server memory peak", r?.peakRssMb?.toString() ?: "-", "MB")
-            MetricRow("Thermal at start", r?.thermalStart ?: "-")
-            MetricRow("Thermal at end", r?.thermal ?: "-")
-            MetricRow("Thermal now", HealthMonitor.thermalName(health.thermalStatus))
-            MetricRow("Threads", r?.threads?.toString() ?: "-")
-            MetricRow("Backend", r?.backend ?: "-")
+            BenchView.LIVE -> ResultCard(r!!, health.thermalStatus, live = true, tooHot = blocked != null)
+            BenchView.LAST_RUN -> {
+                // the model is gone: these numbers are history, not a reading of the phone now
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Tag("Last run")
+                    Text(lastRunCaption(r!!), Modifier.weight(1f), style = GraphiteLabel)
+                }
+                ResultCard(r!!, health.thermalStatus, live = false, tooHot = blocked != null)
+            }
         }
 
         if (blocked != null) Note(blocked)
@@ -484,6 +559,37 @@ private fun BenchPage(onBack: () -> Unit) {
         }
     }
 }
+
+/**
+ * The numbers of one benchmark run. [live]: the chat server still runs that model, so "thermal now" is shown; otherwise the card
+ * is faded and carries only what was measured then. Thermal rows use the app's shared words (Cool, Warm, Hot, Severe).
+ */
+@Composable
+private fun ResultCard(r: BenchResult, thermalNow: Int, live: Boolean, tooHot: Boolean) {
+    SwarmCard(if (live) Modifier else Modifier.alpha(0.6f)) {
+        Box(Modifier.fillMaxWidth()) {
+            HeroMetric(fmt1(r.decodeTokPerSec), "tok/s decode")
+            if (tooHot) Box(Modifier.align(Alignment.TopEnd)) { Stamp("TOO HOT", caution = true) }
+        }
+        Spacer(Modifier.height(10.dp))
+        MetricRow("Prefill", fmt1(r.prefillTokPerSec), "tok/s")
+        MetricRow("Prompt tokens", r.promptTokens.toString())
+        MetricRow("Generated tokens", r.completionTokens.toString())
+        MetricRow("Time to first token", fmt1(r.ttftMs / 1000.0), "s")
+        r.rssMb?.let { MetricRow("Server memory", it.toString(), "MB") }
+        r.peakRssMb?.let { MetricRow("Server memory peak", it.toString(), "MB") }
+        MetricRow("Thermal at start", thermalWord(r.thermalStart))
+        MetricRow("Thermal at end", thermalWord(r.thermal))
+        if (live) MetricRow("Thermal now", ThermalLevel.of(thermalNow).word)
+        r.threads?.let { MetricRow("Threads", it.toString()) }
+        r.backend?.let { MetricRow("Backend", it) }
+        if (live) {
+            Spacer(Modifier.height(4.dp))
+            Text("Measured ${clock(r.atEpochMs)}", style = GraphiteLabel)
+        }
+    }
+}
+
 
 /** "slower from minute 5" when decode speed fell at least 10 % below the first minute; null when it held or there is too little data. */
 internal fun slowdownNote(points: List<SustainedPoint>): String? {
