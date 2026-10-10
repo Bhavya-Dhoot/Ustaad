@@ -1,0 +1,3 @@
+start: 200 {'id': '67c0c297ef22464a', 'total': 32} 76 ms
+status at once: 200 running done 0 failed 0 total 32 44 ms after start returned
+final: done 32 / 32 failed 0 wall 41867.30764 agg 21.23375134709283 [{'nodeId': '477684c1', 'jobs': 16, 'tokens': 432, 'tokPerSec': 10.318313365516428, 'decodeTokPerSec': 13.418957881245952}, {'nodeId': 'c6f72247', 'jobs': 16, 'tokens': 457, 'tokPerSec': 10.915437981576405, 'decodeTokPerSec': 13.451724204920684}]

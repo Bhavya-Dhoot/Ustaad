@@ -1,0 +1,1 @@
+B-swarm: 32/32 done, 0 failed, wall 42.2 s, 889 tokens, aggregate 21.07 tok/s | 4776 17 jobs 13.4 tok/s decode; c6f7 15 jobs 13.4 tok/s decode | thermal 1 -> 2

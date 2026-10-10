@@ -1,0 +1,1 @@
+   health ramAvailMb 5506 thermal 1 battery 95 charging False

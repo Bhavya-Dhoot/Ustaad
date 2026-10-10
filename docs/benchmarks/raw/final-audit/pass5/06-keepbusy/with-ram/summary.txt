@@ -1,0 +1,2 @@
+A.jsonl samples 30 span_s 299 states {'half_duty': 30} thermalStatus {2: 30} jobsDone 112 -> 167 jobsFailed 0 -> 0 generating_s 149.8 share 0.501 memPhase {'IDLE'}
+B.jsonl samples 30 span_s 299 states {'half_duty': 30} thermalStatus {2: 30} jobsDone 146 -> 212 jobsFailed 0 -> 0 generating_s 149.1 share 0.499 memPhase {'IDLE'}

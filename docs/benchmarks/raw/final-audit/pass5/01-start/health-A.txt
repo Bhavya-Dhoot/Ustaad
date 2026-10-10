@@ -1,0 +1,1 @@
+health keys sample {'ramAvailMb': 5487, 'thermalStatus': 0, 'batteryPct': 100, 'charging': False}

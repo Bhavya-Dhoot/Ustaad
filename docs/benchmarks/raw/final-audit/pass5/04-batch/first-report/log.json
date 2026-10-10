@@ -1,0 +1,61 @@
+[
+ {
+  "call": "POST /v1/sched/batch",
+  "status": 200,
+  "body": {
+   "id": "67c0c297ef22464a",
+   "total": 32
+  },
+  "ms": 76
+ },
+ {
+  "call": "GET status at once",
+  "status": 200,
+  "state": "running",
+  "done": 0,
+  "failed": 0,
+  "total": 32,
+  "msAfterStartReturned": 44,
+  "keys": [
+   "aggTokPerSec",
+   "done",
+   "failed",
+   "fake",
+   "id",
+   "items",
+   "mode",
+   "models",
+   "perPhone",
+   "state",
+   "total",
+   "totalTokens",
+   "wallMs"
+  ]
+ },
+ {
+  "call": "final",
+  "status": 200,
+  "state": "done",
+  "done": 32,
+  "failed": 0,
+  "wallMs": 41867.30764,
+  "totalTokens": 889,
+  "aggTokPerSec": 21.23375134709283,
+  "perPhone": [
+   {
+    "nodeId": "477684c1",
+    "jobs": 16,
+    "tokens": 432,
+    "tokPerSec": 10.318313365516428,
+    "decodeTokPerSec": 13.418957881245952
+   },
+   {
+    "nodeId": "c6f72247",
+    "jobs": 16,
+    "tokens": 457,
+    "tokPerSec": 10.915437981576405,
+    "decodeTokPerSec": 13.451724204920684
+   }
+  ]
+ }
+]

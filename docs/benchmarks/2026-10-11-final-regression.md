@@ -308,3 +308,76 @@ None outside the app's own data (`pass4/99-final/new-files-A.txt`, `new-files-B.
 
 Phone A: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, Keep busy enabled and `running` (jobsFailed 0), hammer false, MemoryCloud IDLE, agent access off (HTTP 000 on port 8790), shared folders `Documents/SwarmDemo` and `Pictures/SwarmDemo`, thermal 0, screen awake, Ustaad in front.
 Phone B: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, Keep busy enabled and `half_duty` (jobsFailed 0), hammer false, MemoryCloud IDLE, agent access off (HTTP 000), thermal 2, screen awake, Ustaad in front. B lists only Phone A as a peer.
+
+
+## Fourth pass, build 17aad2d, phones A and B
+
+Date and time: 2026-10-11, 03:19 to 04:08 IST. Phones A (`192.168.242.89`) and B (`192.168.242.23`) only. Phone C received no adb command and no API call; it was in neither phone's peer list at the start (`pass5/01-start/peers-A.txt`, `peers-B.txt`), in B's `/v1/sched/phones` before the batches (`pass5/04-batch/sched-phones-B-before.json`: B local, A remote, both up) nor at the end (`pass5/99-final`, peer lists printed at 04:07). The pairing secret was read from Phone A and never printed or written; a search of every raw file under `pass5/` for it and for the agent key found nothing. Raw files: `docs/benchmarks/raw/final-audit/pass5/` (called `pass5/` below); my helper scripts (not repo scripts) are in `pass5/helpers/`. Nothing installed, no `pm clear`, no uninstall, no Hammer, no system setting changed, nothing committed. Phone A's battery: 100 % at 03:19:48, 95 % at 04:07:22, never below 95 % (`pass5/battery-log.txt`, `pass5/battery-end.txt`); not charging. Phone B: 100 %, charging.
+
+### Build and start state (`pass5/01-start/`, read 03:19 to 03:20)
+
+| | Phone A | Phone B |
+|---|---|---|
+| lastUpdateTime, apk sha256 (first 16) | 2026-10-11 03:17:31, 045b5c7fa4e5a0fb | 2026-10-11 03:17:45, 045b5c7fa4e5a0fb |
+| chat / embedder / rpc | READY on GPU / READY / STOPPED | READY on GPU / READY / STOPPED |
+| MemoryCloud phase | IDLE | IDLE |
+| Keep busy | `paused_model_restarted`, jobsDone 0, hammer false | `paused_model_restarted`, jobsDone 0, hammer false |
+| `ramAvailMb` (`/v1/health`) | 5487 | 5876 |
+| thermal, battery | 0, 100 % not charging | 1, 100 % charging |
+| front, screen | Ustaad, awake | Ustaad, awake |
+
+Files: `build-*.txt`, `apk-sha-*.txt`, `models-sum-*.txt`, `busy-*.json`, `health-*.txt`, `memcloud-*.txt`, `focus-*.txt`, `battery.txt`.
+
+### Results
+
+| Step | Result | Figures (raw file) |
+|---|---|---|
+| 2a hardening-check on A, all steps (g, t, h, c; m not run, 30B file not on the phone) | PASS 6 / FAIL 0 | g three reloads READY on GPU, loadMs 17146, 16313, 15957; t HTTP 500 "the model stopped mid-answer", chat READY on GPU 18 s later; **h frozen server killed after 35.0 s** (script's own measure, pid 15733, state STARTING, 120 s allowed); c two kills to CPU, then restored to GPU, loadMs 16297 (`02-hardening/all/stdout.txt`) |
+| 2a' frozen server with Keep busy running (my diagnostic, not a repo script) | killed after **91.6 s** | pid 16334 frozen with Keep busy `half_duty` (jobsDone 15), first change STARTING at 91.6 s, restarts 1 (`02-hardening/h-extended/hung-extended.json`, `stdout.txt`). Earlier passes: 98.9 s (first pass), 207.7 s (second pass) |
+| 2b agent endpoint check on A (a, b, c, d, f, g, h, i, j; e not run) | PASS 14 / FAIL 0 | 401/401/200; LAN refused; d-chat 7.94 s, 87 tokens; d-stream first token 0.42 s, 12.2 tok/s; d-embed 0.18 s; two at once 2.03 times a single call; refusals 400/404/400/400/413/400; background at 5, 60, 180 s 11.2, 10.8, 10.8 tok/s (in front 9.6); off/on switch ok; agent access off afterwards (`02-agent/stdout.txt`, `99-final/agent-off-A.txt`, `-B.txt` HTTP 000) |
+| 2c four forced restarts on A | PASS 4 / FAIL 0, no fault | see table below (`02-restart/round1.json` to `round4.json`, `stdout.txt`) |
+| 3 memcloud-check v,n,s,k, B drives, A lends | PASS 9 / FAIL 0 | split READY after 34 s (loadMs 25697); 66 tokens, first token 5681 ms, 5.84 tok/s; driver READY after stop 17 s, lender 2 s; lender READY after driver killed 27 s; driver READY after relaunch 16 s (`03-memcloud-B-drives/stdout.txt`) |
+| 3 memcloud-check v,n,s,k, A drives, B lends | PASS 9 / FAIL 0 | split READY after 36 s (loadMs 27542); 66 tokens, first token 5245 ms, 5.48 tok/s; driver READY after stop 17 s, lender 1 s; lender READY after driver killed 27 s; driver READY after relaunch 16 s (`03-memcloud-A-drives/stdout.txt`) |
+| 3 state after each direction | PASS | both phones both times: chat READY on GPU, embedder READY, rpc STOPPED, restarts 0, lastError null, MemoryCloud IDLE, no notices, pendingRestore empty (`03-memcloud-*/models-state-A.json`, `-B.json`, `memcloud-state-A.json`, `-B.json`) |
+| 4a batch first report (swarm bench32 from B through the API) | PASS | `POST /v1/sched/batch` HTTP 200 in 76 ms (id, total 32); `GET /v1/sched/batch/<id>` 44 ms after that: **HTTP 200, state `running`**, done 0, failed 0, total 32 (`04-batch/first-report/status-at-once.json`, `log.json`). That batch then finished 32 / 32, 0 failed, 41.9 s, 21.23 tok/s, jobs B 16, A 16 (`batch-67c0c297ef22464a-final.json`) |
+| 4b bench-batch.py swarm from B | PASS | 32 / 32 finished, 0 failed, wall 42.2 s, 889 tokens, 21.07 tok/s aggregate; jobs B 17 (decode 13.4 tok/s), A 15 (13.4 tok/s); thermal at start A 2, B 1, at end B 2 (`04-batch/bench-batch/stdout.txt`, `batch-B-swarm.json`, `thermal-before.txt`) |
+| 5 batch and "Stop Ustaad" on A (not refused) | PASS | 96-job swarm batch `09ca4d6add744725` started on A at 03:49:13; "Stop Ustaad" tapped 5.5 s later at (720, 2576), found with `uiautomator dump`; **2 items finished** (A 1, B 1) at the last read before the tap, B's running count 1 before it; **B's running count was 0 at the first read after the tap (4.7 s) and in all 14 reads over the next 62 s** (B `/v1/sched/caps` running 0 queued 0, `/v1/sched/phones` inflight 0 on both nodes); "Start Ustaad" tapped at 03:50:23, A's API answered 0.2 s later, **chat READY on GPU 20.9 s after the tap**; batch status read then and again at 03:50:59: **`interrupted`**, done 2, failed 0, total 96 (`05-stop/calls.log`, `batch-09ca4d6add744725-after-restart.json`, `-recheck.json`) |
+| 6 Keep busy 5 min, both phones, `throttle-watch.py`, window 1 (03:52:57) | PASS | A: states running 6 / half_duty 24 of 30 samples, jobsDone 21 to 102, jobsFailed 0, generating 178.2 s in 299 s (share 0.60); B: half_duty 30 of 30, jobsDone 65 to 133, jobsFailed 0, share 0.50; no `paused_memory` on either; memPhase IDLE (`06-keepbusy/A.jsonl`, `B.jsonl`, `summary.txt`) |
+| 6 Keep busy window 2 with a free-memory sampler (03:58:51) | PASS | A: half_duty 30 of 30, jobsDone 112 to 167, jobsFailed 0, share 0.50, **ramAvailMb 4716 to 4828**; B: half_duty 30 of 30, jobsDone 146 to 212, jobsFailed 0, share 0.50, **ramAvailMb 5160 to 5245**; no `paused_memory` (`06-keepbusy/with-ram/A.jsonl`, `B.jsonl`, `ram.jsonl`, `summary.txt`) |
+| 6 counter line under the Keep busy switch on A (read 04:04) | read | "Now: running at half duty (warm phone). 174 jobs done, 0 stopped by real work, 3,693 tokens, 424 s generating." (`06-keepbusy/counter-dump-A.xml`). No failed filler job existed, so the part of the line that names failed jobs was not exercised |
+| 7 privacy-check, owner A, peer B (same QUESTION and EXPECT) | PASS 3 / FAIL 0 | baseline sees `IMG_1046_Mobile_Bill_Sept.jpg`; owner back after 3 s, folder private, peer's query returns [], withheld 1; shared again, photo returned (`07-privacy/stdout.txt`) |
+| 7 e2e2-check.sh --steps s, B asks, A peer | PASS 12 / FAIL 0 / WARN 0 | hello 121 ms (B), 215 ms (A); signed health 124 and 135 ms, answer MAC ok; unsigned 401; B lists A online after 701 ms, A lists B after 731 ms; GPU on both (`07-e2e2/stdout.txt`, `results/checks.log`) |
+
+Restart rounds (item 2c). Ustaad was in front before every round. Each round: `am force-stop com.swarmos.app`, then one adb call `input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n com.swarmos.app/.MainActivity`; times counted from the start of that call, so they include the wake and dismiss (the earlier passes counted from `am start` alone and show 1.1 to 2.1 s for the first figure).
+
+| Round | Started | Signed GET /v1/sched/busy answers | Chat READY on GPU | Fault |
+|---|---|---|---|---|
+| 1 | 03:40:23 | 2.2 s | 17.5 s | no |
+| 2 | 03:40:41 | 2.3 s | 16.2 s | no |
+| 3 | 03:40:58 | 1.3 s | 17.6 s | no |
+| 4 | 03:41:16 | 2.2 s | 16.9 s | no |
+
+### Things that looked odd, with the evidence
+
+- Frozen-server kill time differs between two measurements in this pass: 35.0 s in the script's own step h and 91.6 s in my diagnostic with Keep busy `half_duty` (above). The script run does not record Keep busy's state at the moment of the freeze, so I cannot say what differed; I did not look for a cause.
+- Throughput of the agent check was lower than in the second pass: 12.2 tok/s stream and 9.6 tok/s in front here, against 13.4 tok/s and 13.3 tok/s then (`02-agent/stdout.txt`, `pass2/03-agent/stdout.txt`); thermal status was 2 at the start of this check (`pass5/gate-log.txt`, 03:34:53) and 1 at the start of the second-pass check; I did not look for a cause.
+- First tap on Settings: `uiautomator dump /dev/tty` through `adb shell` printed only "UI hierchary dumped to: /dev/tty" and no XML (`05-stop/settings-dump-1.xml`); `adb exec-out` returned the XML. In between I ran `uiautomator dump /sdcard/__ui.xml` once, which created a file on Phone A (below).
+- The Settings sheet needed one scroll (`input swipe 720 2500 720 900 400`) before "Stop Ustaad" (bounds [550,2535][890,2618]) was on screen; `mCurrentFocus` on A showed a type=2 window at 03:50:59 and the main activity window (type=1) again at 04:07:07, after the privacy check had restarted the app.
+- B's Keep busy `jobsCancelled` read 1 after the batches (`99-final/busy-B.json`); it is the counter's "stopped by real work" and no check failed.
+
+### Not run
+
+`scripts/batch-failover-check.py` (excluded); hardening step m (the 30B file is not on Phone A); agent-check step e (14 checks expected without it); Hammer, installs, anything on Phone C.
+
+### Manual intervention
+
+None to restore a phone. The only hand-made actions on a phone were the ones the steps called for: two taps on the Settings sheet and "Stop Ustaad" / "Start Ustaad", one scroll, `KEYCODE_WAKEUP` and `wm dismiss-keyguard` before each forced `am start` and before each script.
+
+### Files created on a phone
+
+Phone A: `/sdcard/__ui.xml` (24424 bytes, 03:48), created by my one `uiautomator dump /sdcard/__ui.xml` call; left in place, not deleted (`99-final/external-files-A.txt`). Phone B: none outside the app's data. Both: the app's own `audit.jsonl`, logs, `pdu.db-*`, and one batch report each (`batches/batch-09ca4d6add744725.json` on A; `99-final/new-files-A.txt`, `new-files-B.txt`).
+
+### Final state of both phones (`pass5/99-final/`, read 04:05 to 04:07)
+
+Phone A: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, MemoryCloud IDLE, Keep busy enabled and `running` (jobsFailed 0, hammer false), `ramAvailMb` 5506, thermal 1, battery 95 %, agent access off (port 8790 HTTP 000), shared folders `Documents/SwarmDemo` and `Pictures/SwarmDemo` shared, screen awake, Ustaad in front, peer list: Phone B only.
+Phone B: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, MemoryCloud IDLE, Keep busy enabled and `half_duty` (jobsFailed 0, hammer false), `ramAvailMb` 5258, thermal 2, battery 100 % charging, agent access off (HTTP 000), screen awake, Ustaad in front, peer list: Phone A only.

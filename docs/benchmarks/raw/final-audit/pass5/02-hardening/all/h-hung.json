@@ -1,0 +1,24 @@
+{
+ "pid": 15733,
+ "kill": "",
+ "first_change": [
+  35.0,
+  "STARTING",
+  "0.00.021.876 I srv  llama_server: initializing ...\n0.00.021.890 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)\n0.00.021.963 I srv  init_listene: The UI is disabled\n0.00.021.964 I srv  init_listene: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable\n0.00.023.634 I srv    load_model: loading model '/storage/emulated/0/Android/data/com.swarmos.app/files/models/Qwen3.5-4B-Q4_K_M.gguf'\n0.11.728.419 I cmn          init: llama threadpool init, n_threads = 4\n0.14.512.340 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 4096, kv_unified = 'false'\n0.14.527.962 I srv  llama_server: model loaded\n0.14.527.976 I srv  llama_server: listening on http://127.0.0.1:8080\n0.14.527.977 W srv  llama_server: notice: server default port will be changed to :9931 in a future release (ref: https://github.com/ggml-org/llama.cpp/pull/26508)\n0.14.998.594 I slot get_availabl: id  1 | task -1 | selected slot by LRU, t_last = -1\n0.14.998.828 I slot launch_slot_: id  1 | task 0 | processing task, is_child = 0\n0.16.271.248 I slot print_timing: id  1 | task 0 | prompt eval time =     671.70 ms /    13 tokens (   51.67 ms per token,    19.35 tokens per second)\n0.16.271.267 I slot print_timing: id  1 | task 0 |        eval time =     600.68 ms /     8 tokens (   85.81 ms per token,    11.65 tokens per second)\n0.16.271.269 I slot print_timing: id  1 | task 0 |       total time =    1272.38 ms /    21 tokens\n0.16.271.271 I slot print_timing: id  1 | task 0 |    graphs reused =          7\n0.16.271.311 I slot      release: id  1 | task 0 | stop processing: n_tokens = 20, truncated = 0\n[exit] stopped answering /health for 30 s, killed by Ustaad; killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer) after 175 s"
+ ],
+ "after": {
+  "state": "READY",
+  "model": "Qwen3.5-4B-Q4_K_M",
+  "file": "Qwen3.5-4B-Q4_K_M.gguf",
+  "reason": null,
+  "pid": 16230,
+  "port": 8080,
+  "rssMb": 819,
+  "loadMs": 16333,
+  "structuredOutput": true,
+  "notice": "Restarted automatically after the server was killed.",
+  "restarts": 1,
+  "backend": "GPU",
+  "lastError": "0.00.021.876 I srv  llama_server: initializing ...\n0.00.021.890 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)\n0.00.021.963 I srv  init_listene: The UI is disabled\n0.00.021.964 I srv  init_listene: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable\n0.00.023.634 I srv    load_model: loading model '/storage/emulated/0/Android/data/com.swarmos.app/files/models/Qwen3.5-4B-Q4_K_M.gguf'\n0.11.728.419 I cmn          init: llama threadpool init, n_threads = 4\n0.14.512.340 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 4096, kv_unified = 'false'\n0.14.527.962 I srv  llama_server: model loaded\n0.14.527.976 I srv  llama_server: listening on http://127.0.0.1:8080\n0.14.527.977 W srv  llama_server: notice: server default port will be changed to :9931 in a future release (ref: https://github.com/ggml-org/llama.cpp/pull/26508)\n0.14.998.594 I slot get_availabl: id  1 | task -1 | selected slot by LRU, t_last = -1\n0.14.998.828 I slot launch_slot_: id  1 | task 0 | processing task, is_child = 0\n0.16.271.248 I slot print_timing: id  1 | task 0 | prompt eval time =     671.70 ms /    13 tokens (   51.67 ms per token,    19.35 tokens per second)\n0.16.271.267 I slot print_timing: id  1 | task 0 |        eval time =     600.68 ms /     8 tokens (   85.81 ms per token,    11.65 tokens per second)\n0.16.271.269 I slot print_timing: id  1 | task 0 |       total time =    1272.38 ms /    21 tokens\n0.16.271.271 I slot print_timing: id  1 | task 0 |    graphs reused =          7\n0.16.271.311 I slot      release: id  1 | task 0 | stop processing: n_tokens = 20, truncated = 0\n[exit] stopped answering /health for 30 s, killed by Ustaad; killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer) after 175 s"
+ }
+}

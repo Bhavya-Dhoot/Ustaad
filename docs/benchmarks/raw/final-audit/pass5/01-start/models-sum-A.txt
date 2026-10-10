@@ -1,0 +1,1 @@
+{"chat": {"state": "READY", "backend": "GPU", "restarts": 0, "lastError": null, "notice": null}, "embed": {"state": "READY", "backend": null, "restarts": 0, "lastError": null, "notice": null}, "rpc": {"state": "STOPPED", "backend": null, "restarts": 0, "lastError": null, "notice": null}, "useGpu": true}

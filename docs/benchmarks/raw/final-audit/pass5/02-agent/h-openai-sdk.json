@@ -1,0 +1,18 @@
+{
+ "text": "Here are three common uses of a phone with no internet connection:\n\n1.  **Local Communication**: You can still make and receive calls, send and receive SMS text messages, and use apps like WhatsApp or Telegram in \"offline mode\" for chats that were already synced to the device.\n2.  **Offline Media Consumption**: You can listen to music or podcasts downloaded via apps like Spotify or",
+ "usage": {
+  "completion_tokens": 80,
+  "prompt_tokens": 22,
+  "total_tokens": 102,
+  "completion_tokens_details": null,
+  "prompt_tokens_details": null
+ },
+ "seconds": 9.782437324523926,
+ "stream_first": 0.8793933391571045,
+ "stream_chunks": 53,
+ "embedding_dims": 256,
+ "models": [
+  "ustaad-local",
+  "ustaad-swarm"
+ ]
+}

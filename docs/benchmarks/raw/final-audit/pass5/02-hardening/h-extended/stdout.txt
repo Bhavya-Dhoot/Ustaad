@@ -1,0 +1,1 @@
+froze pid 16334; first change [91.6, 'STARTING', None, 'half_duty', 15, 1, 1]; after: STARTING pid None restarts 1

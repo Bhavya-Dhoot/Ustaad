@@ -1,0 +1,9 @@
+run-as files:
+files/audit.jsonl
+files/profileInstalled
+files/logs/chat.log
+files/logs/embed.log
+files/logs/rpc.log
+files/pdu.db-shm
+files/batches/batch-67c0c297ef22464a.json
+files/batches/batch-999b9645d91f4210.json

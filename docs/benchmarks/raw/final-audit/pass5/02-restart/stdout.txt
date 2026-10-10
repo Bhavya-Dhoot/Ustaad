@@ -1,0 +1,4 @@
+round 1: api 2.2 s, chat READY 17.5 s, fault False
+round 2: api 2.3 s, chat READY 16.2 s, fault False
+round 3: api 1.3 s, chat READY 17.6 s, fault False
+round 4: api 2.2 s, chat READY 16.9 s, fault False

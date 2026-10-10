@@ -1,0 +1,15 @@
+{
+ "id": "67c0c297ef22464a",
+ "mode": "swarm",
+ "state": "running",
+ "total": 32,
+ "done": 0,
+ "failed": 0,
+ "wallMs": 0.842916,
+ "totalTokens": 0,
+ "aggTokPerSec": 0.0,
+ "fake": false,
+ "models": [],
+ "perPhone": [],
+ "items": []
+}

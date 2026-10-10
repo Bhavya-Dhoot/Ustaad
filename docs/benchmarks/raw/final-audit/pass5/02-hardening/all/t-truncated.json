@@ -1,0 +1,8 @@
+{
+ "status": 500,
+ "body": {
+  "error": "the model stopped mid-answer"
+ },
+ "pid": 15675,
+ "kill": ""
+}

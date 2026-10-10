@@ -1,0 +1,29 @@
+03:49:13 +   2.2s  Stop Ustaad button found at (720, 2576)
+03:49:13 +   2.3s  B caps before: 200 running=0 queued=0
+03:49:13 +   2.4s  POST A /v1/sched/batch (96 requests, swarm) -> 200 {'id': '09ca4d6add744725', 'total': 96}
+03:49:13 +   2.4s  pre: A batch 200 state=running done=0 failed=0 perNode={} | B caps 200 running=1 queued=0
+03:49:15 +   3.5s  pre: A batch 200 state=running done=0 failed=0 perNode={} | B caps 200 running=1 queued=0
+03:49:16 +   4.5s  pre: A batch 200 state=running done=0 failed=0 perNode={} | B caps 200 running=1 queued=0
+03:49:17 +   5.6s  pre: A batch 200 state=running done=1 failed=0 perNode={'c6f72247': 1} | B caps 200 running=1 queued=0
+03:49:18 +   6.6s  pre: A batch 200 state=running done=2 failed=0 perNode={'477684c1': 1, 'c6f72247': 1} | B caps 200 running=1 queued=0
+03:49:19 +   7.7s  just before tap: A batch 200 state=running done=2 failed=0 perNode={'477684c1': 1, 'c6f72247': 1} | B caps 200 running=1 queued=0
+03:49:19 +   7.9s  TAP on Stop Ustaad at (720,2576) -> ''; 5.5 s after the batch started; items finished at the last read: 2
+03:49:24 +  12.5s    4.7 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:49:28 +  17.0s    9.3 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:49:32 +  21.4s   13.7 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:49:37 +  25.9s   18.1 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:49:41 +  30.4s   22.7 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:49:46 +  34.6s   26.9 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:49:50 +  39.0s   31.3 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:49:54 +  43.4s   35.6 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:49:59 +  47.9s   40.2 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:50:03 +  52.3s   44.6 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:50:08 +  56.8s   49.1 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:50:12 +  61.0s   53.3 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:50:17 +  65.5s   57.7 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:50:21 +  69.8s   62.1 s after the tap: A batch 0  | B caps running=0 queued=0 | B sees inflight {'4776': 0, 'c6f7': 0}
+03:50:23 +  72.0s  Start Ustaad button found at (720, 2576)
+03:50:23 +  72.2s  TAP on Start Ustaad at (720, 2576) -> ''
+03:50:23 +  72.2s  A API answers 0.2 s after the Start tap
+03:50:44 +  93.0s  A chat READY (GPU) 20.9 s after the Start tap
+03:50:44 +  93.0s  batch 09ca4d6add744725 status after the restart: HTTP 200 state=interrupted done=2 failed=0 total=96

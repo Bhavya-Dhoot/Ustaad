@@ -1,0 +1,118 @@
+[
+ {
+  "round": 1,
+  "readyBefore_s": 0.1,
+  "thermalBefore": "1",
+  "focusBefore": "mCurrentFocus=Window{82aa2c0 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }",
+  "pidBefore": "14033",
+  "forceStopCmd_s": 0.18,
+  "amStartCmd_s": 0.13,
+  "amStartOut": [
+   "Starting: Intent { cmp=com.swarmos.app/.MainActivity }"
+  ],
+  "t0": "03:40:23",
+  "busyAtFirstAnswer": {
+   "enabled": true,
+   "state": "no_model",
+   "jobsDone": 0,
+   "jobsCancelled": 0,
+   "jobsFailed": 0,
+   "tokens": 0,
+   "secondsGenerating": 0.0,
+   "share60s": 0.0,
+   "hammer": false
+  },
+  "chatBackend": "GPU",
+  "apiAnswers_s": 2.2,
+  "chatReady_s": 17.5,
+  "faultSeen": false,
+  "thermalAfter": "2"
+ },
+ {
+  "round": 2,
+  "readyBefore_s": 0.1,
+  "thermalBefore": "2",
+  "focusBefore": "mCurrentFocus=Window{ca16618 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }",
+  "pidBefore": "17861",
+  "forceStopCmd_s": 0.15,
+  "amStartCmd_s": 0.11,
+  "amStartOut": [
+   "Starting: Intent { cmp=com.swarmos.app/.MainActivity }"
+  ],
+  "t0": "03:40:41",
+  "busyAtFirstAnswer": {
+   "enabled": true,
+   "state": "no_model",
+   "jobsDone": 0,
+   "jobsCancelled": 0,
+   "jobsFailed": 0,
+   "tokens": 0,
+   "secondsGenerating": 0.0,
+   "share60s": 0.0,
+   "hammer": false
+  },
+  "chatBackend": "GPU",
+  "apiAnswers_s": 2.3,
+  "chatReady_s": 16.2,
+  "faultSeen": false,
+  "thermalAfter": "2"
+ },
+ {
+  "round": 3,
+  "readyBefore_s": 0.1,
+  "thermalBefore": "2",
+  "focusBefore": "mCurrentFocus=Window{a871b8f u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }",
+  "pidBefore": "18141",
+  "forceStopCmd_s": 0.15,
+  "amStartCmd_s": 0.09,
+  "amStartOut": [
+   "Starting: Intent { cmp=com.swarmos.app/.MainActivity }"
+  ],
+  "t0": "03:40:58",
+  "busyAtFirstAnswer": {
+   "enabled": true,
+   "state": "no_model",
+   "jobsDone": 0,
+   "jobsCancelled": 0,
+   "jobsFailed": 0,
+   "tokens": 0,
+   "secondsGenerating": 0.0,
+   "share60s": 0.0,
+   "hammer": false
+  },
+  "chatBackend": "GPU",
+  "apiAnswers_s": 1.3,
+  "chatReady_s": 17.6,
+  "faultSeen": false,
+  "thermalAfter": "2"
+ },
+ {
+  "round": 4,
+  "readyBefore_s": 0.1,
+  "thermalBefore": "2",
+  "focusBefore": "mCurrentFocus=Window{d372868 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }",
+  "pidBefore": "18413",
+  "forceStopCmd_s": 0.18,
+  "amStartCmd_s": 0.1,
+  "amStartOut": [
+   "Starting: Intent { cmp=com.swarmos.app/.MainActivity }"
+  ],
+  "t0": "03:41:16",
+  "busyAtFirstAnswer": {
+   "enabled": true,
+   "state": "no_model",
+   "jobsDone": 0,
+   "jobsCancelled": 0,
+   "jobsFailed": 0,
+   "tokens": 0,
+   "secondsGenerating": 0.0,
+   "share60s": 0.0,
+   "hammer": false
+  },
+  "chatBackend": "GPU",
+  "apiAnswers_s": 2.2,
+  "chatReady_s": 16.9,
+  "faultSeen": false,
+  "thermalAfter": "2"
+ }
+]

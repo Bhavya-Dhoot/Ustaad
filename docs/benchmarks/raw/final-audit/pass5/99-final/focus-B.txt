@@ -1,0 +1,3 @@
+  mCurrentFocus=Window{861b611 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
+  mWakefulness=Awake
+Thermal Status: 2

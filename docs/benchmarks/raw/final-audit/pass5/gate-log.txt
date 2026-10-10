@@ -1,0 +1,16 @@
+03:20:13 pass5-before-hardening | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+03:28:15 pass5-after-hardening | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:34:53 pass5-before-agent | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:40:19 pass5-before-restart-rounds | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:41:39 pass5-before-memcloud-BA | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:43:53 pass5-after-memcloud-BA | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+03:46:16 pass5-after-memcloud-AB | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+03:47:15 pass5-between-batches | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+03:48:08 pass5-before-stop-test | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:49:05 pass5-before-stop | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+03:50:59 pass5-after-stop | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+04:04:38 pass5-before-privacy | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+04:04:47 pass5-before-e2e2 | 89: chat_ready=0 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+04:04:56 pass5-before-e2e2 | 89: chat_ready=0 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+04:05:06 pass5-before-e2e2 | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+04:05:31 pass5-final | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2

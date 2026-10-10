@@ -1,0 +1,5 @@
+PASS  baseline  folders {'Documents/SwarmDemo': False, 'Pictures/SwarmDemo': False}; a peer's query returns ['IMG_1046_Mobile_Bill_Sept.jpg'], withheld 0
+INFO  folder to switch: 'Pictures/SwarmDemo'
+INFO  set private: HTTP 200; app force-stopped 0.25 s after the call started
+PASS  private-after-kill  owner back after 3 s; folder private: True; a peer's query now returns [], withheld 1
+PASS  shared-again  folder shared again: True; a peer's query returns ['IMG_1046_Mobile_Bill_Sept.jpg'], withheld 0
