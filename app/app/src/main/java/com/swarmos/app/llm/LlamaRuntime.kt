@@ -99,9 +99,18 @@ object LlamaRuntime {
     ) {
         @Volatile var stopRequested = false
         @Volatile var wasReady = false
+
+        /** The thread that copies the child's output into [ring]; joined before the ring is read after an exit (the last lines arrive late). */
+        @Volatile var pumpThread: Thread? = null
     }
 
     private val running = java.util.concurrent.ConcurrentHashMap<Role, Running>()
+
+    /** Last stderr/log lines of a start that failed, or that fell back from the GPU to the CPU build; cleared by the next start. */
+    private val lastErrors = java.util.concurrent.ConcurrentHashMap<Role, String>()
+
+    /** The last lines (at most 2 KB) the failed or fallen-back server printed, for `/v1/models/state` `lastError`; null after a clean start. */
+    fun lastError(role: Role): String? = lastErrors[role]
 
     /** State of every role. Collect it from the UI. */
     val status: StateFlow<Map<Role, ServerStatus>> = board.status
@@ -253,6 +262,7 @@ object LlamaRuntime {
         val modelPath = cfg.modelPath
         val port = cfg.port
         if (!board.isCurrent(role, epoch)) return@withLock statusOf(role) // stopped before this start began
+        if (!auto) lastErrors.remove(role) // a new start of its own; an automatic restart keeps the detail of the death that caused it
         val prior = statusOf(role)
         stopProcess(role) // waits until the old process is gone, so its port is free
         val ctx = AppGraph.appContext
@@ -299,7 +309,7 @@ object LlamaRuntime {
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
         val ring = LogRing()
         val restarts = if (auto) prior.restarts else 0
-        val startingNotice = fallbackNote ?: if (auto) prior.notice else null
+        val startingNotice = fallbackNote ?: if (auto) prior.notice?.restartingNow() else null
         val announced = board.setIfCurrent(role, epoch) {
             ServerStatus(role, ServerState.STARTING, null, modelPath, port, null, args, System.currentTimeMillis(), null, startingNotice, restarts, shownBackend)
         }
@@ -311,7 +321,7 @@ object LlamaRuntime {
                     .directory(ctx.filesDir)
                     .redirectErrorStream(true)
                     .apply {
-                        environment()["LD_LIBRARY_PATH"] = ctx.applicationInfo.nativeLibraryDir
+                        environment()["LD_LIBRARY_PATH"] = LlamaArgs.ldLibraryPath(ctx.applicationInfo.nativeLibraryDir, role, backend)
                         environment()["LLAMA_CACHE"] = File(ctx.filesDir, "llama-cache").apply { mkdirs() }.path // rpc-server -c needs it (no $HOME on Android)
                         environment().putAll(cfg.env)
                     }
@@ -358,7 +368,7 @@ object LlamaRuntime {
                     running.remove(role, run)
                     killProcess(proc)
                     waitFor(proc, 4_000)
-                    return Attempt(fail(role, epoch, "the first request failed on the GPU", modelPath, port, shownBackend), true)
+                    return Attempt(fail(role, epoch, "the first request failed on the GPU", modelPath, port, shownBackend, errorDetail(run, ring)), true)
                 }
                 val ms = (System.nanoTime() - run.startedNs) / 1_000_000
                 run.wasReady = true
@@ -380,13 +390,14 @@ object LlamaRuntime {
             running.remove(role, run)
             killProcess(proc)
             waitFor(proc, 4_000)
-            return Attempt(fail(role, epoch, "not ready after ${deadlineMs / 1000} s; ${ring.tail(1).lastOrNull().orEmpty()}", modelPath, port, shownBackend), retryOnFail)
+            return Attempt(fail(role, epoch, "not ready after ${deadlineMs / 1000} s; ${ring.tail(1).lastOrNull().orEmpty()}", modelPath, port, shownBackend, errorDetail(run, ring)), retryOnFail)
         }
         if (run.stopRequested) return Attempt(statusOf(role), false)
         run.stopRequested = true // the exit is reported here, not by watchExit
         running.remove(role, run)
         val code = runCatching { proc.exitValue() }.getOrDefault(-1)
-        return Attempt(fail(role, epoch, "${ProcInfo.describeExit(code)} during start; last log: ${ring.tail(3).joinToString(" | ")}", modelPath, port, shownBackend), retryOnFail)
+        val detail = errorDetail(run, ring) // joins the log thread first: the last lines of a dead process arrive late
+        return Attempt(fail(role, epoch, "${ProcInfo.describeExit(code)} during start; last log: ${ring.tail(3).joinToString(" | ")}", modelPath, port, shownBackend, detail), retryOnFail)
     }
 
     /**
@@ -396,6 +407,7 @@ object LlamaRuntime {
      */
     fun stop(role: Role) {
         val run = board.stop(role) { running.remove(role) }
+        lastErrors.remove(role)
         if (run != null) {
             run.stopRequested = true
             killProcess(run.process)
@@ -456,8 +468,9 @@ object LlamaRuntime {
     }
 
     /** Publishes FAILED unless a stop() or a newer start owns the status by now (then it is left alone). Returns the status as it stands. */
-    private fun fail(role: Role, epoch: Int, reason: String, modelPath: String?, port: Int, backend: Backend? = null): ServerStatus {
+    private fun fail(role: Role, epoch: Int, reason: String, modelPath: String?, port: Int, backend: Backend? = null, detail: String? = null): ServerStatus {
         Log.e(TAG, "${role.tag}: FAILED: $reason")
+        if (board.isCurrent(role, epoch)) lastErrors[role] = ProcInfo.errorDetail(listOf(detail ?: reason))
         board.setIfCurrent(role, epoch) {
             val note = if (it.restarts > 0) "The automatic restart failed. Tap Load to start it again." else null
             ServerStatus(role, ServerState.FAILED, reason, modelPath, port, null, it.args, it.startedAtMs, null, note, it.restarts, backend)
@@ -485,7 +498,7 @@ object LlamaRuntime {
 
     /** Copies the child's stdout+stderr to the ring buffer and to filesDir/logs/<role>.log (truncated at each start, capped). */
     private fun pump(run: Running, logFile: File) {
-        Thread({
+        run.pumpThread = Thread({
             try {
                 logFile.bufferedWriter().use { w ->
                     var written = 0L
@@ -500,7 +513,13 @@ object LlamaRuntime {
             } catch (_: Exception) {
                 // stream closed when the process died
             }
-        }, "llama-log-${run.role.tag}").apply { isDaemon = true }.start()
+        }, "llama-log-${run.role.tag}").apply { isDaemon = true; start() }
+    }
+
+    /** The last lines the child printed (stderr included), at most 2 KB, for /v1/models/state `lastError`. Waits briefly for the output of a process that just exited. */
+    private fun errorDetail(run: Running?, ring: LogRing, lastLine: String? = null): String {
+        if (run != null && !run.process.isAlive) runCatching { run.pumpThread?.join(1_500) }
+        return ProcInfo.errorDetail(ring.tail(60) + listOfNotNull(lastLine))
     }
 
     /**
@@ -520,6 +539,10 @@ object LlamaRuntime {
             running.remove(run.role, run)
             val role = run.role
             val cfg = run.cfg
+            if (board.isCurrent(role, run.epoch)) {
+                // the exit line goes last: the 2 KB cap drops the oldest lines, and how it died is the most useful part
+                lastErrors[role] = errorDetail(run, run.ring, "[exit] $what after ${aliveMs / 1000} s")
+            }
             // Every step below is under the epoch this server was STARTED under (not the one at death time), so a stop()
             // between the death and the restart is honoured and never followed by a stale FAILED or STARTING.
             board.reportUnexpectedExit(
