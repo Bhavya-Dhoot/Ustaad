@@ -320,6 +320,7 @@ object PeerLinks {
         val st = s.status.value
         val t0 = System.nanoTime()
         var failReason: String? = null
+        var decodeError = false
         val answer: NodeHealth? = try {
             if (st.link == LinkType.BT) BleLink.health(st.nodeId, HEARTBEAT_BT_TIMEOUT_MS)
             else AppGraph.nodeClient.getPinned<NodeHealth>(st.hostPort, "/health", HEARTBEAT_TIMEOUT_MS)
@@ -328,6 +329,11 @@ object PeerLinks {
             null
         } catch (e: UntrustedResponse) {
             failReason = "answer not authenticated (different pairing secret?)"
+            null
+        } catch (e: kotlinx.serialization.SerializationException) {
+            // the answer was signed (so the phone is there) but we cannot read it: a different protocol, not an absence
+            decodeError = true
+            failReason = "answered, but the reply could not be read (incompatible version?)"
             null
         } catch (t: Throwable) {
             currentCoroutineContext().ensureActive()
@@ -339,13 +345,16 @@ object PeerLinks {
         val h: NodeHealth? = if (wrongNode) null else answer
         val rtt = (System.nanoTime() - t0) / 1e6
         val now = System.currentTimeMillis()
+        var nowIncompatible = false
         val changed = when {
             wrongNode -> s.tracker.onWrongNode()
             h != null -> s.tracker.onSuccess(rtt, now)
+            decodeError -> { nowIncompatible = s.tracker.onDecodeError(); false } // counted apart from misses
             else -> s.tracker.onMiss()
         }
         s.update {
             it.copy(
+                decodeErrors = s.tracker.decodeErrors, incompatible = s.tracker.incompatible,
                 state = s.tracker.state, rttMs = s.tracker.rttMs, misses = s.tracker.misses,
                 lastSeenMs = if (h != null) now else it.lastSeenMs, health = h ?: it.health,
                 beats = s.tracker.beats, missesTotal = s.tracker.missesTotal, awayCount = s.tracker.awayCount, maxGapMs = s.tracker.maxGapMs,
@@ -368,6 +377,10 @@ object PeerLinks {
             syncRegistry(st.nodeId)
             Log.i(TAG, "${st.name} ${st.link} is now ${s.tracker.state}")
             AppGraph.audit.append("peer.${s.tracker.state.name.lowercase()}", JsonObject(mapOf("node" to JsonPrimitive(st.nodeId), "link" to JsonPrimitive(st.link.name))))
+        }
+        if (nowIncompatible) {
+            Log.w(TAG, "${st.name} ${st.link} answers but its replies cannot be read: incompatible version")
+            AppGraph.audit.append("peer.incompatible", JsonObject(mapOf("node" to JsonPrimitive(st.nodeId), "link" to JsonPrimitive(st.link.name))))
         }
         // refresh the peer's NodeInfo (model names change) every ~10 s
         if (h != null && n % 10 == 5 && st.link != LinkType.BT) {

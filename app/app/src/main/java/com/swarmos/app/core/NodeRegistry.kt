@@ -27,13 +27,14 @@ suspend fun NodeRegistry.followSelf(models: Flow<Pair<String?, String?>>, ip: Fl
 
 /** This node plus the peers it has seen. All state is observable. */
 class NodeRegistry(initialSelf: NodeInfo) {
-    private val _self = MutableStateFlow(initialSelf)
+    // this node always advertises the protocol version of this build, whatever builds the NodeInfo
+    private val _self = MutableStateFlow(initialSelf.copy(protocol = PROTOCOL_VERSION))
     val self: StateFlow<NodeInfo> = _self.asStateFlow()
 
     private val _peers = MutableStateFlow<List<PeerState>>(emptyList())
     val peers: StateFlow<List<PeerState>> = _peers.asStateFlow()
 
-    fun updateSelf(transform: (NodeInfo) -> NodeInfo) = _self.update(transform)
+    fun updateSelf(transform: (NodeInfo) -> NodeInfo) = _self.update { transform(it).copy(protocol = PROTOCOL_VERSION) }
 
     /**
      * Brings this node's own ip and model names up to date: they change after start-up (a model finishes loading, the

@@ -33,9 +33,23 @@ data class PeerStatus(
     val lossCount: Int = 0,
     /** Receiver-timed Mbps of the last bulk probe on this path. */
     val lastMbps: Double? = null,
+    /** Heartbeat answers in a row that arrived signed but could not be read (a different protocol); not misses. */
+    val decodeErrors: Int = 0,
+    /** [HeartbeatTracker.INCOMPATIBLE_AFTER] unreadable answers in a row: the phone is there but speaks something else. Not away. */
+    val incompatible: Boolean = false,
 ) {
     val key: String get() = "$nodeId/${link.name}"
     val hostPort: String get() = "$ip:$port"
+
+    /** The peer reports an older node protocol than this build (a phone on the previous build); it still works. */
+    val olderVersion: Boolean get() = info.older
+
+    /** One line the screens can show for a version problem, else null: "Phone A runs an older version". */
+    val versionNote: String? get() = when {
+        incompatible -> "$name runs an incompatible version"
+        olderVersion -> "$name runs an older version"
+        else -> null
+    }
 }
 
 
@@ -69,6 +83,13 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
     @get:Synchronized
     var maxGapMs: Long = 0
         private set
+    /** Answers in a row that were signed and well formed as HTTP but could not be decoded. */
+    @get:Synchronized
+    var decodeErrors: Int = 0
+        private set
+    @get:Synchronized
+    var incompatible: Boolean = false
+        private set
 
     @Synchronized
     fun onSuccess(rttMs: Double, nowMs: Long): Boolean {
@@ -76,6 +97,8 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
         if (lastSeenMs > 0) maxGapMs = maxOf(maxGapMs, nowMs - lastSeenMs)
         state = LinkState.ONLINE
         misses = 0
+        decodeErrors = 0
+        incompatible = false
         beats++
         this.rttMs = rttMs
         lastSeenMs = nowMs
@@ -93,6 +116,20 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
             return true
         }
         return false
+    }
+
+    /**
+     * The peer answered (the answer's signature was checked) but the body could not be decoded. That is a sign of life,
+     * not a miss, so the run of misses starts again and the state does not change; [INCOMPATIBLE_AFTER] of them in a
+     * row mark the peer incompatible. Returns true when [incompatible] has just been set.
+     */
+    @Synchronized
+    fun onDecodeError(): Boolean {
+        misses = 0
+        decodeErrors++
+        if (incompatible || decodeErrors < INCOMPATIBLE_AFTER) return false
+        incompatible = true
+        return true
     }
 
     /**
@@ -122,5 +159,10 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
         if (changed) awayCount++
         state = LinkState.AWAY
         return changed
+    }
+
+    companion object {
+        /** Unreadable (but signed) heartbeat answers in a row before the peer is called incompatible. */
+        const val INCOMPATIBLE_AFTER = 3
     }
 }
