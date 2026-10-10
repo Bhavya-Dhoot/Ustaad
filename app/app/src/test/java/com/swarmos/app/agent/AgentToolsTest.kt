@@ -425,12 +425,23 @@ class AgentToolsTest {
     // ---- a model server that refuses the schema --------------------------------------------------------------
 
     @Test fun aSchemaTheServerRefusesIsToldApart() {
-        assertTrue(AgentTools.isSchemaRejection(LlamaServerException("""{"error":{"code":400,"message":"bad"}}""", 400)))
+        assertTrue(AgentTools.isSchemaRejection(LlamaServerException("""{"error":{"code":400,"message":"Unrecognized schema: {}"}}""", 400)))
         assertTrue(AgentTools.isSchemaRejection(LlamaServerException("JSON schema conversion failed: Unrecognized schema", 500)))
         assertTrue(AgentTools.isSchemaRejection(LlamaServerException("Failed to parse grammar", 0)))
-        // a phone of the swarm relays the server's message inside its own 500
+        assertTrue(AgentTools.isSchemaRejection(LlamaServerException("Error resolving ref #/\$defs/x", 400)))
+        // a phone of the swarm relays the server's message inside its own 500 ...
         assertTrue(AgentTools.isSchemaRejection(NodeHttpException(500, """{"error":"Unrecognized schema"}""")))
-        assertTrue(AgentTools.isSchemaRejection(IOException("phone failed", LlamaServerException("x", 400))))
+        // ... or, in a streamed answer, as the text of an IOException
+        assertTrue(AgentTools.isSchemaRejection(IOException("Phone B failed the stream: JSON schema conversion failed")))
+        assertTrue(AgentTools.isSchemaRejection(IOException("phone failed", LlamaServerException("grammar error", 400))))
+    }
+
+    @Test fun aBare400IsNotASchemaRejection() {
+        // a prompt over the context size is a 400 too; it is not the schema's fault
+        val context = """{"error":{"code":400,"message":"the request exceeds the available context size","type":"exceed_context_size_error"}}"""
+        assertFalse(AgentTools.isSchemaRejection(LlamaServerException(context, 400)))
+        assertFalse(AgentTools.isSchemaRejection(LlamaServerException("x", 400)))
+        assertFalse(AgentTools.isSchemaRejection(IOException("Phone B failed the stream: " + context)))
     }
 
     @Test fun otherFailuresAreNotSchemaRejections() {

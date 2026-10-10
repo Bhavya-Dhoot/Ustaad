@@ -1,6 +1,9 @@
 package com.swarmos.app.agent
 
 import com.swarmos.app.llm.ChatRequest
+import com.swarmos.app.sched.RequestLimitException
+import com.swarmos.app.sched.checkLimits
+import com.swarmos.app.sched.toDto
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -55,7 +58,13 @@ object AgentRequests {
     private val OLD_TOOL_FIELDS = listOf("functions", "function_call")
     private val ROLES = mapOf("system" to "system", "developer" to "system", "user" to "user", "assistant" to "assistant", "tool" to "tool")
 
-    fun parseChat(body: String): AgentChatCall {
+    fun parseChat(body: String): AgentChatCall = guarded { parseChatBody(body) }
+
+    fun parseEmbeddings(body: String): AgentEmbedCall = guarded { parseEmbeddingsBody(body) }
+
+    fun parseFileSearch(body: String): FileSearchCall = guarded { parseFileSearchBody(body) }
+
+    private fun parseChatBody(body: String): AgentChatCall {
         val o = parseObject(body)
         for (f in OLD_TOOL_FIELDS) if (o.has(f)) throw bad("`$f` is not supported: use `tools` and `tool_choice`.", UNSUPPORTED)
         o.int("n")?.let { n ->
@@ -95,24 +104,19 @@ object AgentRequests {
         }
         val rendered = AgentTools.render(messages, spec)
 
-        return AgentChatCall(
-            model = model,
-            request = ChatRequest(
-                messages = rendered,
-                maxTokens = maxTokens,
-                temperature = temperature,
-                jsonSchema = toolSchema ?: responseSchema,
-                stop = parseStop(o["stop"]),
-                seed = seed,
-            ),
-            stream = stream,
-            promptChars = rendered.sumOf { it.content.length },
-            tools = spec,
-            history = messages,
+        val request = ChatRequest(
+            messages = rendered,
+            maxTokens = maxTokens,
+            temperature = temperature,
+            jsonSchema = toolSchema ?: responseSchema,
+            stop = parseStop(o["stop"]),
+            seed = seed,
         )
+        if (model == AgentModel.SWARM) checkSwarmLimits(request)
+        return AgentChatCall(model, request, stream, promptChars = rendered.sumOf { it.content.length }, tools = spec, history = messages)
     }
 
-    fun parseEmbeddings(body: String): AgentEmbedCall {
+    private fun parseEmbeddingsBody(body: String): AgentEmbedCall {
         val o = parseObject(body)
         val model = parseModel(o)
         val input = o["input"]
@@ -138,7 +142,7 @@ object AgentRequests {
         return AgentEmbedCall(model, texts, base64 = format == "base64")
     }
 
-    fun parseFileSearch(body: String): FileSearchCall {
+    private fun parseFileSearchBody(body: String): FileSearchCall {
         val o = parseObject(body)
         val query = (o["query"] as? JsonPrimitive)?.takeIf { it.isString }?.content
             ?: throw bad("`query` is required and must be a string.", MISSING)
@@ -229,7 +233,12 @@ object AgentRequests {
                 ?: throw bad("`$where.function.name` is required.", MISSING)
             val args = when (val a = f["arguments"]) {
                 null, is JsonNull -> "{}"
-                is JsonPrimitive -> if (a.isString) a.content else throw bad("`$where.function.arguments` must be JSON text.", INVALID)
+                // the text is JSON inside a string, so the depth scan of the body skipped it: it is parsed again when the prompt is built
+                is JsonPrimitive -> when {
+                    !a.isString -> throw bad("`$where.function.arguments` must be JSON text.", INVALID)
+                    nestingDepth(a.content) > MAX_DEPTH -> throw bad("`$where.function.arguments` is nested more than $MAX_DEPTH levels deep.", INVALID)
+                    else -> a.content
+                }
                 is JsonObject -> a.toString()
                 else -> throw bad("`$where.function.arguments` must be JSON text.", INVALID)
             }
@@ -305,6 +314,7 @@ object AgentRequests {
             is JsonObject -> p
             else -> throw bad("`tools[$i].function.parameters` must be a JSON Schema object.", INVALID)
         }
+        checkSchema(parameters, "tools[$i].function.parameters")
         return AgentTool(name, description, parameters)
     }
 
@@ -338,6 +348,7 @@ object AgentRequests {
             "json_schema" -> {
                 val schema = (rf["json_schema"] as? JsonObject)?.get("schema") as? JsonObject
                     ?: throw bad("`response_format.json_schema.schema` is required and must be an object.", INVALID)
+                checkSchema(schema, "response_format.json_schema.schema")
                 json.encodeToString(JsonObject.serializer(), schema).also {
                     if (it.toByteArray(Charsets.UTF_8).size > MAX_SCHEMA_BYTES) {
                         throw bad("`response_format.json_schema.schema` is over $MAX_SCHEMA_BYTES bytes.", LIMIT)
@@ -349,6 +360,60 @@ object AgentRequests {
     }
 
     private fun bad(message: String, code: String) = AgentRefusal(400, message, code)
+
+    /**
+     * A request nested so deeply that reading it overflows the stack is the caller's mistake. A StackOverflowError is an Error, not an
+     * Exception, so without this it would pass every handler of the listener as a bare 500.
+     */
+    internal fun <T> guarded(block: () -> T): T = try {
+        block()
+    } catch (e: StackOverflowError) {
+        throw bad("The request is nested too deeply to read.", INVALID_JSON)
+    }
+
+    // ---- limits on a schema the caller supplies ----------------------------------------------------------------
+
+    /** The largest count a schema may ask for: a grammar repeats what it counts, so `maxItems: 1000000` would be a very large grammar. */
+    const val MAX_SCHEMA_BOUND = 64
+    private val BOUND_KEYS = setOf("minItems", "maxItems", "minLength", "maxLength", "minProperties", "maxProperties")
+    private val PATTERN_COUNT = Regex("\\{(\\d*)(?:,(\\d*))?\\}")
+
+    /**
+     * Refuses a schema ([field] names where it came from) that asks the model server for a very large grammar or for something outside
+     * the schema: a numeric bound above [MAX_SCHEMA_BOUND], a count above it in a `pattern` (`{n}`, `{n,m}`), or a `$ref` that does not
+     * start with `#`. Only numbers and strings are looked at, so a property that happens to be called `maxLength` is no bound.
+     */
+    private fun checkSchema(el: JsonElement, field: String) {
+        when (el) {
+            is JsonObject -> for ((k, v) in el) {
+                if (v is JsonPrimitive && !v.isString && k in BOUND_KEYS) {
+                    val n = v.content.toDoubleOrNull()
+                    if (n != null && n > MAX_SCHEMA_BOUND) throw bad("`$field` has `$k` ${v.content}; at most $MAX_SCHEMA_BOUND is accepted.", LIMIT)
+                }
+                if (v is JsonPrimitive && v.isString) {
+                    if (k == "pattern") {
+                        for (m in PATTERN_COUNT.findAll(v.content)) {
+                            val big = m.groupValues.drop(1).any { (it.toIntOrNull() ?: if (it.isEmpty()) 0 else Int.MAX_VALUE) > MAX_SCHEMA_BOUND }
+                            if (big) throw bad("`$field` has a `pattern` that repeats more than $MAX_SCHEMA_BOUND times.", LIMIT)
+                        }
+                    }
+                    if (k == "\$ref" && !v.content.startsWith("#")) throw bad("`$field` has a `\$ref` that points outside the schema; only references that start with # are accepted.", UNSUPPORTED)
+                }
+                checkSchema(v, field)
+            }
+            is JsonArray -> el.forEach { checkSchema(it, field) }
+            else -> {}
+        }
+    }
+
+    /** `ustaad-swarm` jobs are refused by the phone that gets them above its own limits (SchedLimits): say so as the caller's 400, not as a 500. */
+    private fun checkSwarmLimits(req: ChatRequest) {
+        try {
+            req.toDto().checkLimits()
+        } catch (e: RequestLimitException) {
+            throw bad("This request is too large for `ustaad-swarm` (${e.message}). Shorten it or use `ustaad-local`.", LIMIT)
+        }
+    }
 
     // error codes of the 400 answers
     private const val INVALID_JSON = "invalid_json"

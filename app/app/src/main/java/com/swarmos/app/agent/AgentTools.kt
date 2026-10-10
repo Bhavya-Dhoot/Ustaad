@@ -13,6 +13,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import java.io.IOException
 import java.util.UUID
 
 /** One function the calling app declared. [parameters] is its JSON Schema. */
@@ -186,7 +187,16 @@ object AgentTools {
         return out
     }
 
-    private fun argumentsOf(text: String): JsonElement = try { json.parseToJsonElement(text) } catch (e: IllegalArgumentException) { JsonPrimitive(text) }
+    /** [text] as JSON, or null when it is not (or nests so deeply that reading it overflows the stack). */
+    private fun parseJson(text: String): JsonElement? = try {
+        json.parseToJsonElement(text)
+    } catch (e: IllegalArgumentException) {
+        null
+    } catch (e: StackOverflowError) {
+        null
+    }
+
+    private fun argumentsOf(text: String): JsonElement = parseJson(text) ?: JsonPrimitive(text)
 
     private fun pastCalls(calls: List<PastToolCall>): String = buildJsonObject {
         putJsonArray("tool_calls") {
@@ -278,7 +288,7 @@ object AgentTools {
         var invalid = false
         var repairTool: String? = null
         for (block in blocks.take(spec.maxCalls)) {
-            val o = try { json.parseToJsonElement(block) as? JsonObject } catch (e: IllegalArgumentException) { null }
+            val o = parseJson(block) as? JsonObject
             val name = (o?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content
             val tool = spec.tools.firstOrNull { it.name == name }
             val args = o?.get("arguments") as? JsonObject
@@ -306,8 +316,7 @@ object AgentTools {
      */
     fun parseReply(text: String, spec: ToolSpec?, newId: () -> String = ::callId): ToolReply {
         if (spec == null) return ToolReply.Content(text)
-        val root = try { json.parseToJsonElement(text.trim()) as? JsonObject } catch (e: IllegalArgumentException) { null }
-            ?: return ToolReply.Content(text)
+        val root = parseJson(text.trim()) as? JsonObject ?: return ToolReply.Content(text)
         val offered = offered(spec)
         val raw = root["tool_calls"] as? JsonArray
         if (raw != null && raw.isNotEmpty()) {
@@ -331,18 +340,23 @@ object AgentTools {
     // ---- a model server that refuses the schema ---------------------------------------------------------------
 
     /**
-     * True when [e] is the model server (or a phone of the swarm relaying it) saying it cannot use the schema it was given: a 400 from
-     * the server, or an error that names the schema or the grammar. The cause chain is followed, because the swarm wraps errors.
+     * True when [e] is the model server (or a phone of the swarm relaying it) saying it cannot use the schema it was given: an error
+     * from the server whose text names the schema, the grammar or a reference it could not resolve. A bare 400 is not enough (a prompt
+     * over the context size is a 400 too and is not the schema's fault). A phone relays the text in a NodeHttpException, or, in a streamed
+     * answer, in an IOException; the cause chain is followed too, because the swarm wraps errors.
      */
     fun isSchemaRejection(e: Throwable): Boolean {
         var t: Throwable? = e
         repeat(4) {
             val cur = t ?: return false
-            if (cur is LlamaServerException && cur.status == 400) return true
-            val text = cur.message.orEmpty()
-            if ((cur is LlamaServerException || cur is NodeHttpException) && (text.contains("schema", true) || text.contains("grammar", true))) return true
+            if (cur is LlamaServerException || cur is NodeHttpException || cur is IOException) {
+                val text = cur.message.orEmpty()
+                if (SCHEMA_WORDS.any { text.contains(it, ignoreCase = true) }) return true
+            }
             t = cur.cause
         }
         return false
     }
+
+    private val SCHEMA_WORDS = listOf("schema", "grammar", "resolving ref")
 }

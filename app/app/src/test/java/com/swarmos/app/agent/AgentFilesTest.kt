@@ -113,12 +113,12 @@ class AgentFilesTest {
         assertEquals("phone", found.body.getValue("scope").jsonPrimitive.content)
         assertEquals("false", found.body.getValue("incomplete").jsonPrimitive.content)
         val hit = found.body.getValue("data").jsonArray.single().jsonObject
-        assertEquals(setOf("phone", "title", "date", "kind", "score", "snippet"), hit.keys)
+        assertEquals(setOf("phone", "title", "date", "kind", "snippet"), hit.keys)
         assertEquals("Phone A", hit.getValue("phone").jsonPrimitive.content)
         assertEquals("Electricity bill", hit.getValue("title").jsonPrimitive.content)
         assertEquals("2026-09-03", hit.getValue("date").jsonPrimitive.content)
         assertEquals("photo", hit.getValue("kind").jsonPrimitive.content)
-        assertEquals(0.9, hit.getValue("score").jsonPrimitive.content.toDouble(), 0.0)
+        assertFalse("no score: a phone ranks over its private chunks too", found.body.toString().contains("score"))
         val phones = found.body.getValue("phones").jsonArray.map { it.jsonObject }
         assertEquals(listOf(setOf("name", "status")), phones.map { it.keys })
         assertEquals("ok", phones.single().getValue("status").jsonPrimitive.content)
@@ -182,13 +182,50 @@ class AgentFilesTest {
     }
 
     @Test fun textFromAPairedPhoneIsCutToSize() {
-        val hostile = peerHit("T".repeat(5000), "s".repeat(5000), kind = "k".repeat(500), score = Double.NaN)
+        val hostile = peerHit("T".repeat(5000), "s".repeat(5000), kind = "k".repeat(500))
         val hit = search(FileFakes.source(emptyList(), peers = listOf(peer("Phone B", hostile))), call("x", FileScope.SWARM)).body
             .getValue("data").jsonArray.single().jsonObject
         assertEquals(200, hit.getValue("title").jsonPrimitive.content.length)
         assertEquals(400, hit.getValue("snippet").jsonPrimitive.content.length)
         assertEquals(32, hit.getValue("kind").jsonPrimitive.content.length)
-        assertEquals("a score that is not a number is 0", 0.0, hit.getValue("score").jsonPrimitive.content.toDouble(), 0.0)
+    }
+
+    @Test fun phoneNamesAreCutToSixtyFourCharacters() {
+        val long = "N".repeat(300)
+        val found = search(
+            FileFakes.source(listOf(bill), name = long, peers = listOf(peer("P".repeat(300), peerHit("Certificate", "certificate of completion")), offline("O".repeat(300)))),
+            call("bill", FileScope.SWARM),
+        )
+        val phonesInData = found.body.getValue("data").jsonArray.map { it.jsonObject.getValue("phone").jsonPrimitive.content }
+        val phonesListed = found.body.getValue("phones").jsonArray.map { it.jsonObject.getValue("name").jsonPrimitive.content }
+        assertEquals(setOf("N".repeat(64), "P".repeat(64)), phonesInData.toSet())
+        assertEquals(listOf("N".repeat(64), "P".repeat(64), "O".repeat(64)), phonesListed)
+        assertTrue(found.phones.all { it.name.length == 64 })
+    }
+
+    @Test fun theAuditCountsThePhonesAskedAndTheBytesSent() {
+        val asked = peer("Phone B", peerHit("Certificate", "certificate text"))
+        val notCalled = PeerFiles("Phone C", AgentFiles.OFFLINE, null, asked = false)
+        val calls = FileFakes.Calls()
+        val swarm = search(FileFakes.source(listOf(bill), calls, peers = listOf(asked, offline("Phone D"), notCalled)), call("electricity bill", FileScope.SWARM))
+        assertEquals(2, swarm.asked)
+        val oneQuery = com.swarmos.app.core.SwarmJson.encodeToString(calls.queries.single()).toByteArray().size
+        assertEquals(2 * oneQuery, swarm.sentBytes)
+        assertTrue(oneQuery > "electricity bill".length)
+        // a search on this phone alone sends nothing anywhere
+        val local = search(FileFakes.source(listOf(bill), peers = listOf(asked)), call("electricity bill", FileScope.PHONE))
+        assertEquals(0, local.asked)
+        assertEquals(0, local.sentBytes)
+    }
+
+    @Test fun anEmptyIndexIsNotAReasonToRefuse() {
+        // only a missing embedder or an index to rebuild stop a search; the number of files indexed is not asked about at all
+        assertEquals(null, FileSource.whyUnavailable(dense = true, embedderReady = true))
+        assertEquals(FileSource.REINDEX, FileSource.whyUnavailable(dense = false, embedderReady = true))
+        assertEquals(FileSource.NO_EMBEDDER, FileSource.whyUnavailable(dense = false, embedderReady = false))
+        val found = search(FileFakes.source(emptyList(), chunks = 0))
+        assertEquals(0, found.results)
+        assertEquals("ok", found.body.getValue("phones").jsonArray.single().jsonObject.getValue("status").jsonPrimitive.content)
     }
 
     // ---- small pieces -------------------------------------------------------------------------------------------
@@ -213,6 +250,6 @@ class AgentFilesTest {
     @Test fun aHitNamesNoDeviceIdOrRank() {
         val m = MergedHit("7", "Phone Z", false, peerHit("T", "S", rank = 3), 0.5)
         val h: JsonObject = AgentFiles.publicHit(m, ZoneId.of("UTC"))
-        assertEquals(setOf("phone", "title", "date", "kind", "score", "snippet"), h.keys)
+        assertEquals(setOf("phone", "title", "date", "kind", "snippet"), h.keys)
     }
 }

@@ -270,6 +270,116 @@ class AgentRequestsTest {
         assertEquals("<tool_response>\nElectricity bill, due 2026-09-30\n</tool_response>", c.request.messages[3].content)
     }
 
+    // ---- text that is JSON inside a string -----------------------------------------------------------------------
+
+    private fun withPastArguments(arguments: String) =
+        chat(messages = """[{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"function","function":{"name":"f","arguments":"$arguments"}}]}]""")
+
+    @Test fun pastArgumentsThatNestTooDeeplyAreRefused() {
+        // the text sits inside a JSON string, so the depth scan of the body does not see it
+        assertEquals(64, AgentRequests.nestingDepth("[".repeat(64)))
+        AgentRequests.parseChat(withPastArguments("[".repeat(64)))
+        refused(400, "messages[0].tool_calls[0].function.arguments") { AgentRequests.parseChat(withPastArguments("[".repeat(65))) }
+        refused(400, "function.arguments") { AgentRequests.parseChat(withPastArguments("{\\\"a\\\":".repeat(100))) }
+        // about a megabyte of '[' in one string: a clean 400, not a crash
+        val megabyte = withPastArguments("[".repeat(AgentRequests.MAX_BODY_BYTES.toInt() - 300))
+        assertTrue(megabyte.length < AgentRequests.MAX_BODY_BYTES)
+        refused(400, "function.arguments") { AgentRequests.parseChat(megabyte) }
+        // brackets inside a string value of the arguments do not count
+        AgentRequests.parseChat(withPastArguments("{\\\"q\\\":\\\"" + "[".repeat(500) + "\\\"}"))
+    }
+
+    @Test fun aStackOverflowWhileReadingARequestIsA400NotACrash() {
+        try {
+            AgentRequests.guarded<Unit> { throw StackOverflowError() }
+            fail("expected a refusal")
+        } catch (r: AgentRefusal) {
+            assertEquals(400, r.status)
+            assertEquals("invalid_json", r.code)
+        }
+        // and the parse entry points go through it: a deep structure on a small stack ends as a refusal
+        var outcome: Throwable? = null
+        val t = Thread(null, {
+            outcome = try { AgentRequests.parseChat(chat(""""top_p":${"[".repeat(60)}1${"]".repeat(60)}""")); null } catch (e: Throwable) { e }
+        }, "tiny-stack", 64L * 1024)
+        t.start()
+        t.join()
+        assertTrue("$outcome", outcome == null || (outcome as? AgentRefusal)?.status == 400)
+    }
+
+    // ---- schemas the caller supplies ---------------------------------------------------------------------------
+
+    private fun toolWith(parameters: String) = """{"type":"function","function":{"name":"f","parameters":$parameters}}"""
+
+    private fun parametersAccepted(parameters: String) = AgentRequests.parseChat(withTools(tools = listOf(toolWith(parameters))))
+
+    @Test fun numericBoundsAbove64AreRefused() {
+        for (key in listOf("minItems", "maxItems", "minLength", "maxLength", "minProperties", "maxProperties")) {
+            parametersAccepted("""{"type":"object","properties":{"a":{"type":"array","$key":64}}}""")
+            refused(400, "tools[0].function.parameters") { parametersAccepted("""{"type":"object","properties":{"a":{"type":"array","$key":65}}}""") }
+            // deep inside, in a list of alternatives
+            refused(400, key) { parametersAccepted("""{"anyOf":[{"type":"string"},{"type":"array","items":{"type":"string","$key":1000000}}]}""") }
+        }
+        refused(400, "maxItems") { parametersAccepted("""{"type":"array","maxItems":64.5}""") }
+        refused(400, "maxItems") { parametersAccepted("""{"type":"array","maxItems":1e3}""") }
+        assertEquals("limit_exceeded", codeOf { parametersAccepted("""{"type":"array","maxItems":65}""") })
+    }
+
+    @Test fun aPropertyCalledLikeABoundIsNotABound() {
+        parametersAccepted("""{"type":"object","properties":{"maxLength":{"type":"integer"},"pattern":{"type":"string"},"${'$'}ref":{"type":"string"}}}""")
+        parametersAccepted("""{"type":"string","enum":["maxItems","{500}"],"description":"at most {99999} of them, see ${'$'}ref"}""")
+    }
+
+    @Test fun repeatCountsInAPatternAbove64AreRefused() {
+        parametersAccepted("""{"type":"string","pattern":"^[a-z]{1,64}${'$'}"}""")
+        parametersAccepted("""{"type":"string","pattern":"^a{64}b{0,64}c{,64}${'$'}"}""")
+        for (p in listOf("^[a-z]{1,65}${'$'}", "^a{65}", "a{0,1000}", "a{,65}", "a{99999999999}")) {
+            refused(400, "pattern") { parametersAccepted("""{"type":"string","pattern":"$p"}""") }
+        }
+        // a literal brace written with an escape is not a count
+        parametersAccepted("""{"type":"string","pattern":"\\{500\\}"}""")
+    }
+
+    @Test fun onlyLocalReferencesAreAccepted() {
+        parametersAccepted("""{"type":"object","properties":{"a":{"${'$'}ref":"#/definitions/a"}},"definitions":{"a":{"type":"string"}}}""")
+        parametersAccepted("""{"${'$'}ref":"#"}""")
+        for (ref in listOf("http://example.com/schema.json", "https://x/y#/a", "file:///etc/passwd", "other.json#/a", "/a")) {
+            refused(400, "tools[0].function.parameters") { parametersAccepted("""{"type":"object","properties":{"a":{"${'$'}ref":"$ref"}}}""") }
+        }
+        assertEquals("unsupported_parameter", codeOf { parametersAccepted("""{"${'$'}ref":"http://x"}""") })
+    }
+
+    @Test fun theSameLimitsHoldForAResponseFormatSchema() {
+        fun rf(schema: String) = chat(""""response_format":{"type":"json_schema","json_schema":{"name":"n","schema":$schema}}""")
+        AgentRequests.parseChat(rf("""{"type":"object","properties":{"a":{"type":"array","maxItems":64}}}"""))
+        refused(400, "response_format.json_schema.schema") { AgentRequests.parseChat(rf("""{"type":"object","properties":{"a":{"type":"array","maxItems":65}}}""")) }
+        refused(400, "response_format.json_schema.schema") { AgentRequests.parseChat(rf("""{"type":"string","pattern":"a{100}"}""")) }
+        refused(400, "response_format.json_schema.schema") { AgentRequests.parseChat(rf("""{"${'$'}ref":"https://x/y.json"}""")) }
+        AgentRequests.parseChat(rf("""{"${'$'}ref":"#/${'$'}defs/a","${'$'}defs":{"a":{"type":"string"}}}"""))
+    }
+
+    // ---- what a phone of the swarm accepts ----------------------------------------------------------------------
+
+    @Test fun aRequestTooBigForTheSwarmIsA400ForThatModelOnly() {
+        val big = "x".repeat(33_000)
+        val body = { model: String -> chat(model = model, messages = """[{"role":"user","content":"$big"}]""") }
+        AgentRequests.parseChat(body("ustaad-local"))
+        refused(400, "ustaad-swarm") { AgentRequests.parseChat(body("ustaad-swarm")) }
+        assertEquals("limit_exceeded", codeOf { AgentRequests.parseChat(body("ustaad-swarm")) })
+        // 128,000 characters in all, spread over messages that are each fine
+        val many = List(5) { """{"role":"user","content":"${"y".repeat(30_000)}"}""" }.joinToString(",", "[", "]")
+        refused(400, "ustaad-swarm") { AgentRequests.parseChat(chat(model = "ustaad-swarm", messages = many)) }
+        AgentRequests.parseChat(chat(model = "ustaad-swarm"))
+    }
+
+    @Test fun theMessagesAToolRequestRendersToAreCountedForTheSwarm() {
+        // 64 messages and tools: the tool text becomes a 65th, one more than a phone takes
+        val sixtyFour = List(64) { """{"role":"user","content":"m"}""" }.joinToString(",", "[", "]")
+        val tools = """"tools":[$searchTool]"""
+        assertEquals(65, AgentRequests.parseChat(chat(tools, messages = sixtyFour)).request.messages.size)
+        refused(400, "ustaad-swarm") { AgentRequests.parseChat(chat(tools, model = "ustaad-swarm", messages = sixtyFour)) }
+    }
+
     @Test fun badToolMessagesAreRefused() {
         refused(400, "messages[1].tool_call_id") { AgentRequests.parseChat(chat(messages = """[{"role":"user","content":"x"},{"role":"tool","content":"r"}]""")) }
         refused(400, "messages[0].tool_call_id") { AgentRequests.parseChat(chat(messages = """[{"role":"tool","tool_call_id":"","content":"r"}]""")) }

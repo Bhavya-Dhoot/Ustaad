@@ -350,22 +350,27 @@ class AgentServer(
 
     /**
      * What this phone would tell a paired phone, plus (scope swarm) what the paired phones tell it; see [AgentFiles]. The owner's switch
-     * is checked before the body is read, and a search that cannot run (no embedder, no index) is a 503, never an empty list.
+     * is read before the body, again right before the search and again before anything is sent: if it went off meanwhile the answer is
+     * the 403 and nothing of the result leaves. A search that cannot run (no embedder, an index to rebuild) is a 503; an empty index is an empty list.
      */
     private suspend fun RoutingCall.filesSearch() {
         val t0 = clock()
         var parsed: FileSearchCall? = null
         var status = HttpStatusCode.OK
         val body: JsonObject = try {
-            val source = files
-            if (source == null || !filesEnabled()) {
-                throw AgentRefusal(403, "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.", "file_search_off")
-            }
+            fun on(): FileSource = files?.takeIf { filesEnabled() }
+                ?: throw AgentRefusal(403, "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.", "file_search_off")
+            val source = on()
             val c = limited(parsing) { AgentRequests.parseFileSearch(readBody()) }
             parsed = c
             val found = limited(searching) {
                 source.unavailable()?.let { throw AgentRefusal(503, it, "index_unavailable", AgentRefusal.TYPE_SERVER) }
+                on()
                 AgentFiles.search(c, source, newQid())
+            }
+            if (files == null || !filesEnabled()) {
+                auditFiles(c, 403, found, t0) // the search ran, so the owner's log says so; the app gets nothing of it
+                on()
             }
             auditFiles(c, 200, found, t0)
             found.body
@@ -469,7 +474,10 @@ class AgentServer(
         })
     }
 
-    /** Scope, how long the query was, how many results and which phone gave how many: no query text, no title, no snippet. */
+    /**
+     * Scope, how long the query was, how many results, which phone gave how many, how many paired phones were sent the query and how many
+     * bytes of it left this phone: no query text, no title, no snippet.
+     */
     private fun auditFiles(c: FileSearchCall?, status: Int, found: FilesFound?, t0: Long) {
         record("agent.files", buildJsonObject {
             c?.let {
@@ -479,6 +487,8 @@ class AgentServer(
             put("status", status)
             found?.let { f ->
                 put("results", f.results)
+                put("asked", f.asked) // paired phones sent the query
+                put("sentBytes", f.sentBytes) // bytes of query text that left this phone for them
                 putJsonArray("phones") {
                     for (p in f.phones) add(buildJsonObject {
                         put("name", p.name)

@@ -293,7 +293,7 @@ private fun AgentAccessRows() {
             )
             SwitchRow(
                 "File search for other apps",
-                "Apps that hold the key can search the files you share with the swarm, on this phone and (when they ask for it) on your paired phones, and read short snippets of them. Files in private folders are never included.",
+                "Apps that hold the key can search the files you share with the swarm, on this phone and (when they ask for it) on your paired phones, and read short snippets of them. Files in private folders are never included. Answers name the paired phones that replied.",
                 checked = files, onChange = { AgentAccess.setFiles(it) },
             )
         }

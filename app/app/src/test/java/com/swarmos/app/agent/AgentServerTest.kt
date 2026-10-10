@@ -601,10 +601,10 @@ class AgentServerTest {
         assertEquals(setOf("object", "data", "scope", "incomplete", "phones"), r.json.keys)
         val data = r.json.getValue("data").jsonArray.map { it.jsonObject }
         assertEquals(listOf("Electricity bill"), data.map { it.getValue("title").jsonPrimitive.content })
-        assertEquals(setOf("phone", "title", "date", "kind", "score", "snippet"), data.single().keys)
+        assertEquals(setOf("phone", "title", "date", "kind", "snippet"), data.single().keys)
         assertEquals("Phone A", data.single().getValue("phone").jsonPrimitive.content)
         // the raw text: nothing of the private files, no hash of any file, no path, no count of what was held back
-        for (secret in listOf("Salary", "85,000", "Tax return", "ABCDE", "hash-", "uriHash", "Documents", "Pictures", "Private", "withheld", "chunk")) {
+        for (secret in listOf("Salary", "85,000", "Tax return", "ABCDE", "hash-", "uriHash", "Documents", "Pictures", "Private", "withheld", "chunk", "score")) {
             assertFalse("'$secret' must not appear in ${r.body}", r.body.contains(secret, ignoreCase = true))
         }
         assertEquals(1, served.get())
@@ -719,10 +719,12 @@ class AgentServerTest {
         val r = search("""{"query":"electricity bill","scope":"swarm"}""")
         assertEquals(r.body, 200, r.status)
         val entry = audit.single { it.first == "agent.files" }.second
-        assertEquals(setOf("scope", "queryChars", "status", "results", "phones", "ms"), entry.keys)
+        assertEquals(setOf("scope", "queryChars", "status", "results", "asked", "sentBytes", "phones", "ms"), entry.keys)
         assertEquals("swarm", entry.getValue("scope").jsonPrimitive.content)
         assertEquals(16, entry.getValue("queryChars").jsonPrimitive.int)
         assertEquals(2, entry.getValue("results").jsonPrimitive.int)
+        assertEquals("both paired phones were sent the query", 2, entry.getValue("asked").jsonPrimitive.int)
+        assertTrue(entry.getValue("sentBytes").jsonPrimitive.int > 2 * 16)
         val phones = entry.getValue("phones").jsonArray.map { it.jsonObject }
         assertEquals(listOf("Phone A", "Phone B", "Phone C"), phones.map { it.getValue("name").jsonPrimitive.content })
         assertEquals(listOf("ok", "ok", "offline"), phones.map { it.getValue("status").jsonPrimitive.content })
@@ -731,6 +733,45 @@ class AgentServerTest {
         for (leak in listOf("electricity", "bill", "Electricity", "rupees", "Certificate", "Salary", "snippet", "title", "hash")) {
             assertFalse("'$leak' must not be in the audit entry $text", text.contains(leak))
         }
+    }
+
+    @Test fun aSwitchThatWentOffBeforeTheSearchStopsItThere() {
+        val calls = FileFakes.Calls()
+        val source = FileSource(
+            unavailable = { filesOn = false; null }, // the owner switches it off while the request is on its way to the index
+            searchLocal = { calls.local.incrementAndGet(); com.swarmos.app.pdu.LocalSearch(listOf(billC), listOf("bill"), 1, 1) },
+            indexedChunks = { 1 }, selfName = { "Phone A" }, askPeers = { calls.peers.incrementAndGet(); emptyList() },
+        )
+        start(files = source)
+        filesOn = true
+        val r = search("""{"query":"electricity bill","scope":"swarm"}""")
+        assertEquals(r.body, 403, r.status)
+        assertEquals("file_search_off", r.errorCode)
+        assertEquals("the index was not read and no paired phone was asked", 0, calls.local.get() + calls.peers.get())
+    }
+
+    @Test fun aSwitchThatWentOffDuringTheSearchSendsNothingOfTheResult() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls, beforeSearch = { filesOn = false }))
+        filesOn = true
+        val r = search()
+        assertEquals(r.body, 403, r.status)
+        assertEquals("file_search_off", r.errorCode)
+        assertFalse(r.body.contains("Electricity"))
+        assertEquals(1, calls.local.get())
+        // the search did run, so the owner's log says so (counts only), with the status the app saw
+        val entry = audit.single { it.first == "agent.files" }.second
+        assertEquals(403, entry.getValue("status").jsonPrimitive.int)
+        assertEquals(0, served.get())
+    }
+
+    @Test fun aSearchOverAnEmptyIndexIsAnEmptyListNotA503() {
+        start(files = FileFakes.source(emptyList(), chunks = 0))
+        filesOn = true
+        val r = search()
+        assertEquals(r.body, 200, r.status)
+        assertEquals(0, r.json.getValue("data").jsonArray.size)
+        assertEquals(listOf("Phone A" to "ok"), phonesOf(r))
     }
 
     // ---- refusals over the wire ------------------------------------------------------------------------------
@@ -1356,6 +1397,14 @@ class AgentServerTest {
         // a refusal is counted, not audited, and the slot is given back
         assertTrue(audit.none { it.first == "agent.chat" })
         assertEquals(0, node.chatExec.running)
+    }
+
+    @Test fun aPromptOverTheContextSizeIsNotReportedAsABadSchema() {
+        start()
+        chat = ScriptedLlm(error = { LlamaServerException("""{"error":{"code":400,"message":"the request exceeds the available context size"}}""", 400) })
+        val r = post("/v1/chat/completions", toolBody(""""tool_choice":"required""""))
+        assertEquals(r.body, 500, r.status)
+        assertEquals("internal_error", r.errorCode)
     }
 
     @Test fun aServerErrorThatIsNotAboutTheSchemaStaysA500() {
