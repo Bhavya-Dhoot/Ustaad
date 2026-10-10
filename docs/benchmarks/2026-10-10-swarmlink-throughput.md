@@ -1,6 +1,8 @@
 # SwarmLink phase 2: paths, round trip, striped bulk, Bluetooth, failover
 
-Date 2026-10-10 IST (+05:30), 03:12 to 06:xx. Phones: iQOO I2501, A (`c6f72247`) and C (`82d2676d`). **Phone B was reserved for the founder from 03:40 and received no command, so every pair below is A and C only.** A was charging at 100 % for the whole session and ran at Thermal Status 1 to 3; C ran 0 to 3 (3 while another worker loaded a model at 03:5x). The thermal value is recorded beside each number. Another worker's inference jobs ran on both phones at times (marker file `base-id-owner.txt` = memcloud, `librpc-server.so` on A bound to 192.168.49.1, `libllama-server.so` on C); no timed run below was taken while a `llama` or `rpc-server` process was running unless the row says so. App: `com.swarmos.app.link` (node port 8797, probe port 8798), debug build, both phones on the same secret, screens kept awake and the app in front by a script (a key event and `am start` every 3 s).
+Date 2026-10-10 IST (+05:30), 03:12 to 06:21. Phones: iQOO I2501, A (`c6f72247`) and C (`82d2676d`). **Phone B was reserved for the founder from 03:40 and received no command, so every pair below is A and C only.** A was charging at 100 % for the whole session and ran at Thermal Status 1 to 3; C ran 0 to 3 (3 while another worker loaded a model at 03:5x). The thermal value is recorded beside each number. Another worker's inference jobs ran on both phones at times (marker file `base-id-owner.txt` = memcloud, `librpc-server.so` on A bound to 192.168.49.1, `libllama-server.so` on C); no timed run below was taken while a `llama` or `rpc-server` process was running unless the row says so. App: `com.swarmos.app.link` (node port 8797, probe port 8798), debug build, both phones on the same secret, screens kept awake and the app in front by a script (a key event and `am start` every 3 s).
+
+**Transport trust model.** Peer traffic is authenticated with an HMAC (requests, and now responses, are signed with the pairing secret) but it is not encrypted, so on someone else's Wi-Fi a sniffer can read the questions and snippets that cross the LAN path. On the app's own Wi-Fi Direct group the group's WPA2 key protects the traffic, and Bluetooth carries only small control messages signed the same way, with the Wi-Fi Direct credentials sealed (AES-256-GCM) under the pairing secret.
 
 Tools: `POST /v1/link/rtt`, `POST /v1/link/tput`, `GET /v1/link/paths`, `POST /v1/link/failover-test`, `POST /v1/link/ble-bench`, all signed, driven from the PC (`scripts/swarm-call.sh` or the Python equivalent). Throughput is receiver-timed (first byte to last byte on the receiving phone, reported back over the same connection). Raw = the phase-1 probe (`streams` 0). Striped = chunks of 1 MiB with index and CRC32, N TCP streams, reassembled in order on the receiver; "CRC bad / missing" must be 0 / 0 and always was.
 
@@ -46,7 +48,42 @@ Reading:
 
 200 MiB per run, A to C and C to A, group on 5765 MHz. "raw" is one stream without framing. Buffer = `SO_SNDBUF` and `SO_RCVBUF` on both phones (`POST /v1/link/tuning`).
 
-STRIPED_TABLE
+| Time | Link | Dir | Streams | Buffer | rx Mbps | tx Mbps | s | CRC bad / missing | Thermal (sender at end / A, C before) |
+|---|---|---|---|---|---|---|---|---|---|
+| 05:21:58 | DIRECT | A to C | raw | default | 660.7 | 658.6 | 2.54 | None / None | 1 / A 1, C 0 |
+| 05:22:53 | DIRECT | A to C | 1 | default | 772.3 | 754.2 | 2.17 | 0 / 0 | 1 / A 1, C 0 |
+| 05:23:48 | DIRECT | A to C | 2 | default | 633.7 | 600.6 | 2.65 | 0 / 0 | 1 / A 1, C 0 |
+| 05:24:43 | DIRECT | A to C | 4 | default | 836.3 | 811.8 | 2.01 | 0 / 0 | 1 / A 1, C 0 |
+| 05:25:37 | DIRECT | A to C | 8 | default | 824.6 | 786.5 | 2.03 | 0 / 0 | 1 / A 1, C 0 |
+| 05:26:31 | DIRECT | C to A | raw | default | 724.9 | 722.4 | 2.31 | None / None | 0 / A 1, C 0 |
+| 05:27:25 | DIRECT | C to A | 1 | default | 762.5 | 746.5 | 2.20 | 0 / 0 | 0 / A 2, C 0 |
+| 05:28:18 | DIRECT | C to A | 2 | default | 891.0 | 857.8 | 1.88 | 0 / 0 | 0 / A 2, C 0 |
+| 05:29:11 | DIRECT | C to A | 4 | default | 848.0 | 824.3 | 1.98 | 0 / 0 | 0 / A 2, C 0 |
+| 05:30:04 | DIRECT | C to A | 8 | default | 922.1 | 875.5 | 1.82 | 0 / 0 | 0 / A 3, C 0 |
+| 05:30:58 | DIRECT | A to C | raw | 1024 KB | 640.7 | 639.3 | 2.62 | None / None | 3 / A 3, C 0 |
+| 05:31:48 | DIRECT | A to C | 1 | 1024 KB | 710.4 | 698.2 | 2.36 | 0 / 0 | 3 / A 3, C 1 |
+| 05:32:11 | DIRECT | A to C | 4 | 1024 KB | 866.3 | 840.4 | 1.94 | 0 / 0 | 3 / A 3, C 0 |
+| 05:32:34 | DIRECT | C to A | 1 | 1024 KB | 695.2 | 682.3 | 2.41 | 0 / 0 | 0 / A 3, C 0 |
+| 05:32:57 | DIRECT | C to A | 4 | 1024 KB | 862.5 | 830.8 | 1.95 | 0 / 0 | 0 / A 3, C 0 |
+| 05:33:20 | DIRECT | A to C | 1 | 4096 KB | 814.5 | 796.0 | 2.06 | 0 / 0 | 3 / A 3, C 0 |
+| 05:33:43 | DIRECT | A to C | 4 | 4096 KB | 803.6 | 779.9 | 2.09 | 0 / 0 | 3 / A 3, C 0 |
+| 05:34:06 | DIRECT | C to A | 1 | 4096 KB | 668.8 | 655.4 | 2.51 | 0 / 0 | 0 / A 3, C 0 |
+| 05:34:29 | DIRECT | C to A | 4 | 4096 KB | 792.9 | 768.3 | 2.12 | 0 / 0 | 0 / A 3, C 0 |
+| 05:35:09 | LAN | A to C | raw | default | 102.2 | 102.1 | 16.42 | None / None | 3 / A 2, C 0 |
+| 05:35:58 | LAN | A to C | 1 | default | 60.0 | 59.6 | 27.96 | 0 / 0 | 2 / A 2, C 0 |
+| 05:36:38 | LAN | A to C | 4 | default | 87.1 | 84.4 | 19.25 | 0 / 0 | 2 / A 2, C 0 |
+| 05:37:16 | LAN | C to A | raw | default | 95.1 | 95.0 | 17.64 | None / None | 0 / A 2, C 0 |
+| 05:37:58 | LAN | C to A | 1 | default | 78.8 | 78.2 | 21.30 | 0 / 0 | 0 / A 2, C 0 |
+| 05:38:38 | LAN | C to A | 4 | default | 93.1 | 91.0 | 18.02 | 0 / 0 | 0 / A 2, C 0 |
+| 05:43:17 | LAN | A to C | 1 | 1024 KB | 82.9 | 82.2 | 20.24 | 0 / 0 | 1 / A 1, C 0 |
+| 05:39:18 | LAN | A to C | raw | 4096 KB | 89.2 | 89.1 | 18.81 | None / None | 2 / A 2, C 0 |
+| 05:39:56 | LAN | A to C | 1 | 4096 KB | 99.6 | 98.6 | 16.84 | 0 / 0 | 2 / A 2, C 0 |
+| 05:40:35 | LAN | A to C | 4 | 4096 KB | 96.6 | 92.8 | 17.36 | 0 / 0 | 2 / A 2, C 0 |
+| 05:41:13 | LAN | C to A | raw | 4096 KB | 92.7 | 92.6 | 18.11 | None / None | 0 / A 1, C 0 |
+| 05:41:53 | LAN | C to A | 1 | 4096 KB | 93.4 | 92.3 | 17.96 | 0 / 0 | 0 / A 1, C 0 |
+| 05:42:33 | LAN | C to A | 4 | 4096 KB | 91.1 | 89.0 | 18.42 | 0 / 0 | 0 / A 1, C 0 |
+
+Reading: on DIRECT every striped run with 4 or 8 streams is 790 to 920 Mbps against 640 to 725 raw and 670 to 815 with one stream (4 streams beat 1 stream in 5 of 6 pairs, by 8 to 24 %, and was 1 % lower in the sixth, 4 MB buffer A to C; 2 streams is not consistently better than 1: 634 against 772 A to C, 891 against 762 C to A). On LAN raw is 89 to 102 Mbps and striping gives 60 to 99, so nothing is gained there. Buffers of 1 MB and 4 MB (rows with a size) change nothing consistent: LAN 4 MB single stream 99.6 and 93.4 against 60.0 and 78.8 default is the one visible gain, but raw and 4 streams show none. Thermal status of the sender was 0 to 3 across the matrix (last column); no row shows a clear thermal penalty.
 
 Multipath (`paths:["LAN","DIRECT"]`, streams dealt to both paths, chunks taken by whichever stream is free), 200 MiB, two rounds, 05:43 to 05:45, thermal A 1 / C 0:
 
@@ -67,7 +104,17 @@ Chosen defaults and why: DIRECT, 4 streams, 1 MiB chunks, system buffer size (be
 - On the phones (`checks.py`, 05:xx): the same id sent twice to `/v1/link/sleep` ran the handler once (`executions` +1) and the second answer carried `X-Swarm-Replay: 1` and a valid response MAC.
 - A 120 s request survives: `POST /v1/link/sleep {"ms":120000}` to C returned HTTP 200 after 121.1 s (the CIO default idle timeout of 45 s is now 3600 s on the server; `NodeClient` takes a per-request `timeoutMs` on every `get` and `post`).
 
-FAILOVER_SECTION
+Failover on the phones (`POST /v1/link/failover-test` on A towards C: 700 signed requests, one every 100 ms, each with its own id; C counts how often a handler really ran). **The Wi-Fi radio was not switched off in this test**: phone C was not on USB, and switching its Wi-Fi off over wireless adb would have cut the connection that turns it back on. Instead C's debug fault hook (`POST /v1/link/fault`) holds every request that arrives from one source address for 20 s, which is what a path that has gone silent looks like to the sender (the heartbeat and the requests time out; the radios stay up). The Bluetooth radio in the second step is real. A real Wi-Fi-off window is in section 8.
+
+| Time (A thermal 2, C thermal 0) | What was done to C | What A saw |
+|---|---|---|
+| 05:55:56 | holds requests from 192.168.49.1 (DIRECT silent) | DIRECT `away` 4.1 s later; small requests moved to LAN |
+| 05:56:05 | also holds requests from 192.168.242.89 (LAN silent) | LAN `away` 4.1 s later; Bluetooth the only path (`small` = BT) |
+| 05:56:16 | signed 900 byte echo over Bluetooth with both Wi-Fi paths silent | `GET` avg 42.4 ms, echo avg 54.4 ms, 265 kbit/s |
+| 05:56:20 | fault cleared | LAN and DIRECT `online` again 1.0 s later; small requests back on DIRECT |
+| 05:57:34 | request loop finished | **sent 700, ok 700, failed 0, executions on C 700** (nothing lost, nothing run twice), 2 path failovers; slowest requests 3754 ms (#43), 3733 ms (#80), 1062 ms (#394) |
+
+Two requests took 3.7 s and the loop reports 2 path failovers; I read them as the requests that were in flight when DIRECT, then LAN, went silent (not checked request by request): they are cancelled when the path is declared away (4.1 s) and sent again with the same id on the next path, and the executions counter shows each ran once. #394 (1.06 s) did not need a failover.
 
 ## 5. Bluetooth (step 6)
 
@@ -81,13 +128,19 @@ Design: both phones advertise a 9 byte service-data record (node id 4, tag 4 = H
 | Same, C to A | 30.9 / 56.4 / 73.7 / 85.6 ms; 255 kbit/s |
 | Time from both apps starting to the BT path listed online | within 12 s, no tap, both directions |
 
-BT_ONLY_SECTION
+Bluetooth as the only path: the 05:56:10 line above (LAN away, DIRECT away, BT online, `small` = BT) and the 900 byte echo at 05:56:16 are that case, with both Wi-Fi paths silenced by the fault hook and the Bluetooth radio real. A phone with its Wi-Fi really off was not tested (see above). Bodies over 1 KB are not sent over Bluetooth and bulk is never routed over it.
+
+`GET /v1/link/ble` at 06:10 on both phones: adapter on, advertising and scanning, the peer in `seen`. Open: the BT path is listed `online` at some moments with Wi-Fi healthy (05:55, 06:15) and missing at others (06:10 to 06:13, 06:16 to 06:18); I did not find out why, and it never affected the Wi-Fi paths.
 
 ## 6. Wi-Fi Direct tuning and re-forming (step 5)
 
-REFORM_SECTION
+- **5 GHz on the station's channel by default, 6 GHz not available** (section 1). The group's frequency asked for, and the one negotiated, are both in `GET /v1/link/direct` (`requestedMhz`, `frequencyMhz`).
+- **Group removed from under the app** (06:04:17, phone C, the debug hook `POST /v1/link/direct/drop` removes the group at the system level and changes nothing else; no Wi-Fi switch): the state left `up` after 1.1 s (`phase=starting`), and the group was **re-formed 2.2 s after the removal with no QR and no tap** (join 630 ms, 5765 MHz) from the stored credentials. A request loop from A ran through it: sent 500, ok 500, failed 0, executions on C 500, 1 path failover, slowest request 2040 ms.
+- **No stored credentials at all** (06:10:41, phone C): `POST /v1/link/direct/stop` leaves the group and forgets the credentials; a paired peer that hosts a group was heard, C asked A for the sealed credentials (`GET /v1/link/p2p-creds`, AES-256-GCM under the pairing secret) and **rejoined 4.2 s after the stop with no QR and no tap** (join 425 ms).
+- **The host makes a new group with a new passphrase** (A re-created its group at 06:12:44 and at 06:17:07). With the build that tried C's stored passphrase first, C stayed in `client / starting` for the 58 s I watched it (06:12:46 to 06:13:42) and did not come back by itself: a real defect that this test found. Fixed in `DirectRendezvous` (the host's current credentials are asked for first; the stored ones are the fallback when the host cannot be asked). Result with the fix: C rejoined **4.2 s after A's group was re-created** (06:17:07 to 06:17:12, join 418 ms). A phone whose app was reinstalled while it held a stale passphrase (C, 06:14:50) was back in the group at 06:15:20, the second attempt (attempts are 20 s apart) after one failed try with the stale passphrase.
+- When the group is gone for good the state is `idle` or `failed` with the error and `lostAtMs`; it never stays `up`. JVM tests cover the state mapping of the pure parts; the Wi-Fi Direct calls themselves are only checked on the phones.
 
-## 7. Hardening checks (review items, all on phone C, debug build, 05:xx)
+## 7. Hardening checks (review items, on phone C, debug build, 05:xx)
 
 PASS lines from `checks.py`: unsigned `GET /v1/link/pairing-payload` refused (HTTP 401), signed one works; every answer carries a valid `X-Swarm-Rsp` (HMAC over status, request id and body), including the 401, 413 and replayed ones; wrong secret gives 401 `bad signature`; a timestamp 90 s ahead gives 401 `clock skew` with the server time (the peer row shows "clock off by N s"); a 2 MiB body gets 413 before it is read; a state-changing request without `X-Swarm-Req` gets 400; adding peer 8.8.8.8 is refused (only RFC 1918, link-local and the Wi-Fi Direct subnet are accepted); the probe port closes a connection without a valid token. Probe limits: 16 connections, 4 GiB and 300 s per connection. JVM tests cover each of these (`SecurityTest`, `ResponseAuthTest`, `TputAuthTest`, `LocalAddressTest`, `ClockSkewReasonTest`, `HeartbeatThreadSafetyTest`); pairing confirmation was checked by the `pendingPairing` field of `GET /v1/link/peers` (a deep link without the debug extra `confirm` leaves the code pending; with `--ez confirm true` it is adopted).
 
@@ -99,7 +152,16 @@ Phone B was unavailable, so everything is a two phone result. With the three pho
 3. B to C goes through the group owner (two air hops on one channel): `POST /v1/link/tput {"peerNodeId":"<C>","megabytes":200,"link":"DIRECT","pings":0,"streams":4}` on B, and the reverse; phase 1 measured about half the client-to-owner figure.
 4. Bluetooth mesh: each pair with the smaller node id initiates; check `GET /v1/link/ble` on all three (`connected` lists two ids) and `POST /v1/link/ble-bench` for every pair.
 5. Failover with three phones: run `POST /v1/link/failover-test` from A towards B while phone C's Wi-Fi is toggled over USB; B must be unaffected.
+6. A real Wi-Fi-off window (not done here: phone C was not on USB): with C on USB, announce the time, run `POST /v1/link/failover-test` from A towards C (700 requests, 100 ms apart), switch Wi-Fi off on C for 10 s over USB (`adb -s 10BFAT216Z000XQ shell svc wifi disable`, then `enable`), and expect ok 700, failed 0, executions on C 700, and the Bluetooth path carrying the small requests meanwhile.
 
 ## What I changed on the phones, when, and what I left
 
-CHANGED_SECTION
+Everything below was done only on phones A and C; **phone B received no command from me after the founder reserved it (03:40)**.
+
+- Installed the debug build of `com.swarmos.app.link` (node port 8797) on A and C many times; the last install was about 06:14 (C) and 06:16 (A). Runtime permissions granted with `pm grant`: NEARBY_WIFI_DEVICES, ACCESS_FINE_LOCATION, CAMERA, POST_NOTIFICATIONS, BLUETOOTH_SCAN, BLUETOOTH_ADVERTISE, BLUETOOTH_CONNECT. **Removed again at 06:21:11** (`adb uninstall com.swarmos.app.link`, Success on both); `com.swarmos.app` (the shared main build) is untouched.
+- Bluetooth: it was off on A and C. I switched it on at 04:07:49 (`svc bluetooth enable`), and switched it off again at 06:21:07 (`svc bluetooth disable`; `settings get global bluetooth_on` was 1, then 0 on both).
+- Wi-Fi Direct: A's group `DIRECT-sw-c6f72247` was created and re-created several times for the tests (04:34 for the channel finding, 06:12:44 and 06:17:07 for the credential tests); C joined and left it many times through the app's own routes. Removed at 06:21:04 (`host/stop` and `direct/stop` on C then A); afterwards `ip -4 addr | grep -c p2p` was 0 on both phones. No rpc or llama server was using the 192.168.49.x addresses (the processes that were running at 06:21 belong to the end-to-end run on the main build over the LAN, port 8787); the group removal does not touch the LAN.
+- **No Wi-Fi switch on any phone, no setting changed.** The only system-level commands: `svc bluetooth enable/disable`, `input keyevent` and `am start` of the app (below), `pm grant`, `screencap`, read-only `dumpsys`.
+- **Keep-awake loop** (`KEYCODE_WAKEUP` and `am start` of `com.swarmos.app.link` every 3 s on A and C, so the screen stays on and the app in front for the timed runs): ran in several stretches from 03:09; the last one 05:47 to 06:19, stopped at 06:19. While it ran, the link build was in front on A and C. **Anything that needs the main build in front during those stretches (the end-to-end run on `com.swarmos.app` was active from 05:25 to at least 06:19) was displaced by it every 3 s**: this may have cost that run foreground time, and I did not check its logs for it.
+- Files on the phones: I pushed nothing in phase 2. `/data/local/tmp/tput` (23:44 on 2026-10-09, phase 1 native probe) is still on A and C, and some files of other workers (`llama`, `router`, `human.*`, `devcap.sh`, `ui_*`); I left all of them because they predate this phase or are not mine.
+- Processes: all my loops and background scripts are stopped (`wake.sh`, the bulk-matrix waits). Nothing of mine runs on the PC or on the phones.

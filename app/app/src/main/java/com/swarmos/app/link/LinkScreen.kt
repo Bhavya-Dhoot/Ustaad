@@ -352,7 +352,7 @@ private fun HostPage(onBack: () -> Unit) {
                     Image(bmp, "Pairing QR", Modifier.fillMaxWidth().aspectRatio(1f).background(Color.White))
                     MetricRow("network", h.payload.p2p?.ssid ?: "current Wi-Fi")
                     MetricRow("band", if (h.payload.p2p != null) listOfNotNull(direct.band, direct.frequencyMhz?.let { "$it MHz" }).joinToString("  ").ifEmpty { "-" } else "-")
-                    MetricRow("address", h.payload.ips.joinToString("  ") + ":" + h.payload.port)
+                    h.payload.ips.forEachIndexed { i, ip -> MetricRow(if (i == 0) "address" else "", "$ip:${h.payload.port}") }
                     direct.formationMs?.let { MetricRow("group formed in", "$it", "ms") }
                     MetricRow("pairing code", Pairing.code(h.payload.secret))
                     Text("The other phone shows this code before it pairs. Without a camera, copy or share the link and paste it on the Join page.", style = SwarmType.body.copy(fontSize = 12.sp, color = Dim))

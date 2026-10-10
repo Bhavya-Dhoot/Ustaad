@@ -359,7 +359,9 @@ object DirectRendezvous {
         if (now - (lastTry[nodeId] ?: 0) < 20_000 || !busy.compareAndSet(false, true)) return
         lastTry[nodeId] = now
         try {
-            val creds = stored?.takeIf { it.role == "client" }?.let { P2pCreds(it.ssid, it.pass) } ?: fetchCreds(nodeId) ?: return
+            // the host's current credentials first (it may have made a new group with a new passphrase since the last join:
+            // measured, a stored passphrase that is stale keeps the client in "starting" for ever); the stored ones when it cannot be asked
+            val creds = fetchCreds(nodeId) ?: stored?.takeIf { it.role == "client" }?.let { P2pCreds(it.ssid, it.pass) } ?: return
             Log.i(TAG, "rendezvous: joining ${creds.ssid} because $nodeId was heard")
             val owner = DirectLink.join(creds)
             // reach the owner over the new group; the heartbeat session for DIRECT starts from here
