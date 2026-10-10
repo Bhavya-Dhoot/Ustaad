@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.Process as AndroidProcess
 import android.util.Log
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.ThermalGate
+import com.swarmos.app.core.WorkKind
+import com.swarmos.app.memcloud.CpuSet
 import com.swarmos.app.sched.Sched
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -251,6 +254,9 @@ object LlamaRuntime {
         readyTimeoutMs: Long = READY_TIMEOUT_MS,
     ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env, readyTimeoutMs).await()
 
+    /** MemAvailable of this phone in kB from /proc/meminfo, null when it cannot be read. */
+    private fun readMemAvailableKb(): Long? = runCatching { LoadPreflight.parseMemAvailableKb(File("/proc/meminfo").readText()) }.getOrNull()
+
     /** Same as [start] but returns at once; cancelling the caller never leaves a half-started server behind. */
     fun startAsync(
         role: Role,
@@ -290,8 +296,20 @@ object LlamaRuntime {
         stopProcess(role) // waits until the old process is gone, so its port is free
         val ctx = AppGraph.appContext
         if (!serviceUp) return@withLock fail(role, epoch, "SwarmService is not running", modelPath, port)
+        // a phone at CRITICAL or worse takes on no new work, a model load included (ThermalGate)
+        ThermalGate.decide(Bench.thermalStatusNow(), WorkKind.MODEL_LOAD).takeUnless { it.allowed }?.let {
+            return@withLock fail(role, epoch, it.reason.orEmpty(), modelPath, port)
+        }
         if (role != Role.RPC && (modelPath == null || !File(modelPath).isFile)) {
             return@withLock fail(role, epoch, "model file not found: $modelPath", modelPath, port)
+        }
+        // The old server of this role is already gone here, so MemAvailable is what the new load really gets. A load with extra
+        // arguments (MemoryCloud's split and its one-phone baseline) is exempt, see LoadPreflight.applies.
+        if (modelPath != null && LoadPreflight.applies(role, cfg.extraArgs)) {
+            val file = File(modelPath)
+            LoadPreflight.refusal(file.name, file.length(), readMemAvailableKb())?.let {
+                return@withLock fail(role, epoch, it, modelPath, port)
+            }
         }
         val libDir = File(ctx.applicationInfo.nativeLibraryDir)
         val plan = BackendPlan.choose(role, cfg.extraArgs, ModelStore.useGpu.value, File(libDir, LlamaArgs.GPU_BINARY).exists(), cfg.cpuOnly)
@@ -327,7 +345,8 @@ object LlamaRuntime {
             return Attempt(fail(role, epoch, "port $port is still in use after two retries (another app or an adb shell process holds it)", modelPath, port, shownBackend), false)
         }
         if (!board.isCurrent(role, epoch)) return Attempt(statusOf(role), false)
-        val cmd = listOf(bin.absolutePath) + LlamaArgs.build(role, modelPath, port, cfg.extraArgs, backend)
+        // the child inherits the cores this process may use now (fewer when the app is in the background), so size the CPU chat build from them
+        val cmd = listOf(bin.absolutePath) + LlamaArgs.build(role, modelPath, port, cfg.extraArgs, backend, allowedCores = CpuSet.allowed())
         val args = LlamaArgs.redacted(cmd.drop(1)) // what the status and the log show: never the API key
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
         val ring = LogRing()

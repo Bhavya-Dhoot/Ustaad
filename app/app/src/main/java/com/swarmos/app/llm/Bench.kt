@@ -2,7 +2,9 @@ package com.swarmos.app.llm
 
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.HealthMonitor
+import com.swarmos.app.core.ThermalGate
 import com.swarmos.app.core.ThermalLevel
+import com.swarmos.app.core.WorkKind
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,11 +83,11 @@ object Bench {
 
     /**
      * Why a benchmark must not start at [thermalStatus], or null when it may. Heavy repeated generation is refused when the
-     * shared definition (ThermalLevel.isTooHot: SEVERE and up) says the phone is too hot; chat requests are not affected.
+     * shared decision ([ThermalGate], BENCHMARK: SEVERE and up) says the phone is too hot; chat requests are not affected.
      * Pure so it can be unit-tested.
      */
     fun blockReasonFor(thermalStatus: Int): String? =
-        if (ThermalLevel.isTooHot(thermalStatus)) {
+        if (!ThermalGate.decide(thermalStatus, WorkKind.BENCHMARK).allowed) {
             "Phone is ${ThermalLevel.of(thermalStatus).word}. Benchmark is off until it cools to ${ThermalLevel.Hot.word} or lower."
         } else {
             null

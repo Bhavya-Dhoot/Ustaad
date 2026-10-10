@@ -70,7 +70,16 @@ object LlamaArgs {
      * Phones have 8 cores (2 prime + 6 performance); 6 chat threads leave two for the app and Android.
      */
     const val CHAT_THREADS = 6
+    const val MIN_CHAT_THREADS = 2
     const val EMBED_THREADS = 2
+
+    /**
+     * Threads of the CPU chat build for a phone where the app may run on [allowedCores] cores (memcloud/CpuSet.allowed): one core
+     * stays free for the app, at most [CHAT_THREADS], at least [MIN_CHAT_THREADS]. A child forked while the app is in the background
+     * inherits fewer cores, and llama.cpp's thread barriers spin, so more threads than cores make every graph wait for a
+     * descheduled thread (measured 0.3 against 3 tok/s, see CpuSet). The GPU build keeps [GPU_THREADS].
+     */
+    fun cpuChatThreads(allowedCores: Int): Int = (allowedCores - 1).coerceAtMost(CHAT_THREADS).coerceAtLeast(MIN_CHAT_THREADS)
     const val CHAT_CTX = 8192
     const val CHAT_SLOTS = 2
     const val EMBED_CTX = 4096
@@ -84,14 +93,17 @@ object LlamaArgs {
     fun build(
         role: Role, modelPath: String?, port: Int, extra: List<String> = emptyList(), backend: Backend = Backend.CPU,
         apiKey: String = LlamaKey.value,
+        /** Cores this process may run on; the CPU chat build sizes its threads from it ([cpuChatThreads]). Null: [CHAT_THREADS]. */
+        allowedCores: Int? = null,
     ): List<String> {
         val gpu = role == Role.CHAT && backend == Backend.GPU
+        val chatThreads = if (gpu) GPU_THREADS else allowedCores?.let(::cpuChatThreads) ?: CHAT_THREADS
         val base = when (role) {
             Role.CHAT -> listOf(
                 "-m", requireNotNull(modelPath) { "chat needs a model" },
                 "--host", "127.0.0.1", "--port", port.toString(),
             ) + (if (gpu) listOf("-ngl", GPU_LAYERS.toString()) else emptyList()) + listOf(
-                "-t", (if (gpu) GPU_THREADS else CHAT_THREADS).toString(),
+                "-t", chatThreads.toString(),
                 "-c", CHAT_CTX.toString(),
                 "-np", CHAT_SLOTS.toString(),
                 "--reasoning", "off", // Qwen3.5 thinking off for every request (the client also sends enable_thinking=false)

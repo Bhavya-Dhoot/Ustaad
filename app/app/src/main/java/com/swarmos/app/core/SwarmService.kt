@@ -183,6 +183,7 @@ class SwarmService : Service() {
         if (!tornDown.compareAndSet(false, true)) return
         releaseLocks()
         LlamaRuntime.onServiceStopped()
+        AppGraph.health.stop() // the 2 s sampler runs only while the service does (start() calls AppGraph.health.start() again)
         server?.stop()
         server = null
         agent?.stop()
