@@ -58,6 +58,9 @@ object BusyPolicy {
     /** Filler replies are cut at this many tokens, so one job is a few seconds. */
     const val MAX_TOKENS = 48
 
+    /** Filler replies are cut at 48 tokens and take a few seconds; a job that has not ended after this long is a stuck server. */
+    const val FILLER_TIMEOUT_MS = 60_000L
+
     /** No filler within this long of a chat server start or restart. */
     const val SETTLE_MS = 120_000L
 

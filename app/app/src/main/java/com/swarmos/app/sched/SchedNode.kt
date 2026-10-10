@@ -1,6 +1,8 @@
 package com.swarmos.app.sched
 
 import com.swarmos.app.core.NodeHealth
+import com.swarmos.app.core.ThermalGate as CoreThermalGate
+import com.swarmos.app.core.WorkKind
 import com.swarmos.app.llm.ChatChunk
 import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatStats
@@ -82,7 +84,13 @@ class SchedNode(
         )
     }
 
-    suspend fun chat(jobId: String, req: ChatRequest, pinModel: String? = null): ChatJobResult {
+    /**
+     * Runs a chat job. [fromPeer] is true for a job that arrived through the node API from another phone (the default: that is
+     * every caller but [LocalEndpoint]); such a job is refused when this phone is too hot, see [refuseWhenTooHot]. The owner's
+     * own request ([fromPeer] false) is never refused for heat.
+     */
+    suspend fun chat(jobId: String, req: ChatRequest, pinModel: String? = null, fromPeer: Boolean = true): ChatJobResult {
+        if (fromPeer) refuseWhenTooHot(chatExec)
         val model = llm().modelName
         if (pinModel != null && pinModel != model) throw ModelMismatchException(model)
         return chatExec.submit(jobId) {
@@ -99,6 +107,7 @@ class SchedNode(
      * Suspends for a moment when only "Keep busy" filler holds the slot: the filler is stopped and the stream takes its place.
      */
     suspend fun openStream(pinModel: String?): StreamSlot {
+        refuseWhenTooHot(chatExec)   // only another phone opens a stream here; this phone's own streams take the slot in [LocalEndpoint]
         val client = llm()
         if (pinModel != null && pinModel != client.modelName) throw ModelMismatchException(client.modelName)
         if (!chatExec.tryAcquire()) throw BusyException(chatExec.running, chatExec.capacity, chatExec.queued)
@@ -118,11 +127,23 @@ class SchedNode(
         }
     }
 
-    suspend fun embed(jobId: String, texts: List<String>): EmbedJobResult =
-        embedExec.submit(jobId) {
+    suspend fun embed(jobId: String, texts: List<String>): EmbedJobResult {
+        refuseWhenTooHot(embedExec)   // only another phone comes here; [LocalEndpoint] embeds with the embedder directly
+        return embedExec.submit(jobId) {
             val client = embedder()
             EmbedJobResult(jobId, client.embed(texts).map { it.toList() }, selfId(), client.modelName)
         }
+    }
+
+    /**
+     * A phone at thermal status 4 or more takes on no new job from another phone ([WorkKind.REMOTE_JOB] in the shared
+     * [CoreThermalGate]). It answers as a full phone does, with [BusyException], which the sender already handles by going
+     * elsewhere. The status is this phone's latest reading, the one [caps] reports. Jobs already running are not touched.
+     */
+    private fun refuseWhenTooHot(exec: JobExecutor) {
+        val status = health()?.thermalStatus ?: 0
+        if (!CoreThermalGate.decide(status, WorkKind.REMOTE_JOB).allowed) throw BusyException(exec.running, exec.capacity, exec.queued)
+    }
 }
 
 /** This phone as a [PhoneEndpoint]. Chat shares the slots with jobs that arrive over HTTP; embeddings never leave the phone. */
@@ -138,7 +159,7 @@ class LocalEndpoint(
     override suspend fun caps(): Caps = node.caps()
 
     override suspend fun runChat(jobId: String, req: ChatRequest, pinModel: String?): ChatJobResult =
-        node.chat(jobId, req, pinModel)
+        node.chat(jobId, req, pinModel, fromPeer = false)
 
     override suspend fun runEmbed(jobId: String, texts: List<String>): EmbedJobResult {
         val client = embedder()

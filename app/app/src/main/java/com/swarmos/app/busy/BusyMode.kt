@@ -3,6 +3,7 @@ package com.swarmos.app.busy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,10 +38,25 @@ object BusyMode {
 
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val saveLock = Mutex()
+
+    /** Audit entries wait here; one coroutine in [saveScope] writes them one after another, in the order they were queued. */
+    private val auditQueue = Channel<() -> Unit>(Channel.UNLIMITED)
     private var store: (suspend (Boolean) -> Unit)? = null
     @Volatile private var audit: (String, JsonObject) -> Unit = { _, _ -> }
     private var onSince = 0L
     private val systemClockMs: () -> Long = { System.nanoTime() / 1_000_000L }
+
+    init {
+        saveScope.launch {
+            for (write in auditQueue) {
+                try {
+                    write()
+                } catch (_: Exception) {
+                    // a failed audit write must not end the writer
+                }
+            }
+        }
+    }
 
     /** The millisecond clock the loop runs on (BusyApp gives it to the loop) and [hammerOffAtMs] is taken from. Tests replace it after [restore]. */
     @Volatile internal var clock: () -> Long = systemClockMs
@@ -74,7 +90,7 @@ object BusyMode {
         _enabled.value = on
         if (!on) _state.value = BusyState.Off
         save(on)
-        audit(if (on) "busy.on" else "busy.off", if (on) JsonObject(emptyMap()) else report().toAudit(secondsOn()))
+        record(if (on) "busy.on" else "busy.off", if (on) JsonObject(emptyMap()) else report().toAudit(secondsOn()))
         if (!on) switchHammer(false, coolDown = false)
     }
 
@@ -89,11 +105,27 @@ object BusyMode {
         switchHammer(on, coolDown = true)
     }
 
+    /** The service stopped ("Stop Ustaad"): Hammer is off when it starts again in this process, with no cool-down and no rest left over. */
+    @Synchronized
+    internal fun hammerOffForStop() {
+        switchHammer(false, coolDown = false)
+    }
+
     private fun switchHammer(on: Boolean, coolDown: Boolean) {
-        if (on == _hammer.value) return
-        _hammer.value = on
+        if (on == _hammer.value) {
+            if (!on && !coolDown) hammerOffAtMs = null   // Keep busy going off ends a rest that is still running, though Hammer was off already
+            return
+        }
+        // the moment first: the loop reads the flag before it reads the moment, so it never sees "Hammer off" without it
         hammerOffAtMs = if (!on && coolDown) clock() else null
-        audit(if (on) "busy.hammer_on" else "busy.hammer_off", JsonObject(emptyMap()))
+        _hammer.value = on
+        record(if (on) "busy.hammer_on" else "busy.hammer_off", JsonObject(emptyMap()))
+    }
+
+    /** Queues an audit entry, so the caller (the UI thread, for the Settings buttons) never waits for the file. */
+    private fun record(kind: String, payload: JsonObject) {
+        val write = audit   // the function in force now: a restore() after this call must not redirect the entry
+        auditQueue.trySend { write(kind, payload) }
     }
 
     /** The switches, the state and the counters: what `GET /v1/sched/busy` answers and Settings shows. */

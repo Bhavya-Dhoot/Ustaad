@@ -7,6 +7,7 @@ import com.swarmos.app.llm.ChatStats
 import com.swarmos.app.sched.JobExecutor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -134,39 +135,56 @@ class BusyLoop(
                 worker.cancel()
                 return@supervisorScope null
             }
-            val restore = protect()
-            val t0 = clock()
-            counters.jobStarted()
-            val watcher = launch {
-                while (true) {
-                    delay(WATCH_MS)
-                    if (externalBusy() || serverChanged(server)) {
-                        worker.cancel(CancellationException(PREEMPTED))
-                        break
-                    }
-                }
-            }
+            // from here nothing that can throw runs outside the try, so the slot always goes back through the finally
+            var restore: (() -> Unit)? = null
+            var watcher: Job? = null
+            var started = false
+            var t0 = 0L
             var outcome = BusyOutcome.Stopped
             try {
+                restore = protect()
+                t0 = clock()
+                counters.jobStarted()
+                started = true
+                watcher = launch {
+                    while (true) {
+                        delay(WATCH_MS)
+                        if (externalBusy() || serverChanged(server)) {
+                            worker.cancel(CancellationException(PREEMPTED))
+                            break
+                        }
+                        if (clock() - t0 >= BusyPolicy.FILLER_TIMEOUT_MS) {
+                            worker.cancel(CancellationException(TIMED_OUT))
+                            break
+                        }
+                    }
+                }
                 worker.start()
                 outcome = try {
                     worker.await()
                     BusyOutcome.Done
                 } catch (e: CancellationException) {
                     if (!currentCoroutineContext().isActive) throw e   // the loop itself is stopping
-                    BusyOutcome.Cancelled                               // real work asked for the slot
+                    // real work asked for the slot, or the job ran past its limit (a stuck server, not real work)
+                    if (e.message == TIMED_OUT) BusyOutcome.Failed else BusyOutcome.Cancelled
                 } catch (e: Exception) {
                     BusyOutcome.Failed
                 }
             } finally {
                 withContext(NonCancellable) {
-                    watcher.cancel()
-                    worker.cancelAndJoin()      // the slot goes back only when the model call has really ended
-                    restore()
-                    counters.jobEnded(outcome, stats?.completionTokens?.toLong() ?: chunks)
-                    // a server that died or restarted under the job, whatever stopped the job: wait longer before the next one
-                    if (outcome != BusyOutcome.Stopped && serverChanged(server)) strictSettle = true
-                    slot.release()
+                    try {
+                        watcher?.cancel()
+                        worker.cancelAndJoin()      // the slot goes back only when the model call has really ended
+                        try {
+                            restore?.invoke()
+                        } finally {
+                            if (started) counters.jobEnded(outcome, stats?.completionTokens?.toLong() ?: chunks)
+                        }
+                        // a server that died or restarted under the job, whatever stopped the job: wait longer before the next one
+                        if (outcome != BusyOutcome.Stopped && serverChanged(server)) strictSettle = true
+                    } finally {
+                        slot.release()
+                    }
                 }
             }
             Ran(outcome, clock() - t0)
@@ -177,6 +195,7 @@ class BusyLoop(
 
     companion object {
         private const val PREEMPTED = "real work arrived"
+        private const val TIMED_OUT = "filler job ran past its time limit"
         const val OFF_POLL_MS = 1_000L
         const val NO_MODEL_POLL_MS = 2_000L
         const val SETTLE_POLL_MS = 2_000L

@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -140,14 +141,13 @@ class JobExecutor(
             created = true
             Entry(waiter).also {
                 it.interest = 1
-                it.job = scope.launch(start = CoroutineStart.LAZY) { runJob(jobId, it, block) }
+                // ATOMIC: the job coroutine runs its first lines even if the caller is cancelled before the dispatcher gets to it, so
+                // runJob always gets to give the slot (or the place in line) back; a LAZY one cancelled before its first line never would
+                it.job = scope.launch(start = CoroutineStart.ATOMIC) { runJob(jobId, it, block) }
                 entries[jobId] = it
             }
         }
-        if (created) {
-            lendingFiller?.preempt()   // real work is here: filler stops, whatever the free slots
-            entry.job!!.start()
-        }
+        if (created) lendingFiller?.preempt()   // real work is here: filler stops, whatever the free slots
         try {
             @Suppress("UNCHECKED_CAST")
             return entry.result.await() as T
@@ -303,6 +303,7 @@ class JobExecutor(
     private suspend fun <T : Any> runJob(jobId: String, entry: Entry, block: suspend () -> T) {
         var owned = entry.waiter == null   // true while this job holds a slot that it must hand back
         try {
+            currentCoroutineContext().ensureActive()   // cancelled before the first line: leave through the clean-up below, run nothing
             if (entry.waiter != null) {
                 owned = awaitSlot(entry.waiter)
                 if (!owned) throw BusyException(running, capacity, queued)

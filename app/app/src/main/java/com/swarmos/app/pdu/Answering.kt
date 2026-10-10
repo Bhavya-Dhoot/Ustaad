@@ -30,7 +30,13 @@ object ModelWait {
 
     /** Waits at most [waitMs] for a slot. Giving up leaves no place in line and no slot held. */
     suspend fun acquire(exec: JobExecutor, waitMs: Long = MAX_WAIT_MS): Result {
-        val taken = withTimeoutOrNull(waitMs) { exec.acquire() } ?: return Result.TimedOut
-        return Result.Slot(taken)
+        // the timeout can fire in the instant acquire() has returned true; withTimeoutOrNull then drops the block's value, so the block keeps it
+        var taken: Boolean? = null
+        val got = withTimeoutOrNull(waitMs) { exec.acquire().also { taken = it } }
+        if (got == null) {
+            if (taken == true) exec.release()
+            return Result.TimedOut
+        }
+        return Result.Slot(got)
     }
 }

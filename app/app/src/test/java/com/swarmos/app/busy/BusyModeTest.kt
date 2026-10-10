@@ -114,6 +114,12 @@ class BusyModeTest {
         BusyMode.restore(false, {}, { _, _ -> })
     }
 
+    /** Audit entries are written by another thread: waits until [count] have arrived, then returns their kinds in order. */
+    private suspend fun auditKinds(count: Int): List<String> {
+        withTimeout(2_000) { while (audit.size < count) delay(5) }
+        return audit.map { it.first }
+    }
+
     @Test fun offByDefaultAndRestoringAnOnSwitchWritesNoAuditEntry() {
         assertFalse(BusyMode.enabled.value)
         BusyMode.restore(true, { saved += it }, { k, p -> audit += k to p })
@@ -128,7 +134,7 @@ class BusyModeTest {
         withTimeout(2_000) { while (saved.size < 2) delay(5) }
         // each write stores the switch as it is when the write runs, so quick changes cannot leave an old value last
         assertEquals("the last value stored is the final state", false, saved.last())
-        assertEquals(listOf("busy.on", "busy.off"), audit.map { it.first })
+        assertEquals(listOf("busy.on", "busy.off"), auditKinds(2))
         assertTrue("busy.off carries the counts", audit[1].second.containsKey("jobsDone"))
     }
 
@@ -150,10 +156,10 @@ class BusyModeTest {
         assertTrue(BusyMode.report().hammer)
         withTimeout(2_000) { while (saved.isEmpty()) delay(5) }
         assertEquals(true, saved.last())
-        assertEquals(listOf("busy.on", "busy.hammer_on"), audit.map { it.first })
+        assertEquals(listOf("busy.on", "busy.hammer_on"), auditKinds(2))
     }
 
-    @Test fun turningHammerOffLeavesKeepBusyOnAndNotesTheMoment() {
+    @Test fun turningHammerOffLeavesKeepBusyOnAndNotesTheMoment() = runBlocking {
         now = 5_000
         BusyMode.setHammer(true)
         assertNull("no cool-down while Hammer is on", BusyMode.hammerOffAtMs)
@@ -167,7 +173,9 @@ class BusyModeTest {
         now = 9_000
         BusyMode.setHammer(false)   // already off: the cool-down does not start again
         assertEquals(7_000L, BusyMode.hammerOffAtMs)
-        assertEquals(listOf("busy.on", "busy.hammer_on", "busy.hammer_off"), audit.map { it.first })
+        assertEquals(listOf("busy.on", "busy.hammer_on", "busy.hammer_off"), auditKinds(3))
+        delay(100)
+        assertEquals("no fourth entry for the repeated off", 3, audit.size)
     }
 
     @Test fun switchingHammerOnAgainEndsTheCooldownAtOnce() {
@@ -184,7 +192,7 @@ class BusyModeTest {
         assertEquals("a new cool-down from the new switch-off", 4_000L, BusyMode.hammerOffAtMs)
     }
 
-    @Test fun turningKeepBusyOffTurnsHammerOffWithoutACooldown() {
+    @Test fun turningKeepBusyOffTurnsHammerOffWithoutACooldown() = runBlocking {
         BusyMode.setHammer(true)
         BusyMode.setEnabled(false)
         assertFalse(BusyMode.enabled.value)
@@ -193,14 +201,83 @@ class BusyModeTest {
         BusyMode.setEnabled(true)
         assertFalse("Hammer does not come back with Keep busy", BusyMode.hammer.value)
         assertNull(BusyMode.hammerOffAtMs)
-        assertEquals(listOf("busy.on", "busy.hammer_on", "busy.off", "busy.hammer_off", "busy.on"), audit.map { it.first })
+        assertEquals(listOf("busy.on", "busy.hammer_on", "busy.off", "busy.hammer_off", "busy.on"), auditKinds(5))
     }
 
-    @Test fun hammerOffWhileKeepBusyIsOffChangesNothing() {
+    @Test fun hammerOffIsNeverSeenWithoutItsSwitchOffMoment() {
+        // an unconfined collector runs inside the switch itself, at the instant the flag changes
+        val seen = CopyOnWriteArrayList<Pair<Boolean, Long?>>()
+        val watcher = scope.launch(Dispatchers.Unconfined) { BusyMode.hammer.collect { seen += it to BusyMode.hammerOffAtMs } }
+        now = 1_000
+        BusyMode.setHammer(true)
+        now = 2_000
+        BusyMode.setHammer(false)
+        watcher.cancel()
+        assertEquals(listOf(false to null, true to null, false to 2_000L), seen.toList())
+    }
+
+    @Test fun switchingKeepBusyOffEndsARestThatWasStillRunning() {
+        now = 1_000
+        BusyMode.setHammer(true)
+        now = 2_000
+        BusyMode.setHammer(false)
+        assertEquals("Hammer is off and the rest runs", 2_000L, BusyMode.hammerOffAtMs)
+        BusyMode.setEnabled(false)
+        assertNull("the rest does not wait for Keep busy to come back", BusyMode.hammerOffAtMs)
+        BusyMode.setEnabled(true)
+        assertNull("and does not start again", BusyMode.hammerOffAtMs)
+        assertFalse(BusyMode.hammer.value)
+    }
+
+    @Test fun stopUstaadLeavesHammerOffWithoutACooldownAndKeepBusyAsItWas() = runBlocking {
+        BusyMode.setHammer(true)
+        BusyMode.hammerOffForStop()   // what the service's teardown calls
+        assertFalse("a start in this same process finds Hammer off", BusyMode.hammer.value)
+        assertTrue("Keep busy is the owner's stored switch: untouched", BusyMode.enabled.value)
+        assertNull("the stop is not the owner's switch-off: no rest", BusyMode.hammerOffAtMs)
+        assertFalse(BusyMode.report().hammer)
+        now = 5_000
+        BusyMode.setHammer(true)
+        BusyMode.setHammer(false)
+        assertEquals(5_000L, BusyMode.hammerOffAtMs)
+        BusyMode.hammerOffForStop()   // Hammer was off already, a rest was running: it ends with the stop
+        assertNull(BusyMode.hammerOffAtMs)
+        assertEquals(listOf("busy.on", "busy.hammer_on", "busy.hammer_off", "busy.hammer_on", "busy.hammer_off"), auditKinds(5))
+        BusyMode.hammerOffForStop()   // a second stop changes nothing
+        delay(100)
+        assertEquals(5, audit.size)
+    }
+
+    @Test fun auditEntriesAreWrittenOffTheCallersThreadAndInTheOrderOfTheCalls() = runBlocking {
+        val callers = CopyOnWriteArrayList<Thread>()
+        val writers = CopyOnWriteArrayList<Thread>()
+        val first = AtomicInteger()
+        BusyMode.restore(false, { saved += it }) { k, p ->
+            if (first.getAndIncrement() == 0) Thread.sleep(500)   // a slow file: the callers must not wait for it
+            writers += Thread.currentThread()
+            audit += k to p
+        }
+        val expected = ArrayList<String>()
+        val t0 = System.nanoTime()
+        repeat(100) {
+            callers += Thread.currentThread()
+            BusyMode.setHammer(true)    // busy.on, busy.hammer_on
+            BusyMode.setHammer(false)   // busy.hammer_off
+            BusyMode.setEnabled(false)  // busy.off
+            expected += listOf("busy.on", "busy.hammer_on", "busy.hammer_off", "busy.off")
+        }
+        val callMs = (System.nanoTime() - t0) / 1_000_000
+        assertTrue("the calls did not wait for the first slow write ($callMs ms)", callMs < 400)
+        assertEquals("every entry arrives, one after another in call order", expected, auditKinds(expected.size))
+        assertTrue("written by the save scope, not the caller", writers.none { it in callers })
+    }
+
+    @Test fun hammerOffWhileKeepBusyIsOffChangesNothing() = runBlocking {
         BusyMode.setHammer(false)
         assertFalse(BusyMode.hammer.value)
         assertFalse(BusyMode.enabled.value)
         assertNull(BusyMode.hammerOffAtMs)
+        delay(100)
         assertTrue(audit.isEmpty())
     }
 

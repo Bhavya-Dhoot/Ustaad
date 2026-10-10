@@ -27,6 +27,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.io.IOException
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -46,6 +47,8 @@ class BusyLoopTest {
     private val requests = ConcurrentLinkedQueue<ChatRequest>()
     private val protectCalls = AtomicInteger()
     private val restoreCalls = AtomicInteger()
+    @Volatile private var protectBody: () -> Unit = {}
+    @Volatile private var restoreBody: () -> Unit = {}
 
     @Volatile private var health: NodeHealth? = NodeHealth("n", 0, 80, false, 4096, null, null, null)
     @Volatile private var server: ChatServer? = ChatServer(1, 10 * 60_000L)
@@ -86,7 +89,8 @@ class BusyLoopTest {
         externalBusy = { external },
         protect = {
             protectCalls.incrementAndGet()
-            val restore: () -> Unit = { restoreCalls.incrementAndGet() }
+            protectBody()
+            val restore: () -> Unit = { restoreCalls.incrementAndGet(); restoreBody() }
             restore
         },
         hammer = { hammer },
@@ -386,6 +390,80 @@ class BusyLoopTest {
         repeat(3) { l.step() }
         assertEquals(3, protectCalls.get())
         assertEquals(3, restoreCalls.get())
+    }
+
+    @Test fun aRestoreThatThrowsStillGivesTheSlotBackAndTheJobIsCounted() = runBlocking {
+        execNow = 60_000
+        restoreBody = { throw IllegalStateException("restore broke") }
+        try {
+            loop().step()
+            fail("the error of the restore function is not hidden")
+        } catch (e: IllegalStateException) {
+            assertEquals("restore broke", e.message)
+        }
+        assertEquals("the slot is free", 0, exec.running)
+        assertEquals("the job was counted as ended", 1, report().jobsDone)
+        restoreBody = {}
+        assertEquals("the next real job runs", "next", exec.submit("real") { "next" })
+        assertNotNull(exec.tryAcquireFiller { })
+    }
+
+    @Test fun aProtectThatThrowsStillGivesTheSlotBackAndCountsNoJob() = runBlocking {
+        execNow = 60_000
+        protectBody = { throw IllegalStateException("protect broke") }
+        try {
+            loop().step()
+            fail("the error of the protect function is not hidden")
+        } catch (e: IllegalStateException) {
+            assertEquals("protect broke", e.message)
+        }
+        assertTrue("the model was never called", requests.isEmpty())
+        assertEquals("a job that never started is not counted", 0, report().jobsDone + report().jobsCancelled + report().jobsFailed)
+        assertEquals(0, exec.running)
+        assertNotNull("the slot is free", exec.tryAcquireFiller { })
+    }
+
+    @Test fun aStreamThatNeverAnswersEndsAfterSixtySecondsAsFailedAndBacksOff() = runBlocking {
+        body = { awaitCancellation() }
+        execNow = 60_000
+        val pass = async { loop().step() }
+        until { requests.size == 1 }
+        loopNow += BusyPolicy.FILLER_TIMEOUT_MS - 1
+        delay(700)   // the loop looks at its clock every 250 ms of real time
+        assertFalse("not yet: 59.999 s of loop time", pass.isCompleted)
+        loopNow += 1
+        assertEquals("a stuck server is a failure: the usual back-off", BusyLoop.FAILURE_BACKOFF_MS, withTimeout(3_000) { pass.await() })
+        val r = report()
+        assertEquals(1, r.jobsFailed)
+        assertEquals("real work did not ask for the slot", 0, r.jobsCancelled)
+        assertEquals(0, r.jobsDone)
+        assertEquals("the slot is free", 0, exec.running)
+        assertNotNull(exec.tryAcquireFiller { })
+    }
+
+    @Test fun theModelCallIsReallyEndedBeforeTheSlotGoesBackAfterTheTimeLimit() = runBlocking {
+        val ended = AtomicInteger()
+        body = { try { awaitCancellation() } finally { ended.incrementAndGet() } }
+        execNow = 60_000
+        val pass = async { loop().step() }
+        until { requests.size == 1 }
+        loopNow += BusyPolicy.FILLER_TIMEOUT_MS
+        withTimeout(3_000) { pass.await() }
+        assertEquals("the stream was cancelled and joined", 1, ended.get())
+        assertEquals(1, report().jobsFailed)
+    }
+
+    @Test fun realWorkAtTenSecondsIsStillCountedCancelledNotFailed() = runBlocking {
+        body = { awaitCancellation() }
+        execNow = 60_000
+        val pass = async { loop().step() }
+        until { requests.size == 1 }
+        loopNow += 10_000
+        assertEquals("real job", "answer", exec.submit("real") { "answer" })
+        assertEquals("no back-off after real work", 0L, withTimeout(3_000) { pass.await() })
+        val r = report()
+        assertEquals(1, r.jobsCancelled)
+        assertEquals(0, r.jobsFailed)
     }
 
     @Test fun noPromptsMeansNothingToRun() = runBlocking {
