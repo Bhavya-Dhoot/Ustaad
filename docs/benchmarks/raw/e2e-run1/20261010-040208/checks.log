@@ -1,0 +1,10 @@
+e2e-check 2026-10-10 04:02:08 results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e-results/20261010-040208 A=192.168.242.89:8787 C=192.168.242.76:8787 steps=a,b
+FAIL  a1-hello-A  GET /v1/hello gave HTTP 200 ()
+FAIL  a2-health-A  no secret signs successfully (dev secret rejected and no pairing payload)
+PASS  a3-unsigned-A  unsigned GET /v1/health -> 401 ()
+FAIL  a1-hello-C  GET /v1/hello gave HTTP 000 (curl: (7) Failed to connect to 192.168.242.76 port 8787 after 2492 ms: Could not connect to server)
+FAIL  a2-health-C  no secret signs successfully (dev secret rejected and no pairing payload)
+PASS  a3-unsigned-C  unsigned GET /v1/health -> 401 ()
+FAIL  b-peers-A  no node id of C from step a
+FAIL  b-peers-C  no node id of A from step a
+SUMMARY  pass=2 fail=6 warn=0  results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e-results/20261010-040208

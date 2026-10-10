@@ -1,0 +1,97 @@
+08:25:17 d-index Phone B start-thermal=0
+08:25:18 d-index Phone C start-thermal=0
+08:25:18 d-index Phone A start-thermal=1
+08:25:44 d-pre-share-restaurant Phone B start-thermal=0
+08:25:44 d-pre-share-restaurant Phone C start-thermal=0
+08:25:44 d-pre-share-restaurant Phone A start-thermal=1
+pdu-ask-pre-share-restaurant	thermal start Phone B=0 Phone C=0 Phone A=1
+08:26:11 d-warranty-1 Phone B start-thermal=0
+08:26:11 d-warranty-1 Phone C start-thermal=0
+08:26:11 d-warranty-1 Phone A start-thermal=1
+pdu-ask-warranty-1	thermal start Phone B=0 Phone C=0 Phone A=1
+08:26:27 d-electricity Phone B start-thermal=0
+08:26:27 d-electricity Phone C start-thermal=0
+08:26:27 d-electricity Phone A start-thermal=1
+pdu-ask-electricity	thermal start Phone B=0 Phone C=0 Phone A=1
+08:26:35 d-unrelated Phone B start-thermal=0
+08:26:35 d-unrelated Phone C start-thermal=0
+08:26:35 d-unrelated Phone A start-thermal=0
+pdu-ask-unrelated	thermal start Phone B=0 Phone C=0 Phone A=0
+08:26:39 d-hindi-warranty Phone B start-thermal=0
+08:26:39 d-hindi-warranty Phone C start-thermal=0
+08:26:39 d-hindi-warranty Phone A start-thermal=0
+pdu-ask-hindi-warranty	thermal start Phone B=0 Phone C=0 Phone A=0
+08:26:56 d-hindi-note Phone B start-thermal=0
+08:26:56 d-hindi-note Phone C start-thermal=0
+08:26:56 d-hindi-note Phone A start-thermal=0
+pdu-ask-hindi-note	thermal start Phone B=0 Phone C=0 Phone A=0
+08:27:03 d-restaurant Phone B start-thermal=0
+08:27:03 d-restaurant Phone C start-thermal=0
+08:27:03 d-restaurant Phone A start-thermal=0
+pdu-ask-restaurant	thermal start Phone B=0 Phone C=0 Phone A=0
+08:27:13 d-yoga Phone B start-thermal=1
+08:27:13 d-yoga Phone C start-thermal=0
+08:27:13 d-yoga Phone A start-thermal=0
+pdu-ask-yoga	thermal start Phone B=1 Phone C=0 Phone A=0
+08:27:26 d-cab Phone B start-thermal=1
+08:27:26 d-cab Phone C start-thermal=0
+08:27:26 d-cab Phone A start-thermal=0
+pdu-ask-cab	thermal start Phone B=1 Phone C=0 Phone A=0
+08:27:34 d-warranty-2-repeat Phone B start-thermal=1
+08:27:34 d-warranty-2-repeat Phone C start-thermal=0
+08:27:34 d-warranty-2-repeat Phone A start-thermal=0
+pdu-ask-warranty-2-repeat	thermal start Phone B=1 Phone C=0 Phone A=0
+08:27:43 d-salary-from-peer Phone B start-thermal=1
+08:27:43 d-salary-from-peer Phone C start-thermal=0
+08:27:43 d-salary-from-peer Phone A start-thermal=0
+pdu-ask-salary-from-peer	thermal start Phone B=1 Phone C=0 Phone A=0
+08:27:57 d-incomplete Phone B start-thermal=1
+08:27:57 d-incomplete Phone C start-thermal=0
+08:27:57 d-incomplete Phone A start-thermal=0
+pdu-ask-incomplete-electricity	thermal start Phone B=1 Phone C=0 Phone A=0
+08:28:46 d-unshared-restaurant Phone B start-thermal=1
+08:28:46 d-unshared-restaurant Phone C start-thermal=0
+08:28:46 d-unshared-restaurant Phone A start-thermal=0
+pdu-ask-unshared-restaurant	thermal start Phone B=1 Phone C=0 Phone A=0
+08:28:55 k-real-answer Phone B start-thermal=1
+08:28:55 k-real-answer Phone C start-thermal=0
+08:31:22 k5-control Phone C start-thermal=0
+08:32:35 k6-ask Phone C start-thermal=0
+08:33:41 t-single-Phone-B Phone B start-thermal=0
+t-single-Phone-B	thermal start Phone B=0	peak Phone B=1
+08:35:15 t-single-Phone-C Phone C start-thermal=0
+t-single-Phone-C	thermal start Phone C=0	peak Phone C=0
+08:36:32 t-single-Phone-A Phone A start-thermal=0
+t-single-Phone-A	thermal start Phone A=0	peak Phone A=1
+08:38:09 t-swarm2-1 Phone B start-thermal=0
+08:38:09 t-swarm2-1 Phone C start-thermal=0
+t-swarm2-1	thermal start Phone B=0 Phone C=0	peak Phone B=0 Phone C=0
+08:38:42 t-swarm2-2 Phone B start-thermal=0
+08:38:42 t-swarm2-2 Phone C start-thermal=0
+t-swarm2-2	thermal start Phone B=0 Phone C=0	peak Phone B=0 Phone C=0
+08:39:15 t-swarm3-1 Phone B start-thermal=1
+08:39:15 t-swarm3-1 Phone C start-thermal=0
+08:39:15 t-swarm3-1 Phone A start-thermal=1
+t-swarm3-1	thermal start Phone B=1 Phone C=0 Phone A=1	peak Phone B=1 Phone C=0 Phone A=1
+08:39:49 t-swarm3-2 Phone B start-thermal=1
+08:39:49 t-swarm3-2 Phone C start-thermal=0
+08:39:49 t-swarm3-2 Phone A start-thermal=1
+t-swarm3-2	thermal start Phone B=1 Phone C=0 Phone A=1	peak Phone B=1 Phone C=0 Phone A=2
+08:41:53 t-swarm2-1 Phone B start-thermal=1
+08:41:53 t-swarm2-1 Phone C start-thermal=0
+t-swarm2-1	thermal start Phone B=1 Phone C=0	peak Phone B=1 Phone C=0
+08:42:49 t-swarm2-2 Phone B start-thermal=1
+08:42:49 t-swarm2-2 Phone C start-thermal=0
+t-swarm2-2	thermal start Phone B=1 Phone C=0	peak Phone B=2 Phone C=0
+08:45:05 c-pass1-1 Phone B start-thermal=1
+08:45:05 c-pass1-1 Phone C start-thermal=0
+08:45:05 c-pass1-1 Phone A start-thermal=1
+eval-pass1-1	thermal start Phone B=1 Phone C=0 Phone A=1	peak 2 0 1	550s
+08:57:20 c-pass1-2 Phone B start-thermal=1
+08:57:20 c-pass1-2 Phone C start-thermal=0
+08:57:20 c-pass1-2 Phone A start-thermal=0
+eval-pass1-2	thermal start Phone B=1 Phone C=0 Phone A=0	peak 3 0 1	513s
+09:09:14 c-pass2-1 Phone B start-thermal=1
+09:09:14 c-pass2-1 Phone C start-thermal=0
+09:09:14 c-pass2-1 Phone A start-thermal=0
+eval-pass2-1	thermal start Phone B=1 Phone C=0 Phone A=0	peak 2 2 2	474s

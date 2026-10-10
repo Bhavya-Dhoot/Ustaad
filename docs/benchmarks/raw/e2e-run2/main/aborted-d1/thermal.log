@@ -1,0 +1,7 @@
+08:24:13 d-index Phone B start-thermal=0
+08:24:13 d-index Phone C start-thermal=0
+08:24:13 d-index Phone A start-thermal=1
+08:24:33 d-pre-share-electricity Phone B start-thermal=0
+08:24:33 d-pre-share-electricity Phone C start-thermal=0
+08:24:33 d-pre-share-electricity Phone A start-thermal=1
+pdu-ask-pre-share-electricity	thermal start Phone B=0 Phone C=0 Phone A=1

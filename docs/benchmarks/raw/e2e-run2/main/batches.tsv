@@ -1,0 +1,9 @@
+single-Phone-B	local	Phone B	Phone B=0	Phone B=1	GPU
+single-Phone-C	local	Phone C	Phone C=0	Phone C=0	GPU
+single-Phone-A	local	Phone A	Phone A=0	Phone A=1	GPU
+swarm3-a	swarm	Phone B	Phone B=0 Phone C=0	Phone B=0 Phone C=0	GPU
+swarm3-b	swarm	Phone B	Phone B=0 Phone C=0	Phone B=0 Phone C=0	GPU
+swarm3-c	swarm	Phone B	Phone B=1 Phone C=0 Phone A=1	Phone B=1 Phone C=0 Phone A=1	GPU
+swarm3-d	swarm	Phone B	Phone B=1 Phone C=0 Phone A=1	Phone B=1 Phone C=0 Phone A=2	GPU
+swarm2-1	swarm	Phone B	Phone B=1 Phone C=0	Phone B=1 Phone C=0	GPU
+swarm2-2	swarm	Phone B	Phone B=1 Phone C=0	Phone B=2 Phone C=0	GPU

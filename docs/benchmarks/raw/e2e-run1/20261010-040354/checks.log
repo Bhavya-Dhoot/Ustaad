@@ -1,0 +1,10 @@
+e2e-check 2026-10-10 04:03:54 results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e-results/20261010-040354 A=192.168.242.89:8787 C=192.168.242.76:8787 steps=a,b
+PASS  a1-hello-A  HTTP 200 in 140 ms, Phone A node c6f72247, chat 'FAKE', embed 'FAKE'
+PASS  a2-health-A  signed GET /v1/health HTTP 200 in 231 ms (secret: secret published by the debug build (/v1/link/pairing-payload)); thermal 0, battery 100 %, ram avail 9176 MB, link 11ac 390 Mbps
+PASS  a3-unsigned-A  unsigned GET /v1/health -> 401 (missing X-Swarm-* headers)
+PASS  a1-hello-C  HTTP 200 in 180 ms, Phone C node 82d2676d, chat 'FAKE', embed 'embeddinggemma-300M-Q8_0'
+PASS  a2-health-C  signed GET /v1/health HTTP 200 in 558 ms (secret: secret published by the debug build (/v1/link/pairing-payload)); thermal 3, battery 100 %, ram avail 1007 MB, link 11ac 200 Mbps
+PASS  a3-unsigned-C  unsigned GET /v1/health -> 401 (missing X-Swarm-* headers)
+PASS  b-peers-A  C listed online after 574 ms (link=LAN rttMs=410.219999 thermal=3)
+PASS  b-peers-C  A listed online after 20028 ms (link=LAN rttMs=154.908906 thermal=0)
+SUMMARY  pass=8 fail=0 warn=0  results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e-results/20261010-040354

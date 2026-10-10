@@ -1,0 +1,15 @@
+e2e2-check 2026-10-10 08:33:37 results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e2-results/main phones=192.168.242.23:8787 192.168.242.76:8787 192.168.242.89:8787  steps=t
+PASS  t-single-Phone-B  local on 1 phone(s), coordinator Phone B: wallMs=88796 tokens=896 aggTokPerSec=10.09 phones=1; thermal start Phone B=0, peak Phone B=1; backend GPU; answer MAC ok
+PASS  t-single-Phone-C  local on 1 phone(s), coordinator Phone C: wallMs=74452 tokens=896 aggTokPerSec=12.03 phones=1; thermal start Phone C=0, peak Phone C=0; backend GPU; answer MAC ok
+PASS  t-single-Phone-A  local on 1 phone(s), coordinator Phone A: wallMs=87076 tokens=896 aggTokPerSec=10.29 phones=1; thermal start Phone A=0, peak Phone A=1; backend GPU; answer MAC ok
+INFO  t-fastest  fastest single phone: Phone C at 12.034521418820463 tokens/s
+FAIL  t-swarm2-1  swarm: 3 phone(s) took jobs, expected 2; thermal start Phone B=0 Phone C=0
+FAIL  t-swarm2-2  swarm: 3 phone(s) took jobs, expected 2; thermal start Phone B=0 Phone C=0
+PASS  t-swarm3-1  swarm on 3 phone(s), coordinator Phone B: wallMs=28211 tokens=896 aggTokPerSec=31.76 phones=3; thermal start Phone B=1 Phone C=0 Phone A=1, peak Phone B=1 Phone C=0 Phone A=1; backend GPU; answer MAC ok
+PASS  t-swarm3-2  swarm on 3 phone(s), coordinator Phone B: wallMs=28904 tokens=896 aggTokPerSec=31.00 phones=3; thermal start Phone B=1 Phone C=0 Phone A=1, peak Phone B=1 Phone C=0 Phone A=2; backend GPU; answer MAC ok
+INFO  t-ratio  | swarm3-2 | Phone A | 10 | 295 | 33 % | 22.0 | 10.21 | 13.39 |
+INFO  t-ratio  
+INFO  t-ratio  Single phones: single-Phone-B 10.09, single-Phone-C 12.03, single-Phone-A 10.29. Fastest single phone: single-Phone-C at 12.03 tokens/s.
+INFO  t-ratio  Swarm of 3 phones: 30.94, 31.94, 31.76, 31.00 tokens/s (mean 31.41); against the fastest single phone: 2.57x, 2.65x, 2.64x, 2.58x (mean 2.61x).
+RESPONSE-MAC  ok=78 wrong=0 missing=0 (calls made from the main shell only; problems in rsp-problems.log)
+SUMMARY  pass=5 fail=2 warn=0  results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e2-results/main

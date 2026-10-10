@@ -1,0 +1,16 @@
+date: 2026-10-10 06:13:06 IST
+repo head: 25b7ac5 (master)
+steps: e; slice 5; chat file Qwen3.5-4B-Q4_K_M.gguf
+phone A: 192.168.242.89:8787; secret source: secret published by the debug build (/v1/link/pairing-payload)
+      versionName=0.1.0
+      lastUpdateTime=2026-10-10 05:24:04
+  
+  2740937888 2026-10-10 00:17 Qwen3.5-4B-Q4_K_M.gguf
+  333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf
+phone C: 192.168.242.76:8787; secret source: secret published by the debug build (/v1/link/pairing-payload)
+      versionName=0.1.0
+      lastUpdateTime=2026-10-10 05:24:24
+  
+  2740937888 2026-10-10 01:15 Qwen3.5-4B-Q4_K_M.gguf
+  333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf
+  5154941280 2026-10-10 01:10 gemma-4-E4B_q4_0-it.gguf

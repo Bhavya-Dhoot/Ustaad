@@ -1,0 +1,9 @@
+e2e2-check 2026-10-10 08:40:53 results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e2-results/main phones=192.168.242.23:8787 192.168.242.76:8787 192.168.242.89:8787  steps=t2
+INFO  t2  Phone A app force-stopped at 08:40:57 so that the swarm is Phone B + Phone C
+INFO  models  Phone B: chat STOPPED (None); embed STOPPED (None); loading
+INFO  models  Phone C: chat STOPPED (None); embed STOPPED (None); loading
+PASS  t-swarm2-1  swarm on 2 phone(s), coordinator Phone B: wallMs=47593 tokens=896 aggTokPerSec=18.83 phones=2; thermal start Phone B=1 Phone C=0, peak Phone B=1 Phone C=0; backend GPU; answer MAC ok
+FAIL  t-swarm2-2  swarm: 3 phone(s) took jobs, expected 2; thermal start Phone B=1 Phone C=0
+INFO  t2  Phone A app relaunched
+RESPONSE-MAC  ok=28 wrong=0 missing=0 (calls made from the main shell only; problems in rsp-problems.log)
+SUMMARY  pass=1 fail=1 warn=0  results=C:/Users/DELL/AppData/Local/Temp/claude/H--UStaaf/540b7e43-6936-4950-98e9-c6e7c99a1603/scratchpad/e2e2-results/main
