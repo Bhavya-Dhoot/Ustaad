@@ -159,6 +159,8 @@ class NodeServer {
         if (!Signer.verify(AppGraph.pairingSecret, req.httpMethod.value, req.uri, ts, body, sig)) {
             return reject("bad signature")
         }
+        // a verified request is proof of life: it counts as a heartbeat on the path it came over
+        runCatching { PeerLinks.noteInbound(node, req.origin.remoteAddress, req.path()) }
 
         // a request that carries an id runs at most once: a retry (same id, another path) gets the stored response
         val reqId = req.header(HEADER_REQ)

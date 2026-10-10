@@ -95,6 +95,20 @@ class HeartbeatTracker(private val missesToAway: Int = 3, start: LinkState = Lin
         return false
     }
 
+    /**
+     * A verified signed request from the peer arrived: it is there even if our own heartbeat answer is late, so the run of
+     * misses starts again and an away path is online again. Not a heartbeat answer (no round trip, [beats] unchanged).
+     */
+    @Synchronized
+    fun onInbound(nowMs: Long): Boolean {
+        val changed = state != LinkState.ONLINE
+        if (lastSeenMs > 0) maxGapMs = maxOf(maxGapMs, nowMs - lastSeenMs)
+        state = LinkState.ONLINE
+        misses = 0
+        lastSeenMs = nowMs
+        return changed
+    }
+
     /** The peer told us it is leaving (POST /link/bye). */
     @Synchronized
     fun onBye(): Boolean {

@@ -56,7 +56,10 @@ data class Rejected(val ip: String, val port: Int, val nodeId: String?, val name
 object PeerLinks {
     private const val TAG = "SwarmLink"
     const val HEARTBEAT_MS = 1000L
-    const val HEARTBEAT_TIMEOUT_MS = 1000L
+    /** Wi-Fi heartbeat request timeout; idle-LAN stalls of 1035 to 2080 ms were measured, so 1 s marked healthy phones away. */
+    const val HEARTBEAT_TIMEOUT_MS = 2500L
+    /** Bluetooth heartbeat request timeout (unchanged: the radio path answers in tens of ms or not at all). */
+    const val HEARTBEAT_BT_TIMEOUT_MS = 3000L
     const val HELLO_TIMEOUT_MS = 2500L
 
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -303,7 +306,7 @@ object PeerLinks {
         val t0 = System.nanoTime()
         var failReason: String? = null
         val h: NodeHealth? = try {
-            if (st.link == LinkType.BT) BleLink.health(st.nodeId, HEARTBEAT_TIMEOUT_MS * 3)
+            if (st.link == LinkType.BT) BleLink.health(st.nodeId, HEARTBEAT_BT_TIMEOUT_MS)
             else AppGraph.nodeClient.getPinned<NodeHealth>(st.hostPort, "/health", HEARTBEAT_TIMEOUT_MS)
         } catch (e: NodeHttpException) {
             if (e.status == 401) failReason = reasonOf401(e)
@@ -370,6 +373,39 @@ object PeerLinks {
         if (host.startsWith("bt:")) return host.removePrefix("bt:").substringBefore(':')
         val ip = host.substringBefore(':')
         return sessions.values.map { it.status.value }.firstOrNull { it.ip == ip }?.nodeId
+    }
+
+    /**
+     * A verified signed request from [nodeId] reached our node server from [remote]. It proves the peer is there, so it
+     * counts as a heartbeat for the path it came over: three slow answers in a row no longer mark a healthy phone away.
+     */
+    fun noteInbound(nodeId: String, remote: String, path: String = "") {
+        if (nodeId == selfId || path == "/v1/link/bye") return // the bye request must not undo itself
+        val mine = sessions.values.map { it.status.value }.filter { it.nodeId == nodeId }
+        if (mine.isEmpty()) return
+        when (val a = Inbound.decide(mine, remote)) {
+            is InboundAction.Beat -> sessions[a.key]?.let { applyInbound(it, nodeId) }
+            InboundAction.Ignore -> {}
+        }
+    }
+
+    private fun applyInbound(s: PeerSession, nodeId: String) {
+        val now = System.currentTimeMillis()
+        val before = s.status.value
+        val changed = s.tracker.onInbound(now)
+        if (!changed && before.misses == 0 && now - before.lastSeenMs < 1_000) return // cheap on a busy link
+        s.update {
+            it.copy(
+                state = s.tracker.state, misses = 0, lastSeenMs = now, maxGapMs = s.tracker.maxGapMs,
+                awayReason = if (changed) null else it.awayReason,
+            )
+        }
+        if (changed) {
+            publish()
+            syncRegistry(nodeId)
+            Log.i(TAG, "${before.name} ${before.link} is online again (a request from it arrived)")
+            AppGraph.audit.append("peer.online", JsonObject(mapOf("node" to JsonPrimitive(nodeId), "link" to JsonPrimitive(before.link.name), "by" to JsonPrimitive("inbound"))))
+        }
     }
 
     /** Peer said POST /link/bye: mark its sessions away at once instead of waiting for three misses. */
