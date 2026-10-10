@@ -292,7 +292,7 @@ object LinkRuntime {
                 }.onFailure { notes += "Wi-Fi Direct: ${it.message}" }
             }
         }
-        val msg = "Paired with ${p.name}: " + (if (notes.isEmpty()) "secret adopted, host not reachable yet (will keep trying)" else notes.joinToString("; "))
+        val msg = "Paired with ${p.name}: " + (if (notes.isEmpty()) LinkRoute.unreachableHostText(p.name, p.ips, LinkRoute.advertisable(), p.p2p != null) else notes.joinToString("; "))
         _message.value = msg
         AppGraph.audit.append("pairing.adopt")
         return msg
