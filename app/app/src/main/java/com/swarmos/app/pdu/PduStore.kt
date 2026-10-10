@@ -25,6 +25,8 @@ data class StoreCounts(
     val documents: Int = 0,
     val scans: Int = 0,
     val skipped: Int = 0,
+    /** Files waiting to be read again after a re-index that did not finish. */
+    val pending: Int = 0,
     val chunks: Int = 0,
     val lastRunMs: Long = 0,
 )
@@ -84,9 +86,9 @@ class PduStore(path: String) : IndexBacking {
 
     // ---- writes -------------------------------------------------------------------------------------------
 
-    /** True when this exact document version (same uri, same lastModified) is already indexed. */
+    /** True when this exact document version (same uri, same lastModified) is already indexed. A file waiting for a re-read (chunks = -1) is not. */
     fun isIndexed(docId: String, lastModified: Long): Boolean = synchronized(lock) {
-        query("SELECT 1 FROM docs WHERE docId=? AND lastModified=?", { it.bindText(1, docId); it.bindLong(2, lastModified) }) { 1 }
+        query("SELECT 1 FROM docs WHERE docId=? AND lastModified=? AND chunks>=0", { it.bindText(1, docId); it.bindLong(2, lastModified) }) { 1 }
             .isNotEmpty()
     }
 
@@ -134,9 +136,19 @@ class PduStore(path: String) : IndexBacking {
         write("UPDATE chunks SET isPrivate=? WHERE folder=?") { it.bindLong(1, v); it.bindText(2, folder) }
     }
 
-    /** Forget every document so the next run re-reads everything (used when the embedder changes). */
+    /**
+     * Drop every chunk (used when the embedder changes). The documents stay in the list with chunks = -1, "read me again",
+     * so a re-index that is killed half way still knows what is left to do. Files that had no text (chunks = 0) stay as they are.
+     */
     override fun wipe() = synchronized(lock) {
-        exec("DELETE FROM chunks"); exec("DELETE FROM chunks_fts"); exec("DELETE FROM docs")
+        exec("BEGIN")
+        try {
+            exec("DELETE FROM chunks"); exec("DELETE FROM chunks_fts"); exec("UPDATE docs SET chunks=-1 WHERE chunks>0")
+            exec("COMMIT")
+        } catch (t: Throwable) {
+            runCatching { exec("ROLLBACK") }
+            throw t
+        }
         loadMatrix()
     }
 
@@ -149,6 +161,7 @@ class PduStore(path: String) : IndexBacking {
             documents = n("SELECT COUNT(*) FROM docs WHERE kind IN ('pdf','docx','text') AND chunks>0"),
             scans = n("SELECT COUNT(*) FROM docs WHERE kind='scan' AND chunks>0"),
             skipped = n("SELECT COUNT(*) FROM docs WHERE chunks=0"),
+            pending = n("SELECT COUNT(*) FROM docs WHERE chunks<0"),
             chunks = rows,
             lastRunMs = meta("lastRunMs")?.toLongOrNull() ?: 0,
         )
@@ -176,6 +189,10 @@ class PduStore(path: String) : IndexBacking {
     }
 
     override val chunkCount: Int get() = synchronized(lock) { rows }
+
+    override val pendingCount: Int get() = synchronized(lock) {
+        query("SELECT COUNT(*) FROM docs WHERE chunks<0", {}) { it.getLong(0).toInt() }.first()
+    }
 
     /**
      * Hybrid search over every chunk of this phone, private ones included (the caller applies [SharePolicy]).

@@ -6,7 +6,8 @@ import com.swarmos.app.AppGraph
 import com.swarmos.app.core.Ports
 import com.swarmos.app.link.ConnectResult
 import com.swarmos.app.link.PeerLinks
-import com.swarmos.app.llm.FakeLlmClient
+import com.swarmos.app.llm.LlmClient
+import com.swarmos.app.sched.Sched
 import com.swarmos.app.core.SwarmJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -73,7 +74,10 @@ data class QueryUi(
     val devices: List<DeviceResult> = emptyList(),
     val incomplete: Boolean = false,
     val answer: String = "",
+    /** The chat model that wrote the answer; empty when no real chat model is loaded (no model text is ever shown then). */
     val model: String = "",
+    /** Said in the answer pane next to or instead of model text: waiting for the model, no model loaded, gave up, stopped early. */
+    val note: String? = null,
     val timings: Timings = Timings(),
     val auditHash: String? = null,
     /** True when this phone answered by keywords only, because no usable embedder was available. */
@@ -169,11 +173,8 @@ object PduEngine {
     }
 
     /** The embedder this phone has right now. Never ready for the fake client or a server that does not answer. */
-    suspend fun embedderStatus(): EmbedderStatus {
-        val e = AppGraph.embedder
-        val real = e !is FakeLlmClient && IndexGuard.isReal(e.modelName)
-        val ok = real && runCatching { e.ready() }.getOrDefault(false)
-        return EmbedderStatus(e.modelName, ok).also { _embedder.value = it }
+    suspend fun embedderStatus(e: LlmClient = AppGraph.embedder): EmbedderStatus {
+        return EmbedderStatus(e.modelName, IndexGuard.usable(e)).also { _embedder.value = it }
     }
 
     fun setFolderPrivate(folder: String, isPrivate: Boolean) {
@@ -194,23 +195,36 @@ object PduEngine {
         if (!indexLock.tryLock()) return IndexReport(label, error = "an index run is already in progress")
         return try {
             withContext(Dispatchers.IO) {
-                val st = embedderStatus()
+                // the embedder is captured once; every batch checks it is still this real, answering client (see BatchEmbedder)
+                val client = AppGraph.embedder
+                val st = embedderStatus(client)
                 val g = IndexGuard.prepare(store, st.name, st.ready, PduEmbedConfig.documentPrefix, ownerForce)
                 if (g is IndexGuard.Outcome.Refused) return@withContext refuse(label, g.reason)
+                val run = IndexRun(
+                    store, client, { AppGraph.embedder }, PduEmbedConfig.documentPrefix,
+                    replacing = g is IndexGuard.Outcome.ProceedReplacing,
+                )
                 val stats = IndexStats(label)
                 val t0 = now()
                 _progress.value = IndexProgress(true, label, current = "listing files")
                 PduActivity.set(PduActivity.listing())
                 val refs = list()
-                refs.forEachIndexed { i, ref ->
+                var stoppedAt = -1
+                for ((i, ref) in refs.withIndex()) {
                     _progress.value = IndexProgress(true, label, i, refs.size, ref.title)
                     PduActivity.set(PduActivity.indexing(refs.size, i))
-                    PduIndexer.ingest(AppGraph.appContext, store, ref, stats)
+                    try {
+                        PduIndexer.ingest(AppGraph.appContext, store, ref, stats, run)
+                    } catch (e: EmbedderStopped) {
+                        stoppedAt = i
+                        break
+                    }
                     refresh()
                 }
                 stats.totalMs = now() - t0
                 store.setMeta("lastRunMs", System.currentTimeMillis().toString())
                 refresh()
+                if (stoppedAt >= 0) return@withContext abort(label, stats, refs.size, stoppedAt)
                 val report = stats.report()
                 _progress.value = IndexProgress(false, label, refs.size, refs.size, "", report)
                 AppGraph.audit.append(
@@ -232,6 +246,19 @@ object PduEngine {
             indexLock.unlock()
         }
     }
+
+    /** The embedder went away mid-run. [done] files were stored before it; the file in hand and the rest were not touched. */
+    private fun abort(label: String, stats: IndexStats, total: Int, done: Int): IndexReport {
+        val r = stats.report().copy(error = embedderStoppedMessage(done))
+        _progress.value = IndexProgress(false, label, done, total, "", r)
+        AppGraph.audit.append(
+            "pdu.index_aborted",
+            JsonObject(mapOf("label" to JsonPrimitive(label), "done" to JsonPrimitive(done), "total" to JsonPrimitive(total))),
+        )
+        return r
+    }
+
+    fun embedderStoppedMessage(done: Int) = "Embedder stopped, index unchanged past file $done"
 
     /** The run did not start: nothing was read, written or wiped. The reason is shown in the library. */
     private fun refuse(label: String, reason: String): IndexReport {
@@ -302,9 +329,11 @@ object PduEngine {
         if (!indexLock.tryLock()) return IndexReport("scan", error = "an index run is already in progress")
         return try {
             withContext(Dispatchers.IO) {
-                val st = embedderStatus()
+                val client = AppGraph.embedder
+                val st = embedderStatus(client)
                 val g = IndexGuard.prepare(store, st.name, st.ready, PduEmbedConfig.documentPrefix, false)
                 if (g is IndexGuard.Outcome.Refused) return@withContext refuse("scan", g.reason)
+                val run = IndexRun(store, client, { AppGraph.embedder }, PduEmbedConfig.documentPrefix, replacing = false)
                 val stats = IndexStats("scan")
                 val t0 = now()
                 PduActivity.set(PduActivity.indexingScan())
@@ -313,7 +342,11 @@ object PduEngine {
                 val folder = PduIndexer.scanFolder(share)
                 if (share) store.setFolderPrivate(folder, false)
                 val ref = DocRef(imageUri, title, "scan", folder, modifiedMs, nowMs)
-                PduIndexer.ingest(AppGraph.appContext, store, ref, stats, preText = text)
+                try {
+                    PduIndexer.ingest(AppGraph.appContext, store, ref, stats, run, preText = text)
+                } catch (e: EmbedderStopped) {
+                    return@withContext IndexReport("scan", error = "Embedder stopped, the scan was not indexed")
+                }
                 stats.totalMs = now() - t0
                 store.setMeta("lastRunMs", nowMs.toString())
                 refresh()
@@ -388,7 +421,10 @@ object PduEngine {
         val peers = AppGraph.registry.peers.value
         val q = PduQuery(qid, text, k, deadlineMs)
         val qBytes = SwarmJson.encodeToString(q).toByteArray().size
-        val model = AppGraph.llm.modelName
+        // the chat model is captured once; the placeholder client or a server that does not answer never writes an answer
+        val chat = AppGraph.llm
+        val chatReady = IndexGuard.usable(chat)
+        val model = if (chatReady) chat.modelName else ""
 
         val results = LinkedHashMap<String, DeviceResult>()
         val hits = HashMap<String, DeviceHits>()
@@ -488,26 +524,50 @@ object PduEngine {
         update { it.copy(phase = "answering", auditHash = AppGraph.audit.lastEntryHash) }
         val sb = StringBuilder()
         var ttft = -1L
+        var note: String? = null
         if (sources.isEmpty()) {
-            sb.append("Nothing relevant found on any phone.")
+            sb.append(AnswerNotes.NOTHING_FOUND)
             if (incomplete) sb.append(" Some phones did not answer.")
+        } else if (!chatReady) {
+            note = AnswerNotes.NO_CHAT_MODEL // the sources above are the result; no model text, in any build
         } else {
             PduActivity.set(PduActivity.answering(sources.size))
-            try {
-                val merged = sources.map { MergedHit(it.deviceId, it.deviceName, it.local, it.hit, 0.0) }
-                AppGraph.gatedLlm.chatStream(PromptBuilder.build(text, merged)).collect { c ->
-                    if (ttft < 0 && c.delta.isNotEmpty()) ttft = now() - t0
-                    sb.append(c.delta)
-                    val snapshot = sb.toString()
-                    update { it.copy(answer = snapshot) }
+            // take the chat slot here, with a bound on the wait, instead of inside GatedLlmClient where a wait has no end
+            val exec = Sched.node.chatExec
+            var slot = false
+            var gaveUp = false
+            if (exec.tryAcquire()) {
+                slot = true
+            } else {
+                update { it.copy(note = AnswerNotes.WAITING) }
+                when (val w = ModelWait.acquire(exec)) {
+                    ModelWait.Result.TimedOut -> gaveUp = true
+                    is ModelWait.Result.Slot -> slot = w.taken
                 }
-            } catch (t: Throwable) {
-                if (t is CancellationException) throw t
-                sb.append("\n[the model could not answer: ${t.javaClass.simpleName} ${t.message}]")
+                update { it.copy(note = null) }
+            }
+            if (gaveUp) {
+                note = AnswerNotes.GAVE_UP
+            } else {
+                try {
+                    val merged = sources.map { MergedHit(it.deviceId, it.deviceName, it.local, it.hit, 0.0) }
+                    chat.chatStream(PromptBuilder.build(text, merged)).collect { c ->
+                        c.stats?.let(Sched.node::noteStats)
+                        if (ttft < 0 && c.delta.isNotEmpty()) ttft = now() - t0
+                        sb.append(c.delta)
+                        val snapshot = sb.toString()
+                        update { it.copy(answer = snapshot) }
+                    }
+                } catch (t: Throwable) {
+                    if (t is CancellationException) throw t
+                    note = AnswerNotes.stopped("${t.javaClass.simpleName} ${t.message}".take(120))
+                } finally {
+                    if (slot) exec.release()
+                }
             }
         }
         val total = now() - t0
-        update { it.copy(phase = "done", answer = sb.toString(), timings = it.timings.copy(ttftMs = ttft, totalMs = total)) }
+        update { it.copy(phase = "done", answer = sb.toString(), note = note, timings = it.timings.copy(ttftMs = ttft, totalMs = total)) }
         return _query.value!!
     }
 
