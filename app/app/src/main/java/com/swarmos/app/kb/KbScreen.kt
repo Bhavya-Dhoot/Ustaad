@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.swarmos.app.link.PeerLinks
 import com.swarmos.app.pdu.PageHeader
 import com.swarmos.app.ui.CitedText
 import com.swarmos.app.pdu.PromptBuilder
@@ -58,6 +59,7 @@ private fun tierText(e: KbEntry) = if (e.tier == KbTier.SWARM) "shared with the 
 @Composable
 fun KbPage(onBack: () -> Unit) {
     val entries by KbEngine.entries.collectAsStateWithLifecycle()
+    val status by KbEngine.status.collectAsStateWithLifecycle()
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { KbEngine.start(); withContext(Dispatchers.IO) { KbEngine.refresh() } }
     val open = entries.firstOrNull { it.card.id == openId }
@@ -68,6 +70,7 @@ fun KbPage(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         PageHeader("Knowledge bank", if (open != null) ({ openId = null }) else onBack)
+        status?.let { Text(it, style = SwarmType.label.copy(color = SwarmColors.graphite)) }
         if (open != null) {
             CardDetail(open)
         } else {
@@ -168,6 +171,14 @@ private fun CardDetail(e: KbEntry) {
                 PrimaryButton("Yes, revoke", { scope.launch { message = KbEngine.revoke(e.card.id) ?: "Revoked."; confirming = false } })
                 SecondaryButton("Keep it", { confirming = false })
             }
+        }
+    }
+    // a revocation that has not reached every paired phone yet says so, by name
+    if (mine && !e.usable && e.everShared) {
+        val lastOk by KbEngine.lastOk.collectAsStateWithLifecycle()
+        val peers by PeerLinks.peers.collectAsStateWithLifecycle()
+        for (name in KbDelivery.pending(e.revokedMs ?: 0L, peers.map { KbDelivery.Peer(it.nodeId, it.name) }, lastOk)) {
+            Text(KbDelivery.line(name), style = SwarmType.label.copy(color = SwarmColors.graphite))
         }
     }
     message?.let { Text(it, style = SwarmType.label.copy(color = SwarmColors.graphite)) }
