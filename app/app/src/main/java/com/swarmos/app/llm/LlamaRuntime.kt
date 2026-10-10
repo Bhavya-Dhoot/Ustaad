@@ -350,6 +350,13 @@ object LlamaRuntime {
         readyTimeoutMs: Long = READY_TIMEOUT_MS,
     ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env, readyTimeoutMs).await()
 
+    /**
+     * The directory the OpenCL build caches its compiled programs in (under the app's files), or null when it cannot be made: the
+     * build then runs without the cache. A start never fails because of it.
+     */
+    private fun kernelCacheDir(ctx: Context): String? =
+        runCatching { File(ctx.filesDir, LlamaArgs.KERNEL_CACHE_DIR_NAME).also { it.mkdirs() }.takeIf { it.isDirectory }?.path }.getOrNull()
+
     /** MemAvailable of this phone in kB from /proc/meminfo, null when it cannot be read. */
     private fun readMemAvailableKb(): Long? = runCatching { LoadPreflight.parseMemAvailableKb(File("/proc/meminfo").readText()) }.getOrNull()
 
@@ -471,6 +478,7 @@ object LlamaRuntime {
                     .apply {
                         environment()["LD_LIBRARY_PATH"] = LlamaArgs.ldLibraryPath(ctx.applicationInfo.nativeLibraryDir, role, backend)
                         environment()["LLAMA_CACHE"] = File(ctx.filesDir, "llama-cache").apply { mkdirs() }.path // rpc-server -c needs it (no $HOME on Android)
+                        environment().putAll(LlamaArgs.kernelCacheEnv(role, backend, if (gpu) kernelCacheDir(ctx) else null)) // compiled OpenCL programs survive restarts
                         environment().putAll(cfg.env)
                     }
                     .start()
@@ -489,7 +497,7 @@ object LlamaRuntime {
             killProcess(proc)
             return Attempt(statusOf(role), false)
         }
-        Log.i(TAG, "${role.tag}: started on $backend pid=$pid ${(listOf(bin.absolutePath) + args).joinToString(" ")}")
+        Log.i(TAG, "${role.tag}: started on $backend pid=$pid ${(listOf(bin.absolutePath) + args).joinToString(" ")}" + if (cfg.env.isEmpty()) "" else " env=${cfg.env}")
         pump(run, logFile)
         watchExit(run)
 

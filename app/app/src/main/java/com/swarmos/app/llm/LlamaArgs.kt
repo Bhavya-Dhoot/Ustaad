@@ -101,6 +101,28 @@ object LlamaArgs {
     fun cpuChatThreads(allowedCores: Int): Int = (allowedCores - 1).coerceAtMost(CHAT_THREADS).coerceAtLeast(MIN_CHAT_THREADS)
     const val CHAT_CTX = 8192
     const val CHAT_SLOTS = 2
+
+    /**
+     * Memory caps of the chat server's prompt cache. This llama.cpp keeps up to 32 context checkpoints per slot (`-ctxcp`, tools/server
+     * README) and a host prompt cache of 8192 MiB (`-cram`, common/common.h cache_ram_mib); on a phone the chat server's resident
+     * memory was seen growing from about 0.8 GB after load to 3.0-3.9 GB over a session. Six checkpoints and 1 GiB keep the
+     * repeat-question cache hit (never 0: 0 turns the cache off). Both flags exist in the shipped CPU and GPU builds. Whether the
+     * growth stops at these values is for a phone run to show.
+     */
+    const val CHAT_CTX_CHECKPOINTS = 6
+    const val CHAT_CACHE_RAM_MIB = 1024
+
+    /** `GGML_OPENCL_KERNEL_CACHE_DIR`: where the OpenCL build keeps compiled programs, so a later start skips the compile (ggml-opencl/cl-program-cache.cpp). */
+    const val KERNEL_CACHE_ENV = "GGML_OPENCL_KERNEL_CACHE_DIR"
+    const val KERNEL_CACHE_DIR_NAME = "cl-cache"
+
+    /**
+     * The environment entry that points the GPU chat build at [kernelCacheDir] (a directory under the app's files). Without it the
+     * build looks for `<temp dir>/llama.cpp/cl-cache`, and the temp directory is not set for an exec'd child of an app, so the cache
+     * stays off and every start compiles every kernel again. Empty for the other builds and when no directory could be made.
+     */
+    fun kernelCacheEnv(role: Role, backend: Backend, kernelCacheDir: String?): Map<String, String> =
+        if (role == Role.CHAT && backend == Backend.GPU && !kernelCacheDir.isNullOrBlank()) mapOf(KERNEL_CACHE_ENV to kernelCacheDir) else emptyMap()
     const val EMBED_CTX = 4096
     const val EMBED_SLOTS = 2
 
@@ -125,6 +147,8 @@ object LlamaArgs {
                 "-t", chatThreads.toString(),
                 "-c", CHAT_CTX.toString(),
                 "-np", CHAT_SLOTS.toString(),
+                "-ctxcp", CHAT_CTX_CHECKPOINTS.toString(),
+                "-cram", CHAT_CACHE_RAM_MIB.toString(),
                 "--reasoning", "off", // Qwen3.5 thinking off for every request (the client also sends enable_thinking=false)
                 "--no-webui",
                 API_KEY_FLAG, apiKey,
