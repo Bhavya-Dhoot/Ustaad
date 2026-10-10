@@ -13,6 +13,7 @@ import com.swarmos.app.core.AuditLog
 import com.swarmos.app.core.HealthMonitor
 import com.swarmos.app.core.NodeInfo
 import com.swarmos.app.core.NodeRegistry
+import com.swarmos.app.core.PairingSecret
 import com.swarmos.app.core.SwarmPrefs
 import com.swarmos.app.core.localIpv4
 import com.swarmos.app.core.toHex
@@ -41,7 +42,7 @@ import java.security.SecureRandom
 /** Manual service locator, no DI framework. Call [init] once from Application.onCreate. */
 object AppGraph {
     /** Debug builds trust each other on this fixed secret so dev phones need no QR. */
-    const val DEV_SECRET = "swarmos-dev-secret"
+    const val DEV_SECRET = PairingSecret.DEV
 
     lateinit var appContext: Context
 
@@ -49,8 +50,10 @@ object AppGraph {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var storedName: String? = null
 
+    // Until the stored secret has loaded this is a random value nobody knows, in every build: no request can be
+    // signed with it. Debug builds switch to DEV_SECRET in init() only when nothing is stored.
     @Volatile
-    private var secret: String = DEV_SECRET
+    private var secret: String = PairingSecret.placeholder(::randomSecret)
 
     /** HMAC key shared by paired nodes. Replace via [setPairingSecret] (QR pairing will call it). */
     val pairingSecret: String get() = secret
@@ -103,7 +106,10 @@ object AppGraph {
                 storedName = p?.name
                 setupDone = p?.setupDone ?: false
                 removeAnimations = p?.removeAnimations ?: false
-                secret = p?.secret ?: if (BuildConfig.DEBUG) DEV_SECRET else randomSecret().also { prefs.setSecret(it) }
+                PairingSecret.afterLoad(p?.secret, BuildConfig.DEBUG, ::randomSecret).let { (chosen, mustSave) ->
+                    secret = chosen
+                    if (mustSave) prefs.setSecret(chosen)
+                }
                 audit.load()
                 health.start()
                 audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))

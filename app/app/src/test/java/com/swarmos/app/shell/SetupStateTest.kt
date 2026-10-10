@@ -16,6 +16,22 @@ class SetupStateTest {
     }
 
     @Test
+    fun aDismissedOrDeniedDialogStillLetsContinueThrough() {
+        // nothing granted, but every row was put to the user: Continue is enabled
+        val answered = SetupState(false, false, false, nearbyAsked = true, notificationsAsked = true, batteryAsked = true)
+        assertTrue(answered.canContinue)
+        assertEquals(0, answered.doneCount)
+    }
+
+    @Test
+    fun continueWaitsForRowsThatWereNeitherDoneNorAsked() {
+        assertFalse(SetupState(true, true, false).canContinue)
+        assertFalse(SetupState(true, true, false, nearbyAsked = true, notificationsAsked = true).canContinue)
+        assertTrue(SetupState(true, true, false, batteryAsked = true).canContinue)
+        assertFalse(SetupState(false, false, false, nearbyAsked = true, batteryAsked = true).canContinue)
+    }
+
+    @Test
     fun doneCountCountsFinishedRows() {
         assertEquals(0, SetupState(false, false, false).doneCount)
         assertEquals(2, SetupState(true, false, true).doneCount)

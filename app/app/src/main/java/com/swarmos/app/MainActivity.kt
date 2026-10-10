@@ -81,23 +81,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** `adb shell am start -n com.swarmos.app/.MainActivity --es name "Phone A"` names the node. */
+    /**
+     * The `swarmos://pair` deep link works in every build. The adb extras below are honoured in debug builds only:
+     * the activity is exported, so in the demo build any app on the phone could otherwise rename the node, skip the
+     * setup or change the model settings. `adb shell am start -n com.swarmos.app/.MainActivity --es name "Phone A"` names the node.
+     */
     private fun applyIntent(i: Intent?) {
-        i?.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() }?.let { AppGraph.setNodeName(it) }
         i?.data?.takeIf { it.scheme == "swarmos" }?.let { com.swarmos.app.link.LinkModule.handleDeepLink(it.toString()) }
+        if (!BuildConfig.DEBUG) return
+        i?.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() }?.let { AppGraph.setNodeName(it) }
         // `--ez setupDone true` marks the first-run setup done (false shows it again), so phones can be driven over adb
         if (i?.hasExtra(EXTRA_SETUP_DONE) == true) AppGraph.markSetupDone(i.getBooleanExtra(EXTRA_SETUP_DONE, false))
         // `--ez autoload false` turns "Load models at start" off (true turns it on); it is persisted and read when the service starts
         if (i?.hasExtra(EXTRA_AUTOLOAD) == true) com.swarmos.app.llm.ModelStore.setAutoload(i.getBooleanExtra(EXTRA_AUTOLOAD, true))
         // `--ez gpu false` forces the chat model onto the CPU build (true allows the GPU build again); persisted, applies from the next chat load
         if (i?.hasExtra(EXTRA_GPU) == true) com.swarmos.app.llm.ModelStore.setUseGpu(i.getBooleanExtra(EXTRA_GPU, true))
-        // `--es activity 'Running a check (7 of 20).'` shows that line in the banner and the notification, with a Stop action; `--es activity ''` clears it (debug builds only)
-        if (BuildConfig.DEBUG && i?.hasExtra(EXTRA_ACTIVITY) == true) {
+        // `--es activity 'Running a check (7 of 20).'` shows that line in the banner and the notification, with a Stop action; `--es activity ''` clears it
+        if (i?.hasExtra(EXTRA_ACTIVITY) == true) {
             val line = i.getStringExtra(EXTRA_ACTIVITY).orEmpty()
             if (line.isBlank()) PhoneActivity.clear("adb") else PhoneActivity.set("adb", line, onStop = { PhoneActivity.clear("adb") })
         }
-        // `--ez gallery true [--ei galleryPage 3]` opens the UI kit gallery, `--ez gallery false` closes it (debug builds only)
-        if (BuildConfig.DEBUG && i?.hasExtra(EXTRA_GALLERY) == true) {
+        // `--ez gallery true [--ei galleryPage 3]` opens the UI kit gallery, `--ez gallery false` closes it
+        if (i?.hasExtra(EXTRA_GALLERY) == true) {
             galleryPage = if (i.getBooleanExtra(EXTRA_GALLERY, false)) i.getIntExtra(EXTRA_GALLERY_PAGE, 1) else 0
         }
     }
