@@ -1,6 +1,8 @@
 package com.swarmos.app.core
 
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -15,7 +17,15 @@ data class AuditEntry(
     val payload: JsonElement,
     val prevHash: String,
     val hash: String,
-)
+    /**
+     * Never stored or sent. True on the entry [AuditLog.append] returns when the line could not be written (disk full, file gone):
+     * the file was cut back to its last good length, [hash] is empty, and nothing was added to the chain. Callers may ignore it.
+     */
+    @Transient val failed: Boolean = false,
+) {
+    /** [hash] of an entry that was written, null for one that was not; for callers that store the hash as a reference. */
+    val writtenHash: String? get() = hash.takeIf { !failed && it.isNotEmpty() }
+}
 
 /** Result of [AuditLog.verify]. `badLine` is the 1-based number of the first bad entry (counted across all files), null when the chain is intact. */
 data class AuditVerify(val ok: Boolean, val entries: Int, val badLine: Int? = null, val reason: String? = null)
@@ -36,6 +46,10 @@ data class AuditVerify(val ok: Boolean, val entries: Int, val badLine: Int? = nu
  * `audit.pruned` entry {archives, entries, anchor}: `anchor` is the hash the oldest remaining entry chains from,
  * so the new start of the chain is explicit and [verify] accepts it only when such an entry exists.
  *
+ * A prune writes its `audit.pruned` entry (the intent, with the new anchor) and syncs it to disk before it deletes any archive;
+ * a prune that was cut short is finished at load. A failed write is cut back to the last good length and reported on the returned
+ * entry ([AuditEntry.failed]), never thrown, so a full disk cannot tear the chain or abort the ask or run that logged.
+ *
  * [verify] and [entries] work on a snapshot (the list of files and the length of the active one, taken under
  * the lock in microseconds) and read outside it, so [count] and [append] never wait for them.
  */
@@ -53,6 +67,14 @@ class AuditLog(
 
     /** Test hook: runs after a snapshot is taken and before it is read, outside the lock. */
     internal var afterSnapshot: (() -> Unit)? = null
+
+    /** Test hooks: how a line reaches the file, and a step run just before an archive is deleted by a prune. */
+    internal var appender: (File, ByteArray) -> Unit = { f, b -> java.io.FileOutputStream(f, true).use { it.write(b) } }
+    internal var beforeDelete: ((File) -> Unit)? = null
+    private var failedWrites = 0
+
+    /** Lines that could not be written since this log was opened. */
+    val failedAppends: Int @Synchronized get() = failedWrites
 
     /** Entries in all files. Read from memory after the first load. */
     val count: Int @Synchronized get() = ensureLoaded().let { total }
@@ -169,13 +191,30 @@ class AuditLog(
         activeBytes = bytes
         loaded = true
         if (dropped > 0) write("audit.tail_repaired", JsonObject(mapOf("droppedBytes" to JsonPrimitive(dropped))))
+        finishInterruptedPrune()
+    }
+
+    /** More archives than allowed means a prune wrote its intent and was killed before it deleted: do the deleting now. */
+    private fun finishInterruptedPrune() {
+        val all = archives()
+        val excess = all.size - maxArchives.coerceAtLeast(1)
+        if (excess > 0) prune(all.take(excess), oldestKept = all[excess], onlyIfNoIntentYet = true)
     }
 
     private fun write(kind: String, payload: JsonElement): AuditEntry {
         val ts = clock()
         val entry = AuditEntry(ts, kind, payload, lastHash, hashOf(lastHash, ts, kind, payload))
         val bytes = (SwarmJson.encodeToString(entry) + "\n").toByteArray(Charsets.UTF_8)
-        java.io.FileOutputStream(file, true).use { it.write(bytes) } // one write per line
+        try {
+            appender(file, bytes) // one write per line
+        } catch (e: Exception) {
+            // a torn line would glue onto the next one and break the chain: cut the file back to the last good length
+            runCatching {
+                if (file.exists()) java.io.RandomAccessFile(file, "rw").use { if (it.length() > activeBytes) it.setLength(activeBytes) }
+            }
+            failedWrites++
+            return entry.copy(hash = "", failed = true)
+        }
         activeBytes += bytes.size
         lastHash = entry.hash
         total++
@@ -193,24 +232,43 @@ class AuditLog(
         if (excess > 0) prune(all.take(excess), oldestKept = all[excess])
     }
 
-    /** Deletes [drop] (the oldest files) and records it, with the hash the oldest kept entry chains from. */
-    private fun prune(drop: List<File>, oldestKept: File) {
-        var entries = 0
-        for (f in drop) {
-            entries += scan(f).first
-            f.delete()
+    /**
+     * Records the pruning, then deletes [drop] (the oldest files). The `audit.pruned` entry, with the hash the oldest kept entry
+     * chains from, is written and synced first: a kill after it leaves a chain that still verifies (the files are still there)
+     * and [finishInterruptedPrune] deletes them at the next load; a kill before it leaves everything as it was.
+     */
+    private fun prune(drop: List<File>, oldestKept: File, onlyIfNoIntentYet: Boolean = false) {
+        val anchor = firstPrevHash(oldestKept) ?: GENESIS
+        if (!(onlyIfNoIntentYet && intentWritten(anchor))) {
+            var entries = 0
+            for (f in drop) entries += scan(f).first
+            val intent = write(
+                PRUNED,
+                JsonObject(mapOf("archives" to JsonPrimitive(drop.size), "entries" to JsonPrimitive(entries), "anchor" to JsonPrimitive(anchor))),
+            )
+            if (intent.failed) return // nothing was promised, so nothing is deleted; the next rotation or load tries again
+            runCatching { java.io.FileOutputStream(file, true).use { it.fd.sync() } }
         }
-        total -= entries
-        write(
-            PRUNED,
-            JsonObject(
-                mapOf(
-                    "archives" to JsonPrimitive(drop.size),
-                    "entries" to JsonPrimitive(entries),
-                    "anchor" to JsonPrimitive(firstPrevHash(oldestKept) ?: GENESIS),
-                ),
-            ),
-        )
+        // a rotation caused by the intent line may already have pruned some of these files
+        for (f in drop) {
+            if (!f.exists()) continue
+            val n = scan(f).first
+            beforeDelete?.invoke(f)
+            if (f.delete()) total -= n
+        }
+    }
+
+    private fun intentWritten(anchor: String): Boolean {
+        val files = archives() + listOfNotNull(file.takeIf { it.exists() })
+        return files.any { f ->
+            f.useLines { lines ->
+                lines.any { line ->
+                    line.contains(PRUNED) && parse(line)?.let { e ->
+                        e.kind == PRUNED && ((e.payload as? JsonObject)?.get("anchor") as? JsonPrimitive)?.content == anchor
+                    } == true
+                }
+            }
+        }
     }
 
     private fun firstPrevHash(f: File): String? =
@@ -304,6 +362,21 @@ class AuditLog(
         fun hashOf(prevHash: String, ts: Long, kind: String, payload: JsonElement): String {
             val data = "$prevHash\n$ts\n$kind\n$payload"
             return MessageDigest.getInstance("SHA-256").digest(data.toByteArray(Charsets.UTF_8)).toHex()
+        }
+    }
+}
+
+/**
+ * A handler for a module's long-lived coroutine scope: an exception that nobody caught writes one `scope.error` entry and the
+ * process lives on, instead of the default behaviour (the thread's uncaught-exception handler, which ends the app).
+ */
+object AuditScope {
+    fun handler(scope: String, log: () -> AuditLog): CoroutineExceptionHandler = CoroutineExceptionHandler { _, t ->
+        runCatching {
+            log().append(
+                "scope.error",
+                JsonObject(mapOf("scope" to JsonPrimitive(scope), "error" to JsonPrimitive("${t.javaClass.simpleName}: ${t.message}".take(200)))),
+            )
         }
     }
 }
