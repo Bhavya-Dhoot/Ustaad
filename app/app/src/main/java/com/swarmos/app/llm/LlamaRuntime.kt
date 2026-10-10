@@ -84,7 +84,7 @@ object LlamaRuntime {
     private val procLock = Any()
 
     /** [cpuOnly]: skip the GPU build (set when a server that had fallen back to the CPU is restarted). */
-    private data class StartConfig(val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>, val cpuOnly: Boolean = false)
+    private data class StartConfig(val modelPath: String?, val extraArgs: List<String>, val port: Int, val env: Map<String, String>, val cpuOnly: Boolean = false, val readyTimeoutMs: Long = READY_TIMEOUT_MS)
 
     private class Running(
         val role: Role,
@@ -197,7 +197,8 @@ object LlamaRuntime {
         extraArgs: List<String> = emptyList(),
         port: Int = role.defaultPort,
         env: Map<String, String> = emptyMap(),
-    ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env).await()
+        readyTimeoutMs: Long = READY_TIMEOUT_MS,
+    ): ServerStatus = startAsync(role, modelPath, extraArgs, port, env, readyTimeoutMs).await()
 
     /** Same as [start] but returns at once; cancelling the caller never leaves a half-started server behind. */
     fun startAsync(
@@ -206,10 +207,11 @@ object LlamaRuntime {
         extraArgs: List<String> = emptyList(),
         port: Int = role.defaultPort,
         env: Map<String, String> = emptyMap(),
+        readyTimeoutMs: Long = READY_TIMEOUT_MS,
     ): Deferred<ServerStatus> {
         // A newer start or a stop() after this point cancels this start; a pending automatic restart is superseded too.
         val epoch = epochs.getValue(role).incrementAndGet()
-        val cfg = StartConfig(modelPath, extraArgs, port, env)
+        val cfg = StartConfig(modelPath, extraArgs, port, env, readyTimeoutMs = readyTimeoutMs)
         return scope.async { startInternal(role, cfg, epoch, auto = false) }
     }
 
@@ -315,7 +317,7 @@ object LlamaRuntime {
         watchExit(run)
 
         // wait for readiness (the GPU build gets a shorter deadline: the CPU fallback is waiting)
-        val deadlineMs = if (gpu) GPU_READY_TIMEOUT_MS else READY_TIMEOUT_MS
+        val deadlineMs = if (gpu) GPU_READY_TIMEOUT_MS else cfg.readyTimeoutMs
         val deadline = System.nanoTime() + deadlineMs * 1_000_000
         while (System.nanoTime() < deadline) {
             if (!proc.isAlive) break
@@ -546,8 +548,11 @@ object LlamaRuntime {
 
     private fun probe(role: Role, port: Int): Boolean =
         if (role == Role.RPC) {
+            // rpc-server may listen on the link address only (-H <ip>), where 127.0.0.1 is refused: probe where it was told to bind
+            val a = statusOf(role).args
+            val host = a.lastIndexOf("-H").takeIf { it >= 0 }?.let { a.getOrNull(it + 1) }?.takeIf { it != "0.0.0.0" } ?: "127.0.0.1"
             try {
-                Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 500); true }
+                Socket().use { it.connect(InetSocketAddress(host, port), 500); true }
             } catch (_: Exception) {
                 false
             }
