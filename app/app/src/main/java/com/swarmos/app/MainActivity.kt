@@ -53,7 +53,9 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
-        applyWhenReady(intent)
+        // only on a fresh start: a rotation recreates the activity with the same launch intent, and applying it again would
+        // undo what the owner changed since (it switched agent access back on after it had been switched off)
+        if (savedInstanceState == null) applyWhenReady(intent)
         // a dozing phone stops answering its peers, so the screen stays on while Ustaad is in front
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         SwarmService.start(this)
