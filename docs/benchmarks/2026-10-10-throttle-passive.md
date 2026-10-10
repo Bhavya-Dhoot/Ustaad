@@ -62,7 +62,7 @@ The second window (section 5) has two more fields per sample: the decode speed o
 
 Nothing is changed on the phones. The present rule (half duty at Thermal Status 2) cannot see the step. On Phone C it happened to recover from step 7 by itself in five and a half minutes; on Phone B it has not recovered in 73 minutes, so every real request on Phone B runs at 10.9 tok/s where 13.4 is available, and its filler makes about a fifth fewer tokens for the same share of time.
 
-A rule that reads the step is written and not merged (branch `worktree-agent-a718f09290a81f34a`, commit f3cd864, 1448 unit tests, 0 failures): at `gpu` step 7 or more the filler runs lightly, resting four times the length of each job, until the step is left; `GET /v1/sched/busy` reports the step as `gpuStep`; both numbers can be set on a debug build without a rebuild. It goes to master only after a before and after on a phone: real decode, filler tokens and share of time generating over 30 minutes each. If the light phase does not end, or costs more share than it wins in speed, it is dropped.
+A rule that reads the step is written and not merged (branch `worktree-agent-a718f09290a81f34a`, commit f3cd864, 1448 unit tests, 0 failures; being extended after section 6 so that the filler also runs lightly from a shell temperature just under 40.0 C, which is what keeps a phone out of the slow step in the first place): at `gpu` step 7 or more the filler runs lightly, resting four times the length of each job, until the step is left; `GET /v1/sched/busy` reports the step as `gpuStep`; both numbers can be set on a debug build without a rebuild. It goes to master only after a before and after on a phone: real decode, filler tokens and share of time generating over 30 minutes each. If the light phase does not end, or costs more share than it wins in speed, it is dropped.
 
 ## 5. Second window (22:06 to 22:34): the cooling step is the signal
 
@@ -93,10 +93,13 @@ From the third watch (`B-3.jsonl`, `C-3.jsonl`, which also records the kernel's 
 - On both phones the step fell from 7/13/17 to 5/10/15 in the sample in which the app was replaced by the install (Phone B 22:51:56 at 42.1 C skin, Phone C 22:52:26 at 41.2 C), with no cooling before it. Phone B had not left step 7 in the 90 minutes before. So the phone's throttle keeps a state that a restart of the app resets; it is not a plain function of any temperature.
 - While Phone C's model was restarting and Ustaad was briefly in the background, its step went 5, 4, 0, 4, 5 within 90 s at 39.8 to 41.7 C skin. Step 0 had otherwise been seen only under 34 C.
 - The one step up to 7 seen with the zones recorded (Phone C, 22:42:57, during real requests on top of half-duty filler): `tz_shell` went from 39.82 to 40.04 C and the battery from 39.8 to 39.9 C. The step up at 22:26 also came at a battery reading of 39.9 C. On Phone B, `tz_shell` stayed between 38.9 and 39.9 C for the whole time it sat at step 7.
-- After the install both phones run at step 5 at half duty, Thermal Status 2. How long that holds is what the watch is recording.
+- After the install both phones ran at step 5 at half duty, Thermal Status 2, with no real requests. It did not hold: Phone B went to step 7 at 22:59:26, seven and a half minutes after the restart, and Phone C at 23:03:09. In both samples `tz_shell` had just reached 40.0 C (40.011 and 40.022); while the phones were at step 5 it had read at most 39.99 C. With the 22:42:57 event that is three steps up, on two phones, all at `tz_shell` 40.0 C. Skin temperature at the three events was 42.1 to 42.4 C and Thermal Status 2, as it had been for minutes before.
+- So the slow step starts when the kernel zone `tz_shell` reaches 40.0 C, and half duty at Thermal Status 2 gets a phone there within ten minutes by itself. Once there, the phones stayed at step 7 at half duty with `tz_shell` between 39.5 and 40.0 C. Where the step is left on the way down is not known: under 38.9 C (Phone B never got lower and never left it).
+- The app's own user can read that zone too (`thermal_zone<N>/type` is `tz_shell`, `temp` in thousandths of a degree; checked with `run-as` on both phones, where N and the number of the `gpu` cooling device differ).
+- In the nine and a half minutes after 22:57 the filler generated 50 % of the time on both phones (Phone B 112 jobs, Phone C 119 jobs, 0 failed).
 
 ## Not measured
-- Which sensor moves the step. A third watch with the kernel's board and virtual thermal zones in every sample runs from 22:34 (`B-3.jsonl`, `C-3.jsonl`).
+- Where the step is left on the way down, and why a restart of the app resets it. The third watch runs until about 01:04.
 - The rule of section 4 on a phone: how long the light phase lasts, whether step 5 then holds, the share of time it costs.
 - Whether the app's own process may read the step (the check used `run-as`).
 - Phone A.
