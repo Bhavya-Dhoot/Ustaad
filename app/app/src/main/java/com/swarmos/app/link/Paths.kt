@@ -75,3 +75,29 @@ class MeasuredPolicy(
         return curPath
     }
 }
+
+/** How long a Bluetooth path must have been online without a break before it is listed to the UI and /v1/link/paths. */
+const val BT_STABLE_MS = 5_000L
+
+/**
+ * Decides whether one path is listed. A Wi-Fi path is listed from the start. A Bluetooth path appears only after it has been
+ * online for [stableMs] without a break, so a channel that opens and drops again (it does while the radios settle, after an
+ * app restart, or at the edge of range) never shows up as a path that flaps in and out of the list. Once listed it stays
+ * listed (online or away): a known path does not vanish. Routing is not affected, it uses the sessions directly.
+ */
+class PathListing(private val stableMs: Long = BT_STABLE_MS) {
+    private var onlineSince: Long? = null
+    private var listed = false
+
+    @Synchronized
+    fun update(link: LinkType, state: LinkState, nowMs: Long): Boolean {
+        if (link != LinkType.BT) return true
+        if (state == LinkState.ONLINE) {
+            val since = onlineSince ?: nowMs.also { onlineSince = it }
+            if (nowMs - since >= stableMs) listed = true
+        } else {
+            onlineSince = null
+        }
+        return listed
+    }
+}

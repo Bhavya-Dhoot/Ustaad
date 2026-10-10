@@ -23,12 +23,20 @@ import java.util.concurrent.Executors
 /** CameraX preview plus ML Kit QR detection. Calls [onCode] with the raw text of each new QR it sees. */
 @OptIn(ExperimentalGetImage::class)
 @Composable
-fun QrScanner(modifier: Modifier = Modifier, onCode: (String) -> Unit) {
+fun QrScanner(modifier: Modifier = Modifier, onStreaming: (Boolean) -> Unit = {}, onCode: (String) -> Unit) {
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val callback = rememberUpdatedState(onCode)
+    val streaming = rememberUpdatedState(onStreaming)
     // TextureView-backed preview: the default SurfaceView ignores Compose clipping inside a scrolling column
     val previewView = remember { PreviewView(ctx).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FILL_CENTER; clipToOutline = true } }
+
+    // true once the camera delivers frames; false again if it stops (permission revoked, camera taken by another app)
+    DisposableEffect(previewView) {
+        val obs = androidx.lifecycle.Observer<PreviewView.StreamState> { streaming.value(it == PreviewView.StreamState.STREAMING) }
+        previewView.previewStreamState.observeForever(obs)
+        onDispose { previewView.previewStreamState.removeObserver(obs) }
+    }
 
     DisposableEffect(owner) {
         val executor = Executors.newSingleThreadExecutor()
