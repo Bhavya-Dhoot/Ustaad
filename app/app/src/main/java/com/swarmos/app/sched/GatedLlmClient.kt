@@ -38,9 +38,16 @@ class GatedLlmClient(
     override suspend fun ready(): Boolean = inner().ready()
 
     /** True when a slot was taken (give it back); false when there is no model server and the call runs without one. */
-    private suspend fun enter(): Boolean =
-        withTimeoutOrNull(maxWaitMs) { node.chatExec.acquire() }
-            ?: throw ModelBusyTimeoutException(maxWaitMs, node.chatExec.capacity)
+    private suspend fun enter(): Boolean {
+        // the timeout can fire in the instant acquire() has returned true; withTimeoutOrNull then drops the block's value, so the block keeps it
+        var taken: Boolean? = null
+        val got = withTimeoutOrNull(maxWaitMs) { node.chatExec.acquire().also { taken = it } }
+        if (got == null) {
+            if (taken == true) node.chatExec.release()
+            throw ModelBusyTimeoutException(maxWaitMs, node.chatExec.capacity)
+        }
+        return got
+    }
 
     override suspend fun chat(req: ChatRequest): ChatResult {
         val slot = enter()
