@@ -1,0 +1,27 @@
+B-3: 23:16:01 to 00:06:10 (50.1 min), 292 samples
+  filler: 501 jobs, 10711 tokens, failed 0; generating 1096 s = 36.4 % of the time; 214 tokens/min; 9.77 tok/s while generating
+  gpu step, share of samples: 5: 100 %
+  state, share of samples: half_duty: 53 %, cool_down: 44 %, running: 1 %, waiting_for_idle: 1 %
+  tz_shell 38.61 to 39.98 C, median 39.57; skin 40.3 to 42.2; thermal status 1: 9, 2: 283
+    23:16 share 38 % 220 tok/min shell 38.6-39.8 step7 0 %
+    23:26 share 27 % 157 tok/min shell 39.4-40.0 step7 0 %
+    23:36 share 38 % 224 tok/min shell 39.4-40.0 step7 0 %
+    23:46 share 41 % 241 tok/min shell 39.4-39.7 step7 0 %
+    23:56 share 39 % 229 tok/min shell 39.4-39.7 step7 0 %
+C-3: 23:16:06 to 00:06:03 (50.0 min), 291 samples
+  filler: 661 jobs, 14184 tokens, failed 0; generating 1688 s = 56.3 % of the time; 284 tokens/min; 8.41 tok/s while generating
+  gpu step, share of samples: 5: 31 %, 7: 69 %
+  state, share of samples: half_duty: 84 %, running: 15 %, waiting_for_idle: 2 %
+  tz_shell 39.01 to 40.01 C, median 39.41; skin 40.9 to 42.3; thermal status 1: 49, 2: 242
+    step 7->5 at 23:28:09 tz_shell 39.413 state half_duty
+    step 5->7 at 23:35:12 tz_shell 40.014 state half_duty
+    step 7->5 at 23:36:45 tz_shell 39.793 state half_duty
+    step 5->7 at 23:45:22 tz_shell 40.007 state half_duty
+    23:16 share 49 % 230 tok/min shell 39.3-39.5 step7 100 %
+    23:26 share 49 % 264 tok/min shell 39.4-40.0 step7 31 %
+    23:36 share 53 % 302 tok/min shell 39.0-40.0 step7 15 %
+    23:46 share 74 % 350 tok/min shell 39.1-39.9 step7 100 %
+    23:56 share 58 % 278 tok/min shell 39.1-39.9 step7 100 %
+
+real B: 11 of 11 answered; decode 13.4 13.7 13.5 13.6 13.2 13.6 13.6 13.5 13.5 13.4 13.5; median after the first ten minutes 13.50; outside the model 0.07 to 0.36 s; prompt ms median 345
+real C: 11 of 11 answered; decode 10.8 10.9 10.8 13.2 10.8 13.3 10.8 10.7 10.8 10.6 10.6; median after the first ten minutes 10.80; outside the model 0.07 to 0.72 s; prompt ms median 399
