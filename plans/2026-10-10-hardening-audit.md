@@ -46,3 +46,10 @@ Failure modes: the app cannot read the step in its own process (then it reports 
 Ledger: 1 delegated to a Sonnet builder (Kotlin feature code, bounded, checked by reading the diff and by unit tests); 2 and 3 direct (a script that already runs, and phone time that needs the founder).
 
 Step 6, change at 23:10: the third watch showed where the slow step starts (kernel zone `tz_shell` at 40.0 C, three events on two phones) and that half duty reaches it within ten minutes of an app start. The builder was resumed to add a hold: filler runs lightly from 39.6 C shell temperature, so the phone stays under 40.0; the step-7 rule stays as the cure. The test on a phone is unchanged, with Phone C on the master build as the control at the same time and one real 48-token request every five minutes on both. It needs the founder's word for Phone B. Ledger: the same builder resumed (its context holds the first change; a fresh brief would cost more).
+
+Step 6, the phone test (founder said yes for Phone B at 23:16). Written before the run:
+- Phone B gets the branch build (e2452fe), Phone C stays on master (1b9d60b) as the control at the same time. One hour from the moment Phone B's filler starts. One real 48-token request every five minutes on each phone (`scripts/preempt-probe.py`), the read-only watch on both.
+- Merge if all three hold on Phone B: real decode at 12.5 tok/s or more in the median of the requests after the first ten minutes (Phone C is expected near 10.9); filler tokens per minute at 85 % or more of Phone C's in the same hour; 0 failed filler jobs and 0 model server restarts.
+- The share of time generating is reported as it comes out. Under 30 % it goes to the founder as a choice before any merge, because "never idle" is his requirement and the share is what he sees.
+- If `gpuStep` and `shellC` come back null from `GET /v1/sched/busy` the app cannot read them in its own process, the rule does nothing, and the test ends there.
+- One change of the hold temperature through the debug knob is allowed during the hour if the first 20 minutes show the phone still reaching 40.0 C or sitting far under it; it is written down with its time.
