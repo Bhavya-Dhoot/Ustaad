@@ -122,7 +122,8 @@ class NodeClient(
                         requestTimeoutMillis = timeoutMs
                         socketTimeoutMillis = timeoutMs
                     }
-                    connectTimeoutMillis = connectMs ?: timeoutMs
+                    // a long request budget (a 1000-token answer) must not also let a connect to a dead address hang that long
+                    connectTimeoutMillis = connectMs ?: timeoutMs?.coerceAtMost(CONNECT_CAP_MS)
                 }
             }
             headers.forEach { (k, v) -> header(k, v) }
@@ -174,5 +175,8 @@ class NodeClient(
     companion object {
         /** Connect timeout for a path that has another path behind it, so a dead path fails over quickly. */
         const val FAILOVER_CONNECT_MS = 2_000L
+
+        /** Longest connect wait of a request that passes its own, longer, request timeout (the client's default connect timeout is 5 s). */
+        const val CONNECT_CAP_MS = 5_000L
     }
 }

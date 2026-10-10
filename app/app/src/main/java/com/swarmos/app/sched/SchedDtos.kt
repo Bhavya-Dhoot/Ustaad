@@ -108,6 +108,13 @@ data class BatchItem(
     val completionTokens: Int = 0,
     val genMs: Double = 0.0,
     val error: String? = null,
+    // Timing, added later: optional so a phone on the older build ignores them and reads old answers with the defaults.
+    /** Milliseconds the model spent on the prompt (prefill). */
+    val promptMs: Double = 0.0,
+    /** Milliseconds from the worker taking the item to a phone being picked for it. */
+    val waitedMs: Double = 0.0,
+    /** Milliseconds from the start of the batch to this item finishing. */
+    val endMs: Double = 0.0,
 )
 
 @Serializable
@@ -125,7 +132,7 @@ data class PhoneShare(
 data class BatchReport(
     val id: String,
     val mode: String,
-    val state: String,            // "running" | "done"
+    val state: String,            // "running" | "done" | "interrupted" (the app was killed while it ran; only what had finished is in items)
     val total: Int,
     val done: Int,
     val failed: Int,

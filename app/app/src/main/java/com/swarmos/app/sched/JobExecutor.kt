@@ -19,7 +19,7 @@ class BusyException(val running: Int, val capacity: Int, val queued: Int) :
 class ModelMismatchException(val model: String) : RuntimeException("phone runs $model")
 
 /**
- * Admission control and exactly-once bookkeeping for one kind of job on this phone.
+ * Admission control and at-most-once-per-phone bookkeeping for one kind of job on this phone (a lost reply can still make another phone run it again).
  *
  * - At most [capacity] jobs run at once. When all slots are taken and fewer than [maxQueue] callers wait,
  *   a new jobId is refused with [BusyException].

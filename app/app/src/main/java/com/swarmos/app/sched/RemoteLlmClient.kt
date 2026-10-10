@@ -9,6 +9,8 @@ import com.swarmos.app.llm.ChatChunk
 import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatResult
 import com.swarmos.app.llm.LlmClient
+import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.catch
@@ -32,6 +34,8 @@ class RemoteLlmClient(
     private val streams: StreamClient? = null,
     /** Which "ip" or "ip:port" reaches [peer] right now. Asked at every call, so it follows the link module's path choice. */
     private val address: (NodeInfo) -> String = { it.ip },
+    /** Time a chat request to the peer may take for a reply of at most this many tokens. */
+    private val budgetMs: (Int) -> Long = { GenBudget.forTokens(it) },
 ) : LlmClient, PhoneEndpoint {
     private val host get() = address(peer)
 
@@ -47,9 +51,21 @@ class RemoteLlmClient(
         client.get<Caps>(host, "/sched/caps").also { seenModel = it.modelName }
     }
 
+    /**
+     * The request may take the generation budget of the reply ([GenBudget]: 30 s plus the tokens asked for at 5 per second),
+     * not the client's 60 s default, which cut long answers off and sent them to another phone. A request that still runs
+     * out of time is a [PhoneTimeoutException]: the job was slow, which says nothing about whether the phone is there.
+     */
     override suspend fun runChat(jobId: String, req: ChatRequest, pinModel: String?): ChatJobResult = mapErrors {
-        client.post<ChatJobResult, ChatJobRequest>(host, "/sched/chat", ChatJobRequest(jobId, req.toDto(), pinModel))
-            .also { seenModel = it.modelName }
+        val budget = budgetMs(req.maxTokens)
+        try {
+            client.post<ChatJobResult, ChatJobRequest>(host, "/sched/chat", ChatJobRequest(jobId, req.toDto(), pinModel), budget)
+                .also { seenModel = it.modelName }
+        } catch (e: HttpRequestTimeoutException) {
+            throw PhoneTimeoutException(peer.nodeId, budget)
+        } catch (e: SocketTimeoutException) {
+            throw PhoneTimeoutException(peer.nodeId, budget)
+        }
     }
 
     override suspend fun runEmbed(jobId: String, texts: List<String>): EmbedJobResult = mapErrors {

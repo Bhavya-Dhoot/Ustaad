@@ -65,7 +65,13 @@ object Sched {
     /** The same scheduler restricted to this phone, for the "this phone only" baseline. */
     val localOnly: SwarmLlm by lazy { SwarmLlm({ listOf(local) }, scope) }
 
-    val batches: BatchStore by lazy { BatchStore(scope, { swarm }, { localOnly }) }
+    val batches: BatchStore by lazy {
+        BatchStore(
+            scope, { swarm }, { localOnly },
+            dir = { java.io.File(AppGraph.appContext.filesDir, "batches") },
+            audit = { kind, payload -> runCatching { AppGraph.audit.append(kind, payload) } },
+        )
+    }
 
     /** Parallel chat jobs this phone accepts at once. The model runtime sets the chat server's slot count, 0 while it is not running. */
     fun setCapacity(n: Int) {

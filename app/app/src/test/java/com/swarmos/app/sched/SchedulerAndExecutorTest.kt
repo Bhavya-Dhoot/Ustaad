@@ -38,8 +38,21 @@ class SchedulerScoreTest {
         val hotFast = Scheduler.score(caps(tps = 50.0, thermal = 3))
         val warmSlow = Scheduler.score(caps(tps = 2.0, thermal = 2))
         assertTrue("a hot phone (ThermalLevel.isTooHot) ranks below a merely warm one however fast it is", warmSlow > hotFast)
-        assertTrue("among hot phones the faster still comes first", hotFast > Scheduler.score(caps(tps = 10.0, thermal = 4)))
-        assertEquals("status 2 is not hot", 50.0, Scheduler.score(caps(tps = 50.0, thermal = 2)), 1e-9)
+        assertTrue("status 3 still scores (it takes jobs when nothing cooler is up)", hotFast > Double.NEGATIVE_INFINITY)
+        assertEquals("status 2 is not hot, only mildly penalised", 50.0 * Scheduler.MODERATE_FACTOR, Scheduler.score(caps(tps = 50.0, thermal = 2)), 1e-9)
+        assertEquals("status 1 is full score", 50.0, Scheduler.score(caps(tps = 50.0, thermal = 1)), 1e-9)
+    }
+
+    @Test fun aPhoneAtStatusFourOrMoreIsNeverUsed() {
+        assertEquals(Double.NEGATIVE_INFINITY, Scheduler.score(caps(tps = 90.0, thermal = 4)), 0.0)
+        assertEquals(Double.NEGATIVE_INFINITY, Scheduler.score(caps(tps = 90.0, thermal = 6)), 0.0)
+        assertFalse(Scheduler.eligible(caps(thermal = 4), null))
+        assertTrue(Scheduler.eligible(caps(thermal = 3), null))
+    }
+
+    @Test fun theLevelToSteerByCanBePassedInPlaceOfTheReading() {
+        assertEquals(Double.NEGATIVE_INFINITY, Scheduler.score(caps(tps = 50.0, thermal = 0), thermal = 4), 0.0)
+        assertEquals(50.0, Scheduler.score(caps(tps = 50.0, thermal = 4), thermal = 0), 1e-9)
     }
 
     @Test fun aPhoneWithCapacityZeroIsUnavailable() {

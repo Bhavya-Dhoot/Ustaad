@@ -181,7 +181,12 @@ fun Route.schedBatchRoutes(batches: BatchStore) {
             call.respond(HttpStatusCode.BadRequest, ErrorBody("mode must be swarm or local"))
             return@post
         }
-        val id = batches.start(requests, body.mode)
+        // one batch at a time: two at once share the phones and neither measures anything
+        val id = batches.tryStart(requests, body.mode)
+        if (id == null) {
+            call.respond(HttpStatusCode.Conflict, ErrorBody("a batch is already running"))
+            return@post
+        }
         call.respond(BatchStarted(id, requests.size))
     }
 
