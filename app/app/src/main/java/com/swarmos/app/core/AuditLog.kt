@@ -31,16 +31,28 @@ data class AuditVerify(val ok: Boolean, val entries: Int, val badLine: Int? = nu
  * active file starts whose first entry has the last hash of the old one as prevHash, so the chain goes on
  * across files; [verify] walks them all in that order. A torn last line (the process was killed in the
  * middle of a write) is cut off at load and an `audit.tail_repaired` entry records it.
+ *
+ * At most [maxArchives] rotated files are kept. Rotating past that deletes the oldest ones and appends an
+ * `audit.pruned` entry {archives, entries, anchor}: `anchor` is the hash the oldest remaining entry chains from,
+ * so the new start of the chain is explicit and [verify] accepts it only when such an entry exists.
+ *
+ * [verify] and [entries] work on a snapshot (the list of files and the length of the active one, taken under
+ * the lock in microseconds) and read outside it, so [count] and [append] never wait for them.
  */
 class AuditLog(
     private val file: File,
     private val rotateBytes: Long = ROTATE_BYTES,
+    private val maxArchives: Int = MAX_ARCHIVES,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private var loaded = false
     private var lastHash: String = GENESIS
     private var total = 0
     private var activeBytes = 0L
+    private var generation = 0 // bumped by every rotation; a read that straddles one is repeated
+
+    /** Test hook: runs after a snapshot is taken and before it is read, outside the lock. */
+    internal var afterSnapshot: (() -> Unit)? = null
 
     /** Entries in all files. Read from memory after the first load. */
     val count: Int @Synchronized get() = ensureLoaded().let { total }
@@ -60,23 +72,75 @@ class AuditLog(
         return write(kind, payload)
     }
 
-    /** Every entry of every file, oldest first. Parses the files; use [count] for the size. */
-    @Synchronized
-    fun entries(): List<AuditEntry> = files().flatMap { readEntries(it) }
+    /** Every entry of every file, oldest first. Parses the files outside the lock; use [count] for the size. */
+    fun entries(): List<AuditEntry> =
+        readSnapshot(emptyList()) { lines -> lines.mapNotNull { parse(it) }.toList() }
+
+    /** Walks all files, oldest first. Does not hold the lock while it reads. */
+    fun verify(): AuditVerify =
+        readSnapshot(AuditVerify(false, 0, 1, "the log files kept changing while they were read")) { verifyLines(it) }
+
+    private class Snapshot(val archives: List<File>, val activeLength: Long, val generation: Int)
 
     @Synchronized
-    fun verify(): AuditVerify {
-        var prev = GENESIS
-        var n = 0
-        for (f in files()) {
-            for (line in f.readLines()) {
-                if (line.isBlank()) continue
-                val e = parse(line) ?: return AuditVerify(false, n, n + 1, "unparseable line in ${f.name}")
-                if (e.prevHash != prev) return AuditVerify(false, n, n + 1, "prevHash does not match previous entry in ${f.name}")
-                if (e.hash != hashOf(e.prevHash, e.ts, e.kind, e.payload)) return AuditVerify(false, n, n + 1, "hash mismatch in ${f.name}")
-                prev = e.hash
-                n++
+    private fun snapshot(): Snapshot {
+        ensureLoaded()
+        return Snapshot(archives(), if (file.exists()) activeBytes else 0L, generation)
+    }
+
+    @Synchronized
+    private fun currentGeneration() = generation
+
+    /**
+     * Runs [block] over the lines of the snapshot (rotated files, then the first [Snapshot.activeLength] bytes of the
+     * active one). A rotation or a pruned file during the read makes it start again, a few times at most.
+     */
+    private fun <T> readSnapshot(fallback: T, block: (Sequence<String>) -> T): T {
+        repeat(4) {
+            val snap = snapshot()
+            afterSnapshot?.invoke()
+            try {
+                val result = block(linesOf(snap))
+                if (currentGeneration() == snap.generation) return result
+            } catch (_: java.io.IOException) {
+                // a rotated file was pruned between the snapshot and the read: take a new snapshot
             }
+        }
+        return fallback
+    }
+
+    private fun linesOf(s: Snapshot): Sequence<String> = sequence {
+        for (f in s.archives) f.bufferedReader().use { r -> for (line in r.lineSequence()) yield(line) }
+        for (line in String(readPrefix(file, s.activeLength), Charsets.UTF_8).lineSequence()) yield(line)
+    }
+
+    private fun readPrefix(f: File, n: Long): ByteArray {
+        if (n <= 0 || !f.exists()) return ByteArray(0)
+        RandomAccessFile(f, "r").use { raf ->
+            val b = ByteArray(minOf(n, raf.length()).toInt())
+            raf.readFully(b)
+            return b
+        }
+    }
+
+    private fun verifyLines(lines: Sequence<String>): AuditVerify {
+        var prev: String? = null
+        var start: String? = null
+        var n = 0
+        val anchors = HashSet<String>()
+        for (line in lines) {
+            if (line.isBlank()) continue
+            val e = parse(line) ?: return AuditVerify(false, n, n + 1, "unparseable line")
+            if (prev == null) start = e.prevHash
+            else if (e.prevHash != prev) return AuditVerify(false, n, n + 1, "prevHash does not match previous entry")
+            if (e.hash != hashOf(e.prevHash, e.ts, e.kind, e.payload)) return AuditVerify(false, n, n + 1, "hash mismatch")
+            if (e.kind == PRUNED) ((e.payload as? JsonObject)?.get("anchor") as? JsonPrimitive)?.content?.let { anchors += it }
+            prev = e.hash
+            n++
+        }
+        // the chain starts at GENESIS, or at the anchor of an audit.pruned entry that explains why older files are gone
+        if (start != null && start != GENESIS && start !in anchors) {
+            return AuditVerify(false, 0, 1, "the start of the chain was removed without an audit.pruned entry")
         }
         return AuditVerify(true, n)
     }
@@ -121,8 +185,36 @@ class AuditLog(
 
     private fun rotate() {
         val next = (archives().maxOfOrNull { archiveNumber(it) } ?: 0) + 1
-        if (file.renameTo(archiveFile(next))) activeBytes = 0
+        if (!file.renameTo(archiveFile(next))) return
+        activeBytes = 0
+        generation++
+        val all = archives()
+        val excess = all.size - maxArchives.coerceAtLeast(1)
+        if (excess > 0) prune(all.take(excess), oldestKept = all[excess])
     }
+
+    /** Deletes [drop] (the oldest files) and records it, with the hash the oldest kept entry chains from. */
+    private fun prune(drop: List<File>, oldestKept: File) {
+        var entries = 0
+        for (f in drop) {
+            entries += scan(f).first
+            f.delete()
+        }
+        total -= entries
+        write(
+            PRUNED,
+            JsonObject(
+                mapOf(
+                    "archives" to JsonPrimitive(drop.size),
+                    "entries" to JsonPrimitive(entries),
+                    "anchor" to JsonPrimitive(firstPrevHash(oldestKept) ?: GENESIS),
+                ),
+            ),
+        )
+    }
+
+    private fun firstPrevHash(f: File): String? =
+        f.useLines { lines -> lines.firstOrNull { it.isNotBlank() }?.let { parse(it)?.prevHash } }
 
     private fun base() = file.nameWithoutExtension
     private fun ext() = file.extension.let { if (it.isEmpty()) "" else ".$it" }
@@ -136,12 +228,6 @@ class AuditLog(
             .filter { pattern.matches(it.name) }
             .sortedBy { archiveNumber(it) }
     }
-
-    /** All files of the log in chain order: rotated files, then the active one. */
-    private fun files(): List<File> = archives() + listOfNotNull(file.takeIf { it.exists() })
-
-    private fun readEntries(f: File): List<AuditEntry> =
-        f.readLines().filter { it.isNotBlank() }.mapNotNull { parse(it) }
 
     /** Entry count and hash of the last line of a rotated file; its lines are not parsed beyond the last one. */
     private fun scan(f: File): Pair<Int, String?> {
@@ -206,6 +292,11 @@ class AuditLog(
 
         /** The active file is rotated when it reaches about 1 MB. */
         const val ROTATE_BYTES = 1_000_000L
+
+        /** At most this many rotated files are kept; older ones are deleted and an [PRUNED] entry says so. */
+        const val MAX_ARCHIVES = 5
+
+        const val PRUNED = "audit.pruned"
 
         /** A torn tail bigger than this is not cut off at load; verify() reports it instead. */
         const val MAX_REPAIR_BYTES = 65_536

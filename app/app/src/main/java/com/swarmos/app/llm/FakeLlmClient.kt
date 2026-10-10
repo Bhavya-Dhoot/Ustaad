@@ -7,8 +7,8 @@ import java.security.MessageDigest
 import kotlin.math.sqrt
 
 /**
- * Stand-in until the real runtime lands. Output is canned and every number is fake.
- * Any screen showing output from this client must label it FAKE.
+ * What AppGraph.llm / AppGraph.embedder hold while no real model is loaded (see LlamaRuntime.realChatReady). Output is
+ * canned and deterministic, and every number is fake. Any screen showing output from this client must label it FAKE.
  */
 class FakeLlmClient : LlmClient {
     override val modelName = "FAKE"
@@ -16,7 +16,7 @@ class FakeLlmClient : LlmClient {
     override suspend fun ready() = true
 
     override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
-        val words = if (req.jsonSchema != null) listOf("{}") else CANNED.split(' ')
+        val words = if (req.jsonSchema != null) listOf("{}") else ANSWER.split(' ')
         val out = words.take(req.maxTokens.coerceAtLeast(1))
         val promptTokens = req.messages.sumOf { it.content.split(' ').size }
         delay(PROMPT_MS_PER_TOKEN.toLong() * promptTokens.coerceAtMost(20))
@@ -60,7 +60,8 @@ class FakeLlmClient : LlmClient {
         const val DIM = 256
         private const val WORD_DELAY_MS = 30L
         private const val PROMPT_MS_PER_TOKEN = 4.0
-        private const val CANNED =
-            "[FAKE] This is a canned reply from the placeholder model. The real runtime is not wired in yet."
+        /** The only text this client ever answers (the word delays are fixed too, so tests are deterministic). */
+        const val ANSWER =
+            "[FAKE] No chat model is loaded on this phone."
     }
 }

@@ -45,6 +45,9 @@ data class SustainedPoint(val minute: Int, val decodeTokPerSec: Double, val ther
 object Bench {
     const val GEN_TOKENS = 128
 
+    /** A run (512-token prefill + 128 tokens, a minute or so on the slowest build) that takes longer than this is a hung server. */
+    private const val RUN_BUDGET_MS = 300_000L
+
     /** 9 paragraphs (50 tokens each) plus two sentences (25 + 14) plus the instruction and chat template give about 512 prompt tokens with the Qwen3.5 tokenizer. */
     private const val REPEATS = 9
     private const val PARAGRAPH =
@@ -175,13 +178,15 @@ object Bench {
         var firstMs = 0.0
         var stats: ChatStats? = null
         val sb = StringBuilder()
-        client.chatStreamRaw(req, cachePrompt = false, extra = extra).collect { c ->
-            if (c.delta.isNotEmpty()) {
-                if (firstMs == 0.0) firstMs = (System.nanoTime() - t0) / 1e6
-                sb.append(c.delta)
-                _text.value = sb.toString()
+        withChatBudgetOrFail("one benchmark run", RUN_BUDGET_MS) {
+            client.chatStreamRaw(req, cachePrompt = false, extra = extra).collect { c ->
+                if (c.delta.isNotEmpty()) {
+                    if (firstMs == 0.0) firstMs = (System.nanoTime() - t0) / 1e6
+                    sb.append(c.delta)
+                    _text.value = sb.toString()
+                }
+                if (c.done) stats = c.stats
             }
-            if (c.done) stats = c.stats
         }
         val s = stats ?: throw IllegalStateException("no timings in the stream")
         val st = LlamaRuntime.statusOf(Role.CHAT)

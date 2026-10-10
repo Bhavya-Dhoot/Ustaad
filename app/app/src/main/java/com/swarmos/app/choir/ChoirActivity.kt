@@ -12,7 +12,7 @@ internal object ChoirActivity {
 
     fun solvingFor(name: String?): String = "Solving a problem for ${name ?: "another phone"}."
 
-    fun set(text: String) = PhoneActivity.set(OWNER, text)
+    fun set(text: String, onStop: (() -> Unit)? = null) = PhoneActivity.set(OWNER, text, onStop)
 
     fun clear() = PhoneActivity.clear(OWNER)
 

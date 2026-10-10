@@ -80,7 +80,7 @@ fun SetupScreen(onFinish: () -> Unit) {
     val ctx = LocalContext.current
     var tick by remember { mutableIntStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { tick++ } // back from a system dialog or settings page
-    val state = remember(tick) { readSetupState(ctx) }
+    var batteryAsked by rememberSaveable { mutableStateOf(false) }
     val vivo = remember { isVivoFamily(Build.MANUFACTURER, Build.BRAND) }
 
     val nearbyPerms = remember { nearbyPermissions(Build.VERSION.SDK_INT) }
@@ -99,6 +99,10 @@ fun SetupScreen(onFinish: () -> Unit) {
     fun blocked(asked: Boolean, perms: List<String>): Boolean = asked && activity != null && perms.all {
         ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED ||
             !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
+    }
+    // what the system says now, plus which rows were already put to the user (a denied dialog still lets Continue through)
+    val state = remember(tick, nearbyAsked, notificationsAsked, batteryAsked) {
+        readSetupState(ctx).copy(nearbyAsked = nearbyAsked, notificationsAsked = notificationsAsked, batteryAsked = batteryAsked)
     }
     val nearbyBlocked = !state.nearby && blocked(nearbyAsked, nearbyPerms)
     val notificationsBlocked = !state.notifications &&
@@ -124,7 +128,7 @@ fun SetupScreen(onFinish: () -> Unit) {
                 SetupRow(
                     icon = SwarmIcon.Nearby,
                     title = "Allow nearby devices",
-                    reason = "Find and connect to your other phones.",
+                    reason = if (state.nearby) "Find and connect to your other phones." else "If skipped: Ustaad cannot find your other phones.",
                     done = state.nearby,
                     button = if (nearbyBlocked) "Open settings" else "Allow",
                     onClick = {
@@ -134,7 +138,8 @@ fun SetupScreen(onFinish: () -> Unit) {
                 SetupRow(
                     icon = SwarmIcon.Bell,
                     title = "Allow notifications",
-                    reason = "Lets Ustaad keep running with the screen off.",
+                    reason = if (state.notifications) "Shows what Ustaad is doing and lets you stop it."
+                    else "If skipped: no status line, and no Stop button in the notification.",
                     done = state.notifications,
                     button = if (notificationsBlocked) "Open settings" else "Allow",
                     onClick = {
@@ -145,10 +150,11 @@ fun SetupScreen(onFinish: () -> Unit) {
                 SetupRow(
                     icon = SwarmIcon.Battery,
                     title = "Turn off battery limits for Ustaad",
-                    reason = "Otherwise Android stops Ustaad in the background.",
+                    reason = if (state.battery) "Ustaad keeps running in the background."
+                    else "If skipped: Android may stop Ustaad in the background and it drops out of the swarm.",
                     done = state.battery,
                     button = "Turn off",
-                    onClick = { ctx.requestBatteryExemption() },
+                    onClick = { batteryAsked = true; ctx.requestBatteryExemption() },
                 )
                 if (vivo) {
                     SetupRow(

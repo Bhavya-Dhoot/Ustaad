@@ -2,9 +2,20 @@ package com.swarmos.app.shell
 
 import android.Manifest
 
-/** Which of the three required first-run rows are done. Continue is enabled only when all of them are. */
-data class SetupState(val nearby: Boolean, val notifications: Boolean, val battery: Boolean) {
-    val canContinue: Boolean get() = nearby && notifications && battery
+/**
+ * Which of the three required first-run rows are done, and which the user has already been asked about (the system
+ * dialog was shown and dismissed or denied). Continue is enabled once every row is done or has been answered, so a
+ * denied or dismissed dialog never leaves the user stuck; "Skip for now" needs no condition at all.
+ */
+data class SetupState(
+    val nearby: Boolean,
+    val notifications: Boolean,
+    val battery: Boolean,
+    val nearbyAsked: Boolean = false,
+    val notificationsAsked: Boolean = false,
+    val batteryAsked: Boolean = false,
+) {
+    val canContinue: Boolean get() = (nearby || nearbyAsked) && (notifications || notificationsAsked) && (battery || batteryAsked)
     val doneCount: Int get() = listOf(nearby, notifications, battery).count { it }
 }
 
