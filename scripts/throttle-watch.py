@@ -4,7 +4,8 @@
 Usage: python scripts/throttle-watch.py <phone-ip> <minutes> <out.jsonl>
 Every 10 s it reads `dumpsys thermalservice` (Thermal Status, the temperatures and the cooling devices the thermal HAL
 reports) and three signed GETs: `/v1/sched/busy`, `/v1/sched/caps` (the decode speed of the last real request, `realTps`)
-and `/v1/memcloud/state` (`memPhase`). It sends no job, starts no activity and changes nothing on the phone.
+and `/v1/memcloud/state` (`memPhase`), and the kernel's board and virtual thermal zones (`zones`, from
+`/sys/class/thermal/thermal_zone*/temp`). It sends no job, starts no activity and changes nothing on the phone.
 The pairing secret is read from the debug app's own store over adb and kept in memory only (SWARM_SECRET overrides).
 Filler speed between two samples = tokens gained / seconds of generating gained (it includes prompt time, so it is lower
 than the decode speed of one request, but it moves with it).
@@ -71,13 +72,27 @@ def thermal():
     return row
 
 
+SKIP = ("cpu", "qmx", "nsph", "gpuss", "mdmss")   # die sensors: the HAL groups above already carry their maxima
+TYPES = dict(re.findall(r"thermal_zone(\d+)/type:(\S+)", adb("shell", "grep . /sys/class/thermal/thermal_zone*/type")))
+
+
+def zones():
+    """Board and virtual thermal zones by name, in C (the kernel's own list; the thermal HAL shows only a few of them)."""
+    out = {}
+    for n, v in re.findall(r"thermal_zone(\d+)/temp:(-?\d+)", adb("shell", "grep . /sys/class/thermal/thermal_zone*/temp 2>/dev/null")):
+        name = TYPES.get(n, n)
+        if not name.startswith(SKIP) and "bcl" not in name and "ibat" not in name:
+            out[name] = int(v) / 1000 if abs(int(v)) > 1000 else int(v)
+    return out
+
+
 end, t0 = time.time() + minutes * 60, time.time()
 with open(out, "a", encoding="utf-8") as f:
     while time.time() < end:
         b = get("/v1/sched/busy")
         row = {"t": round(time.time() - t0), "clock": time.strftime("%H:%M:%S"), **thermal(),
                **{k: b.get(k) for k in ("state", "jobsDone", "tokens", "secondsGenerating", "jobsFailed", "_err") if k in b},
-               "realTps": get("/v1/sched/caps").get("lastDecodeTokPerSec"), "memPhase": get("/v1/memcloud/state").get("phase")}
+               "realTps": get("/v1/sched/caps").get("lastDecodeTokPerSec"), "memPhase": get("/v1/memcloud/state").get("phase"), "zones": zones()}
         f.write(json.dumps(row) + "\n")
         f.flush()
         time.sleep(10)

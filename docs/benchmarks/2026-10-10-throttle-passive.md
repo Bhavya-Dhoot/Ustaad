@@ -1,8 +1,8 @@
-# Keep busy watched from outside, phones B and C (2026-10-10, 21:21 to 22:01)
+# Keep busy watched from outside, phones B and C (2026-10-10, 21:21 to 22:34)
 
 Read-only watch of both phones for 40 minutes while the founder was using them: `scripts/throttle-watch.py`, one sample every 10 s (237 per phone) of `dumpsys thermalservice` and the signed `GET /v1/sched/busy`. No job was sent, nothing was started or changed on a phone. Build on both phones: 1ac22c5, both charging, app in front, keep busy on. Raw: `raw/gate-9b/throttle-passive/B.jsonl` and `C.jsonl`. One window, one run.
 
-The question was which readable signal marks the step between the fast level (about 13.5 tok/s) and the slow level (about 10.8) of real work inside Thermal Status 2 (evening-checks section 9). The watch did not answer it, and it found a fault instead.
+The question was which readable signal marks the step between the fast level (about 13.5 tok/s) and the slow level (about 10.8) of real work inside Thermal Status 2 (evening-checks section 9). The first window did not answer it and found a fault instead (sections 1 to 3). A second window half an hour later did answer it (section 5): the level follows the `gpu` cooling step in the thermal report.
 
 ## 1. Phone C ran no filler for 26 minutes and more (fault, fixed in code, not yet on the phones)
 
@@ -15,7 +15,7 @@ The question was which readable signal marks the step between the fast level (ab
 
 Cause, read from the phone at 22:03 (`GET /v1/memcloud/state`): at 21:35:20 a MemoryCloud start for the 30B model was refused on Phone C ("The plan does not fit: Phone C has 5.6 GB free and the planning estimate is 10.3 GB; Phone B has 7.2 GB free and the planning estimate is 9.9 GB. Nothing was started or stopped."). The refusal is correct. But it leaves MemoryCloud in the phase FAILED until the owner starts again, and the keep-busy loop counted every phase except IDLE as real work in progress. So the phone waited for an idle moment that never came, cool and with its model loaded.
 
-Fix: commit 1b9d60b, FAILED no longer counts as work in progress (`MemCloudLogic.holdsPhone`, one unit test; 1431 tests, 0 failures). The debug APK is built. It is not installed: the founder was using the phones. Until it is, a refused or failed MemoryCloud start stops keep busy on that phone until the app is restarted or a split is started and stopped.
+Fix: commit 1b9d60b, FAILED no longer counts as work in progress (`MemCloudLogic.holdsPhone`, one unit test; 1431 tests, 0 failures). The debug APK is built. It is not installed: the founder was using the phones. Until it is, a refused or failed MemoryCloud start stops keep busy on that phone until MemoryCloud is stopped (the Stop control, or `POST /v1/memcloud/stop`) or the app is restarted. Phone C was released that way at 22:11:43 after 36 minutes without filler.
 
 ## 2. What the thermal report shows besides Thermal Status
 
@@ -54,13 +54,38 @@ Filler speed here is tokens gained over seconds of generating gained between sam
 - The one real request known at the step 5/10/15 decoded at 13.43 tok/s: the fast level. The phone does not report when that request ran; the last GPU activity on Phone C was the founder's own use at 21:42 to 21:45, at this step. One reading on each side, on different phones, at different Thermal Status. It fits "the slow level is the step 7/13/17", and it is not proof: Thermal Status alone separates these two readings just as well.
 - Not shown: the step 5/10/15 at Thermal Status 2, which is where the two levels have to be told apart. That needs a phone warming up from cool with the filler running. Phone C is cool and will do that once its keep busy runs again.
 
-A second read-only watch is running on both phones since 22:06 for 180 minutes (`B-2.jsonl`, `C-2.jsonl`), with two more fields per sample: the decode speed of the last real request (`realTps`) and the MemoryCloud phase (`memPhase`).
+The second window (section 5) has two more fields per sample: the decode speed of the last real request (`realTps`) and the MemoryCloud phase (`memPhase`).
 
 ## 4. What follows for the duty rule
 
-Nothing is changed yet. If the second watch shows that the slow level starts at a skin temperature above the 42 C where Thermal Status 2 starts, and ends only at 40 C, then half duty at Thermal Status 2 is what holds a phone in the slow level: it keeps the skin at 41 to 43.5 C, above the release point, as Phone B showed for the whole window. A pause of about 90 s was enough on Phone C to get under 40 C. That would be the lever, and the cost in filler share has to be measured before any rule is changed.
+Nothing is changed on the phones. The present rule (half duty at Thermal Status 2) cannot see the step. On Phone C it happened to recover from step 7 by itself in five and a half minutes; on Phone B it has not recovered in 73 minutes, so every real request on Phone B runs at 10.9 tok/s where 13.4 is available, and its filler makes about a fifth fewer tokens for the same share of time.
+
+A rule that reads the step is written and not merged (branch `worktree-agent-a718f09290a81f34a`, commit f3cd864, 1448 unit tests, 0 failures): at `gpu` step 7 or more the filler runs lightly, resting four times the length of each job, until the step is left; `GET /v1/sched/busy` reports the step as `gpuStep`; both numbers can be set on a debug build without a rebuild. It goes to master only after a before and after on a phone: real decode, filler tokens and share of time generating over 30 minutes each. If the light phase does not end, or costs more share than it wins in speed, it is dropped.
+
+## 5. Second window (22:06 to 22:34): the cooling step is the signal
+
+Same watch, 167 samples per phone, with the decode speed of the last real request (`realTps` from `/v1/sched/caps`) in every sample. Raw: `B-2.jsonl`, `C-2.jsonl`. Two things made it useful. At 22:11:43 the stuck state on Phone C was cleared with the app's own MemoryCloud stop call (no restart; the chat server kept its process, restarts 0), and filler ran again within 10 s, so a cool phone warmed up under watch. And the founder ran real requests on both phones at 22:12 to 22:15 and at 22:26, which gave real decode readings at each step. Each change of `realTps` is one finished real request; it is counted at the step of the sample that first shows it, so a request that ran across a step change is counted at the later step.
+
+| Phone | Thermal Status | gpu / cpu-cluster0 / cpu-cluster1 | Real requests | Decode, tok/s | Filler at half duty, tok/s with prompt time |
+|---|---|---|---|---|---|
+| C | 0 | 0 / 6 / 12 | 2 | 18.17 and 18.30 | |
+| C | 0 | 4 / 7 / 14 | 7 | 14.12 to 14.30 | |
+| C | 1 | 5 / 10 / 15 | 8 | 13.32 to 13.62 | |
+| C | 2 | 5 / 10 / 15 | 2 | 13.32 and 13.44 | 9.07 to 10.40, median 9.67 (6 windows) |
+| C | 2 | 7 / 13 / 17 | 4 | 10.74 to 11.34 | 7.22 and 7.65 (2 windows) |
+| B | 2 | 7 / 13 / 17 | 13 | 10.79 to 10.99 | 7.22 to 8.86, median 7.98 (13 windows) |
+
+- The same phone at the same Thermal Status 2 decoded at 13.3 to 13.4 tok/s at step 5/10/15 and at 10.7 to 11.3 at step 7/13/17. The cooling step separates the two levels; Thermal Status does not. This is what section 3 could not show.
+- A cold phone is faster again: 18.2 to 18.3 tok/s at step 0/6/12. This is where the 18.1 to 18.3 tok/s per phone in the three-phone batch of the final-build smoke run came from, which no file had explained. It does not last under work: four minutes of real requests and filler took Phone C from 33.6 to 42.6 C skin temperature and from step 0 to step 5.
+- Filler tokens follow the step too: about 9.7 tok/s at step 5 against about 7.5 to 8.0 at step 7, at the same half duty.
+- Where the steps changed on Phone C this time: 0 to 4 between 35.9 and 37.2 C skin, 4 to 5 at 39.5 C, 5 to 7 between 42.1 and 42.5 C during a burst of real requests (battery 39.7 to 39.9 C), and 7 back to 5 five and a half minutes later at 41.4 C (battery 38.9 C) while filler ran at half duty.
+- Phone B never left step 7 in the 73 minutes watched (21:21 to 22:34), although its skin fell to 41.0 C three times and its battery to 38.3 C, both lower than where Phone C left the step. So what moves the step is not the skin temperature the thermal report shows, and not the battery temperature. The two phones run different system builds (16.0.21.12 and 16.0.20.1). Not explained.
+- The app's own user can read the step: `/sys/class/thermal/cooling_device<N>/type` names the device and `cur_state` holds the level (checked on Phone B with `run-as com.swarmos.app`: `gpu` 7, `cpu-cluster0` 13, `cpu-cluster1` 17, and the CPU frequency ceilings 1.997 of 3.629 GHz and 2.112 of 4.608 GHz). Whether the app's own process may read it is checked only after an install.
+
+Phone C in this window: 268 filler jobs, 0 failed, generating 616 s of 1692 s (36 %, with the first five minutes stuck and the founder's requests in between). Phone B: 313 jobs, 0 failed, 845 s of 1692 s (50 %).
 
 ## Not measured
-- The step up to 7/13/17, and filler or real speed at 5/10/15 inside Thermal Status 2.
-- Whether the app can read any of this itself. `dumpsys thermalservice` needs adb. The app can read Thermal Status, the battery temperature and the system's thermal headroom figure; none was compared with the cooling step.
+- Which sensor moves the step. A third watch with the kernel's board and virtual thermal zones in every sample runs from 22:34 (`B-3.jsonl`, `C-3.jsonl`).
+- The rule of section 4 on a phone: how long the light phase lasts, whether step 5 then holds, the share of time it costs.
+- Whether the app's own process may read the step (the check used `run-as`).
 - Phone A.
