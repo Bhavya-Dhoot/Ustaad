@@ -21,6 +21,7 @@ data class ChatRequestDto(
     val jsonSchema: String? = null,
     val stop: List<String> = emptyList(),
     val seed: Int? = null,
+    val cachePrompt: Boolean = true,   // a phone on an older build ignores it; a job sent without it keeps the cache on
 )
 
 @Serializable
@@ -29,9 +30,9 @@ data class StatsDto(val promptTokens: Int, val completionTokens: Int, val prompt
     fun toStats() = ChatStats(promptTokens, completionTokens, promptMs, genMs)
 }
 
-fun ChatRequest.toDto() = ChatRequestDto(messages.map { MessageDto(it.role, it.content) }, maxTokens, temperature, jsonSchema, stop, seed)
+fun ChatRequest.toDto() = ChatRequestDto(messages.map { MessageDto(it.role, it.content) }, maxTokens, temperature, jsonSchema, stop, seed, cachePrompt)
 
-fun ChatRequestDto.toRequest() = ChatRequest(messages.map { ChatMessage(it.role, it.content) }, maxTokens, temperature, jsonSchema, stop, seed)
+fun ChatRequestDto.toRequest() = ChatRequest(messages.map { ChatMessage(it.role, it.content) }, maxTokens, temperature, jsonSchema, stop, seed, cachePrompt)
 
 fun ChatStats.toDto() = StatsDto(promptTokens, completionTokens, promptMs, genMs)
 

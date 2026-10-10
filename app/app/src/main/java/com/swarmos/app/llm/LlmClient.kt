@@ -11,6 +11,7 @@ data class ChatRequest(
     val jsonSchema: String? = null,      // JSON Schema text; server constrains output to it
     val stop: List<String> = emptyList(),
     val seed: Int? = null,
+    val cachePrompt: Boolean = true,     // false for a one-shot request that is never continued or repeated: the model server then neither reuses nor checkpoints its prompt
 )
 
 data class ChatChunk(val delta: String, val done: Boolean = false, val stats: ChatStats? = null)

@@ -96,7 +96,8 @@ class BatchRunner(
         val jobId = "$batchId-$i"
         val timing = JobTiming()
         return try {
-            val r = swarm.chatJob(jobId, req, timing = timing)
+            // a batch item is a one-shot prompt, on this phone or another: no prompt cache state is kept for it
+            val r = swarm.chatJob(jobId, req.copy(cachePrompt = false), timing = timing)
             BatchItem(
                 i, jobId, r.nodeId, r.modelName, r.text, r.stats.promptTokens, r.stats.completionTokens, r.stats.genMs,
                 promptMs = r.stats.promptMs, waitedMs = timing.waitedMs.toDouble(), endMs = (nanoClock() - startNs) / 1e6,

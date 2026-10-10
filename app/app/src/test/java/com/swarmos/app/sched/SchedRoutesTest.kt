@@ -140,4 +140,17 @@ class SchedRoutesTest {
         assertEquals(8, nodes.values.sum())
         assertEquals(8, me.llm.executed.size + phone.llm.executed.size)
     }
+
+    @Test fun aBatchItemSentToAnotherPhoneReachesItsModelWithTheCacheOff() = runBlocking {
+        val llm = SwarmLlm({ listOf(remote) }, scope, attemptTimeoutMs = 5_000, capsMaxAgeMs = 50, probeEveryMs = 100, msPerToken = 0)
+        val report = BatchRunner(llm).run("t", "swarm", (0 until 3).map { req("p$it") })
+        assertEquals(3, report.done)
+        assertEquals(listOf(false, false, false), phone.llm.requests.map { it.cachePrompt })
+    }
+
+    @Test fun aJobSentToAnotherPhoneKeepsItsOwnCacheFlag() = runBlocking {
+        remote.runChat("on", req("a"), null)
+        remote.runChat("off", req("b").copy(cachePrompt = false), null)
+        assertEquals(listOf(true, false), phone.llm.requests.map { it.cachePrompt })
+    }
 }

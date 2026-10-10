@@ -80,6 +80,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://192.168.242.76:8787/v1/link/pair
 
 Replace the port with `8847` when the demo was built with `-PportOffset=60`.
 
+## Model server binaries (llama.cpp)
+
+`libllama-server.so` (CPU) is `native/build-llama-android.sh -v i8mm` and `libllama-server-gpu.so` (OpenCL) is `-v opencl`, both from llama.cpp v0.6.0 with `native/patches/server-no-checkpoint-without-cache.patch` applied (`git apply` it inside `third_party/llama.cpp`; the tree holds no other patch, `rpc-env-nagle.patch` is for one benchmark only). Strip with `native/package-llama-android.sh <build dir> <out dir>` and copy only the server file into `app/app/src/main/jniLibs/arm64-v8a/` and `native/prebuilt/`. Without the patch these two commands reproduce the previously shipped files byte for byte.
+
 ## Unit tests
 
 ```bash

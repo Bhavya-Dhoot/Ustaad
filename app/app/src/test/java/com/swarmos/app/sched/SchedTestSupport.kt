@@ -24,10 +24,13 @@ class TestLlm(
     val concurrent = AtomicInteger()
     val maxConcurrent = AtomicInteger()
     val executed = ConcurrentLinkedQueue<String>()
+    /** Every request a reply was run for, as it reached the model. */
+    val requests = ConcurrentLinkedQueue<ChatRequest>()
 
     override suspend fun ready() = true
 
     override suspend fun chat(req: ChatRequest): ChatResult {
+        requests += req
         val c = concurrent.incrementAndGet()
         maxConcurrent.updateAndGet { maxOf(it, c) }
         try {

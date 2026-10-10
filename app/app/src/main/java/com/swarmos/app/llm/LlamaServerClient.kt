@@ -44,8 +44,8 @@ class LlamaServerClient(
 
     override fun chatStream(req: ChatRequest): Flow<ChatChunk> = chatStreamRaw(req)
 
-    /** [extra] adds raw top-level request fields (e.g. `ignore_eos`), used by the benchmark. */
-    fun chatStreamRaw(req: ChatRequest, cachePrompt: Boolean = true, extra: JsonObject? = null): Flow<ChatChunk> = channelFlow {
+    /** [extra] adds raw top-level request fields (e.g. `ignore_eos`), used by the benchmark. [cachePrompt] is the request's own unless given. */
+    fun chatStreamRaw(req: ChatRequest, cachePrompt: Boolean = req.cachePrompt, extra: JsonObject? = null): Flow<ChatChunk> = channelFlow {
         check(role == Role.CHAT) { "chat is served by the CHAT server only" }
         refuseSchemaIfChatOnly(req)
         val body = LlamaJson.chatBody(req, stream = true, model = modelName, cachePrompt = cachePrompt, extra = extra)

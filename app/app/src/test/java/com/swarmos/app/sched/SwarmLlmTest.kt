@@ -228,6 +228,26 @@ class SwarmLlmTest {
         assertEquals(9, report.done)
     }
 
+    // ---- prompt cache ------------------------------------------------------------------------------------------------
+
+    @Test fun batchItemsReachTheModelOfEveryPhoneWithThePromptCacheOff() = runBlocking {
+        val a = phone("a", TestLlm(delayMs = 20), tps = 10.0)
+        val b = phone("b", TestLlm(delayMs = 20), tps = 10.0)
+        val report = BatchRunner(swarm(listOf(a, b))).run("t", "swarm", batch(10))
+        assertEquals(10, report.done)
+        val seen = a.llm.requests + b.llm.requests
+        assertEquals(10, seen.size)
+        assertTrue("every item was sent with the cache off", seen.none { it.cachePrompt })
+    }
+
+    @Test fun anyOtherCallerKeepsThePromptCacheOn() = runBlocking {
+        val a = phone("a")
+        val llm = swarm(listOf(a))
+        llm.chatJob("single", req("one"))
+        llm.chat(req("two"))
+        assertEquals(listOf(true, true), a.llm.requests.map { it.cachePrompt })
+    }
+
     // ---- LlmClient surface -------------------------------------------------------------------------------------------
 
     @Test fun streamingRunsOnThisPhoneWhenItHasAFreeSlot() = runBlocking {
