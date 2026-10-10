@@ -54,7 +54,7 @@ class SchedRoutesTest {
         phone = FakePhone("peer", TestLlm(delayMs = 200), scope)
         server = embeddedServer(CIO, port = port, host = "127.0.0.1") {
             install(ContentNegotiation) { json(SwarmJson) }
-            routing { route("/v1/sched") { schedNodeRoutes(phone.node) } }
+            routing { route("/v1/sched") { schedNodeRoutes(phone.node, { "secret" }) } }
         }.also { it.start(wait = false) }
         remote = client(port)
     }

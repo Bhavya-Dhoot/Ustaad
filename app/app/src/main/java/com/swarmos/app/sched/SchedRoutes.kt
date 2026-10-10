@@ -38,6 +38,16 @@ private suspend inline fun <reified T> RoutingCall.receiveJson(): T? =
         null
     }
 
+/** Runs [check]; when it throws [RequestLimitException] answers 413 naming the limit and returns false. */
+private suspend fun RoutingCall.withinLimits(check: () -> Unit): Boolean =
+    try {
+        check()
+        true
+    } catch (e: RequestLimitException) {
+        respond(HttpStatusCode.PayloadTooLarge, LimitBody(e.message ?: "request too large", e.limit))
+        false
+    }
+
 /** Runs [block] and turns the scheduler's refusals into their HTTP status: 429 busy, 409 model mismatch, 500 anything else. */
 private suspend inline fun <reified T : Any> RoutingCall.answer(block: () -> T) {
     try {
@@ -57,13 +67,14 @@ private suspend inline fun <reified T : Any> RoutingCall.answer(block: () -> T) 
  * GET /caps, POST /chat, POST /chat-stream, POST /embed: what a phone offers to the rest of the swarm.
  * [peerName] turns the node id that signed a request into the phone's name for the live state line (null when unknown).
  */
-fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS, peerName: (String?) -> String? = { null }) {
+fun Route.schedNodeRoutes(node: SchedNode, secret: () -> String, streamPingMs: Long = STREAM_PING_MS, peerName: (String?) -> String? = { null }) {
     fun RoutingCall.caller(): String? = peerName(request.header(Signer.HEADER_NODE))
 
     get("/caps") { call.answer { node.caps() } }
 
     post("/chat") {
         val job = call.receiveJson<ChatJobRequest>() ?: return@post
+        if (!call.withinLimits { job.request.checkLimits() }) return@post
         SchedActivity.whileServing(call.caller()) {
             call.answer { node.chat(job.jobId, job.request.toRequest(), job.model) }
         }
@@ -72,6 +83,7 @@ fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS, 
     // Server-sent events. The slot is taken before the 200 is committed, so a full phone still answers 429.
     post("/chat-stream") {
         val job = call.receiveJson<ChatJobRequest>() ?: return@post
+        if (!call.withinLimits { job.request.checkLimits() }) return@post
         val slot = try {
             node.openStream(job.model)
         } catch (e: BusyException) {
@@ -84,7 +96,7 @@ fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS, 
         try {
             call.response.header(HttpHeaders.CacheControl, "no-cache")
             SchedActivity.whileServing(call.caller()) {
-                call.respondBytesWriter(ContentType.Text.EventStream) { writeEvents(slot, job.request.toRequest(), streamPingMs) }
+                call.respondBytesWriter(ContentType.Text.EventStream) { writeEvents(slot, job.request.toRequest(), job.jobId, secret(), streamPingMs) }
             }
         } finally {
             slot.close() // also runs when the caller hangs up: the next write or ping throws and ends the stream
@@ -93,6 +105,7 @@ fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS, 
 
     post("/embed") {
         val job = call.receiveJson<EmbedJobRequest>() ?: return@post
+        if (!call.withinLimits { job.checkLimits() }) return@post
         SchedActivity.whileServing(call.caller()) {
             call.answer { node.embed(job.jobId, job.texts) }
         }
@@ -102,7 +115,7 @@ fun Route.schedNodeRoutes(node: SchedNode, streamPingMs: Long = STREAM_PING_MS, 
 const val STREAM_PING_MS = 2_000L
 
 /** Writes the chunks of [slot]'s reply as events, with a comment line every [pingMs] so a vanished caller is noticed. */
-private suspend fun ByteWriteChannel.writeEvents(slot: SchedNode.StreamSlot, req: ChatRequest, pingMs: Long) = coroutineScope {
+private suspend fun ByteWriteChannel.writeEvents(slot: SchedNode.StreamSlot, req: ChatRequest, requestId: String, secret: String, pingMs: Long) = coroutineScope {
     val writing = Mutex()
     suspend fun send(text: String) = writing.withLock {
         writeStringUtf8(text)
@@ -117,16 +130,23 @@ private suspend fun ByteWriteChannel.writeEvents(slot: SchedNode.StreamSlot, req
         }
     }
     var finished = false
+    val text = StringBuilder()
+    // the last event carries the signature over the request id and everything sent in chunks
+    suspend fun done(stats: StatsDto?) {
+        finished = true
+        val mac = StreamMac.compute(secret, requestId, text.toString())
+        event("done", SwarmJson.encodeToString(StreamDone(stats, slot.nodeId, slot.modelName, mac)))
+    }
     try {
         slot.chunks(req).collect { c ->
             if (c.done) {
-                finished = true
-                event("done", SwarmJson.encodeToString(StreamDone(c.stats?.toDto(), slot.nodeId, slot.modelName)))
+                done(c.stats?.toDto())
             } else if (c.delta.isNotEmpty()) {
+                text.append(c.delta)
                 event("chunk", SwarmJson.encodeToString(ChunkDto(c.delta)))
             }
         }
-        if (!finished) event("done", SwarmJson.encodeToString(StreamDone(null, slot.nodeId, slot.modelName)))
+        if (!finished) done(null)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -140,6 +160,7 @@ private suspend fun ByteWriteChannel.writeEvents(slot: SchedNode.StreamSlot, req
 fun Route.schedBatchRoutes(batches: BatchStore) {
     post("/batch") {
         val body = call.receiveJson<BatchStartRequest>() ?: return@post
+        if (!call.withinLimits { body.checkLimits() }) return@post
         val requests = body.requests?.map { it.toRequest() } ?: body.builtin?.let { Bench.builtin(it) }
         if (requests.isNullOrEmpty()) {
             call.respond(HttpStatusCode.BadRequest, ErrorBody("give requests or builtin \"${Bench.BENCH32}\""))

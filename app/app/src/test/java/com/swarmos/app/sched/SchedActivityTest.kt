@@ -69,7 +69,7 @@ class SchedActivityTest {
         server = embeddedServer(CIO, port = port, host = "127.0.0.1") {
             install(ContentNegotiation) { json(SwarmJson) }
             // the test client signs as "me", whom this phone knows as Phone C
-            routing { route("/v1/sched") { schedNodeRoutes(node, peerName = { id -> if (id == "me") "Phone C" else null }) } }
+            routing { route("/v1/sched") { schedNodeRoutes(node, { "secret" }, peerName = { id -> if (id == "me") "Phone C" else null }) } }
         }.also { it.start(wait = false) }
         return RemoteLlmClient(NodeInfo("peer", "Phone B", "x", "127.0.0.1:$port", "t", "T", null), NodeClient({ "secret" }, { "me" }))
     }

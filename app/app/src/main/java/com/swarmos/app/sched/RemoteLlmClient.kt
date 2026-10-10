@@ -30,8 +30,10 @@ class RemoteLlmClient(
     val peer: NodeInfo,
     private val client: NodeClient,
     private val streams: StreamClient? = null,
+    /** Which "ip" or "ip:port" reaches [peer] right now. Asked at every call, so it follows the link module's path choice. */
+    private val address: (NodeInfo) -> String = { it.ip },
 ) : LlmClient, PhoneEndpoint {
-    private val host get() = peer.ip
+    private val host get() = address(peer)
 
     @Volatile
     private var seenModel: String? = null
@@ -75,14 +77,29 @@ class RemoteLlmClient(
     override suspend fun embed(texts: List<String>): List<FloatArray> =
         runEmbed(newJobId(), texts).vectors.map { it.toFloatArray() }
 
+    /**
+     * Tokens are passed on as they arrive; the answer is only genuine once the final event verifies. When that event is
+     * missing or its signature does not match, the flow ends with [StreamIntegrityException] and the caller must drop
+     * everything it received from this stream.
+     */
     private fun remoteStream(sc: StreamClient, req: ChatRequest, pinModel: String?): Flow<ChatChunk> = flow {
         var finished = false
-        val body = SwarmJson.encodeToString(ChatJobRequest(newJobId(), req.toDto(), pinModel))
+        val jobId = newJobId()
+        val text = StringBuilder()
+        val body = SwarmJson.encodeToString(ChatJobRequest(jobId, req.toDto(), pinModel))
         sc.post(host, "/sched/chat-stream", body).collect { ev ->
             when (ev.event) {
-                "chunk" -> emit(ChatChunk(SwarmJson.decodeFromString<ChunkDto>(ev.data).delta))
+                "chunk" -> {
+                    val delta = SwarmJson.decodeFromString<ChunkDto>(ev.data).delta
+                    text.append(delta)
+                    emit(ChatChunk(delta))
+                }
                 "done" -> {
                     val d = SwarmJson.decodeFromString<StreamDone>(ev.data)
+                    if (!StreamMac.matches(sc.secretNow(), jobId, text.toString(), d.mac)) {
+                        val why = if (d.mac == null) "is not signed" else "does not match its signature"
+                        throw StreamIntegrityException("the answer from ${peer.name} $why: discard it")
+                    }
                     seenModel = d.modelName
                     finished = true
                     emit(ChatChunk("", done = true, stats = d.stats?.toStats()))
@@ -90,7 +107,7 @@ class RemoteLlmClient(
                 "error" -> throw IOException("${peer.name} failed the stream: ${SwarmJson.decodeFromString<ErrorBody>(ev.data).error}")
             }
         }
-        if (!finished) throw IOException("the stream from ${peer.name} ended before it finished")
+        if (!finished) throw StreamIntegrityException("the stream from ${peer.name} ended without its signature: discard the answer")
     }.catch { e -> throw if (e is NodeHttpException) e.asSchedError() else e }
 
     /** 429 becomes [BusyException], 409 becomes [ModelMismatchException]; anything else passes through. */
