@@ -302,7 +302,7 @@ class BusyLoopTest {
     @Test fun aFailingModelCountsAsFailedAndBacksOff() = runBlocking {
         body = { throw IOException("server reset") }
         execNow = 60_000
-        assertEquals(BusyLoop.FAILURE_BACKOFF_MS, loop().step())
+        assertEquals("an error from the server keeps the usual 10 s back-off", 10_000L, loop().step())
         val r = report()
         assertEquals(1, r.jobsFailed)
         assertEquals(0, r.jobsDone)
@@ -423,7 +423,7 @@ class BusyLoopTest {
         assertNotNull("the slot is free", exec.tryAcquireFiller { })
     }
 
-    @Test fun aStreamThatNeverAnswersEndsAfterSixtySecondsAsFailedAndBacksOff() = runBlocking {
+    @Test fun aStreamThatNeverAnswersEndsAtTheLimitAsFailedAndStepReturnsTheLongBackOff() = runBlocking {
         body = { awaitCancellation() }
         execNow = 60_000
         val pass = async { loop().step() }
@@ -432,7 +432,8 @@ class BusyLoopTest {
         delay(700)   // the loop looks at its clock every 250 ms of real time
         assertFalse("not yet: 59.999 s of loop time", pass.isCompleted)
         loopNow += 1
-        assertEquals("a stuck server is a failure: the usual back-off", BusyLoop.FAILURE_BACKOFF_MS, withTimeout(3_000) { pass.await() })
+        assertEquals("a stuck server is a failure, with the longer back-off", 45_000L, withTimeout(3_000) { pass.await() })
+        assertEquals(BusyLoop.TIMEOUT_BACKOFF_MS, 45_000L)
         val r = report()
         assertEquals(1, r.jobsFailed)
         assertEquals("real work did not ask for the slot", 0, r.jobsCancelled)
