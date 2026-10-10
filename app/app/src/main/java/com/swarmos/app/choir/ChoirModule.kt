@@ -87,7 +87,7 @@ object ChoirModule : SwarmModule {
                 call.respondJson(ChoirController.runEval(ids, RunOptions(useCheck), withSamples))
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: EvalRefused) {
+            } catch (e: RunRefused) {
                 call.respondJson(ErrorBody(e.message ?: "eval refused"), HttpStatusCode.Conflict)
             } catch (t: Throwable) {
                 call.respondJson(ErrorBody(t.message ?: t::class.simpleName ?: "eval failed"), HttpStatusCode.InternalServerError)
@@ -140,6 +140,8 @@ private suspend inline fun <reified Req, reified Res> ApplicationCall.rpc(name: 
     } catch (t: Throwable) {
         return respondJson(ErrorBody("bad request: ${t.message}"), HttpStatusCode.BadRequest)
     }
+    // a demo build never answers from the placeholder model: the asking phone should have listed this one as "no model loaded"
+    ChoirController.refusal()?.let { return respondJson(ErrorBody(it), HttpStatusCode.Conflict) }
     audit("choir.$name.in", req)
     val from = request.header(Signer.HEADER_NODE)
     val res = try {
