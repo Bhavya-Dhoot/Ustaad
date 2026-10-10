@@ -1,6 +1,7 @@
 package com.swarmos.app.llm
 
 import android.content.Context
+import android.os.StatFs
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
 import kotlinx.coroutines.CancellationException
@@ -183,6 +184,13 @@ object ModelStore {
         if (jobs[entry.file]?.isActive == true) return
         setState(entry.file, DownloadState.Downloading(0, entry.bytes, 0))
         jobs[entry.file] = scope.launch {
+            // free space first: a download that cannot fit would fill the phone and fail at the end (StatFs runs here, off the main thread)
+            val free = runCatching { StatFs(modelsDir().path).availableBytes }.getOrNull()
+            val part = File(fileOf(entry.file).path + ".part").length()
+            Downloader.spaceRefusal(entry.file, entry.bytes, part, free)?.let {
+                setState(entry.file, DownloadState.Failed(it))
+                return@launch
+            }
             var lastBytes = 0L
             var lastNs = System.nanoTime()
             var rate = 0L
