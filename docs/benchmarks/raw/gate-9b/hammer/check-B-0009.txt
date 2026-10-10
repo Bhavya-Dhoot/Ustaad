@@ -1,0 +1,24 @@
+Phone B (192.168.242.23), build f62da67, 2026-10-11. Hammer switched with `am start -n com.swarmos.app/.MainActivity --ez hammer true|false`; each line is one signed GET /v1/sched/busy and the Thermal Status from dumpsys thermalservice.
+00:09:06 before | thermal 1 | hammer False | running | jobs 0 | share60s 0.03
+00:09:09 hammer on | thermal 1 | hammer True | running | jobs 1 | share60s 0.084
+00:09:19 hammer on | thermal 1 | hammer True | running | jobs 6 | share60s 0.253
+00:09:29 hammer on | thermal 1 | hammer True | running | jobs 10 | share60s 0.422
+00:09:39 hammer on | thermal 1 | hammer True | running | jobs 14 | share60s 0.591
+00:09:50 hammer on | thermal 1 | hammer True | running | jobs 18 | share60s 0.761
+00:10:00 hammer on | thermal 1 | hammer True | running | jobs 21 | share60s 0.931
+00:10:10 hammer on | thermal 1 | hammer True | running | jobs 25 | share60s 0.995
+00:10:20 hammer on | thermal 1 | hammer True | running | jobs 29 | share60s 0.995
+00:10:30 hammer on | thermal 1 | hammer True | running | jobs 33 | share60s 0.996
+00:10:43 off +  2 s | thermal 2 | hammer False | hammer_cooldown | jobs 38 | share60s 0.988
+00:10:53 off + 12 s | thermal 2 | hammer False | hammer_cooldown | jobs 38 | share60s 0.819
+00:11:03 off + 22 s | thermal 2 | hammer False | hammer_cooldown | jobs 38 | share60s 0.651
+00:11:13 off + 32 s | thermal 2 | hammer False | hammer_cooldown | jobs 38 | share60s 0.483
+00:11:23 off + 43 s | thermal 2 | hammer False | hammer_cooldown | jobs 38 | share60s 0.315
+00:11:33 off + 53 s | thermal 2 | hammer False | hammer_cooldown | jobs 38 | share60s 0.147
+00:11:44 off + 63 s | thermal 1 | hammer False | hammer_cooldown | jobs 38 | share60s 0.0
+00:11:54 off + 73 s | thermal 1 | hammer False | hammer_cooldown | jobs 38 | share60s 0.0
+00:12:04 off + 83 s | thermal 1 | hammer False | hammer_cooldown | jobs 38 | share60s 0.0
+00:12:14 off + 93 s | thermal 1 | hammer False | running | jobs 38 | share60s 0.026
+00:12:24 off +103 s | thermal 1 | hammer False | running | jobs 42 | share60s 0.194
+00:12:34 off +113 s | thermal 1 | hammer False | running | jobs 45 | share60s 0.362
+final: enabled true, state running, jobsDone 48, jobsCancelled 0, jobsFailed 0, tokens 1009, secondsGenerating 129.957, share60s 0.53, hammer false

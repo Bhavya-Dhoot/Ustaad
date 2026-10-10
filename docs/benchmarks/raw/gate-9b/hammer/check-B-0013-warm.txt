@@ -1,0 +1,25 @@
+Phone B (192.168.242.23), build f62da67, 2026-10-11. Same procedure as check-B-0009.txt, started once the phone was at Thermal Status 2 on half duty.
+00:13:40 before | thermal 2 | hammer False | half_duty | jobs 70 | share60s 0.995
+00:13:44 hammer on | thermal 2 | hammer True | half_duty | jobs 71 | share60s 0.982
+00:13:54 hammer on | thermal 2 | hammer True | running | jobs 73 | share60s 0.942
+00:14:04 hammer on | thermal 2 | hammer True | running | jobs 77 | share60s 0.942
+00:14:14 hammer on | thermal 2 | hammer True | running | jobs 81 | share60s 0.942
+00:14:24 hammer on | thermal 2 | hammer True | running | jobs 85 | share60s 0.942
+00:14:35 hammer on | thermal 2 | hammer True | running | jobs 89 | share60s 0.942
+00:14:45 hammer on | thermal 2 | hammer True | running | jobs 93 | share60s 0.975
+00:14:57 off +  2 s | thermal 2 | hammer False | hammer_cooldown | jobs 97 | share60s 0.981
+00:15:07 off + 12 s | thermal 2 | hammer False | hammer_cooldown | jobs 97 | share60s 0.813
+00:15:17 off + 22 s | thermal 2 | hammer False | hammer_cooldown | jobs 97 | share60s 0.644
+00:15:28 off + 32 s | thermal 2 | hammer False | hammer_cooldown | jobs 97 | share60s 0.476
+00:15:38 off + 43 s | thermal 2 | hammer False | hammer_cooldown | jobs 97 | share60s 0.308
+00:15:48 off + 53 s | thermal 2 | hammer False | hammer_cooldown | jobs 97 | share60s 0.14
+00:15:58 off + 63 s | thermal 2 | hammer False | hammer_cooldown | jobs 97 | share60s 0.0
+00:16:08 off + 73 s | thermal 2 | hammer False | hammer_cooldown | jobs 97 | share60s 0.0
+00:16:18 off + 83 s | thermal 1 | hammer False | hammer_cooldown | jobs 97 | share60s 0.0
+00:16:28 off + 93 s | thermal 1 | hammer False | running | jobs 97 | share60s 0.034
+00:16:38 off +103 s | thermal 1 | hammer False | running | jobs 101 | share60s 0.202
+00:16:49 off +113 s | thermal 1 | hammer False | running | jobs 104 | share60s 0.369
+with Hammer on: states ['half_duty', 'running'] thermal [2] flag [True]
+rest: states in the first 85 s ['hammer_cooldown'] | jobs gained in the rest 1
+after 95 s: states ['running'] | jobs gained 7
+final: {'enabled': True, 'state': 'running', 'jobsDone': 108, 'jobsCancelled': 0, 'jobsFailed': 0, 'tokens': 2317, 'secondsGenerating': 290.344, 'share60s': 0.538, 'hammer': False}
