@@ -41,7 +41,7 @@ class RendezvousPolicy(
     ): RendezvousStep {
         if (hostsDirect) failures.remove(peerId) // the host flag is heard again: a join is worth trying afresh
         val now = clock()
-        val gated = now - (lastTry[peerId] ?: 0) < retryMs
+        val gated = lastTry[peerId]?.let { now - it < retryMs } ?: false
         val iHost = role == "host" && (phase == "up" || phase == "starting")
         if (iHost && hostsDirect && mustYield(selfId, peerId)) return if (gated) RendezvousStep.SKIP else RendezvousStep.YIELD_AND_JOIN
         if (phase == "up" || phase == "starting") return RendezvousStep.SKIP
