@@ -116,24 +116,288 @@ class AgentRequestsTest {
 
     // ---- refusals --------------------------------------------------------------------------------------------
 
-    @Test fun toolsAreRefused() {
-        refused(400, "tools") { AgentRequests.parseChat(chat(""""tools":[{"type":"function","function":{"name":"f"}}]""")) }
-        refused(400, "tools") { AgentRequests.parseChat(chat(""""tools":[]""")) }
-    }
-
-    @Test fun toolChoiceIsRefused() {
-        refused(400, "tool_choice") { AgentRequests.parseChat(chat(""""tool_choice":"auto"""")) }
-        refused(400, "tool_choice") { AgentRequests.parseChat(chat(""""tool_choice":"none"""")) }
-    }
-
     @Test fun theOldFunctionFieldsAreRefusedToo() {
         refused(400, "functions") { AgentRequests.parseChat(chat(""""functions":[{"name":"f"}]""")) }
         refused(400, "function_call") { AgentRequests.parseChat(chat(""""function_call":"auto"""")) }
     }
 
-    @Test fun toolMessagesAreRefused() {
-        refused(400, "messages[1].role") { AgentRequests.parseChat(chat(messages = """[{"role":"user","content":"x"},{"role":"tool","content":"r","tool_call_id":"1"}]""")) }
-        refused(400, "messages[0].tool_calls") { AgentRequests.parseChat(chat(messages = """[{"role":"assistant","content":null,"tool_calls":[{"id":"1"}]}]""")) }
+    // ---- tools -----------------------------------------------------------------------------------------------
+
+    private val searchTool = """{"type":"function","function":{"name":"search_files","description":"Search the owner's files","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}}"""
+    private val clockTool = """{"type":"function","function":{"name":"get_time"}}"""
+    private fun withTools(extra: String = "", tools: List<String> = listOf(searchTool)) =
+        chat(""""tools":[${tools.joinToString(",")}]${if (extra.isEmpty()) "" else ",$extra"}""")
+
+    @Test fun toolsAreParsedWithAutoAndParallelByDefault() {
+        val c = AgentRequests.parseChat(withTools(tools = listOf(searchTool, clockTool)))
+        val spec = c.tools!!
+        assertEquals(listOf("search_files", "get_time"), spec.tools.map { it.name })
+        assertEquals("Search the owner's files", spec.tools[0].description)
+        assertEquals("", spec.tools[1].description)
+        assertEquals(AgentTools.NO_PARAMETERS, spec.tools[1].parameters)
+        assertEquals(ToolChoice.Auto, spec.choice)
+        assertEquals(AgentTools.MAX_PARALLEL_CALLS, spec.maxCalls)
+        // "auto" answers in the model's own format: nothing constrains it
+        assertNull(c.request.jsonSchema)
+        // the tool text is a system message in front of the caller's messages
+        assertEquals(listOf("system", "user"), c.request.messages.map { it.role })
+        assertEquals(AgentTools.systemText(spec), c.request.messages[0].content)
+        assertTrue(c.request.messages[0].content.contains("<tools>") && c.request.messages[0].content.contains("search_files"))
+        assertEquals(c.request.messages.sumOf { it.content.length }, c.promptChars)
+        assertEquals(listOf("user"), c.history.map { it.role })
+    }
+
+    @Test fun requiredAndNamedChoicesAreHeldToASchema() {
+        val required = AgentRequests.parseChat(withTools(""""tool_choice":"required""""))
+        assertEquals(AgentTools.schema(required.tools!!), required.request.jsonSchema)
+        val named = AgentRequests.parseChat(withTools(""""tool_choice":{"type":"function","function":{"name":"get_time"}}""", listOf(searchTool, clockTool)))
+        assertEquals(AgentTools.schema(named.tools!!), named.request.jsonSchema)
+        assertTrue(named.request.messages[0].content.contains("You must call `get_time`."))
+    }
+
+    @Test fun toolChoiceIsRead() {
+        assertEquals(ToolChoice.Auto, AgentRequests.parseChat(withTools(""""tool_choice":"auto"""")).tools!!.choice)
+        assertEquals(ToolChoice.Required, AgentRequests.parseChat(withTools(""""tool_choice":"required"""")).tools!!.choice)
+        assertEquals(
+            ToolChoice.Named("get_time"),
+            AgentRequests.parseChat(withTools(""""tool_choice":{"type":"function","function":{"name":"get_time"}}""", listOf(searchTool, clockTool))).tools!!.choice,
+        )
+        assertEquals(ToolChoice.Auto, AgentRequests.parseChat(withTools(""""tool_choice":null""")).tools!!.choice)
+    }
+
+    @Test fun toolChoiceNoneOffersNothingAndConstrainsNothing() {
+        val c = AgentRequests.parseChat(withTools(""""tool_choice":"none""""))
+        assertNull(c.tools)
+        assertNull(c.request.jsonSchema)
+        assertEquals(listOf("user" to "hi"), c.request.messages.map { it.role to it.content })
+    }
+
+    @Test fun parallelToolCallsFalseAllowsOneCall() {
+        assertEquals(1, AgentRequests.parseChat(withTools(""""parallel_tool_calls":false""")).tools!!.maxCalls)
+        assertEquals(AgentTools.MAX_PARALLEL_CALLS, AgentRequests.parseChat(withTools(""""parallel_tool_calls":true""")).tools!!.maxCalls)
+        refused(400, "parallel_tool_calls") { AgentRequests.parseChat(withTools(""""parallel_tool_calls":"no"""")) }
+    }
+
+    @Test fun toolsAreRefusedWhenTheyAreBad() {
+        refused(400, "tools[0].type") { AgentRequests.parseChat(withTools(tools = listOf("""{"type":"retrieval"}"""))) }
+        refused(400, "tools[0].type") { AgentRequests.parseChat(withTools(tools = listOf("""{"function":{"name":"f"}}"""))) }
+        refused(400, "tools[0].function") { AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function"}"""))) }
+        refused(400, "tools[0]") { AgentRequests.parseChat(withTools(tools = listOf("\"f\""))) }
+        refused(400, "tools") { AgentRequests.parseChat(chat(""""tools":[]""")) }
+        refused(400, "tools") { AgentRequests.parseChat(chat(""""tools":"f"""")) }
+        refused(400, "tools[0].function.parameters") { AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function","function":{"name":"f","parameters":"x"}}"""))) }
+        refused(400, "tools[0].function.description") { AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function","function":{"name":"f","description":5}}"""))) }
+    }
+
+    @Test fun badOrDuplicateToolNamesAreRefused() {
+        for (name in listOf("", "has space", "dot.name", "a".repeat(65), "naïve")) {
+            refused(400, "tools[0].function.name") { AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function","function":{"name":"$name"}}"""))) }
+        }
+        refused(400, "tools[0].function.name") { AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function","function":{}}"""))) }
+        assertEquals("a".repeat(64), AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function","function":{"name":"${"a".repeat(64)}"}}"""))).tools!!.tools.single().name)
+        assertEquals("a-B_9", AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function","function":{"name":"a-B_9"}}"""))).tools!!.tools.single().name)
+        refused(400, "tools[1].function.name") { AgentRequests.parseChat(withTools(tools = listOf(searchTool, searchTool))) }
+    }
+
+    @Test fun toolLimitsAreEnforced() {
+        fun named(i: Int) = """{"type":"function","function":{"name":"t$i"}}"""
+        assertEquals(16, AgentRequests.parseChat(withTools(tools = List(16) { named(it) })).tools!!.tools.size)
+        refused(400, "tools") { AgentRequests.parseChat(withTools(tools = List(17) { named(it) })) }
+        val okDescription = "d".repeat(AgentTools.MAX_DESCRIPTION)
+        AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function","function":{"name":"f","description":"$okDescription"}}""")))
+        refused(400, "tools[0].function.description") {
+            AgentRequests.parseChat(withTools(tools = listOf("""{"type":"function","function":{"name":"f","description":"${okDescription}x"}}""")))
+        }
+        // all definitions together: over 16 KiB, even when each one is small
+        val big = """{"type":"function","function":{"name":"f%d","parameters":{"type":"object","description":"${"p".repeat(5000)}"}}}"""
+        refused(400, "tools") { AgentRequests.parseChat(withTools(tools = List(4) { big.format(it) })) }
+    }
+
+    @Test fun aConstraintTooBigForTheSwarmIsRefusedNamingTools() {
+        // 16,000 characters of schema fit the 16 KiB of definitions but not what a phone of the swarm accepts
+        val tool = """{"type":"function","function":{"name":"f","parameters":{"type":"object","description":"${"p".repeat(16_000)}"}}}"""
+        refused(400, "tools") { AgentRequests.parseChat(withTools(""""tool_choice":"required"""", listOf(tool))) }
+        // "auto" sends no constraint, so the same tool is accepted there (a repair that cannot be made falls back to the model's text)
+        assertNull(AgentRequests.parseChat(withTools(tools = listOf(tool))).request.jsonSchema)
+    }
+
+    @Test fun toolChoiceIsRefusedWhenItDoesNotFit() {
+        refused(400, "tool_choice") { AgentRequests.parseChat(withTools(""""tool_choice":"sometimes"""")) }
+        refused(400, "tool_choice") { AgentRequests.parseChat(withTools(""""tool_choice":5""")) }
+        refused(400, "tool_choice") { AgentRequests.parseChat(withTools(""""tool_choice":{"type":"function"}""")) }
+        refused(400, "tool_choice") { AgentRequests.parseChat(withTools(""""tool_choice":{"type":"retrieval","function":{"name":"search_files"}}""")) }
+        // naming a tool that was not declared
+        refused(400, "tool_choice.function.name") { AgentRequests.parseChat(withTools(""""tool_choice":{"type":"function","function":{"name":"nope"}}""")) }
+        // nothing to call
+        refused(400, "tool_choice") { AgentRequests.parseChat(chat(""""tool_choice":"required"""")) }
+        refused(400, "tool_choice") { AgentRequests.parseChat(chat(""""tool_choice":{"type":"function","function":{"name":"search_files"}}""")) }
+        assertNull(AgentRequests.parseChat(chat(""""tool_choice":"none"""")).tools)
+        assertNull(AgentRequests.parseChat(chat(""""tool_choice":"auto"""")).tools)
+    }
+
+    @Test fun toolsTogetherWithAResponseFormatSchemaAreRefused() {
+        refused(400, "response_format") {
+            AgentRequests.parseChat(withTools(""""response_format":{"type":"json_schema","json_schema":{"name":"n","schema":{"type":"object"}}}"""))
+        }
+        refused(400, "response_format") {
+            AgentRequests.parseChat(withTools(""""tool_choice":"none","response_format":{"type":"json_schema","json_schema":{"name":"n","schema":{"type":"object"}}}"""))
+        }
+        // plain text format asks for nothing, so it can sit beside tools
+        assertEquals(ToolChoice.Auto, AgentRequests.parseChat(withTools(""""response_format":{"type":"text"}""")).tools!!.choice)
+    }
+
+    @Test fun assistantToolCallsAndToolMessagesAreAccepted() {
+        val messages = """[{"role":"user","content":"find the bill"},
+            {"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"search_files","arguments":"{\"query\":\"bill\"}"}}]},
+            {"role":"tool","tool_call_id":"call_1","content":"Electricity bill, 2026-09-03"}]"""
+        val c = AgentRequests.parseChat(chat(messages = messages))
+        assertNull(c.tools)
+        assertEquals(listOf("user", "assistant", "user"), c.request.messages.map { it.role })
+        assertTrue(c.request.messages[1].content.contains("search_files"))
+        assertTrue(c.request.messages[2].content.contains("Electricity bill"))
+        // the tool result may also come as text parts
+        val parts = """[{"role":"tool","tool_call_id":"c","content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]}]"""
+        assertTrue(AgentRequests.parseChat(chat(messages = parts)).request.messages.single().content.endsWith("a\nb"))
+    }
+
+    @Test fun theSecondRequestOfTheOpenAiPythonLoopIsAccepted() {
+        // captured from openai 1.99.9: the assistant message appended as the client's own object, then the tool result
+        val body = """{"messages":[{"role":"user","content":"When is my electricity bill due?"},{"content":null,"role":"assistant","tool_calls":[{"id":"call_85334d154d4047329705601a","function":{"arguments":"{\"query\":\"electricity bill\"}","name":"search_files"},"type":"function"}]},{"role":"tool","tool_call_id":"call_85334d154d4047329705601a","content":"Electricity bill, due 2026-09-30"}],"model":"ustaad-local","tools":[{"type":"function","function":{"name":"search_files","description":"d","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}}]}"""
+        val c = AgentRequests.parseChat(body)
+        assertEquals(listOf("system", "user", "assistant", "user"), c.request.messages.map { it.role })
+        // "auto": the past call is a <tool_call> block and the result a <tool_response> block, in the model's own format
+        assertTrue(c.request.messages[2].content.startsWith("<tool_call>\n{\"name\": \"search_files\""))
+        assertEquals("<tool_response>\nElectricity bill, due 2026-09-30\n</tool_response>", c.request.messages[3].content)
+    }
+
+    // ---- text that is JSON inside a string -----------------------------------------------------------------------
+
+    private fun withPastArguments(arguments: String) =
+        chat(messages = """[{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"function","function":{"name":"f","arguments":"$arguments"}}]}]""")
+
+    @Test fun pastArgumentsThatNestTooDeeplyAreRefused() {
+        // the text sits inside a JSON string, so the depth scan of the body does not see it
+        assertEquals(64, AgentRequests.nestingDepth("[".repeat(64)))
+        AgentRequests.parseChat(withPastArguments("[".repeat(64)))
+        refused(400, "messages[0].tool_calls[0].function.arguments") { AgentRequests.parseChat(withPastArguments("[".repeat(65))) }
+        refused(400, "function.arguments") { AgentRequests.parseChat(withPastArguments("{\\\"a\\\":".repeat(100))) }
+        // about a megabyte of '[' in one string: a clean 400, not a crash
+        val megabyte = withPastArguments("[".repeat(AgentRequests.MAX_BODY_BYTES.toInt() - 300))
+        assertTrue(megabyte.length < AgentRequests.MAX_BODY_BYTES)
+        refused(400, "function.arguments") { AgentRequests.parseChat(megabyte) }
+        // brackets inside a string value of the arguments do not count
+        AgentRequests.parseChat(withPastArguments("{\\\"q\\\":\\\"" + "[".repeat(500) + "\\\"}"))
+    }
+
+    @Test fun aStackOverflowWhileReadingARequestIsA400NotACrash() {
+        try {
+            AgentRequests.guarded<Unit> { throw StackOverflowError() }
+            fail("expected a refusal")
+        } catch (r: AgentRefusal) {
+            assertEquals(400, r.status)
+            assertEquals("invalid_json", r.code)
+        }
+        // and the parse entry points go through it: a deep structure on a small stack ends as a refusal
+        var outcome: Throwable? = null
+        val t = Thread(null, {
+            outcome = try { AgentRequests.parseChat(chat(""""top_p":${"[".repeat(60)}1${"]".repeat(60)}""")); null } catch (e: Throwable) { e }
+        }, "tiny-stack", 64L * 1024)
+        t.start()
+        t.join()
+        assertTrue("$outcome", outcome == null || (outcome as? AgentRefusal)?.status == 400)
+    }
+
+    // ---- schemas the caller supplies ---------------------------------------------------------------------------
+
+    private fun toolWith(parameters: String) = """{"type":"function","function":{"name":"f","parameters":$parameters}}"""
+
+    private fun parametersAccepted(parameters: String) = AgentRequests.parseChat(withTools(tools = listOf(toolWith(parameters))))
+
+    @Test fun numericBoundsAbove64AreRefused() {
+        for (key in listOf("minItems", "maxItems", "minLength", "maxLength", "minProperties", "maxProperties")) {
+            parametersAccepted("""{"type":"object","properties":{"a":{"type":"array","$key":64}}}""")
+            refused(400, "tools[0].function.parameters") { parametersAccepted("""{"type":"object","properties":{"a":{"type":"array","$key":65}}}""") }
+            // deep inside, in a list of alternatives
+            refused(400, key) { parametersAccepted("""{"anyOf":[{"type":"string"},{"type":"array","items":{"type":"string","$key":1000000}}]}""") }
+        }
+        refused(400, "maxItems") { parametersAccepted("""{"type":"array","maxItems":64.5}""") }
+        refused(400, "maxItems") { parametersAccepted("""{"type":"array","maxItems":1e3}""") }
+        assertEquals("limit_exceeded", codeOf { parametersAccepted("""{"type":"array","maxItems":65}""") })
+    }
+
+    @Test fun aPropertyCalledLikeABoundIsNotABound() {
+        parametersAccepted("""{"type":"object","properties":{"maxLength":{"type":"integer"},"pattern":{"type":"string"},"${'$'}ref":{"type":"string"}}}""")
+        parametersAccepted("""{"type":"string","enum":["maxItems","{500}"],"description":"at most {99999} of them, see ${'$'}ref"}""")
+    }
+
+    @Test fun repeatCountsInAPatternAbove64AreRefused() {
+        parametersAccepted("""{"type":"string","pattern":"^[a-z]{1,64}${'$'}"}""")
+        parametersAccepted("""{"type":"string","pattern":"^a{64}b{0,64}c{,64}${'$'}"}""")
+        for (p in listOf("^[a-z]{1,65}${'$'}", "^a{65}", "a{0,1000}", "a{,65}", "a{99999999999}")) {
+            refused(400, "pattern") { parametersAccepted("""{"type":"string","pattern":"$p"}""") }
+        }
+        // a literal brace written with an escape is not a count
+        parametersAccepted("""{"type":"string","pattern":"\\{500\\}"}""")
+    }
+
+    @Test fun onlyLocalReferencesAreAccepted() {
+        parametersAccepted("""{"type":"object","properties":{"a":{"${'$'}ref":"#/definitions/a"}},"definitions":{"a":{"type":"string"}}}""")
+        parametersAccepted("""{"${'$'}ref":"#"}""")
+        for (ref in listOf("http://example.com/schema.json", "https://x/y#/a", "file:///etc/passwd", "other.json#/a", "/a")) {
+            refused(400, "tools[0].function.parameters") { parametersAccepted("""{"type":"object","properties":{"a":{"${'$'}ref":"$ref"}}}""") }
+        }
+        assertEquals("unsupported_parameter", codeOf { parametersAccepted("""{"${'$'}ref":"http://x"}""") })
+    }
+
+    @Test fun theSameLimitsHoldForAResponseFormatSchema() {
+        fun rf(schema: String) = chat(""""response_format":{"type":"json_schema","json_schema":{"name":"n","schema":$schema}}""")
+        AgentRequests.parseChat(rf("""{"type":"object","properties":{"a":{"type":"array","maxItems":64}}}"""))
+        refused(400, "response_format.json_schema.schema") { AgentRequests.parseChat(rf("""{"type":"object","properties":{"a":{"type":"array","maxItems":65}}}""")) }
+        refused(400, "response_format.json_schema.schema") { AgentRequests.parseChat(rf("""{"type":"string","pattern":"a{100}"}""")) }
+        refused(400, "response_format.json_schema.schema") { AgentRequests.parseChat(rf("""{"${'$'}ref":"https://x/y.json"}""")) }
+        AgentRequests.parseChat(rf("""{"${'$'}ref":"#/${'$'}defs/a","${'$'}defs":{"a":{"type":"string"}}}"""))
+    }
+
+    // ---- what a phone of the swarm accepts ----------------------------------------------------------------------
+
+    @Test fun aRequestTooBigForTheSwarmIsA400ForThatModelOnly() {
+        val big = "x".repeat(33_000)
+        val body = { model: String -> chat(model = model, messages = """[{"role":"user","content":"$big"}]""") }
+        AgentRequests.parseChat(body("ustaad-local"))
+        refused(400, "ustaad-swarm") { AgentRequests.parseChat(body("ustaad-swarm")) }
+        assertEquals("limit_exceeded", codeOf { AgentRequests.parseChat(body("ustaad-swarm")) })
+        // 128,000 characters in all, spread over messages that are each fine
+        val many = List(5) { """{"role":"user","content":"${"y".repeat(30_000)}"}""" }.joinToString(",", "[", "]")
+        refused(400, "ustaad-swarm") { AgentRequests.parseChat(chat(model = "ustaad-swarm", messages = many)) }
+        AgentRequests.parseChat(chat(model = "ustaad-swarm"))
+    }
+
+    @Test fun theMessagesAToolRequestRendersToAreCountedForTheSwarm() {
+        // 64 messages and tools: the tool text becomes a 65th, one more than a phone takes
+        val sixtyFour = List(64) { """{"role":"user","content":"m"}""" }.joinToString(",", "[", "]")
+        val tools = """"tools":[$searchTool]"""
+        assertEquals(65, AgentRequests.parseChat(chat(tools, messages = sixtyFour)).request.messages.size)
+        refused(400, "ustaad-swarm") { AgentRequests.parseChat(chat(tools, model = "ustaad-swarm", messages = sixtyFour)) }
+    }
+
+    @Test fun badToolMessagesAreRefused() {
+        refused(400, "messages[1].tool_call_id") { AgentRequests.parseChat(chat(messages = """[{"role":"user","content":"x"},{"role":"tool","content":"r"}]""")) }
+        refused(400, "messages[0].tool_call_id") { AgentRequests.parseChat(chat(messages = """[{"role":"tool","tool_call_id":"","content":"r"}]""")) }
+        refused(400, "messages[0].content") { AgentRequests.parseChat(chat(messages = """[{"role":"tool","tool_call_id":"c"}]""")) }
+        refused(400, "messages[0].tool_calls") { AgentRequests.parseChat(chat(messages = """[{"role":"user","content":"x","tool_calls":[{"id":"1"}]}]""")) }
+        refused(400, "messages[0].tool_calls[0].id") { AgentRequests.parseChat(chat(messages = """[{"role":"assistant","tool_calls":[{"type":"function","function":{"name":"f"}}]}]""")) }
+        refused(400, "messages[0].tool_calls[0].function.name") { AgentRequests.parseChat(chat(messages = """[{"role":"assistant","tool_calls":[{"id":"1","function":{}}]}]""")) }
+        refused(400, "messages[0].tool_calls") { AgentRequests.parseChat(chat(messages = """[{"role":"assistant","tool_calls":"f"}]""")) }
+        refused(400, "messages[0].content") { AgentRequests.parseChat(chat(messages = """[{"role":"assistant"}]""")) }
+        refused(400, "messages[0].role") { AgentRequests.parseChat(chat(messages = """[{"role":"function","name":"f","content":"r"}]""")) }
+        refused(400, "messages[0].function_call") { AgentRequests.parseChat(chat(messages = """[{"role":"assistant","content":null,"function_call":{"name":"f"}}]""")) }
+    }
+
+    @Test fun toolRefusalsHaveStableCodes() {
+        assertEquals("invalid_value", codeOf { AgentRequests.parseChat(chat(""""tools":[]""")) })
+        assertEquals("unsupported_parameter", codeOf { AgentRequests.parseChat(withTools(tools = listOf("""{"type":"retrieval"}"""))) })
+        assertEquals("limit_exceeded", codeOf { AgentRequests.parseChat(withTools(tools = List(17) { """{"type":"function","function":{"name":"t$it"}}""" })) })
+        assertEquals("missing_required_parameter", codeOf { AgentRequests.parseChat(chat(messages = """[{"role":"tool","content":"r"}]""")) })
     }
 
     @Test fun moreThanOneAnswerIsRefused() {
@@ -241,7 +505,7 @@ class AgentRequestsTest {
     }
 
     @Test fun refusalsHaveStableCodes() {
-        assertEquals("unsupported_parameter", codeOf { AgentRequests.parseChat(chat(""""tools":[]""")) })
+        assertEquals("unsupported_parameter", codeOf { AgentRequests.parseChat(chat(""""functions":[{"name":"f"}]""")) })
         assertEquals("unsupported_parameter", codeOf { AgentRequests.parseChat(chat(""""n":2""")) })
         assertEquals("unsupported_content", codeOf { AgentRequests.parseChat(chat(messages = """[{"role":"user","content":[{"type":"image_url"}]}]""")) })
         assertEquals("missing_required_parameter", codeOf { AgentRequests.parseChat("""{"messages":[{"role":"user","content":"x"}]}""") })

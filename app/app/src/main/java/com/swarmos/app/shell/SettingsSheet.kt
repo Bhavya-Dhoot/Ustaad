@@ -247,7 +247,7 @@ private fun SwitchRow(title: String, helper: String, checked: Boolean, onChange:
 
 /**
  * The agent endpoint: the switch, and while it is on the base URL, the key (copy it, or make a new one) and how many requests
- * were answered. Apps on this phone call Ustaad's model at that address with that key; see docs/AGENT-API.md.
+ * were answered, and the switch for file search. Apps on this phone call Ustaad's model at that address with that key; see docs/AGENT-API.md.
  */
 @Composable
 private fun AgentAccessRows() {
@@ -256,6 +256,7 @@ private fun AgentAccessRows() {
     val key by AgentAccess.key.collectAsStateWithLifecycle()
     val served by AgentAccess.served.collectAsStateWithLifecycle()
     val error by AgentAccess.error.collectAsStateWithLifecycle()
+    val files by AgentAccess.files.collectAsStateWithLifecycle()
     val running by SwarmService.running.collectAsStateWithLifecycle()
     var renewed by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -289,6 +290,11 @@ private fun AgentAccessRows() {
                 if (renewed) "New key set. Update the apps that use it."
                 else String.format(Locale.US, "%,d %s served", served, if (served == 1) "request" else "requests"),
                 style = SwarmType.label.copy(fontWeight = FontWeight.W400, color = SwarmColors.graphite),
+            )
+            SwitchRow(
+                "File search for other apps",
+                "Apps that hold the key can search the files you share with the swarm, on this phone and (when they ask for it) on your paired phones, and read short snippets of them. Files in private folders are never included. Answers name the paired phones that replied.",
+                checked = files, onChange = { AgentAccess.setFiles(it) },
             )
         }
         error?.let { ErrorNote(it) }

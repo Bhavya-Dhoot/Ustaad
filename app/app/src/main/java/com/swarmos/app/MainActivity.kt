@@ -108,6 +108,8 @@ class MainActivity : ComponentActivity() {
         // `--ez agentAccess true [--es agentKey K]` turns the agent endpoint on (false turns it off) and sets a known key, so tests need no screen taps
         if (i?.hasExtra(EXTRA_AGENT_ACCESS) == true) AgentAccess.setEnabled(i.getBooleanExtra(EXTRA_AGENT_ACCESS, false))
         i?.getStringExtra(EXTRA_AGENT_KEY)?.let { AgentAccess.setKey(it) }
+        // `--ez agentFiles true` lets key holders search the shared files (false stops it); only while agent access is on, so give it after `agentAccess`
+        if (i?.hasExtra(EXTRA_AGENT_FILES) == true) AgentAccess.setFiles(i.getBooleanExtra(EXTRA_AGENT_FILES, false))
         // `--es activity 'Running a check (7 of 20).'` shows that line in the banner and the notification, with a Stop action; `--es activity ''` clears it
         if (i?.hasExtra(EXTRA_ACTIVITY) == true) {
             val line = i.getStringExtra(EXTRA_ACTIVITY).orEmpty()
@@ -127,6 +129,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_ACTIVITY = "activity"
         const val EXTRA_AGENT_ACCESS = "agentAccess"
         const val EXTRA_AGENT_KEY = "agentKey"
+        const val EXTRA_AGENT_FILES = "agentFiles"
         const val EXTRA_GALLERY = "gallery"
         const val EXTRA_GALLERY_PAGE = "galleryPage"
     }

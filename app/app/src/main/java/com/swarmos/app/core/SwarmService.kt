@@ -19,6 +19,7 @@ import com.swarmos.app.MainActivity
 import com.swarmos.app.agent.AgentAccess
 import com.swarmos.app.agent.AgentBackend
 import com.swarmos.app.agent.AgentServer
+import com.swarmos.app.agent.FileSource
 import com.swarmos.app.link.NodeServer
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.Role
@@ -103,6 +104,7 @@ class SwarmService : Service() {
     private suspend fun serveAgentWhileEnabled() {
         val a = AgentServer(
             Ports.AGENT, { AgentAccess.key.value }, AgentBackend.app(),
+            files = FileSource.app(), filesEnabled = { AgentAccess.files.value },
             audit = { kind, payload -> AppGraph.audit.append(kind, payload) },
             onServed = AgentAccess::noteServed,
             onRefused = AgentAccess::noteRefused,

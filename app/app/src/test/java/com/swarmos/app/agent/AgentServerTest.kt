@@ -5,6 +5,7 @@ import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.ChatResult
 import com.swarmos.app.llm.ChatStats
 import com.swarmos.app.llm.FakeLlmClient
+import com.swarmos.app.llm.LlamaServerException
 import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.sched.FakePhone
 import com.swarmos.app.sched.GatedLlmClient
@@ -157,6 +158,58 @@ private class RecordingLlm : LlmClient {
     override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
 }
 
+/** A model that always writes [text] (in two pieces when streamed) or fails with [error], and keeps the requests it was given. */
+private class ScriptedLlm(private val text: String = "", private val error: (() -> Throwable)? = null) : LlmClient {
+    override val modelName = "S"
+    val requests = CopyOnWriteArrayList<ChatRequest>()
+
+    override suspend fun ready() = true
+
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+        requests += req
+        error?.let { throw it() }
+        val cut = text.length / 2
+        if (cut > 0) emit(ChatChunk(text.substring(0, cut)))
+        emit(ChatChunk(text.substring(cut)))
+        emit(ChatChunk("", done = true, stats = ChatStats(7, 9, 1.0, 1.0)))
+    }
+
+    override suspend fun chat(req: ChatRequest): ChatResult {
+        requests += req
+        error?.let { throw it() }
+        return ChatResult(text, ChatStats(7, 9, 1.0, 1.0))
+    }
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
+}
+
+/** A model that answers with [replies] one after the other (the last one again if asked more often), or fails the n-th call with [failAt]. Keeps the requests. */
+private class SequenceLlm(private val replies: List<String>, private val failAt: Int = -1) : LlmClient {
+    override val modelName = "Q"
+    val requests = CopyOnWriteArrayList<ChatRequest>()
+
+    override suspend fun ready() = true
+
+    private fun next(req: ChatRequest): String {
+        requests += req
+        val n = requests.size - 1
+        if (n == failAt) throw LlamaServerException("JSON schema conversion failed", 400)
+        return replies[minOf(n, replies.size - 1)]
+    }
+
+    override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+        val text = next(req)
+        val cut = text.length / 2
+        emit(ChatChunk(text.substring(0, cut)))
+        emit(ChatChunk(text.substring(cut)))
+        emit(ChatChunk("", done = true, stats = ChatStats(7, 9, 1.0, 1.0)))
+    }
+
+    override suspend fun chat(req: ChatRequest): ChatResult = ChatResult(next(req), ChatStats(7, 9, 1.0, 1.0))
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
+}
+
 /** The real engine, gate, scheduler and request path over loopback HTTP; only the models are test doubles. */
 class AgentServerTest {
     companion object {
@@ -188,6 +241,7 @@ class AgentServerTest {
     @Volatile private var chatReady = true
     @Volatile private var swarmReady = true
     @Volatile private var embedReady = true
+    @Volatile private var filesOn = false
     private val embedder = TestLlm("E")
     @Volatile private var embedderClient: LlmClient = embedder
 
@@ -203,6 +257,7 @@ class AgentServerTest {
         maxWaitMs: Long = 400,
         phones: List<FakePhone> = listOf(FakePhone("b", TestLlm("M"), scope, 1, isLocal = false, tokPerSec = 10.0)),
         writeTimeoutMs: Long = AgentServer.WRITE_TIMEOUT_MS,
+        files: FileSource? = null,
     ) {
         node = SchedNode(scope, { "a" }, { chat }, { embedder }, { null })
         val backend = AgentBackend(
@@ -218,6 +273,7 @@ class AgentServerTest {
         port = freePort()
         server = AgentServer(
             port, { key }, backend,
+            files = files, filesEnabled = { filesOn },
             audit = { kind, payload -> audit += kind to payload },
             onServed = { served.incrementAndGet() },
             onRefused = { refused.incrementAndGet() },
@@ -492,14 +548,240 @@ class AgentServerTest {
         first.cancel(true)
     }
 
+    // ---- file search ------------------------------------------------------------------------------------------
+
+    private val billC = FileFakes.candidate(1, "hash-bill", "Electricity bill", "Electricity bill for September 1,240 rupees")
+    private val salaryC = FileFakes.candidate(2, "hash-salary", "Salary slip", "Salary slip net pay 85,000", folder = "Documents/Salary", isPrivate = true, kind = "document")
+    private val taxC = FileFakes.candidate(3, "hash-tax", "Tax return", "Tax return PAN ABCDE1234F", folder = "Documents/Private", kind = "document")
+
+    private fun search(body: String = """{"query":"electricity bill"}""") = post("/v1/files/search", body)
+
+    private fun phonesOf(r: Resp) = r.json.getValue("phones").jsonArray.map { it.jsonObject.getValue("name").jsonPrimitive.content to it.jsonObject.getValue("status").jsonPrimitive.content }
+
+    @Test fun fileSearchIsOffUntilTheOwnerSwitchesItOn() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls))
+        val r = search()
+        assertEquals(r.body, 403, r.status)
+        assertEquals("file_search_off", r.errorCode)
+        assertEquals("invalid_request_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+        assertEquals("the index is not touched", 0, calls.local.get())
+        assertEquals(1, refused.get())
+        assertTrue(audit.none { it.first == "agent.files" })
+        filesOn = true
+        assertEquals(200, search().status)
+        filesOn = false
+        assertEquals("switching it off again takes effect at once", 403, search().status)
+        assertEquals(1, calls.local.get())
+    }
+
+    @Test fun withoutAnyFileSourceTheRouteIs403Too() {
+        start()
+        filesOn = true
+        assertEquals("file_search_off", search().errorCode)
+    }
+
+    @Test fun theFileRouteAsksForTheKeyBeforeAnythingElse() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls))
+        // off or on, a request without the right key is a 401, not a hint about the switch
+        assertEquals(401, post("/v1/files/search", """{"query":"x"}""", key = null).status)
+        assertEquals(401, post("/v1/files/search", """{"query":"x"}""", key = "wrong").status)
+        filesOn = true
+        assertEquals(401, post("/v1/files/search", """{"query":"x"}""", key = null).status)
+        assertEquals(0, calls.local.get())
+        assertEquals(404, call("GET", "/v1/files/search").status)
+    }
+
+    @Test fun privateFilesNeverAppearInTheRawAnswer() {
+        start(files = FileFakes.source(listOf(salaryC, billC, taxC)))
+        filesOn = true
+        val r = search()
+        assertEquals(r.body, 200, r.status)
+        assertEquals(setOf("object", "data", "scope", "incomplete", "phones"), r.json.keys)
+        val data = r.json.getValue("data").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("Electricity bill"), data.map { it.getValue("title").jsonPrimitive.content })
+        assertEquals(setOf("phone", "title", "date", "kind", "snippet"), data.single().keys)
+        assertEquals("Phone A", data.single().getValue("phone").jsonPrimitive.content)
+        // the raw text: nothing of the private files, no hash of any file, no path, no count of what was held back
+        for (secret in listOf("Salary", "85,000", "Tax return", "ABCDE", "hash-", "uriHash", "Documents", "Pictures", "Private", "withheld", "chunk", "score")) {
+            assertFalse("'$secret' must not appear in ${r.body}", r.body.contains(secret, ignoreCase = true))
+        }
+        assertEquals(1, served.get())
+    }
+
+    @Test fun aSearchWithOnlyPrivateMatchesIsAnEmptyListNotAnError() {
+        start(files = FileFakes.source(listOf(salaryC, taxC)))
+        filesOn = true
+        val r = search("""{"query":"salary"}""")
+        assertEquals(r.body, 200, r.status)
+        assertEquals(0, r.json.getValue("data").jsonArray.size)
+        assertFalse(r.body.contains("withheld"))
+    }
+
+    @Test fun scopePhoneDoesNotContactPairedPhonesAndSwarmDoes() {
+        val calls = FileFakes.Calls()
+        val b = FileFakes.peer("Phone B", FileFakes.peerHit("Course certificate", "Certificate of completion"))
+        start(files = FileFakes.source(listOf(billC), calls, peers = listOf(b)))
+        filesOn = true
+        val phone = search("""{"query":"electricity bill"}""")
+        assertEquals(phone.body, 200, phone.status)
+        assertEquals(0, calls.peers.get())
+        assertEquals(listOf("Phone A" to "ok"), phonesOf(phone))
+        assertEquals("phone", phone.json.getValue("scope").jsonPrimitive.content)
+
+        val swarm = search("""{"query":"electricity bill","scope":"swarm","max_results":3}""")
+        assertEquals(swarm.body, 200, swarm.status)
+        assertEquals(1, calls.peers.get())
+        assertEquals(3, calls.queries.single().k)
+        assertEquals("electricity bill", calls.queries.single().text)
+        assertEquals(setOf("Phone A", "Phone B"), swarm.json.getValue("data").jsonArray.map { it.jsonObject.getValue("phone").jsonPrimitive.content }.toSet())
+        assertEquals(listOf("Phone A" to "ok", "Phone B" to "ok"), phonesOf(swarm))
+        assertEquals("false", swarm.json.getValue("incomplete").jsonPrimitive.content)
+    }
+
+    @Test fun aSwarmSearchReportsAnOfflinePhoneAndStaysUsable() {
+        val b = FileFakes.peer("Phone B", FileFakes.peerHit("Course certificate", "Certificate of completion", hash = "b-hash"), withheld = 4)
+        start(files = FileFakes.source(listOf(salaryC, billC), peers = listOf(b, FileFakes.offline("Phone C"))))
+        filesOn = true
+        val r = search("""{"query":"certificate","scope":"swarm"}""")
+        assertEquals(r.body, 200, r.status)
+        assertEquals(listOf("Phone A" to "ok", "Phone B" to "ok", "Phone C" to "offline"), phonesOf(r))
+        assertEquals("true", r.json.getValue("incomplete").jsonPrimitive.content)
+        assertEquals(setOf("Electricity bill", "Course certificate"), r.json.getValue("data").jsonArray.map { it.jsonObject.getValue("title").jsonPrimitive.content }.toSet())
+        for (secret in listOf("Salary", "b-hash", "withheld", "uriHash")) assertFalse(secret, r.body.contains(secret))
+    }
+
+    @Test fun badSearchRequestsAre400AndNeverReachTheIndex() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls))
+        filesOn = true
+        val cases = listOf(
+            "{}" to "query", """{"query":""}""" to "query", """{"query":"${"q".repeat(1001)}"}""" to "query",
+            """{"query":"x","scope":"world"}""" to "scope", """{"query":"x","max_results":0}""" to "max_results",
+            """{"query":"x","max_results":11}""" to "max_results", "nope" to "JSON",
+        )
+        for ((body, mention) in cases) {
+            val r = search(body)
+            assertEquals(body.take(60), 400, r.status)
+            assertTrue("${r.errorMessage} should name $mention", r.errorMessage.contains(mention))
+        }
+        assertEquals(0, calls.local.get())
+        assertEquals(200, search("""{"query":"${"q".repeat(1000)}","max_results":10}""").status)
+        assertEquals(413, search("""{"query":"x","pad":"${"p".repeat(AgentRequests.MAX_BODY_BYTES.toInt())}"}""").status)
+    }
+
+    @Test fun aSearchThatCannotRunIs503IndexUnavailable() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls, unavailable = "No embedding model is loaded on this phone, so files cannot be searched."))
+        filesOn = true
+        val r = search()
+        assertEquals(r.body, 503, r.status)
+        assertEquals("index_unavailable", r.errorCode)
+        assertEquals("server_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+        assertEquals(0, calls.local.get())
+        val entry = audit.single { it.first == "agent.files" }.second
+        assertEquals(503, entry.getValue("status").jsonPrimitive.int)
+        assertFalse(entry.toString().contains("electricity"))
+    }
+
+    @Test fun aFailingIndexIsA500WithoutItsText() {
+        val failing = FileFakes.source(listOf(billC), beforeSearch = { throw IllegalStateException("database at /data/user/0/secret is locked") })
+        start(files = failing)
+        filesOn = true
+        val r = search()
+        assertEquals(500, r.status)
+        assertEquals("internal_error", r.errorCode)
+        assertFalse(r.body.contains("secret"))
+    }
+
+    @Test fun onlyTwoSearchesRunAtOnce() {
+        val calls = FileFakes.Calls()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        start(files = FileFakes.source(listOf(billC), calls, beforeSearch = { release.await() }))
+        filesOn = true
+        val first = java.util.concurrent.CompletableFuture.supplyAsync { search() }
+        val second = java.util.concurrent.CompletableFuture.supplyAsync { search() }
+        waitUntil("two searches inside the index") { calls.local.get() == 2 }
+        val third = search()
+        assertEquals(third.body, 429, third.status)
+        assertEquals("rate_limited", third.errorCode)
+        release.complete(Unit)
+        assertEquals(200, first.get(10, TimeUnit.SECONDS).status)
+        assertEquals(200, second.get(10, TimeUnit.SECONDS).status)
+        assertEquals("a place is free again", 200, search().status)
+    }
+
+    @Test fun theAuditEntryOfASearchCarriesNoQueryTitleOrSnippet() {
+        val b = FileFakes.peer("Phone B", FileFakes.peerHit("Course certificate", "Certificate of completion rupees"))
+        start(files = FileFakes.source(listOf(billC, salaryC), peers = listOf(b, FileFakes.offline("Phone C"))))
+        filesOn = true
+        val r = search("""{"query":"electricity bill","scope":"swarm"}""")
+        assertEquals(r.body, 200, r.status)
+        val entry = audit.single { it.first == "agent.files" }.second
+        assertEquals(setOf("scope", "queryChars", "status", "results", "asked", "sentBytes", "phones", "ms"), entry.keys)
+        assertEquals("swarm", entry.getValue("scope").jsonPrimitive.content)
+        assertEquals(16, entry.getValue("queryChars").jsonPrimitive.int)
+        assertEquals(2, entry.getValue("results").jsonPrimitive.int)
+        assertEquals("both paired phones were sent the query", 2, entry.getValue("asked").jsonPrimitive.int)
+        assertTrue(entry.getValue("sentBytes").jsonPrimitive.int > 2 * 16)
+        val phones = entry.getValue("phones").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("Phone A", "Phone B", "Phone C"), phones.map { it.getValue("name").jsonPrimitive.content })
+        assertEquals(listOf("ok", "ok", "offline"), phones.map { it.getValue("status").jsonPrimitive.content })
+        assertEquals(listOf(1, 1, 0), phones.map { it.getValue("results").jsonPrimitive.int })
+        val text = entry.toString()
+        for (leak in listOf("electricity", "bill", "Electricity", "rupees", "Certificate", "Salary", "snippet", "title", "hash")) {
+            assertFalse("'$leak' must not be in the audit entry $text", text.contains(leak))
+        }
+    }
+
+    @Test fun aSwitchThatWentOffBeforeTheSearchStopsItThere() {
+        val calls = FileFakes.Calls()
+        val source = FileSource(
+            unavailable = { filesOn = false; null }, // the owner switches it off while the request is on its way to the index
+            searchLocal = { calls.local.incrementAndGet(); com.swarmos.app.pdu.LocalSearch(listOf(billC), listOf("bill"), 1, 1) },
+            indexedChunks = { 1 }, selfName = { "Phone A" }, askPeers = { calls.peers.incrementAndGet(); emptyList() },
+        )
+        start(files = source)
+        filesOn = true
+        val r = search("""{"query":"electricity bill","scope":"swarm"}""")
+        assertEquals(r.body, 403, r.status)
+        assertEquals("file_search_off", r.errorCode)
+        assertEquals("the index was not read and no paired phone was asked", 0, calls.local.get() + calls.peers.get())
+    }
+
+    @Test fun aSwitchThatWentOffDuringTheSearchSendsNothingOfTheResult() {
+        val calls = FileFakes.Calls()
+        start(files = FileFakes.source(listOf(billC), calls, beforeSearch = { filesOn = false }))
+        filesOn = true
+        val r = search()
+        assertEquals(r.body, 403, r.status)
+        assertEquals("file_search_off", r.errorCode)
+        assertFalse(r.body.contains("Electricity"))
+        assertEquals(1, calls.local.get())
+        // the search did run, so the owner's log says so (counts only), with the status the app saw
+        val entry = audit.single { it.first == "agent.files" }.second
+        assertEquals(403, entry.getValue("status").jsonPrimitive.int)
+        assertEquals(0, served.get())
+    }
+
+    @Test fun aSearchOverAnEmptyIndexIsAnEmptyListNotA503() {
+        start(files = FileFakes.source(emptyList(), chunks = 0))
+        filesOn = true
+        val r = search()
+        assertEquals(r.body, 200, r.status)
+        assertEquals(0, r.json.getValue("data").jsonArray.size)
+        assertEquals(listOf("Phone A" to "ok"), phonesOf(r))
+    }
+
     // ---- refusals over the wire ------------------------------------------------------------------------------
 
     @Test fun refusalsAreOpenAiErrorsAndTheModelIsNeverCalled() {
         start()
         val llm = chat as TestLlm
         val cases = listOf(
-            chatBody(""""tools":[{"type":"function","function":{"name":"f"}}]""") to "tools",
-            chatBody(""""tool_choice":"auto"""") to "tool_choice",
+            chatBody(""""functions":[{"name":"f"}]""") to "functions",
+            chatBody(""""function_call":"auto"""") to "function_call",
             chatBody(""""n":2""") to "`n`",
             """{"model":"ustaad-local","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"http://x"}}]}]}""" to "content[0]",
             """{"model":"ustaad-local","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AA","format":"wav"}}]}]}""" to "content[0]",
@@ -583,7 +865,7 @@ class AgentServerTest {
 
     @Test fun errorsStayJsonWhateverTheClientAccepts() {
         start()
-        val r = post("/v1/chat/completions", chatBody(""""tools":[]"""), headers = mapOf("Accept" to "text/event-stream"))
+        val r = post("/v1/chat/completions", chatBody(""""functions":[{"name":"f"}]"""), headers = mapOf("Accept" to "text/event-stream"))
         assertEquals(400, r.status)
         assertEquals("unsupported_parameter", r.errorCode)
     }
@@ -837,6 +1119,317 @@ class AgentServerTest {
         server = failing
         assertNull(failing.start())
         assertEquals(200, post("/v1/chat/completions", chatBody()).status)
+    }
+
+    // ---- tools ----------------------------------------------------------------------------------------------
+
+    private val searchTool = """{"type":"function","function":{"name":"search_files","description":"Search the owner's files","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}}"""
+    /** The constrained shape ("required" and a named function) and the model's own format ("auto"). */
+    private val callText = """{"tool_calls":[{"name":"search_files","arguments":{"query":"electricity bill"}}]}"""
+    private val nativeCall = "<tool_call>\n{\"name\": \"search_files\", \"arguments\": {\"query\": \"electricity bill\"}}\n</tool_call>"
+    private val badNativeCall = "<tool_call>\n{\"name\": \"search_files\", \"arguments\": {}}\n</tool_call>"
+
+    private fun toolBody(extra: String = "", model: String = "ustaad-local", messages: String = """[{"role":"user","content":"find my electricity bill"}]""") =
+        """{"model":"$model","messages":$messages,"tools":[$searchTool]${if (extra.isEmpty()) "" else ",$extra"}}"""
+
+    private fun firstChoice(r: Resp) = r.json.getValue("choices").jsonArray.single().jsonObject
+
+    @Test fun aToolCallComesBackAsToolCalls() {
+        val llm = ScriptedLlm("I will search.\n$nativeCall")
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(r.body, 200, r.status)
+        val choice = firstChoice(r)
+        assertEquals("tool_calls", choice.getValue("finish_reason").jsonPrimitive.content)
+        val message = choice.getValue("message").jsonObject
+        assertEquals(kotlinx.serialization.json.JsonNull, message.getValue("content"))
+        val call = message.getValue("tool_calls").jsonArray.single().jsonObject
+        assertTrue(call.getValue("id").jsonPrimitive.content.startsWith("call_"))
+        assertEquals("function", call.getValue("type").jsonPrimitive.content)
+        assertEquals("search_files", call.getValue("function").jsonObject.getValue("name").jsonPrimitive.content)
+        val args = Json.parseToJsonElement(call.getValue("function").jsonObject.getValue("arguments").jsonPrimitive.content).jsonObject
+        assertEquals("electricity bill", args.getValue("query").jsonPrimitive.content)
+        assertEquals(16, r.json.getValue("usage").jsonObject.getValue("total_tokens").jsonPrimitive.int)
+        // what the model was given: the tools in its own format in a system message, and no constraint on the answer
+        val q = llm.requests.single()
+        assertEquals("system", q.messages.first().role)
+        assertTrue(q.messages.first().content.contains("<tools>") && q.messages.first().content.contains("search_files"))
+        assertNull(q.jsonSchema)
+        assertEquals(0, audit.single { it.first == "agent.chat" }.second.getValue("repairs").jsonPrimitive.int)
+    }
+
+    @Test fun theAuditEntryOfAToolCallCarriesNoToolTextOrArguments() {
+        start()
+        chat = ScriptedLlm(nativeCall)
+        post("/v1/chat/completions", toolBody())
+        val entry = audit.single { it.first == "agent.chat" }.second.toString()
+        assertFalse(entry, entry.contains("search_files") || entry.contains("electricity"))
+    }
+
+    @Test fun anAnswerInWordsComesBackAsContent() {
+        start()
+        chat = ScriptedLlm("Hello there.")
+        val r = post("/v1/chat/completions", toolBody())
+        val choice = firstChoice(r)
+        assertEquals("stop", choice.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals("Hello there.", choice.getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertTrue("tool_calls" !in choice.getValue("message").jsonObject)
+    }
+
+    @Test fun anAnswerWithoutAToolCallBlockIsReturnedAsContent() {
+        start()
+        chat = ScriptedLlm("I would rather chat.")
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(r.body, 200, r.status)
+        assertEquals("I would rather chat.", firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+    }
+
+    @Test fun toolChoiceNoneSendsNoSchemaAndNoToolText() {
+        val llm = ScriptedLlm("plain answer")
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody(""""tool_choice":"none""""))
+        assertEquals(r.body, 200, r.status)
+        assertEquals("plain answer", firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        val q = llm.requests.single()
+        assertNull(q.jsonSchema)
+        assertEquals(listOf("user"), q.messages.map { it.role })
+        assertFalse(q.messages.any { it.content.contains("search_files") })
+    }
+
+    @Test fun requiredAndNamedChoicesNarrowTheSchemaTheModelGets() {
+        val llm = ScriptedLlm(callText)
+        start()
+        chat = llm
+        assertEquals(200, post("/v1/chat/completions", toolBody(""""tool_choice":"required"""")).status)
+        assertEquals(200, post("/v1/chat/completions", toolBody(""""tool_choice":{"type":"function","function":{"name":"search_files"}}""")).status)
+        val (required, named) = llm.requests.toList()
+        assertFalse(required.jsonSchema!!.contains("\"content\""))
+        assertTrue(required.messages.first().content.contains("You must call a tool."))
+        assertFalse(named.jsonSchema!!.contains("anyOf"))
+        assertTrue(named.messages.first().content.contains("You must call `search_files`."))
+    }
+
+    @Test fun anEarlierCallAndItsResultReachTheModelInOrder() {
+        val llm = ScriptedLlm("The bill is on 3 September.")
+        start()
+        chat = llm
+        val messages = """[{"role":"system","content":"be brief"},{"role":"user","content":"find my electricity bill"},
+            {"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"search_files","arguments":"{\"query\":\"electricity bill\"}"}}]},
+            {"role":"tool","tool_call_id":"call_1","content":"Electricity bill, 2026-09-03: 1,240 rupees"}]"""
+        val r = post("/v1/chat/completions", toolBody(messages = messages))
+        assertEquals(r.body, 200, r.status)
+        val sent = llm.requests.single().messages
+        assertEquals(listOf("system", "user", "assistant", "user"), sent.map { it.role })
+        assertTrue(sent[0].content.startsWith("be brief\n\n# Tools\n") && sent[0].content.contains("search_files"))
+        assertEquals("<tool_call>\n{\"name\": \"search_files\", \"arguments\": {\"query\": \"electricity bill\"}}\n</tool_call>", sent[2].content)
+        assertEquals("<tool_response>\nElectricity bill, 2026-09-03: 1,240 rupees\n</tool_response>", sent[3].content)
+        assertEquals("The bill is on 3 September.", firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+    }
+
+    @Test fun toolsWorkOnTheSwarmModelToo() {
+        start()
+        // the stand-in phone answers with text that holds no tool call: it comes back as words, from that phone
+        val r = post("/v1/chat/completions", toolBody(model = "ustaad-swarm"))
+        assertEquals(r.body, 200, r.status)
+        assertEquals("ustaad:Phone B", r.json.getValue("system_fingerprint").jsonPrimitive.content)
+        assertTrue(firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content.startsWith("M:"))
+    }
+
+    @Test fun aStreamWithToolsIsHeldBackAndSentAsToolCallEvents() {
+        start()
+        chat = ScriptedLlm(nativeCall)
+        val r = post("/v1/chat/completions", toolBody(""""stream":true"""), headers = mapOf("Accept" to "text/event-stream"))
+        assertEquals(r.body, 200, r.status)
+        val ev = events(r.body)
+        assertEquals("data: [DONE]", ev.last())
+        val chunks = ev.dropLast(1).map { Json.parseToJsonElement(it.removePrefix("data: ")).jsonObject }
+        assertEquals("the call in one chunk and the closing chunk, nothing of the half-written JSON", 2, chunks.size)
+        val delta = chunks[0].getValue("choices").jsonArray.single().jsonObject.getValue("delta").jsonObject
+        assertEquals("assistant", delta.getValue("role").jsonPrimitive.content)
+        val call = delta.getValue("tool_calls").jsonArray.single().jsonObject
+        assertEquals(0, call.getValue("index").jsonPrimitive.int)
+        assertTrue(call.getValue("id").jsonPrimitive.content.startsWith("call_"))
+        assertEquals("function", call.getValue("type").jsonPrimitive.content)
+        assertEquals("search_files", call.getValue("function").jsonObject.getValue("name").jsonPrimitive.content)
+        val args = Json.parseToJsonElement(call.getValue("function").jsonObject.getValue("arguments").jsonPrimitive.content).jsonObject
+        assertEquals("electricity bill", args.getValue("query").jsonPrimitive.content)
+        val last = chunks[1]
+        assertEquals("tool_calls", last.getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals(16, last.getValue("usage").jsonObject.getValue("total_tokens").jsonPrimitive.int)
+        assertEquals("one id for the whole answer", 1, chunks.map { it.getValue("id").jsonPrimitive.content }.toSet().size)
+    }
+
+    @Test fun aStreamWithToolsThatAnswersInWordsSendsTheText() {
+        start()
+        chat = ScriptedLlm("Hello there.")
+        val r = post("/v1/chat/completions", toolBody(""""stream":true"""), headers = mapOf("Accept" to "text/event-stream"))
+        val chunks = events(r.body).dropLast(1).map { Json.parseToJsonElement(it.removePrefix("data: ")).jsonObject }
+        val deltas = chunks.map { it.getValue("choices").jsonArray.single().jsonObject.getValue("delta").jsonObject }
+        assertEquals("assistant", deltas.first().getValue("role").jsonPrimitive.content)
+        assertEquals("Hello there.", deltas.mapNotNull { it["content"]?.jsonPrimitive?.content }.joinToString(""))
+        assertEquals("stop", chunks.last().getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+    }
+
+    @Test fun aStreamWithToolsKeepsPingingWhileTheAnswerIsHeldBack() {
+        // pings go out every 100 ms in this test; a slow model must not leave the connection silent
+        start()
+        chat = object : LlmClient {
+            override val modelName = "slow"
+            override suspend fun ready() = true
+            override fun chatStream(req: ChatRequest): Flow<ChatChunk> = flow {
+                emit(ChatChunk("<tool_call>\n{\"name\": \"search_files\","))
+                kotlinx.coroutines.delay(500)
+                emit(ChatChunk(" \"arguments\": {\"query\": \"x\"}}\n</tool_call>"))
+                emit(ChatChunk("", done = true, stats = ChatStats(1, 1, 1.0, 1.0)))
+            }
+            override suspend fun chat(req: ChatRequest): ChatResult = ChatResult("", ChatStats(0, 0, 0.0, 0.0))
+            override suspend fun embed(texts: List<String>): List<FloatArray> = emptyList()
+        }
+        val r = post("/v1/chat/completions", toolBody(""""stream":true"""))
+        assertEquals(r.body, 200, r.status)
+        assertTrue("pings while holding back", r.body.contains(": ping"))
+        assertTrue(r.body.contains("\"tool_calls\""))
+    }
+
+    private fun repairsOf(): Int = audit.last { it.first == "agent.chat" }.second.getValue("repairs").jsonPrimitive.int
+
+    @Test fun aGoodCallIsNotAskedForAgain() {
+        val llm = SequenceLlm(listOf(nativeCall))
+        start()
+        chat = llm
+        assertEquals(200, post("/v1/chat/completions", toolBody()).status)
+        assertEquals(1, llm.requests.size)
+        assertEquals(0, repairsOf())
+    }
+
+    @Test fun aBadCallIsAskedForAgainUnderTheNamedTool() {
+        val llm = SequenceLlm(listOf(badNativeCall, callText))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(r.body, 200, r.status)
+        val call = firstChoice(r).getValue("message").jsonObject.getValue("tool_calls").jsonArray.single().jsonObject.getValue("function").jsonObject
+        assertEquals("search_files", call.getValue("name").jsonPrimitive.content)
+        assertEquals("electricity bill", Json.parseToJsonElement(call.getValue("arguments").jsonPrimitive.content).jsonObject.getValue("query").jsonPrimitive.content)
+        assertEquals("tool_calls", firstChoice(r).getValue("finish_reason").jsonPrimitive.content)
+        // the first request had no constraint and the model's own format; the repair held it to that tool
+        val (first, again) = llm.requests.toList()
+        assertNull(first.jsonSchema)
+        assertTrue(first.messages.first().content.contains("<tools>"))
+        assertNotNull(again.jsonSchema)
+        assertTrue(again.messages.first().content.contains("You must call `search_files`."))
+        assertFalse(again.messages.first().content.contains("<tools>"))
+        assertEquals(first.maxTokens, again.maxTokens)
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun aCallToAnUnknownToolIsAskedForAgainUnderRequired() {
+        val llm = SequenceLlm(listOf("<tool_call>\n{\"name\": \"nope\", \"arguments\": {}}\n</tool_call>", callText))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals("tool_calls", firstChoice(r).getValue("finish_reason").jsonPrimitive.content)
+        assertTrue(llm.requests[1].messages.first().content.contains("You must call a tool."))
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun whenTheRepairFailsTooTheModelsTextIsTheAnswer() {
+        val llm = SequenceLlm(listOf(badNativeCall, "still no luck"))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(r.body, 200, r.status)
+        val choice = firstChoice(r)
+        assertEquals("stop", choice.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals(badNativeCall, choice.getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertEquals("one repair, not a loop", 2, llm.requests.size)
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun whenTheRepairCannotRunTheModelsTextIsTheAnswerToo() {
+        val llm = SequenceLlm(listOf(badNativeCall, callText), failAt = 1)
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(r.body, 200, r.status)
+        assertEquals(badNativeCall, firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun aStreamIsRepairedBeforeItIsSent() {
+        val llm = SequenceLlm(listOf(badNativeCall, callText))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody(""""stream":true"""), headers = mapOf("Accept" to "text/event-stream"))
+        assertEquals(r.body, 200, r.status)
+        val chunks = events(r.body).dropLast(1).map { Json.parseToJsonElement(it.removePrefix("data: ")).jsonObject }
+        val call = chunks[0].getValue("choices").jsonArray.single().jsonObject.getValue("delta").jsonObject.getValue("tool_calls").jsonArray.single().jsonObject
+        assertEquals("search_files", call.getValue("function").jsonObject.getValue("name").jsonPrimitive.content)
+        assertEquals("tool_calls", chunks.last().getValue("choices").jsonArray.single().jsonObject.getValue("finish_reason").jsonPrimitive.content)
+        assertEquals(2, llm.requests.size)
+        assertEquals(1, repairsOf())
+    }
+
+    @Test fun aForcedCallIsNeverRepaired() {
+        val llm = SequenceLlm(listOf("no call at all"))
+        start()
+        chat = llm
+        val r = post("/v1/chat/completions", toolBody(""""tool_choice":"required""""))
+        assertEquals("no call at all", firstChoice(r).getValue("message").jsonObject.getValue("content").jsonPrimitive.content)
+        assertEquals(1, llm.requests.size)
+        assertEquals(0, repairsOf())
+    }
+
+    @Test fun aSchemaTheModelServerRefusesIs400UnsupportedSchema() {
+        start()
+        val secret = "Unrecognized schema: /home/secret/path"
+        chat = ScriptedLlm(error = { LlamaServerException("""{"error":{"code":400,"message":"$secret"}}""", 400) })
+        for (extra in listOf(""""tool_choice":"required"""", """"tool_choice":"required","stream":true""")) {
+            val r = post("/v1/chat/completions", toolBody(extra))
+            assertEquals(extra + r.body, 400, r.status)
+            assertEquals("unsupported_schema", r.errorCode)
+            assertEquals("invalid_request_error", r.json.getValue("error").jsonObject.getValue("type").jsonPrimitive.content)
+            assertTrue(r.errorMessage.contains("schema"))
+            assertFalse("the server's own text does not travel", r.body.contains("secret"))
+        }
+        // a refusal is counted, not audited, and the slot is given back
+        assertTrue(audit.none { it.first == "agent.chat" })
+        assertEquals(0, node.chatExec.running)
+    }
+
+    @Test fun aPromptOverTheContextSizeIsNotReportedAsABadSchema() {
+        start()
+        chat = ScriptedLlm(error = { LlamaServerException("""{"error":{"code":400,"message":"the request exceeds the available context size"}}""", 400) })
+        val r = post("/v1/chat/completions", toolBody(""""tool_choice":"required""""))
+        assertEquals(r.body, 500, r.status)
+        assertEquals("internal_error", r.errorCode)
+    }
+
+    @Test fun aServerErrorThatIsNotAboutTheSchemaStaysA500() {
+        start()
+        chat = ScriptedLlm(error = { LlamaServerException("out of memory at /data/secret", 500) })
+        val r = post("/v1/chat/completions", toolBody())
+        assertEquals(500, r.status)
+        assertEquals("internal_error", r.errorCode)
+        assertFalse(r.body.contains("secret"))
+    }
+
+    @Test fun aSchemaRejectionInAResponseFormatCallIs400Too() {
+        start()
+        chat = ScriptedLlm(error = { LlamaServerException("JSON schema conversion failed", 500) })
+        val r = post("/v1/chat/completions", chatBody(""""response_format":{"type":"json_schema","json_schema":{"name":"n","schema":{"type":"object"}}}"""))
+        assertEquals(r.body, 400, r.status)
+        assertEquals("unsupported_schema", r.errorCode)
+    }
+
+    @Test fun aServerErrorWithoutAnySchemaInTheCallStaysA500() {
+        start()
+        chat = ScriptedLlm(error = { LlamaServerException("""{"error":{"code":400,"message":"bad"}}""", 400) })
+        val r = post("/v1/chat/completions", chatBody())
+        assertEquals(500, r.status)
+        assertEquals("internal_error", r.errorCode)
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------------

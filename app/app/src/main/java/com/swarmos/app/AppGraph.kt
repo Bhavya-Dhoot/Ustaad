@@ -115,7 +115,7 @@ object AppGraph {
                     secret = chosen
                     if (mustSave) prefs.setSecret(chosen)
                 }
-                AgentAccess.restore(p?.agentAccess ?: false, p?.agentKey) { on, key -> prefs.setAgent(on, key) }
+                AgentAccess.restore(p?.agentAccess ?: false, p?.agentKey, p?.agentFiles ?: false) { on, key, files -> prefs.setAgent(on, key, files) }
                 audit.load()
                 health.start()
                 audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))

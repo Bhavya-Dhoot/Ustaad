@@ -48,6 +48,7 @@ import kotlinx.io.readByteArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.io.IOException
 import java.util.UUID
 
@@ -57,13 +58,16 @@ import java.util.UUID
  * name, then the key) before anything is read from it. The class only moves bytes: parsing is [AgentRequests], shapes are
  * [AgentWire], models are [AgentBackend].
  *
- * [audit] gets `agent.start`, `agent.stop` and one `agent.chat` or `agent.embed` entry per answered request and per 5xx:
- * sizes, counts and milliseconds, never the text of a prompt or an answer. Refusals (4xx) are only counted, through [onRefused].
+ * [audit] gets `agent.start`, `agent.stop` and one `agent.chat`, `agent.embed` or `agent.files` entry per answered request and per 5xx:
+ * sizes, counts and milliseconds, never the text of a prompt, an answer, a query or a snippet. Refusals (4xx) are only counted, through [onRefused].
+ * `POST /v1/files/search` answers only while [filesEnabled] says the owner has switched file search on; [files] is what it searches.
  */
 class AgentServer(
     private val port: Int,
     private val key: () -> String?,
     private val backend: AgentBackend,
+    private val files: FileSource? = null,
+    private val filesEnabled: () -> Boolean = { false },
     private val audit: (kind: String, payload: JsonObject) -> Unit,
     private val onServed: () -> Unit = {},
     private val onRefused: () -> Unit = {},
@@ -79,6 +83,7 @@ class AgentServer(
     /** Requests reading and parsing their body at once, and embedding calls at once; the rest are told to come back (429). */
     private val parsing = Semaphore(MAX_PARSING)
     private val embedding = Semaphore(MAX_EMBEDDING)
+    private val searching = Semaphore(MAX_SEARCHING)
 
     /** Opens the port. Returns null, or why it could not be opened. Blocks briefly; call off the main thread. */
     @Synchronized
@@ -134,6 +139,7 @@ class AgentServer(
                 }
                 post("/chat/completions") { call.chat() }
                 post("/embeddings") { call.embeddings() }
+                post("/files/search") { call.filesSearch() }
             }
             route("/{path...}") {
                 handle {
@@ -159,12 +165,13 @@ class AgentServer(
                 return
             }
             val reply = backend.chat(c.model, c.request)
-            auditChat(c, 200, reply.text.length, reply.stats, t0)
-            AgentWire.chatCompletion(newId(), clock() / 1000, c.model, AgentWire.fingerprint(reply.phone), reply.text, reply.stats, c.request.maxTokens)
+            val (answer, repairs) = settle(c, reply.text)
+            auditChat(c, 200, reply.text.length, reply.stats, t0, repairs = repairs)
+            AgentWire.toolReply(newId(), clock() / 1000, c.model, AgentWire.fingerprint(reply.phone), answer, reply.stats, c.request.maxTokens)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val r = refusalOf(e)
+            val r = refusalOf(e, constrained = parsed?.request?.jsonSchema != null)
             if (r.status >= 500) auditChat(parsed, r.status, 0, null, t0) else onRefused()
             status = HttpStatusCode.fromValue(r.status)
             AgentWire.error(r)
@@ -177,6 +184,33 @@ class AgentServer(
         @Volatile var chars = 0
         @Volatile var stats: ChatStats? = null
         @Volatile var finished = false
+        @Volatile var repairs = 0
+    }
+
+    /**
+     * What a call with tools finally says, and how many repair requests it took (0 or 1). "auto" reads the model's own format; if a call
+     * in it fails the check, the same conversation is asked once more under a constraint ([AgentTools.repairRequest]), and when that
+     * fails too the model's own text is the answer, as words. "required" and a named function were held to a schema from the start.
+     */
+    private suspend fun settle(c: AgentChatCall, text: String): Pair<ToolReply, Int> {
+        val spec = c.tools ?: return ToolReply.Content(text) to 0
+        if (spec.choice != ToolChoice.Auto) return AgentTools.parseReply(text, spec) to 0
+        return when (val read = AgentTools.readNative(text, spec)) {
+            is NativeRead.Words -> ToolReply.Content(text) to 0
+            is NativeRead.Calls -> ToolReply.Calls(read.calls) to 0
+            is NativeRead.Invalid -> {
+                val repair = AgentTools.repairSpec(spec, read.tool)
+                val again = try {
+                    backend.chat(c.model, AgentTools.repairRequest(c.request, c.history, repair)).text
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null // the repair failing is not the caller's problem: the model's text is still an answer
+                }
+                val fixed = again?.let { AgentTools.parseReply(it, repair) } as? ToolReply.Calls
+                (fixed ?: ToolReply.Content(text)) to 1
+            }
+        }
     }
 
     private sealed interface Item {
@@ -218,7 +252,7 @@ class AgentServer(
             upstream.cancel()
             // also when the call itself was cancelled because the client went away
             if (committed) {
-                auditChat(c, 200, state.chars, state.stats, t0, aborted = !state.finished)
+                auditChat(c, 200, state.chars, state.stats, t0, aborted = !state.finished, repairs = state.repairs)
                 if (state.finished) onServed()
             }
         }
@@ -229,6 +263,9 @@ class AgentServer(
         val created = clock() / 1000
         val fingerprint = AgentWire.fingerprint(backend.streamPhone(c.model))
         val lock = Mutex()
+        // with tools the answer is held back until it is whole: whether it is words or calls is only known then
+        val buffered = c.tools != null
+        val held = StringBuilder()
         // a client that stops reading blocks the write; after writeTimeoutMs the stream ends, which frees the model slot
         suspend fun send(text: String) = lock.withLock {
             withTimeoutOrNull(writeTimeoutMs) {
@@ -243,12 +280,12 @@ class AgentServer(
             }
         }
         try {
-            send(AgentWire.event(AgentWire.chunk(id, created, c.model, fingerprint, AgentWire.roleDelta())))
+            if (!buffered) send(AgentWire.event(AgentWire.chunk(id, created, c.model, fingerprint, AgentWire.roleDelta())))
             var item = first
             while (item != null) {
                 when (item) {
                     is Item.Failed -> {
-                        send(AgentWire.event(AgentWire.error(refusalOf(item.error))))
+                        send(AgentWire.event(AgentWire.error(refusalOf(item.error, constrained = c.request.jsonSchema != null))))
                         return@coroutineScope
                     }
                     is Item.Chunk -> {
@@ -257,17 +294,24 @@ class AgentServer(
                             state.stats = chunk.stats
                         } else if (chunk.delta.isNotEmpty()) {
                             state.chars += chunk.delta.length
-                            send(AgentWire.event(AgentWire.chunk(id, created, c.model, fingerprint, AgentWire.textDelta(chunk.delta))))
+                            if (buffered) held.append(chunk.delta)
+                            else send(AgentWire.event(AgentWire.chunk(id, created, c.model, fingerprint, AgentWire.textDelta(chunk.delta))))
                         }
                     }
                 }
                 item = upstream.receiveCatching().getOrNull()
             }
-            val last = AgentWire.chunk(
-                id, created, c.model, fingerprint, JsonObject(emptyMap()),
-                finish = AgentWire.finishReason(state.stats, c.request.maxTokens), usage = AgentWire.usage(state.stats),
-            )
-            send(AgentWire.event(last))
+            if (buffered) {
+                val (reply, repairs) = settle(c, held.toString())
+                state.repairs = repairs
+                for (chunk in AgentWire.bufferedChunks(id, created, c.model, fingerprint, reply, state.stats, c.request.maxTokens)) send(AgentWire.event(chunk))
+            } else {
+                val last = AgentWire.chunk(
+                    id, created, c.model, fingerprint, JsonObject(emptyMap()),
+                    finish = AgentWire.finishReason(state.stats, c.request.maxTokens), usage = AgentWire.usage(state.stats),
+                )
+                send(AgentWire.event(last))
+            }
             send(AgentWire.DONE)
             state.finished = true
         } finally {
@@ -295,6 +339,46 @@ class AgentServer(
         } catch (e: Exception) {
             val r = refusalOf(e)
             if (r.status >= 500) auditEmbed(parsed, r.status, t0) else onRefused()
+            status = HttpStatusCode.fromValue(r.status)
+            AgentWire.error(r)
+        }
+        respondJson(status, body)
+        if (status == HttpStatusCode.OK) onServed()
+    }
+
+    // ---- file search ------------------------------------------------------------------------------------------
+
+    /**
+     * What this phone would tell a paired phone, plus (scope swarm) what the paired phones tell it; see [AgentFiles]. The owner's switch
+     * is read before the body, again right before the search and again before anything is sent: if it went off meanwhile the answer is
+     * the 403 and nothing of the result leaves. A search that cannot run (no embedder, an index to rebuild) is a 503; an empty index is an empty list.
+     */
+    private suspend fun RoutingCall.filesSearch() {
+        val t0 = clock()
+        var parsed: FileSearchCall? = null
+        var status = HttpStatusCode.OK
+        val body: JsonObject = try {
+            fun on(): FileSource = files?.takeIf { filesEnabled() }
+                ?: throw AgentRefusal(403, "File search is off. The owner can turn on \"File search for other apps\" in Ustaad Settings.", "file_search_off")
+            val source = on()
+            val c = limited(parsing) { AgentRequests.parseFileSearch(readBody()) }
+            parsed = c
+            val found = limited(searching) {
+                source.unavailable()?.let { throw AgentRefusal(503, it, "index_unavailable", AgentRefusal.TYPE_SERVER) }
+                on()
+                AgentFiles.search(c, source, newQid())
+            }
+            if (files == null || !filesEnabled()) {
+                auditFiles(c, 403, found, t0) // the search ran, so the owner's log says so; the app gets nothing of it
+                on()
+            }
+            auditFiles(c, 200, found, t0)
+            found.body
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val r = refusalOf(e)
+            if (r.status >= 500) auditFiles(parsed, r.status, null, t0) else onRefused()
             status = HttpStatusCode.fromValue(r.status)
             AgentWire.error(r)
         }
@@ -333,9 +417,20 @@ class AgentServer(
         }
     }
 
-    /** What an exception becomes on the wire. A 5xx never carries the exception's own message: it can name paths, ports or models. */
-    private fun refusalOf(e: Exception): AgentRefusal = when (e) {
-        is AgentRefusal -> e
+    /**
+     * What an exception becomes on the wire. A 5xx never carries the exception's own message: it can name paths, ports or models.
+     * [constrained]: the call carried a JSON schema, so the model server saying it cannot use that schema is the caller's 400, not our 500.
+     */
+    private fun refusalOf(e: Exception, constrained: Boolean = false): AgentRefusal = when {
+        e is AgentRefusal -> e
+        constrained && AgentTools.isSchemaRejection(e) -> AgentRefusal(
+            400, "The model server could not turn the JSON schema of this request into a constraint (for tools: a `parameters` schema). Use plain types, enum, required, nested objects and arrays.",
+            "unsupported_schema",
+        )
+        else -> serverRefusal(e)
+    }
+
+    private fun serverRefusal(e: Exception): AgentRefusal = when (e) {
         is ModelBusyTimeoutException -> AgentRefusal(503, "The model is busy. Try again shortly.", "model_busy", AgentRefusal.TYPE_SERVER)
         is NoPhoneAvailableException, is PhoneTimeoutException, is PhoneAbortedException, is BusyException ->
             AgentRefusal(503, "The swarm could not run the request. Try again shortly.", "swarm_unavailable", AgentRefusal.TYPE_SERVER)
@@ -346,12 +441,15 @@ class AgentServer(
 
     private fun newId() = "chatcmpl-" + UUID.randomUUID().toString().replace("-", "").take(24)
 
-    private fun auditChat(c: AgentChatCall?, status: Int, completionChars: Int, stats: ChatStats?, t0: Long, aborted: Boolean = false) {
+    private fun newQid() = UUID.randomUUID().toString().take(8)
+
+    private fun auditChat(c: AgentChatCall?, status: Int, completionChars: Int, stats: ChatStats?, t0: Long, aborted: Boolean = false, repairs: Int = 0) {
         record("agent.chat", buildJsonObject {
             c?.let {
                 put("model", it.model.id)
                 put("stream", it.stream)
                 put("promptChars", it.promptChars)
+                if (it.tools != null) put("repairs", repairs) // how many times a tool call had to be asked for again: a number, no text
             }
             put("status", status)
             put("completionChars", completionChars)
@@ -376,6 +474,33 @@ class AgentServer(
         })
     }
 
+    /**
+     * Scope, how long the query was, how many results, which phone gave how many, how many paired phones were sent the query and how many
+     * bytes of it left this phone: no query text, no title, no snippet.
+     */
+    private fun auditFiles(c: FileSearchCall?, status: Int, found: FilesFound?, t0: Long) {
+        record("agent.files", buildJsonObject {
+            c?.let {
+                put("scope", it.scope.id)
+                put("queryChars", it.query.length)
+            }
+            put("status", status)
+            found?.let { f ->
+                put("results", f.results)
+                put("asked", f.asked) // paired phones sent the query
+                put("sentBytes", f.sentBytes) // bytes of query text that left this phone for them
+                putJsonArray("phones") {
+                    for (p in f.phones) add(buildJsonObject {
+                        put("name", p.name)
+                        put("status", p.status)
+                        put("results", p.results)
+                    })
+                }
+            }
+            put("ms", clock() - t0)
+        })
+    }
+
     private fun record(kind: String, payload: JsonObject) {
         runCatching { audit(kind, payload) } // a full disk must not turn an answer into an error
     }
@@ -387,5 +512,6 @@ class AgentServer(
         const val IDLE_TIMEOUT_S = 300
         const val MAX_PARSING = 4
         const val MAX_EMBEDDING = 2
+        const val MAX_SEARCHING = 2
     }
 }

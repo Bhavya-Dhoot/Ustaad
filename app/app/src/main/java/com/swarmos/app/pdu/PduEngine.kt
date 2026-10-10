@@ -3,6 +3,7 @@ package com.swarmos.app.pdu
 import android.os.Environment
 import android.os.SystemClock
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.PeerState
 import com.swarmos.app.core.Ports
 import com.swarmos.app.link.ConnectResult
 import com.swarmos.app.link.PeerLinks
@@ -119,6 +120,9 @@ data class IndexRequest(
 data class AskRequest(val text: String, val k: Int = 5, val deadlineMs: Int = 1500, val useSaved: Boolean = true)
 
 class LocalSearch(val candidates: List<Candidate>, val terms: List<String>, val embedMs: Long, val searchMs: Long, val dense: Boolean = true)
+
+/** What one paired phone answered to a query: its [response], or why there is none ([status] unreachable or error, with [detail]). */
+class PeerAnswer(val response: PduResponse?, val status: String, val detail: String?, val rttMs: Long)
 
 /** Owns the store and every flow of this module: indexing, local search, the federated ask, serving peers. */
 object PduEngine {
@@ -385,7 +389,7 @@ object PduEngine {
     }
 
     /** Dense search needs a real, answering embedder and vectors made by that same embedder; otherwise keywords only. */
-    private suspend fun denseUsable(): Boolean {
+    suspend fun denseUsable(): Boolean {
         val st = embedderStatus()
         return st.ready && !IndexGuard.reindexNeeded(store, st.name, PduEmbedConfig.documentPrefix)
     }
@@ -413,6 +417,21 @@ object PduEngine {
     }
 
     // ---- the federated ask --------------------------------------------------------------------------------
+
+    /** Sends the signed [q] to one paired phone and waits at most [deadlineMs]. Only cancellation is thrown; every other failure is in the answer. */
+    suspend fun queryPeer(p: PeerState, q: PduQuery, deadlineMs: Int): PeerAnswer {
+        val r0 = now()
+        return try {
+            val resp = withTimeoutOrNull(deadlineMs.toLong()) { AppGraph.nodeClient.post<PduResponse, PduQuery>(p.info.ip, "/pdu/query", q) }
+            val rtt = now() - r0
+            if (resp == null) PeerAnswer(null, "unreachable", "no answer in $deadlineMs ms", rtt) else PeerAnswer(resp, "ok", null, rtt)
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            // connection refused / reset / timeout all mean "that phone is not answering"
+            val status = if (t is java.io.IOException) "unreachable" else "error"
+            PeerAnswer(null, status, "${t.javaClass.simpleName}: ${t.message}".take(120), now() - r0)
+        }
+    }
 
     /**
      * Full flow: look in the knowledge bank, query every online peer and this phone, merge, show cards, stream the answer.
@@ -516,28 +535,18 @@ object PduEngine {
                 }
             }
             for (p in online) launch {
-                val r0 = now()
-                var result: DeviceResult
-                var peerHits: DeviceHits? = null
-                try {
-                    val resp = withTimeoutOrNull(deadlineMs.toLong()) { AppGraph.nodeClient.post<PduResponse, PduQuery>(p.info.ip, "/pdu/query", q) }
-                    val rtt = now() - r0
-                    if (resp == null) {
-                        result = DeviceResult(p.info.nodeId, p.info.name, false, "unreachable", "no answer in $deadlineMs ms", rttMs = rtt, sentBytes = qBytes)
-                    } else {
-                        val bytes = SwarmJson.encodeToString(resp).toByteArray().size
-                        result = DeviceResult(
-                            p.info.nodeId, p.info.name, false, "ok", hits = resp.hits.size, bytes = bytes, rttMs = rtt, tookMs = resp.tookMs,
-                            withheldPrivate = resp.withheldPrivate, indexedChunks = resp.indexedChunks, titles = resp.hits.map { it.title }, sentBytes = qBytes,
-                        )
-                        peerHits = DeviceHits(p.info.nodeId, p.info.name, false, resp.hits)
-                    }
-                } catch (t: Throwable) {
-                    if (t is CancellationException) throw t
-                    // connection refused / reset / timeout all mean "that phone is not answering"
-                    val status = if (t is java.io.IOException) "unreachable" else "error"
-                    result = DeviceResult(p.info.nodeId, p.info.name, false, status, "${t.javaClass.simpleName}: ${t.message}".take(120), rttMs = now() - r0, sentBytes = qBytes)
+                val answer = queryPeer(p, q, deadlineMs)
+                val resp = answer.response
+                val result = if (resp == null) {
+                    DeviceResult(p.info.nodeId, p.info.name, false, answer.status, answer.detail, rttMs = answer.rttMs, sentBytes = qBytes)
+                } else {
+                    val bytes = SwarmJson.encodeToString(resp).toByteArray().size
+                    DeviceResult(
+                        p.info.nodeId, p.info.name, false, "ok", hits = resp.hits.size, bytes = bytes, rttMs = answer.rttMs, tookMs = resp.tookMs,
+                        withheldPrivate = resp.withheldPrivate, indexedChunks = resp.indexedChunks, titles = resp.hits.map { it.title }, sentBytes = qBytes,
+                    )
                 }
+                val peerHits = resp?.let { DeviceHits(p.info.nodeId, p.info.name, false, it.hits) }
                 // the only thing about a peer's answer that is written down: counts, never content
                 AppGraph.audit.append(
                     "pdu.recv",

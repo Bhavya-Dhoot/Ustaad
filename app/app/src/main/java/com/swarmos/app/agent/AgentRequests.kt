@@ -1,7 +1,9 @@
 package com.swarmos.app.agent
 
-import com.swarmos.app.llm.ChatMessage
 import com.swarmos.app.llm.ChatRequest
+import com.swarmos.app.sched.RequestLimitException
+import com.swarmos.app.sched.checkLimits
+import com.swarmos.app.sched.toDto
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -21,8 +23,15 @@ enum class AgentModel(val id: String) {
     }
 }
 
-/** A validated chat call: [request] is what the model gets, [maxTokens] already clamped, [promptChars] for the audit log. */
-class AgentChatCall(val model: AgentModel, val request: ChatRequest, val stream: Boolean, val promptChars: Int)
+/**
+ * A validated chat call: [request] is what the model gets, [maxTokens] already clamped, [promptChars] for the audit log.
+ * [tools] is set when the model may call tools: [request] then carries the tool text, and for "required" or a named function the
+ * schema that constrains its output. [history] is the caller's messages before they were rendered, to ask again under a constraint.
+ */
+class AgentChatCall(
+    val model: AgentModel, val request: ChatRequest, val stream: Boolean, val promptChars: Int,
+    val tools: ToolSpec? = null, val history: List<AgentMessage> = emptyList(),
+)
 
 /** A validated embeddings call. [base64] asks for the vectors as base64 little-endian float32, as the OpenAI Python client does by default. */
 class AgentEmbedCall(val model: AgentModel, val texts: List<String>, val base64: Boolean) {
@@ -45,13 +54,19 @@ object AgentRequests {
 
     private val json = Json
 
-    /** Fields that would switch on tool calling. Present with a value other than null is a 400. */
-    private val TOOL_FIELDS = listOf("tools", "tool_choice", "functions", "function_call")
-    private val ROLES = mapOf("system" to "system", "developer" to "system", "user" to "user", "assistant" to "assistant")
+    /** The old function-calling fields. Present with a value other than null is a 400: use `tools` and `tool_choice`. */
+    private val OLD_TOOL_FIELDS = listOf("functions", "function_call")
+    private val ROLES = mapOf("system" to "system", "developer" to "system", "user" to "user", "assistant" to "assistant", "tool" to "tool")
 
-    fun parseChat(body: String): AgentChatCall {
+    fun parseChat(body: String): AgentChatCall = guarded { parseChatBody(body) }
+
+    fun parseEmbeddings(body: String): AgentEmbedCall = guarded { parseEmbeddingsBody(body) }
+
+    fun parseFileSearch(body: String): FileSearchCall = guarded { parseFileSearchBody(body) }
+
+    private fun parseChatBody(body: String): AgentChatCall {
         val o = parseObject(body)
-        for (f in TOOL_FIELDS) if (o.has(f)) throw bad("`$f` is not supported: Ustaad does not do tool calling.", UNSUPPORTED)
+        for (f in OLD_TOOL_FIELDS) if (o.has(f)) throw bad("`$f` is not supported: use `tools` and `tool_choice`.", UNSUPPORTED)
         o.int("n")?.let { n ->
             if (n > 1) throw bad("`n` above 1 is not supported: one answer per request.", UNSUPPORTED)
             if (n < 1) throw bad("`n` must be 1.", INVALID)
@@ -62,6 +77,7 @@ object AgentRequests {
         if (messageList.isEmpty()) throw bad("`messages` must not be empty.", INVALID)
         if (messageList.size > MAX_MESSAGES) throw bad("`messages` has ${messageList.size} entries; at most $MAX_MESSAGES are accepted.", LIMIT)
         val messages = messageList.mapIndexed { i, m -> parseMessage(i, m) }
+        val tools = parseTools(o)
 
         val model = parseModel(o)
         val stream = o.bool("stream") ?: false
@@ -78,22 +94,29 @@ object AgentRequests {
             it.toInt()
         }
 
-        return AgentChatCall(
-            model = model,
-            request = ChatRequest(
-                messages = messages,
-                maxTokens = maxTokens,
-                temperature = temperature,
-                jsonSchema = parseResponseFormat(o["response_format"]),
-                stop = parseStop(o["stop"]),
-                seed = seed,
-            ),
-            stream = stream,
-            promptChars = messages.sumOf { it.content.length },
+        val responseSchema = parseResponseFormat(o["response_format"])
+        if (tools.declared && responseSchema != null) throw bad("`response_format` cannot be used together with `tools`: both constrain the answer.", UNSUPPORTED)
+        val spec = tools.spec
+        // "auto" sends no constraint (the model answers in its own format); "required" and a named function are held to a schema
+        val toolSchema = spec?.takeIf { it.choice != ToolChoice.Auto }?.let { AgentTools.schema(it) }
+        if (toolSchema != null && toolSchema.length > AgentTools.MAX_SCHEMA_CHARS) {
+            throw bad("`tools` need a constraint of ${toolSchema.length} characters; at most ${AgentTools.MAX_SCHEMA_CHARS} are accepted. Shorten the `parameters` schemas.", LIMIT)
+        }
+        val rendered = AgentTools.render(messages, spec)
+
+        val request = ChatRequest(
+            messages = rendered,
+            maxTokens = maxTokens,
+            temperature = temperature,
+            jsonSchema = toolSchema ?: responseSchema,
+            stop = parseStop(o["stop"]),
+            seed = seed,
         )
+        if (model == AgentModel.SWARM) checkSwarmLimits(request)
+        return AgentChatCall(model, request, stream, promptChars = rendered.sumOf { it.content.length }, tools = spec, history = messages)
     }
 
-    fun parseEmbeddings(body: String): AgentEmbedCall {
+    private fun parseEmbeddingsBody(body: String): AgentEmbedCall {
         val o = parseObject(body)
         val model = parseModel(o)
         val input = o["input"]
@@ -117,6 +140,22 @@ object AgentRequests {
             throw bad("`encoding_format` must be \"float\" or \"base64\".", INVALID)
         }
         return AgentEmbedCall(model, texts, base64 = format == "base64")
+    }
+
+    private fun parseFileSearchBody(body: String): FileSearchCall {
+        val o = parseObject(body)
+        val query = (o["query"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            ?: throw bad("`query` is required and must be a string.", MISSING)
+        if (query.isBlank()) throw bad("`query` must not be empty.", INVALID)
+        if (query.length > AgentFiles.MAX_QUERY) throw bad("`query` is ${query.length} characters; at most ${AgentFiles.MAX_QUERY} are accepted.", LIMIT)
+        val scope = when (val el = o["scope"]) {
+            null, is JsonNull -> FileScope.PHONE
+            is JsonPrimitive -> FileScope.of(el.content).takeIf { el.isString } ?: throw bad("`scope` must be \"phone\" or \"swarm\".", INVALID)
+            else -> throw bad("`scope` must be \"phone\" or \"swarm\".", INVALID)
+        }
+        val max = o.int("max_results") ?: AgentFiles.DEFAULT_RESULTS.toLong()
+        if (max < 1 || max > AgentFiles.MAX_RESULTS) throw bad("`max_results` must be 1 to ${AgentFiles.MAX_RESULTS}.", LIMIT)
+        return FileSearchCall(query, scope, max.toInt())
     }
 
     // ---- pieces -------------------------------------------------------------------------------------------
@@ -159,20 +198,124 @@ object AgentRequests {
             ?: throw AgentRefusal(404, "The model `$id` does not exist. Use \"${AgentModel.LOCAL.id}\" or \"${AgentModel.SWARM.id}\".", "model_not_found")
     }
 
-    private fun parseMessage(i: Int, el: JsonElement): ChatMessage {
+    private fun parseMessage(i: Int, el: JsonElement): AgentMessage {
         val m = el as? JsonObject ?: throw bad("`messages[$i]` must be an object.", INVALID)
         val roleName = (m["role"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-        if (roleName == "tool" || roleName == "function") throw bad("`messages[$i].role` \"$roleName\" is not supported: Ustaad does not do tool calling.", UNSUPPORTED)
-        val role = ROLES[roleName] ?: throw bad("`messages[$i].role` must be system, user or assistant.", INVALID)
-        for (f in listOf("tool_calls", "function_call")) {
-            if (m.has(f)) throw bad("`messages[$i].$f` is not supported: Ustaad does not do tool calling.", UNSUPPORTED)
-        }
+        if (roleName == "function") throw bad("`messages[$i].role` \"function\" is not supported: use \"tool\".", UNSUPPORTED)
+        val role = ROLES[roleName] ?: throw bad("`messages[$i].role` must be system, user, assistant or tool.", INVALID)
+        if (m.has("function_call")) throw bad("`messages[$i].function_call` is not supported: use `tool_calls`.", UNSUPPORTED)
+        if (m.has("tool_calls") && role != "assistant") throw bad("`messages[$i].tool_calls` is only valid on an assistant message.", INVALID)
+        val toolCalls = if (m.has("tool_calls")) parseToolCalls(i, m.getValue("tool_calls")) else emptyList()
+        val toolCallId = (m["tool_call_id"] as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotEmpty() }?.content
+        if (role == "tool" && toolCallId == null) throw bad("`messages[$i].tool_call_id` is required on a tool message.", MISSING)
         val content = when (val c = m["content"]) {
+            // an assistant message that only calls tools has no words (JsonNull is a JsonPrimitive: it has to come first)
+            null, is JsonNull -> if (toolCalls.isNotEmpty()) "" else throw bad("`messages[$i].content` is required: a string or a list of text parts.", INVALID)
             is JsonPrimitive -> if (c.isString) c.content else throw bad("`messages[$i].content` must be a string or a list of text parts.", INVALID)
             is JsonArray -> c.mapIndexed { j, part -> textOf(i, j, part) }.joinToString("\n")
             else -> throw bad("`messages[$i].content` is required: a string or a list of text parts.", INVALID)
         }
-        return ChatMessage(role, content)
+        return AgentMessage(role, content, toolCalls, toolCallId)
+    }
+
+    /** `[{"id","type":"function","function":{"name","arguments"}}]` of an assistant message; `arguments` may be JSON text or an object. */
+    private fun parseToolCalls(i: Int, el: JsonElement): List<PastToolCall> {
+        val list = el as? JsonArray ?: throw bad("`messages[$i].tool_calls` must be a list.", INVALID)
+        return list.mapIndexed { j, c ->
+            val where = "messages[$i].tool_calls[$j]"
+            val o = c as? JsonObject ?: throw bad("`$where` must be an object.", INVALID)
+            val id = (o["id"] as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotEmpty() }?.content
+                ?: throw bad("`$where.id` is required.", MISSING)
+            val type = (o["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            if (type != null && type != "function") throw bad("`$where.type` must be \"function\".", INVALID)
+            val f = o["function"] as? JsonObject ?: throw bad("`$where.function` is required.", MISSING)
+            val name = (f["name"] as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotEmpty() }?.content
+                ?: throw bad("`$where.function.name` is required.", MISSING)
+            val args = when (val a = f["arguments"]) {
+                null, is JsonNull -> "{}"
+                // the text is JSON inside a string, so the depth scan of the body skipped it: it is parsed again when the prompt is built
+                is JsonPrimitive -> when {
+                    !a.isString -> throw bad("`$where.function.arguments` must be JSON text.", INVALID)
+                    nestingDepth(a.content) > MAX_DEPTH -> throw bad("`$where.function.arguments` is nested more than $MAX_DEPTH levels deep.", INVALID)
+                    else -> a.content
+                }
+                is JsonObject -> a.toString()
+                else -> throw bad("`$where.function.arguments` must be JSON text.", INVALID)
+            }
+            PastToolCall(id, name, args)
+        }
+    }
+
+    // ---- tools ---------------------------------------------------------------------------------------------
+
+    /** [declared]: the request carried tools (even with `tool_choice` "none"); [spec]: the model may call them. */
+    private class ToolsParsed(val declared: Boolean, val spec: ToolSpec?)
+
+    private fun parseTools(o: JsonObject): ToolsParsed {
+        val choiceEl = o["tool_choice"]?.takeIf { it !is JsonNull }
+        val none = choiceEl is JsonPrimitive && choiceEl.isString && choiceEl.content == "none"
+        val choice: ToolChoice? = if (none) null else parseToolChoice(choiceEl)
+        val parallel = o.bool("parallel_tool_calls") ?: true
+        val toolsEl = o["tools"]?.takeIf { it !is JsonNull }
+        if (toolsEl == null) {
+            if (choice != null && choice != ToolChoice.Auto) throw bad("`tool_choice` needs `tools`: there is nothing to call.", INVALID)
+            return ToolsParsed(false, null)
+        }
+        val list = toolsEl as? JsonArray ?: throw bad("`tools` must be a list.", INVALID)
+        if (list.isEmpty()) throw bad("`tools` must not be empty.", INVALID)
+        if (list.size > AgentTools.MAX_TOOLS) throw bad("`tools` has ${list.size} entries; at most ${AgentTools.MAX_TOOLS} are accepted.", LIMIT)
+        val bytes = json.encodeToString(JsonArray.serializer(), list).toByteArray(Charsets.UTF_8).size
+        if (bytes > AgentTools.MAX_TOOLS_BYTES) throw bad("`tools` is $bytes bytes; at most ${AgentTools.MAX_TOOLS_BYTES} are accepted.", LIMIT)
+        val tools = list.mapIndexed { i, t -> parseTool(i, t) }
+        val seen = HashSet<String>()
+        tools.forEachIndexed { i, t -> if (!seen.add(t.name)) throw bad("`tools[$i].function.name` \"${t.name}\" is declared twice.", INVALID) }
+        if (choice is ToolChoice.Named && tools.none { it.name == choice.name }) {
+            throw bad("`tool_choice.function.name` \"${choice.name}\" is not one of the declared tools.", INVALID)
+        }
+        return ToolsParsed(true, choice?.let { ToolSpec(tools, it, parallel) })
+    }
+
+    private fun parseToolChoice(el: JsonElement?): ToolChoice {
+        val shape = "`tool_choice` must be \"auto\", \"none\", \"required\" or {\"type\":\"function\",\"function\":{\"name\":...}}."
+        return when {
+            el == null -> ToolChoice.Auto
+            el is JsonPrimitive && el.isString -> when (el.content) {
+                "auto" -> ToolChoice.Auto
+                "required" -> ToolChoice.Required
+                else -> throw bad(shape, INVALID)
+            }
+            el is JsonObject -> {
+                val type = (el["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                val name = ((el["function"] as? JsonObject)?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (type != "function" || name == null) throw bad(shape, INVALID)
+                ToolChoice.Named(name)
+            }
+            else -> throw bad(shape, INVALID)
+        }
+    }
+
+    private fun parseTool(i: Int, el: JsonElement): AgentTool {
+        val t = el as? JsonObject ?: throw bad("`tools[$i]` must be an object.", INVALID)
+        val type = (t["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (type != "function") throw bad("`tools[$i].type` ${type?.let { "\"$it\" " } ?: ""}is not supported: only \"function\" tools.", UNSUPPORTED)
+        val f = t["function"] as? JsonObject ?: throw bad("`tools[$i].function` is required and must be an object.", MISSING)
+        val name = (f["name"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (name == null || !AgentTools.NAME.matches(name)) throw bad("`tools[$i].function.name` must be 1 to 64 letters, digits, _ or -.", INVALID)
+        val description = when (val d = f["description"]) {
+            null, is JsonNull -> ""
+            is JsonPrimitive -> if (d.isString) d.content else throw bad("`tools[$i].function.description` must be a string.", INVALID)
+            else -> throw bad("`tools[$i].function.description` must be a string.", INVALID)
+        }
+        if (description.length > AgentTools.MAX_DESCRIPTION) {
+            throw bad("`tools[$i].function.description` is ${description.length} characters; at most ${AgentTools.MAX_DESCRIPTION} are accepted.", LIMIT)
+        }
+        val parameters = when (val p = f["parameters"]) {
+            null, is JsonNull -> AgentTools.NO_PARAMETERS
+            is JsonObject -> p
+            else -> throw bad("`tools[$i].function.parameters` must be a JSON Schema object.", INVALID)
+        }
+        checkSchema(parameters, "tools[$i].function.parameters")
+        return AgentTool(name, description, parameters)
     }
 
     private fun textOf(i: Int, j: Int, part: JsonElement): String {
@@ -205,6 +348,7 @@ object AgentRequests {
             "json_schema" -> {
                 val schema = (rf["json_schema"] as? JsonObject)?.get("schema") as? JsonObject
                     ?: throw bad("`response_format.json_schema.schema` is required and must be an object.", INVALID)
+                checkSchema(schema, "response_format.json_schema.schema")
                 json.encodeToString(JsonObject.serializer(), schema).also {
                     if (it.toByteArray(Charsets.UTF_8).size > MAX_SCHEMA_BYTES) {
                         throw bad("`response_format.json_schema.schema` is over $MAX_SCHEMA_BYTES bytes.", LIMIT)
@@ -216,6 +360,60 @@ object AgentRequests {
     }
 
     private fun bad(message: String, code: String) = AgentRefusal(400, message, code)
+
+    /**
+     * A request nested so deeply that reading it overflows the stack is the caller's mistake. A StackOverflowError is an Error, not an
+     * Exception, so without this it would pass every handler of the listener as a bare 500.
+     */
+    internal fun <T> guarded(block: () -> T): T = try {
+        block()
+    } catch (e: StackOverflowError) {
+        throw bad("The request is nested too deeply to read.", INVALID_JSON)
+    }
+
+    // ---- limits on a schema the caller supplies ----------------------------------------------------------------
+
+    /** The largest count a schema may ask for: a grammar repeats what it counts, so `maxItems: 1000000` would be a very large grammar. */
+    const val MAX_SCHEMA_BOUND = 64
+    private val BOUND_KEYS = setOf("minItems", "maxItems", "minLength", "maxLength", "minProperties", "maxProperties")
+    private val PATTERN_COUNT = Regex("\\{(\\d*)(?:,(\\d*))?\\}")
+
+    /**
+     * Refuses a schema ([field] names where it came from) that asks the model server for a very large grammar or for something outside
+     * the schema: a numeric bound above [MAX_SCHEMA_BOUND], a count above it in a `pattern` (`{n}`, `{n,m}`), or a `$ref` that does not
+     * start with `#`. Only numbers and strings are looked at, so a property that happens to be called `maxLength` is no bound.
+     */
+    private fun checkSchema(el: JsonElement, field: String) {
+        when (el) {
+            is JsonObject -> for ((k, v) in el) {
+                if (v is JsonPrimitive && !v.isString && k in BOUND_KEYS) {
+                    val n = v.content.toDoubleOrNull()
+                    if (n != null && n > MAX_SCHEMA_BOUND) throw bad("`$field` has `$k` ${v.content}; at most $MAX_SCHEMA_BOUND is accepted.", LIMIT)
+                }
+                if (v is JsonPrimitive && v.isString) {
+                    if (k == "pattern") {
+                        for (m in PATTERN_COUNT.findAll(v.content)) {
+                            val big = m.groupValues.drop(1).any { (it.toIntOrNull() ?: if (it.isEmpty()) 0 else Int.MAX_VALUE) > MAX_SCHEMA_BOUND }
+                            if (big) throw bad("`$field` has a `pattern` that repeats more than $MAX_SCHEMA_BOUND times.", LIMIT)
+                        }
+                    }
+                    if (k == "\$ref" && !v.content.startsWith("#")) throw bad("`$field` has a `\$ref` that points outside the schema; only references that start with # are accepted.", UNSUPPORTED)
+                }
+                checkSchema(v, field)
+            }
+            is JsonArray -> el.forEach { checkSchema(it, field) }
+            else -> {}
+        }
+    }
+
+    /** `ustaad-swarm` jobs are refused by the phone that gets them above its own limits (SchedLimits): say so as the caller's 400, not as a 500. */
+    private fun checkSwarmLimits(req: ChatRequest) {
+        try {
+            req.toDto().checkLimits()
+        } catch (e: RequestLimitException) {
+            throw bad("This request is too large for `ustaad-swarm` (${e.message}). Shorten it or use `ustaad-local`.", LIMIT)
+        }
+    }
 
     // error codes of the 400 answers
     private const val INVALID_JSON = "invalid_json"

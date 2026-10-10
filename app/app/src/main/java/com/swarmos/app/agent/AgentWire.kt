@@ -76,6 +76,67 @@ object AgentWire {
             put("usage", usage(stats))
         }
 
+    /** `[{"id","type":"function","function":{"name","arguments"}}]`; with [indexed] each entry also has its `index`, as in a streamed delta. */
+    fun toolCalls(calls: List<ToolCallOut>, indexed: Boolean = false): JsonArray = JsonArray(calls.mapIndexed { i, c ->
+        buildJsonObject {
+            if (indexed) put("index", i)
+            put("id", c.id)
+            put("type", "function")
+            putJsonObject("function") {
+                put("name", c.name)
+                put("arguments", c.arguments)
+            }
+        }
+    })
+
+    /** The answer to a call with tools: words as an ordinary completion, or `content: null` with `tool_calls` and `finish_reason` "tool_calls". */
+    fun toolReply(id: String, createdSec: Long, model: AgentModel, fingerprint: String, reply: ToolReply, stats: ChatStats?, maxTokens: Int): JsonObject =
+        when (reply) {
+            is ToolReply.Content -> chatCompletion(id, createdSec, model, fingerprint, reply.text, stats, maxTokens)
+            is ToolReply.Calls -> buildJsonObject {
+                put("id", id)
+                put("object", "chat.completion")
+                put("created", createdSec)
+                put("model", model.id)
+                put("system_fingerprint", fingerprint)
+                putJsonArray("choices") {
+                    add(buildJsonObject {
+                        put("index", 0)
+                        putJsonObject("message") {
+                            put("role", "assistant")
+                            put("content", JsonNull)
+                            put("tool_calls", toolCalls(reply.calls))
+                        }
+                        put("finish_reason", "tool_calls")
+                    })
+                }
+                put("usage", usage(stats))
+            }
+        }
+
+    /**
+     * The chunks of a buffered answer with tools, in order: for calls one chunk with the role, `content: null` and every call whole
+     * (`index`, `id`, `type`, `function.name`, `function.arguments`); for words the role chunk and one text chunk; then the last chunk
+     * with `finish_reason` and `usage`. The caller sends them as events and ends with [DONE].
+     */
+    fun bufferedChunks(id: String, createdSec: Long, model: AgentModel, fingerprint: String, reply: ToolReply, stats: ChatStats?, maxTokens: Int): List<JsonObject> {
+        val chunks = ArrayList<JsonObject>()
+        when (reply) {
+            is ToolReply.Calls -> chunks += chunk(id, createdSec, model, fingerprint, buildJsonObject {
+                put("role", "assistant")
+                put("content", JsonNull)
+                put("tool_calls", toolCalls(reply.calls, indexed = true))
+            })
+            is ToolReply.Content -> {
+                chunks += chunk(id, createdSec, model, fingerprint, roleDelta())
+                if (reply.text.isNotEmpty()) chunks += chunk(id, createdSec, model, fingerprint, textDelta(reply.text))
+            }
+        }
+        val finish = if (reply is ToolReply.Calls) "tool_calls" else finishReason(stats, maxTokens)
+        chunks += chunk(id, createdSec, model, fingerprint, JsonObject(emptyMap()), finish = finish, usage = usage(stats))
+        return chunks
+    }
+
     /** One `chat.completion.chunk`. [delta] is `{}` on the last chunk; [finish] and [usage] are set on that chunk only. */
     fun chunk(id: String, createdSec: Long, model: AgentModel, fingerprint: String, delta: JsonObject, finish: String? = null, usage: JsonObject? = null): JsonObject =
         buildJsonObject {
