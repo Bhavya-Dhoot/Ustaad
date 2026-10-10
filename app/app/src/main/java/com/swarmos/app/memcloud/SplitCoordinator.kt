@@ -35,9 +35,11 @@ private class ReplanCancel : CancellationException("re-plan")
 /**
  * MemoryCloud coordinator: this phone drives one model whose layers live on several phones.
  *
- * Flow: PLANNING (read the GGUF header, size the split) -> STARTING_PEERS (each peer stops its own chat and embedding
- * servers through /v1/models/stop and starts rpc-server through /v1/memcloud/rpc/start; this phone stops its own too)
- * -> LOADING (llama-server with --rpc starts; progress is the bytes each peer's rpc-server has received) -> READY.
+ * Flow: PLANNING (read the GGUF header, size the split; a plan that does not fit is refused unless forced) -> STARTING_PEERS
+ * (each peer gets /v1/memcloud/rpc/start first, which carries the restore list and starts the lease; a peer on this build stops
+ * its own chat and embedding servers as it accepts, one on the older build has them stopped through /v1/models/stop right after;
+ * this phone stops its own too) -> LOADING (llama-server with --rpc starts; progress is the bytes each peer's rpc-server has
+ * received) -> READY.
  * While a split is loading or serving, a renew job extends every worker's lease every few seconds (a worker whose lease
  * runs out stops rpc-server and restores its own servers, whatever this phone does), and a 1 s watch compares the
  * peers' heartbeats and the server process: a lost phone gives DEGRADED naming it, the stream stops and the server is
