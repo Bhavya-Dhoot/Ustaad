@@ -88,6 +88,7 @@ object LlamaJson {
         completionTokens = t.num("predicted_n")?.toInt() ?: 0,
         promptMs = t.num("prompt_ms") ?: 0.0,
         genMs = t.num("predicted_ms") ?: 0.0,
+        cachedTokens = t.num("cache_n")?.toInt() ?: 0,
     )
 
     fun statsFromUsage(u: JsonObject): ChatStats = ChatStats(
