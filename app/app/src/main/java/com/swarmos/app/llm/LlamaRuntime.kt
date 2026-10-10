@@ -737,21 +737,38 @@ object LlamaRuntime {
      */
     private fun watchHealth(run: Running) {
         if (run.role == Role.RPC) return // rpc-server has no /health, and it is MemoryCloud's to supervise
+        val port = run.cfg.port
+        val tag = "${run.role.tag} pid=${pidOf(run.process)}"
         scope.launch {
-            val watch = HangWatch()
-            while (true) {
-                delay(HEALTH_PING_MS)
-                if (!run.process.isAlive || run.stopRequested || !board.isCurrent(run.role, run.epoch)) return@launch
-                val answered = LlamaHttp.healthOk(run.cfg.port)
-                if (watch.record(answered, InFlight.busyWithinTimeout(run.cfg.port))) {
-                    val silentS = HEALTH_PING_MS * HangWatch.MAX_MISSES / 1000
-                    Log.e(TAG, "${run.role.tag}: /health unanswered ${HangWatch.MAX_MISSES} times in a row, killing pid=${pidOf(run.process)}")
-                    run.hungKill = "stopped answering /health for $silentS s, killed by Ustaad"
-                    killProcess(run.process)
-                    return@launch
-                }
-            }
+            HealthSupervisor(
+                periodMs = HEALTH_PING_MS,
+                probe = { LlamaHttp.healthOk(port) }, // 2 s connect and 3 s read timeout: a stopped process still completes the handshake, so the read timeout is what counts the miss
+                busy = { InFlight.busyWithinTimeout(port) },
+                endedBecause = {
+                    when {
+                        !run.process.isAlive -> "the process exited"
+                        run.stopRequested -> "the server was stopped on purpose"
+                        !board.isCurrent(run.role, run.epoch) -> "a newer start or a stop took over"
+                        else -> null
+                    }
+                },
+                kill = {
+                    run.hungKill = "stopped answering /health for ${HEALTH_PING_MS * HangWatch.MAX_MISSES / 1000} s, killed by Ustaad"
+                    hardKill(run)
+                },
+                log = { Log.i(TAG, "$tag: $it") },
+                wallClockMs = android.os.SystemClock::elapsedRealtime,
+            ).run()
         }
+    }
+
+    /**
+     * SIGKILL at once, twice over (Process.destroyForcibly and android.os.Process.killProcess): a hung server is not going to shut down
+     * on SIGTERM, and a stopped one cannot even receive it until it is continued.
+     */
+    private fun hardKill(run: Running) {
+        run.process.destroyForcibly()
+        pidOf(run.process)?.let { runCatching { AndroidProcess.killProcess(it.toInt()) } }
     }
 
     /**

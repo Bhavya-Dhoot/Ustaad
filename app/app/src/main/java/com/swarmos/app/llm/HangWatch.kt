@@ -42,12 +42,65 @@ class HangWatch(private val maxMisses: Int = MAX_MISSES) {
 }
 
 /**
+ * The ping loop of one READY server: every [periodMs] it asks [endedBecause] (a reason when the server was stopped, replaced or died:
+ * the loop ends; null while it is still the one to watch), runs the blocking [probe] (true = `/health` answered 200 within its own
+ * connect and read timeouts) and feeds [HangWatch]; after the last allowed miss it calls [kill] once and ends. [busy] says whether a
+ * call is in flight that excuses silence ([InFlight.busyWithinTimeout]). Every decision goes to [log], so one logcat line says why a
+ * frozen server was or was not killed. Its own class so a stand-in server can drive it in a unit test with a short period.
+ */
+internal class HealthSupervisor(
+    private val periodMs: Long,
+    private val probe: () -> Boolean,
+    private val busy: () -> Boolean,
+    private val endedBecause: () -> String?,
+    private val kill: () -> Unit,
+    private val log: (String) -> Unit = {},
+    private val watch: HangWatch = HangWatch(),
+    /** Wall clock in ms that keeps counting while the phone sleeps (SystemClock.elapsedRealtime); the coroutine timers do not. */
+    private val wallClockMs: () -> Long = System::currentTimeMillis,
+) {
+    suspend fun run() {
+        log("health watch armed, ping every $periodMs ms")
+        var last = wallClockMs()
+        while (true) {
+            kotlinx.coroutines.delay(periodMs)
+            val now = wallClockMs()
+            // delay() counts time the CPU is awake: when the phone slept or the vendor OS froze the app, a tick comes much later than its period
+            if (now - last > periodMs * LATE_FACTOR) log("health tick came ${(now - last) / 1000} s after the last one (period ${periodMs / 1000} s): the phone slept or the app was frozen")
+            last = now
+            endedBecause()?.let { log("health watch ended: $it"); return }
+            val answered = probe()
+            val excused = busy()
+            val dead = watch.record(answered, excused)
+            if (!answered) log("health ping missed (${watch.misses} of ${HangWatch.MAX_MISSES} counted${if (excused) "; not counted now: a call is in flight within its time" else ""})")
+            if (dead) {
+                log("health watch: ${HangWatch.MAX_MISSES} misses in a row, killing the server")
+                kill()
+                return
+            }
+        }
+    }
+
+    private companion object {
+        /** A tick later than this many periods is logged as late. */
+        const val LATE_FACTOR = 2
+    }
+}
+
+/**
  * The calls this app has in flight against its llama-servers (chat streams and embedding requests), each with the moment its
  * own timeout runs out. [LlamaServerClient] registers every call. The hang watch uses it to tell "idle or past its timeout"
  * from "busy"; [LlamaRuntime.working] (the wake lock) and the memory-pressure handler use it to tell idle from busy.
  */
 internal object InFlight {
-    private class Call(val port: Int, val deadlineNs: Long)
+    /**
+     * How long a call excuses a silent `/health`, at most, whatever its own timeout is (a stream's is 10 minutes). A server that is merely
+     * busy still answers `/health` in milliseconds (see [HangWatch]), so silence for three pings is a frozen server even under a call;
+     * without this cap a frozen server with one call in flight stayed READY until that call's 10 minute read timeout.
+     */
+    const val MAX_EXCUSE_MS = 60_000L
+
+    private class Call(val port: Int, val startNs: Long, val deadlineNs: Long)
 
     private val calls = ConcurrentHashMap<Call, Boolean>()
     private val lastEndNs = ConcurrentHashMap<Int, Long>()
@@ -58,7 +111,7 @@ internal object InFlight {
 
     /** Registers a call on [port] whose own timeout is [timeoutMs]; hand the token to [end] when the call is over, however it ends. */
     fun begin(port: Int, timeoutMs: Long, nowNs: Long = System.nanoTime()): Any {
-        val c = Call(port, nowNs + timeoutMs * 1_000_000)
+        val c = Call(port, nowNs, nowNs + timeoutMs * 1_000_000)
         calls[c] = true
         _count.update { it + 1 }
         return c
@@ -72,8 +125,9 @@ internal object InFlight {
         }
     }
 
-    /** True when a call on [port] is in flight and has not run past its own timeout. */
-    fun busyWithinTimeout(port: Int, nowNs: Long = System.nanoTime()): Boolean = calls.keys.any { it.port == port && it.deadlineNs > nowNs }
+    /** True when a call on [port] is in flight, has not run past its own timeout and has not run for [MAX_EXCUSE_MS] yet. */
+    fun busyWithinTimeout(port: Int, nowNs: Long = System.nanoTime()): Boolean =
+        calls.keys.any { it.port == port && it.deadlineNs > nowNs && nowNs - it.startNs < MAX_EXCUSE_MS * 1_000_000 }
 
     /** True when any call on [port] is in flight, past its timeout or not. */
     fun active(port: Int): Boolean = calls.keys.any { it.port == port }

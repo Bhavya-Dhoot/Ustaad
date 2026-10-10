@@ -257,9 +257,9 @@ internal object LlamaHttp {
     fun post(url: String, body: String, readTimeoutMs: Int): HttpURLConnection =
         newPost(url, readTimeoutMs).also { send(it, body) }
 
-    fun get(url: String, readTimeoutMs: Int = 5_000, key: String = LlamaKey.value): HttpURLConnection {
+    fun get(url: String, readTimeoutMs: Int = 5_000, key: String = LlamaKey.value, connectTimeoutMs: Int = 2_000): HttpURLConnection {
         val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 2_000
+        c.connectTimeout = connectTimeoutMs
         c.readTimeout = readTimeoutMs
         authorize(c, url, key)
         return c
@@ -269,8 +269,8 @@ internal object LlamaHttp {
      * True when `GET /health` answers 200 (llama-server answers 503 while the model is loading). With `--api-key` the server
      * leaves `/health` public (tools/server/server-http.cpp); the header is sent anyway, it does no harm.
      */
-    fun healthOk(port: Int): Boolean = try {
-        val c = get("http://127.0.0.1:$port/health", 3_000)
+    fun healthOk(port: Int, connectTimeoutMs: Int = 2_000, readTimeoutMs: Int = 3_000): Boolean = try {
+        val c = get("http://127.0.0.1:$port/health", readTimeoutMs, connectTimeoutMs = connectTimeoutMs)
         try { c.responseCode == 200 } finally { c.disconnect() }
     } catch (_: Exception) {
         false
