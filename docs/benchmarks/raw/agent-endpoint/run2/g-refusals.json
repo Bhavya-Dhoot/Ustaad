@@ -1,0 +1,62 @@
+{
+ "tools": [
+  400,
+  {
+   "error": {
+    "message": "`tools` is not supported: Ustaad does not do tool calling.",
+    "type": "invalid_request_error",
+    "code": "unsupported_parameter"
+   }
+  }
+ ],
+ "unknown_model": [
+  404,
+  {
+   "error": {
+    "message": "The model `gpt-4o` does not exist. Use \"ustaad-local\" or \"ustaad-swarm\".",
+    "type": "invalid_request_error",
+    "code": "model_not_found"
+   }
+  }
+ ],
+ "n2": [
+  400,
+  {
+   "error": {
+    "message": "`n` above 1 is not supported: one answer per request.",
+    "type": "invalid_request_error",
+    "code": "unsupported_parameter"
+   }
+  }
+ ],
+ "image": [
+  400,
+  {
+   "error": {
+    "message": "`messages[0].content[0]` is a image_url part: Ustaad takes text parts only (no images or audio).",
+    "type": "invalid_request_error",
+    "code": "unsupported_content"
+   }
+  }
+ ],
+ "big": [
+  413,
+  {
+   "error": {
+    "message": "The request body is over 1048576 bytes.",
+    "type": "invalid_request_error",
+    "code": "request_too_large"
+   }
+  }
+ ],
+ "many": [
+  400,
+  {
+   "error": {
+    "message": "`messages` has 65 entries; at most 64 are accepted.",
+    "type": "invalid_request_error",
+    "code": "limit_exceeded"
+   }
+  }
+ ]
+}

@@ -45,6 +45,8 @@ Errors are `{"error":{"message","type","code"}}`.
 - 503 `No chat model is loaded on this phone` (the placeholder model never answers another app; same for the swarm and for embeddings), and 503 `model_busy` when the model stayed busy for 30 s (it runs one call at a time, shared with the rest of Ustaad). 503 `swarm_unavailable` when the swarm could not run a job (phone timeout, phone gone, all busy) and `model_unavailable` when the connection to the model was lost. Any other failure is 500 `The model call failed.`; a 5xx never carries the text of an exception.
 - A connection that is silent for 300 s is closed, so a non-streamed call that needs longer fails: stream long answers.
 - No tool calling, no file search, no saved answers, no access from other devices.
+- `usage.prompt_tokens` counts the tokens the model processed after its prompt cache, so a repeated prompt reports a small number.
+- Ustaad must be running. Measured on one phone: calls answered at the same speed for 3 minutes with Ustaad in the background, charging, screen on (docs/benchmarks/2026-10-10-agent-endpoint.md). Longer, on battery or with the screen off is not measured; grant Ustaad the battery exemption.
 
 ## Trust model
 - Listener on `127.0.0.1` only, and a request from any other address is refused as well. Another device on the Wi-Fi cannot reach it.

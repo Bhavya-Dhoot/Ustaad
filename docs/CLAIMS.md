@@ -137,6 +137,17 @@ Columns: Claim | Implemented | Evidence | Improvement over baseline | Verdict | 
 | KB7 | Every save, revoke, sync and use is in the audit log on both phones | yes, `kb/KbEngine.kt:43`; receiving-side audit added in 924e720 | Second run: B logged the saves, revoke and syncs; C logged no `kb.sync` (only the phone that started the sync logged it). Third run, `audit.jsonl` read with `run-as`: C holds five `kb.sync` entries with side "received" (peer id, sent 0, got 1, rejected 0, counts only, no card text) and two `pdu.ask_saved` entries; A holds five `received` entries; B logged its own `kb.sync` "started" entries 66 to 126 ms after each save or revoke (2026-10-10-e2e2-knowledge-bank.md, 2026-10-10-knowledge-bank.md "Third run"). There is no HTTP audit route in the app | none | PROVEN WITH CAVEAT (audit file read over `run-as`; counts only; one run) | Keep |
 | KB8 | The Knowledge bank page shows cards with SAVED and REVOKED stamps, a save panel and the saved-answer block | yes, `kb/KbScreen.kt`, `pdu/PduScreen.kt:191` | "Nothing was done on a screen, so the visual states of the page were not seen" (2026-10-10-e2e2-knowledge-bank.md). The second visual pass captured the page with SAVED and REVOKED rows, a card detail with sources and provenance, and the saved-answer block inside an ask (docs/design/qa2/12-kb-page-saved-and-revoked.png, 13-kb-card-detail-on-c.png, 04, 05, 07 to 11; defects listed in docs/design/qa2/REPORT.md, eight fixes merged since, screenshot check running, docs/design/qa3). The save panel was not named in that report | none | UNPROVEN | Capture the page after the two-phone procedure |
 
+### Agent endpoint (added 2026-10-10, gate 7)
+
+| ID | Claim | Implemented | Evidence | Improvement over baseline | Verdict | What to do |
+|---|---|---|---|---|---|---|
+| AG1 | Another app on the same phone can use Ustaad's model through an OpenAI-format endpoint | yes, `agent/AgentServer.kt`, docs/AGENT-API.md | 2026-10-10-agent-endpoint.md: curl under another UID on the phone got HTTP 200 and a real answer; the unmodified OpenAI Python client (through adb) ran chat, stream, embeddings and the model list | before: no entry point for other apps | PROVEN WITH CAVEAT | Say "another process on the phone"; no third-party Android app has called it yet |
+| AG2 | The endpoint is closed to the network and needs the owner's key | yes, `agent/AgentSecurity.kt` | same file: refused from the Wi-Fi; 401 without or with a wrong key; port closed when the switch is off; the model's own ports answer 401 without their key | before: the model ports answered any local caller | PROVEN WITH CAVEAT | One phone, one run; a web page or DNS rebinding was reviewed in code, not attacked on a phone |
+| AG3 | Calls work while Ustaad is in the background | yes (foreground service) | same file: same speed 5, 60 and 180 s after pressing Home | none | PROVEN WITH CAVEAT | Three minutes, charging, screen on; say exactly that |
+| AG4 | The swarm is available to other apps as one model name | yes, `ustaad-swarm` | same file: answered, and the non-streamed call named Phone A, then Phone C | none measured (no speed claim) | PROVEN WITH CAVEAT | Do not claim it is faster than `ustaad-local`; it was not compared |
+| AG5 | Ustaad can be the brain of a voice assistant or an agent framework | partly: the model, streaming and structured output are there; tool calling, file search and memory for other apps are not | none beyond AG1 | none | UNPROVEN | Say "the model behind any app that speaks the OpenAI format"; do not say assistant, Siri or agent tools |
+| AG6 | A key holder cannot read the owner's files | yes by construction: the package reaches only the model and the embedder | read-only review of the diff (gates/gate-7-agent-endpoint.md); no phone test tried to break it | none | PROVEN WITH CAVEAT | Reviewed, not attacked |
+
 ### MemoryCloud
 
 | ID | Claim | Implemented | Evidence | Improvement over baseline | Verdict | What to do |
@@ -276,9 +287,9 @@ Row verdicts in section 1 (counted from the tables):
 | Verdict | Rows |
 |---|---:|
 | PROVEN | 9 (LK1, LK2, SC2, SC3, CH1, MC2, MC6, UX4, X2) |
-| PROVEN WITH CAVEAT | 57 |
-| UNPROVEN | 21 |
+| PROVEN WITH CAVEAT | 62 |
+| UNPROVEN | 22 |
 | FALSE AS STATED | 12 (LK7, LK14, RT4, CH2, CH3, CH5, DU5, DU8, EM3, PS2, PS9, X3) |
-| Total | 99 |
+| Total | 105 |
 
-PS5 (UNPROVEN for the lease, PROVEN for the bind) is counted under its first verdict. Counts after the third Knowledge Bank run and the ExpertMesh change (master 0a71f33; KB3, KB7 and EM1 moved from UNPROVEN to PROVEN WITH CAVEAT): 9, 57, 21, 12, total 99; before them, after the three-phone MemoryCloud run (master 3a55086): 9, 54, 24, 12, total 99; before that, after the second end-to-end run (master 1f514b6): 9, 53, 25, 12, total 99; before that: 7, 43, 29, 11, total 90. Rows marked PROVEN WITH CAVEAT are usable only with the limit written in the row.
+PS5 (UNPROVEN for the lease, PROVEN for the bind) is counted under its first verdict. Counts after the agent endpoint rows AG1 to AG6 (master df102b8; five PROVEN WITH CAVEAT, one UNPROVEN): 9, 62, 22, 12, total 105. Counts after the third Knowledge Bank run and the ExpertMesh change (master 0a71f33; KB3, KB7 and EM1 moved from UNPROVEN to PROVEN WITH CAVEAT): 9, 57, 21, 12, total 99; before them, after the three-phone MemoryCloud run (master 3a55086): 9, 54, 24, 12, total 99; before that, after the second end-to-end run (master 1f514b6): 9, 53, 25, 12, total 99; before that: 7, 43, 29, 11, total 90. Rows marked PROVEN WITH CAVEAT are usable only with the limit written in the row.
