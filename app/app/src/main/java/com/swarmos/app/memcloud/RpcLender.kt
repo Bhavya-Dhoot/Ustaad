@@ -79,7 +79,7 @@ interface LenderEnv {
  * only). Anyone on the same link who knows the port can still talk to rpc-server while it
  * listens; that is the residual risk, and why the lease is short.
  */
-class RpcLender(private val env: LenderEnv) {
+class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CLOSING_WAIT_MS) {
     companion object {
         /** The loan ends this long after the last renewal. */
         const val LEASE_MS = 10_000L
@@ -91,8 +91,8 @@ class RpcLender(private val env: LenderEnv) {
         /** How long ending a loan waits for rpc-server's process to leave before it loads this phone's own models again (SIGTERM, then SIGKILL after 3 s). */
         const val RPC_GONE_WAIT_MS = 5_000L
 
-        /** How long a new loan waits for the models of the loan before it to be dispatched: that wait, the loads, and some slack. */
-        const val CLOSING_WAIT_MS = RPC_GONE_WAIT_MS + 2_000L
+        /** How long a new loan waits for the models of the loan before it to be dispatched: that wait, the loads (each shown as starting before the next), and slack. */
+        const val CLOSING_WAIT_MS = RPC_GONE_WAIT_MS + 5_000L
         private const val CLOSING_POLL_MS = 50L
     }
 
@@ -147,25 +147,35 @@ class RpcLender(private val env: LenderEnv) {
         val where = if (link.direct) "direct link" else "Wi-Fi network"
         val driverName = env.peerName(fromNode) ?: fromNode ?: "another phone"
 
+        // Ownership is taken here, before the first suspension: two drivers cannot both see "no loan" and both be accepted.
         // A loan that has just ended is still bringing this phone's own models back (after rpc-server has left): a new loan waits for that
         // to be dispatched, so it does not pass its memory check on memory that is about to be taken, nor find the models loaded beside it.
-        var waited = 0L
-        while (closing.get() > 0 && waited < CLOSING_WAIT_MS) { delay(CLOSING_POLL_MS); waited += CLOSING_POLL_MS }
-
-        // Ownership is taken here, before the first suspension: two drivers cannot both see "no loan" and both be accepted.
+        // The wait is judged inside the monitor that reserves the loan, so a loan that ends after a look outside it cannot be missed. If the
+        // give-back is still pending when the time is up it is stuck, and loading beside it is the harm: the start is refused, which the owner
+        // of the driver can repeat, instead of going ahead.
         var fresh = false
-        val mine: Loan = synchronized(this) {
-            val cur = loan
-            if (cur != null && cur.driverId != fromNode) return StartResult.Refused("this phone is lent to ${cur.driverName}")
-            if (cur != null && cur.starting) return StartResult.Refused("this phone is still starting rpc-server for ${cur.driverName}")
-            if (cur != null) {
-                cur.starting = true
-                cur
-            } else {
-                fresh = true
-                Loan(fromNode, driverName, java.util.UUID.randomUUID().toString()).also { loan = it }
+        var waited = 0L
+        var reserved: Loan? = null
+        while (reserved == null) {
+            reserved = synchronized(this) {
+                if (closing.get() > 0) {
+                    if (waited >= closingWaitMs) return StartResult.Refused("this phone is still getting its own models back from the last loan; try again in a moment")
+                    return@synchronized null
+                }
+                val cur = loan
+                if (cur != null && cur.driverId != fromNode) return StartResult.Refused("this phone is lent to ${cur.driverName}")
+                if (cur != null && cur.starting) return StartResult.Refused("this phone is still starting rpc-server for ${cur.driverName}")
+                if (cur != null) {
+                    cur.starting = true
+                    cur
+                } else {
+                    fresh = true
+                    Loan(fromNode, driverName, java.util.UUID.randomUUID().toString()).also { loan = it }
+                }
             }
+            if (reserved == null) { delay(CLOSING_POLL_MS); waited += CLOSING_POLL_MS }
         }
+        val mine: Loan = reserved
         var done = false
         try {
             val r = begin(req, bind, where, driverName, fromNode, mine, fresh)

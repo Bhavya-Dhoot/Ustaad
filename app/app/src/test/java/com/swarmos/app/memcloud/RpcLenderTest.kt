@@ -479,6 +479,25 @@ class RpcLenderTest {
         assertTrue(env.calls.toString(), indexOfCall("restore chat") in 0 until secondStart)
     }
 
+    @Test fun aNewLoanIsRefusedNotAdmittedWhenTheGiveBackBeforeItIsStuck() {
+        val e = FakeLender()
+        val l = RpcLender(e, closingWaitMs = 300).also { e.lender = it }
+        val first = runBlocking { l.start(RpcStartRequest(bind = "192.168.49.1", restore = restore), null, "c") }
+        assertOk(first)
+        val release = java.util.concurrent.CountDownLatch(1)
+        e.onWait = { release.await(10, java.util.concurrent.TimeUnit.SECONDS) } // rpc-server never seems to leave
+        val ending = Thread { l.stop("test") }.also { it.start() }
+        while (e.calls.none { it.startsWith("awaitRpcGone") }) Thread.sleep(5)
+        val second = runBlocking { l.start(req(), null, "x") }
+        assertTrue("$second", second is RpcLender.StartResult.Refused && second.message.contains("getting its own models back"))
+        assertEquals("rpc-server was started once, for the first loan only", 1, e.calls.count { it.startsWith("startRpc") })
+        assertNull(l.lending.value)
+        release.countDown()
+        ending.join(3_000)
+        // once the models are dispatched the phone takes a loan again
+        assertOk(runBlocking { l.start(req(), null, "x") })
+    }
+
     @Test fun aRpcServerThatStaysPastTheTimeoutDoesNotStopTheModelsFromBeingRequested() {
         start()
         env.rpcGone = false
