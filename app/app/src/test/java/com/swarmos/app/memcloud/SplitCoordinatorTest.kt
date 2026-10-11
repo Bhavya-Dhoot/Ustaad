@@ -153,7 +153,13 @@ private class FakeEnv : SplitEnv {
     override fun selfId() = "a"
     override fun selfName() = "Phone A"
     override fun selfHealth() = Health(9000, 0)
-    override fun peers() = peerList
+    /** Runs once, on whichever thread asks next for the registry (a test parks a coroutine inside its own check with it). */
+    @Volatile var peersHook: (() -> Unit)? = null
+
+    override fun peers(): List<PeerInfo> {
+        peersHook?.let { peersHook = null; it() }
+        return peerList
+    }
     override fun heartbeatRttMs(nodeId: String) = 10.0
     override suspend fun tcpRttMs(host: String, port: Int) = 5.0
     override fun threads() = 6
@@ -1129,6 +1135,29 @@ class SplitCoordinatorTest {
         awaitCall("six waits") { waits.size >= 6 }
         assertEquals(listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L, 60_000L), waits.take(6))
         assertEquals("the record of the phone that is not answering stays", listOf("Phone C has not got its models back yet"), c.state.value.notices)
+    }
+
+    @Test fun aRestoreRetryParkedInItsCheckWhileThePhoneIsLentAgainDoesNotEndTheNewLoan() {
+        val c3 = "10.0.0.3:8787"
+        val armNext = java.util.concurrent.atomic.AtomicBoolean(false)
+        val parked = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        // the first look at the registry after a wait is the retry's own check: park it there
+        c = SplitCoordinator(env, scope, timing.copy(restoreWait = { delay(5); if (armNext.compareAndSet(true, false)) env.peersHook = { parked.countDown(); release.await() } }))
+        readyThenLoseC()
+        armNext.set(true)
+        assertTrue("the retry is parked inside its check", parked.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        // meanwhile the lease of the old loan ran out, the phone answers, and this driver lends from it again
+        env.currentLoan.remove(c3)
+        env.unreachable -= c3
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY again") { it.phase == Phase.READY }
+        val second = env.currentLoan.getValue(c3)
+        release.countDown() // the old retry goes on with the obligation it had
+        runBlocking { delay(300) }
+        assertEquals("the new loan was not ended by the old retry", second, env.currentLoan[c3])
+        assertEquals(0, env.count("rpcStop $c3"))
+        assertEquals(Phase.READY, c.state.value.phase)
     }
 
     @Test fun aRestartedAppSendsTheTokenItSavedAndKeepsItWhenThePhoneIsStillAway() {

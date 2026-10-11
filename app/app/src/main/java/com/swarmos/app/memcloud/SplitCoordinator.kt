@@ -593,10 +593,13 @@ class SplitCoordinator(
                 var attempted = false
                 var progressed = false
                 for ((nodeId, addr) in unconfirmed.entries.toList()) {
+                    // The obligation (items and the token of the loan it is about) is read before the check below: a new split that takes the
+                    // phone after this point puts its own token in [loans], and a stop carrying the old one is refused by the lender.
+                    val items = restore[nodeId] ?: emptyList()
+                    val loan = loans[nodeId]
                     if (touched.containsKey(nodeId) || env.peers().firstOrNull { it.nodeId == nodeId }?.away != false) continue
                     attempted = true
-                    // the token of the loan this record is about: a stop for an older loan is refused by a lender that holds a newer one of ours
-                    val r = confirmPeerRestored(addr, restore[nodeId] ?: emptyList(), loans[nodeId])
+                    val r = confirmPeerRestored(addr, items, loan)
                     if (r.progress) progressed = true
                     if (r.settled) {
                         // a new split may have taken the phone while the call was out: then it owns the record, and its own release settles it
