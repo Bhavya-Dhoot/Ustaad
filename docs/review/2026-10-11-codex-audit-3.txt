@@ -1,0 +1,25 @@
+GPT-6 (Codex); 188 repository files read, including caller searches.
+
+HIGH memcloud/RpcLender.kt:153 - Pause start B after it reads closing == 0 but before it takes the loan monitor; end A and suspend its giveBack, then resume B. B reserves the cleared loan and passes admission while A can still restore ordinary models beside it - Check closing under the same monitor as loan reservation, and refuse when the closing wait expires.
+
+HIGH memcloud/RpcLender.kt:310 - Finish A’s giveBack while its ModelsModule.loadModelAsync coroutines remain queued before calling LlamaRuntime.start; closing becomes zero, so B with stopOwn=true sees STOPPED roles and starts RPC. The queued restores subsequently load ordinary models beside B, invalidating its memory admission - Await the restoration attempts before releasing closing, so B can observe and cancel their state.
+
+HIGH llm/LlamaRuntime.kt:811 - Revive a CPU server with its restart budget spent, then kill it immediately after READY but before launchAttempt’s statusOf(role) return at line 615. The new exit watcher publishes FAILED and starts another revival loop; the old attempt also returns FAILED, keeping both loops alive and allowing their queued starts to replace a newly serving server - Return the captured READY outcome from launchAttempt instead of rereading shared status.
+
+HIGH memcloud/SplitCoordinator.kt:1014 - Pause delayed DEGRADED restoration after it assigns its LAZY job to opJob but before run.start(); baseline sees isActive == false and replaces that reservation. Resuming the old release then stops or restores models over the baseline - Refuse while opJob exists and is not completed, including its LAZY state.
+
+HIGH memcloud/SplitCoordinator.kt:1014 - Let a serving split’s chat server die with every lender still answering: startWatch calls fail and publishes FAILED while the original opJob is already complete. Start a baseline while that watchJob cleanup is paused before restoring the local models; the older cleanup subsequently loads ordinary chat over the baseline - Register watch-triggered cleanup as the operation under lock before publishing FAILED.
+
+HIGH memcloud/SplitCoordinator.kt:599 - Lose every successful rpc/start response and the subsequent cleanup responses, leaving an unconfirmed restoration without a loan token; pause its retry after the touched check, then start loan B from the same driver. The captured null token produces a tokenless stop, which RpcLender.stopFrom accepts against B - Serialize restoration retries with peer preparation, including retries whose token is unknown.
+
+MEDIUM llm/LlamaRuntime.kt:496 - At the GPU retry threshold, pause the watcher after it reads both maintenance flags as false, start a benchmark until generation is active, then resume the watcher. No shared admission lock or recheck prevents startInternal from stopping the serving CPU process - Reserve retry admission through the same lock used by benchmark and self-test starts.
+
+MEDIUM sched/BatchRunner.kt:224 - Tap Run and leave its IO launcher queued; Stop Ustaad sees no registered batch and finishes teardown. Resuming the launcher registers and starts a swarm batch in Sched’s surviving scope, which can still dispatch to peers through their registry addresses - Capture a shutdown generation when scheduling and validate it under the batch registration lock.
+
+MEDIUM sched/BatchRunner.kt:297 - With an active batch B and a newly registered lazy batch A blocked in its initial report write, arrange A first in the captured jobs list and call stopAll. Cancelling A invokes its completion handler synchronously, whose forced persist joins the blocked writer before B is cancelled or the timeout begins - Move forced persistence out of the synchronous completion handler so all cancellations finish before bounded joining.
+
+MEDIUM sched/BatchRunner.kt:320 - Pause begin after it captures the initial RUNNING report; cancel its lazy job and pause the higher-ranked INTERRUPTED write before its rename, then resume the initial persist. The forced report is rejected without joining the active writer, so /batch acknowledges an id that disappears if the app is killed then - A rejected forced report must still wait for the writer carrying its replacement.
+
+Fixes that hold: D1, D9, D11, D12, D15.
+
+Not examined: Native implementations, library and OS internals, tests, builds, adb, device execution, network execution, and unrelated behavior beyond caller searches.
