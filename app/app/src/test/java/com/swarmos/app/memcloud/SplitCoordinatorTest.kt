@@ -153,7 +153,13 @@ private class FakeEnv : SplitEnv {
     override fun selfId() = "a"
     override fun selfName() = "Phone A"
     override fun selfHealth() = Health(9000, 0)
-    override fun peers() = peerList
+    /** Runs once, on whichever thread asks next for the registry (a test parks a coroutine inside its own check with it). */
+    @Volatile var peersHook: (() -> Unit)? = null
+
+    override fun peers(): List<PeerInfo> {
+        peersHook?.let { peersHook = null; it() }
+        return peerList
+    }
     override fun heartbeatRttMs(nodeId: String) = 10.0
     override suspend fun tcpRttMs(host: String, port: Int) = 5.0
     override fun threads() = 6
@@ -477,7 +483,7 @@ class SplitCoordinatorTest {
         assertNull(start("Phone B"))
         awaitState("READY") { it.phase == Phase.READY }
         env.chatMode = FakeEnv.Chat.FAIL
-        assertNull(c.baseline(5))
+        awaitCall("the baseline is accepted") { c.baseline(5) == null } // the load job may take a moment to finish after READY
         val s = awaitState("baseline result") { it.phase == Phase.IDLE && it.baseline?.running == false }
         assertEquals("FAILED", s.baseline!!.outcome)
         awaitCall("peer released") { env.count("rpcStop 10.0.0.2:8787") >= 1 }
@@ -947,7 +953,7 @@ class SplitCoordinatorTest {
         degradeByLosingC()
         awaitState("released") { it.released }
         awaitCall("the release is over") { env.local[Role.CHAT]!!.state == ServerState.READY }
-        assertNull(c.baseline(5))
+        awaitCall("the baseline is accepted") { c.baseline(5) == null } // the release job is still finishing for a moment
         assertFalse("the phone is used by the baseline now", c.state.value.released)
         val s = awaitState("baseline result") { it.phase == Phase.IDLE && it.baseline?.running == false }
         assertFalse(s.released)
@@ -1038,7 +1044,7 @@ class SplitCoordinatorTest {
         awaitState("READY") { it.phase == Phase.READY }
         val gate = CompletableDeferred<Unit>()
         env.stopGate = gate // releasing Phone B takes a while
-        assertNull(c.baseline(5))
+        awaitCall("the baseline is accepted") { c.baseline(5) == null } // the load job may take a moment to finish after READY
         awaitCall("the release is out") { env.stopParked.isNotEmpty() }
         val second = c.baseline(5)
         assertTrue("$second", second != null && second.startsWith("busy: BASELINE"))
@@ -1048,6 +1054,31 @@ class SplitCoordinatorTest {
         assertEquals(1, env.count("rpcStop 10.0.0.2:8787"))
         awaitCall("the next one is accepted") { c.baseline(5) == null }
         awaitCall("and it runs") { env.calls.count { it.startsWith("startChat -ngl 0") } == 2 }
+    }
+
+    @Test fun aBaselineIsRefusedWhileTheCleanupOfAFailedSplitIsStillRunning() {
+        val gate = CompletableDeferred<Unit>()
+        env.stopGate = gate // the lender is slow to answer /rpc/stop, so the clean-up after the failure is still running
+        env.chatMode = FakeEnv.Chat.FAIL
+        assertNull(start("Phone B"))
+        awaitState("FAILED") { it.phase == Phase.FAILED }
+        awaitCall("the clean-up is out") { env.stopParked.isNotEmpty() }
+        val refused = c.baseline(5)
+        assertTrue("$refused", refused != null && refused.startsWith("busy: FAILED"))
+        assertEquals("nothing of the baseline started", 0, env.calls.count { it.startsWith("startChat -ngl 0") })
+        gate.complete(Unit)
+        awaitCall("accepted once the clean-up is over") { c.baseline(5) == null }
+    }
+
+    @Test fun aBaselineIsRefusedWhileTheDelayedReleaseOfADegradedSplitIsStillRunning() {
+        degradeByLosingC()
+        val gate = CompletableDeferred<Unit>()
+        env.stopGate = gate // the automatic release starts after degradedRestoreMs and waits for the lender
+        awaitCall("the release is out") { env.stopParked.isNotEmpty() }
+        val refused = c.baseline(5)
+        assertTrue("$refused", refused != null && refused.startsWith("busy: DEGRADED"))
+        gate.complete(Unit)
+        awaitCall("accepted once the release is over") { c.baseline(5) == null }
     }
 
     // ---------- a stop that could not be confirmed carries the loan's token, so a late retry cannot end a newer loan ----------
@@ -1129,6 +1160,29 @@ class SplitCoordinatorTest {
         awaitCall("six waits") { waits.size >= 6 }
         assertEquals(listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L, 60_000L), waits.take(6))
         assertEquals("the record of the phone that is not answering stays", listOf("Phone C has not got its models back yet"), c.state.value.notices)
+    }
+
+    @Test fun aRestoreRetryParkedInItsCheckWhileThePhoneIsLentAgainDoesNotEndTheNewLoan() {
+        val c3 = "10.0.0.3:8787"
+        val armNext = java.util.concurrent.atomic.AtomicBoolean(false)
+        val parked = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        // the first look at the registry after a wait is the retry's own check: park it there
+        c = SplitCoordinator(env, scope, timing.copy(restoreWait = { delay(5); if (armNext.compareAndSet(true, false)) env.peersHook = { parked.countDown(); release.await() } }))
+        readyThenLoseC()
+        armNext.set(true)
+        assertTrue("the retry is parked inside its check", parked.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        // meanwhile the lease of the old loan ran out, the phone answers, and this driver lends from it again
+        env.currentLoan.remove(c3)
+        env.unreachable -= c3
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY again") { it.phase == Phase.READY }
+        val second = env.currentLoan.getValue(c3)
+        release.countDown() // the old retry goes on with the obligation it had
+        runBlocking { delay(300) }
+        assertEquals("the new loan was not ended by the old retry", second, env.currentLoan[c3])
+        assertEquals(0, env.count("rpcStop $c3"))
+        assertEquals(Phase.READY, c.state.value.phase)
     }
 
     @Test fun aRestartedAppSendsTheTokenItSavedAndKeepsItWhenThePhoneIsStillAway() {

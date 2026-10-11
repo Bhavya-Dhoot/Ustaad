@@ -45,6 +45,25 @@ internal object SelfRecovery {
         data object Go : Watch
     }
 
+    /**
+     * Whether a watcher is armed after a chat start ended as [chat]: it runs on the CPU build while the GPU is wanted ([gpuWanted]: the switch is
+     * on, the GPU build is there, no split) and a GPU failure is remembered, and the one try of this epoch is not spent. Judged from what is
+     * true, not from the fallback note: a CPU server restarted after a death carries no note, and must be watched all the same.
+     */
+    fun shouldWatch(gpuWanted: Boolean, chat: ServerStatus, gpuFailureRemembered: Boolean, retryUsed: Boolean): Boolean =
+        gpuWanted && gpuFailureRemembered && !retryUsed && chat.state == ServerState.READY && chat.backend == Backend.CPU
+
+    /**
+     * How long the phone has had no real model work: the scheduler's figure ([schedIdleMs]), but 0 while a benchmark or a self-test runs
+     * ([maintenanceRunning]) and counted from the last moment one was seen ([lastMaintenanceSeenMs], null when never) after it. Those runs use
+     * the raw client, so the scheduler does not see them, and stopping the CPU server in the middle of one would spoil it.
+     */
+    fun quietMs(schedIdleMs: Long, maintenanceRunning: Boolean, lastMaintenanceSeenMs: Long?, nowMs: Long): Long = when {
+        maintenanceRunning -> 0L
+        lastMaintenanceSeenMs == null -> schedIdleMs
+        else -> minOf(schedIdleMs, (nowMs - lastMaintenanceSeenMs).coerceAtLeast(0L))
+    }
+
     /** [chat] is the chat status now; [epochCurrent] false when a stop, a load or the like moved the epoch the CPU server was started under. */
     fun gpuWatch(epochCurrent: Boolean, chat: ServerStatus, nowMs: Long, o: Outside): Watch {
         val onCpuFallback = chat.state == ServerState.READY && chat.backend == Backend.CPU
@@ -85,15 +104,16 @@ internal suspend fun StatusBoard.watchCpuFallback(
 }
 
 /**
- * [role] is FAILED because its automatic restarts ran out: starts it again by [attempt] (told which try it is), [SelfRecovery.REVIVE_AFTER_MS]
- * apart, at most [SelfRecovery.MAX_REVIVALS] times. The status says when the next try is, and after the last one to tap Load. Ends when a try
- * does not leave the role FAILED, or when anything changed: the epoch moved (Stop, a new load), the role is no longer FAILED, the service is
+ * [role] is FAILED because its automatic restarts ran out: starts it again by [attempt] (told which try it is, and returning what the start ended
+ * as), [SelfRecovery.REVIVE_AFTER_MS] apart, at most [SelfRecovery.MAX_REVIVALS] times. The status says when the next try is, and after the last
+ * one to tap Load. Ends when a try does not end FAILED (a server that got READY and is killed again is a new death, with a loop of its own: the
+ * status is not read again here), or when anything changed: the epoch moved (Stop, a new load), the role is no longer FAILED, the service is
  * down, or the file is gone.
  */
 internal suspend fun StatusBoard.reviveFailed(
     role: Role, epoch: Int, revivalsSoFar: Int, fileName: String,
     serviceUp: () -> Boolean, fileExists: () -> Boolean, nowMs: () -> Long,
-    wait: suspend (Long) -> Unit, attempt: suspend (revival: Int) -> Unit,
+    wait: suspend (Long) -> Unit, attempt: suspend (revival: Int) -> ServerState,
 ) {
     var n = revivalsSoFar
     while (statusOf(role).state == ServerState.FAILED) {
@@ -104,7 +124,7 @@ internal suspend fun StatusBoard.reviveFailed(
                 wait(d.afterMs)
                 if (!serviceUp() || !isCurrent(role, epoch) || statusOf(role).state != ServerState.FAILED) return
                 if (!fileExists()) { setIfCurrent(role, epoch) { it.copy(reason = StartRetry.fileGone(fileName), notice = null) }; return }
-                attempt(++n)
+                if (attempt(++n) != ServerState.FAILED) return
             }
         }
     }

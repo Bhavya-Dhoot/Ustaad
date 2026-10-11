@@ -77,6 +77,45 @@ class SelfRecoveryTest {
         assertEquals(SelfRecovery.Watch.End, watch(chat = cpuChat(state = ServerState.STOPPED, backend = null)))
     }
 
+    // ---- the GPU try: a benchmark or a self-test is real model work too ----
+
+    @Test fun aRunningBenchmarkOrSelfTestMakesThePhoneBusyWhateverTheSchedulerSays() {
+        // the scheduler has seen nothing for an hour, but the benchmark uses the raw client
+        val busy = SelfRecovery.quietMs(schedIdleMs = 60 * min, maintenanceRunning = true, lastMaintenanceSeenMs = 5 * min, nowMs = 10 * min)
+        assertEquals(0L, busy)
+        assertEquals(SelfRecovery.Watch.Wait, watch(o = SelfRecovery.Outside(realIdleMs = busy)))
+    }
+
+    @Test fun aMinuteOfQuietIsCountedFromTheEndOfTheRunNotFromTheSchedulersLastJob() {
+        assertEquals("seen 20 s ago", 20_000L, SelfRecovery.quietMs(60 * min, false, lastMaintenanceSeenMs = 10 * min - 20_000, nowMs = 10 * min))
+        assertEquals(SelfRecovery.Watch.Wait, watch(o = SelfRecovery.Outside(realIdleMs = SelfRecovery.quietMs(60 * min, false, 10 * min - 20_000, 10 * min))))
+        assertEquals(SelfRecovery.Watch.Go, watch(o = SelfRecovery.Outside(realIdleMs = SelfRecovery.quietMs(60 * min, false, 10 * min - 60_000, 10 * min))))
+    }
+
+    @Test fun withNoRunSeenTheSchedulersFigureStands() {
+        assertEquals(45_000L, SelfRecovery.quietMs(45_000, false, null, 10 * min))
+        assertEquals("the scheduler's own recent work still counts", 5_000L, SelfRecovery.quietMs(5_000, false, 0L, 10 * min))
+    }
+
+    // ---- the GPU try: who is watched ----
+
+    @Test fun aCpuServerRestartedAfterADeathIsWatchedAgainThoughItCarriesNoFallbackNote() {
+        val restarted = cpuChat().copy(notice = null) // the restart after a death clears the note and keeps the server on the CPU
+        assertTrue(SelfRecovery.shouldWatch(gpuWanted = true, chat = restarted, gpuFailureRemembered = true, retryUsed = false))
+        assertTrue(SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(), gpuFailureRemembered = true, retryUsed = false))
+    }
+
+    @Test fun noWatcherForACpuServerTheOwnerChoseOrWhenNoGpuFailureIsRemembered() {
+        assertFalse("GPU switch off, no GPU build, or a split", SelfRecovery.shouldWatch(gpuWanted = false, chat = cpuChat(), gpuFailureRemembered = true, retryUsed = false))
+        assertFalse("the owner cleared the failure with the switch", SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(), gpuFailureRemembered = false, retryUsed = false))
+    }
+
+    @Test fun noWatcherOnceTheOneTryOfThisEpochIsSpentOrWhenChatIsNotReadyOnTheCpu() {
+        assertFalse(SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(), gpuFailureRemembered = true, retryUsed = true))
+        assertFalse(SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(backend = Backend.GPU), gpuFailureRemembered = true, retryUsed = false))
+        assertFalse(SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(state = ServerState.FAILED), gpuFailureRemembered = true, retryUsed = false))
+    }
+
     // ---- the GPU try: the loop ----
 
     private class Clock {
@@ -202,8 +241,11 @@ class SelfRecoveryTest {
         var fileExists = true
     }
 
-    private fun StatusBoard.runRevive(epoch: Int, r: Revive, so: Int = 0, wait: suspend (Long) -> Unit = { r.waits += it }, attempt: suspend (Int) -> Unit) = runBlocking {
-        reviveFailed(role, epoch, so, "q.gguf", { r.serviceUp }, { r.fileExists }, { 0L }, wait) { n -> r.attempts += n; attempt(n) }
+    /** [result]: what the start ended as; null reads the board after [attempt], as a start that fails does. */
+    private fun StatusBoard.runRevive(
+        epoch: Int, r: Revive, so: Int = 0, result: ServerState? = null, wait: suspend (Long) -> Unit = { r.waits += it }, attempt: suspend (Int) -> Unit,
+    ) = runBlocking {
+        reviveFailed(role, epoch, so, "q.gguf", { r.serviceUp }, { r.fileExists }, { 0L }, wait) { n -> r.attempts += n; attempt(n); result ?: statusOf(role).state }
     }
 
     @Test fun threeFailedTriesEndWithATapLoadMessageAndTheStatusSaysWhenTheNextOneIs() {
@@ -226,6 +268,17 @@ class SelfRecoveryTest {
         assertEquals(listOf(1, 2), r.attempts)
         assertEquals(2, r.waits.size)
         assertEquals(ServerState.READY, b.statusOf(role).state)
+    }
+
+    @Test fun aRevivedServerKilledBeforeTheLoopLooksIsLeftToTheLoopOfItsOwnDeath() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        // the start ended READY, the process was killed at once, and the board already says FAILED when the loop looks again: that death has
+        // its own loop (watchExit), so this one must end, not wait and start a second server under the same epoch
+        b.runRevive(epoch, r, result = ServerState.READY) { }
+        assertEquals(listOf(1), r.attempts)
+        assertEquals(1, r.waits.size)
+        assertEquals(ServerState.FAILED, b.statusOf(role).state)
     }
 
     @Test fun revivalsAlreadyMadeCount() {

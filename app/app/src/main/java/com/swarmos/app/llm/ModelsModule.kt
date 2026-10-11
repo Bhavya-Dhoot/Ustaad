@@ -81,6 +81,11 @@ data class LoadRequest(
     val args: List<String> = emptyList(),
     /** Debug builds only ([DebugLoad]): `GGML_*` environment variables of the child for this one load, for example `{"GGML_OPENCL_Q4K_DENSE_DP4A":"1"}`. */
     val env: Map<String, String> = emptyMap(),
+    /**
+     * True when the app asks, not the owner: a MemoryCloud driver giving this phone its models back. A load refused for heat or memory is then
+     * retried by itself ([StartRetry]) instead of being left to the owner, and the request does not count as the owner's load. An older phone ignores the field.
+     */
+    val automatic: Boolean = false,
 )
 
 /** role "chat" | "embed" | "rpc" | "all" (every server this app started). */
@@ -128,7 +133,7 @@ object ModelsModule : SwarmModule {
             if (req.file != File(req.file).name || !ModelStore.fileOf(req.file).isFile) {
                 return@post call.respond(HttpStatusCode.NotFound, ErrorBody("no such model file: ${req.file}"))
             }
-            val job = loadModelAsync(role, req.file, extras.args, extras.env)
+            val job = loadModelAsync(role, req.file, extras.args, extras.env, automatic = req.automatic)
             if (req.wait != false) {
                 job.await()
                 call.respond(stateDto())

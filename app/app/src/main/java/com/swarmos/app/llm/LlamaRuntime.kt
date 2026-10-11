@@ -474,8 +474,9 @@ object LlamaRuntime {
         // remember a GPU failure only once the CPU build has served the same model: a broken model file fails on both and says nothing about the GPU
         if (gpuFailed && last.state == ServerState.READY && last.backend == Backend.CPU) ModelStore.markGpuFailed()
         if (cfg.gpuRetry && last.state == ServerState.READY && last.backend == Backend.GPU) ModelStore.clearGpuFailed() // the GPU works again
-        // a chat server on the CPU build because the GPU failed (now, in an earlier start, or after dying twice) gets one more GPU try when the phone is quiet
-        if (role == Role.CHAT && gpuWanted && !cfg.gpuRetry && fallbackNote != null && last.state == ServerState.READY && last.backend == Backend.CPU) watchCpuFallback(cfg, epoch)
+        // a chat server on the CPU build because the GPU failed (now, in an earlier start, after dying twice, or restarted after a death on the CPU)
+        // gets one more GPU try when the phone is quiet
+        if (role == Role.CHAT && SelfRecovery.shouldWatch(gpuWanted, last, ModelStore.gpuFailedStamp() != null, gpuRetriedEpoch == epoch)) watchCpuFallback(cfg, epoch)
         last
     }
 
@@ -486,13 +487,18 @@ object LlamaRuntime {
 
     private fun watchCpuFallback(cfg: StartConfig, epoch: Int) {
         gpuWatcher?.cancel()
+        var maintenanceSeenAtMs: Long? = null // the benchmark and the self-test use the raw client: the scheduler does not see them
         gpuWatcher = scope.launch {
             board.watchCpuFallback(
                 epoch,
                 outside = {
+                    val now = System.currentTimeMillis()
+                    val maintenance = Bench.running.value || Selftest.running.value
+                    if (maintenance) maintenanceSeenAtMs = now
                     SelfRecovery.Outside(
                         serviceUp = serviceUp, gpuAllowed = ModelStore.useGpu.value && ModelStore.gpuFailedStamp() != null, retryUsed = gpuRetriedEpoch == epoch,
-                        inFront = AppGraph.foreground.value, realIdleMs = Sched.node.chatExec.realIdleMs(),
+                        inFront = AppGraph.foreground.value,
+                        realIdleMs = SelfRecovery.quietMs(Sched.node.chatExec.realIdleMs(), maintenance, maintenanceSeenAtMs, now),
                         heatAllows = ThermalGate.decide(Bench.thermalStatusNow(), WorkKind.MODEL_LOAD).allowed,
                     )
                 },
@@ -802,7 +808,7 @@ object LlamaRuntime {
                     role, run.epoch, cfg.revivals, File(path ?: "").name,
                     serviceUp = { serviceUp }, fileExists = { path != null && File(path).isFile }, nowMs = { System.currentTimeMillis() },
                     wait = { delay(it) },
-                ) { n -> startInternal(role, cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU, fallbackNote = null, revivals = n), run.epoch, auto = true) { } }
+                ) { n -> startInternal(role, cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU, fallbackNote = null, revivals = n), run.epoch, auto = true) { }.state }
             }
         }
     }

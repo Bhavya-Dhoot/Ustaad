@@ -1,9 +1,11 @@
 package com.swarmos.app.memcloud
 
 import com.swarmos.app.llm.Role
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.atomic.AtomicInteger
 
 /** This phone is running rpc-server for another phone's model. Shown in the Memory tab for as long as it is listening. */
 data class Lending(
@@ -88,6 +90,10 @@ class RpcLender(private val env: LenderEnv) {
 
         /** How long ending a loan waits for rpc-server's process to leave before it loads this phone's own models again (SIGTERM, then SIGKILL after 3 s). */
         const val RPC_GONE_WAIT_MS = 5_000L
+
+        /** How long a new loan waits for the models of the loan before it to be dispatched: that wait, the loads, and some slack. */
+        const val CLOSING_WAIT_MS = RPC_GONE_WAIT_MS + 2_000L
+        private const val CLOSING_POLL_MS = 50L
     }
 
     sealed interface StartResult {
@@ -140,6 +146,11 @@ class RpcLender(private val env: LenderEnv) {
             ?: return StartResult.Refused("$bind is not a Wi-Fi or Direct link address of this phone")
         val where = if (link.direct) "direct link" else "Wi-Fi network"
         val driverName = env.peerName(fromNode) ?: fromNode ?: "another phone"
+
+        // A loan that has just ended is still bringing this phone's own models back (after rpc-server has left): a new loan waits for that
+        // to be dispatched, so it does not pass its memory check on memory that is about to be taken, nor find the models loaded beside it.
+        var waited = 0L
+        while (closing.get() > 0 && waited < CLOSING_WAIT_MS) { delay(CLOSING_POLL_MS); waited += CLOSING_POLL_MS }
 
         // Ownership is taken here, before the first suspension: two drivers cannot both see "no loan" and both be accepted.
         var fresh = false
@@ -267,6 +278,9 @@ class RpcLender(private val env: LenderEnv) {
     /** What ending a loan leaves to do: the loan that was running (null when none) and the model servers to bring back. */
     private class Ended(val had: Lending?, val items: List<RestoreItem>)
 
+    /** Loans that have ended and whose models are not yet dispatched ([giveBack] still waiting or loading): a new [start] waits while this is above 0. */
+    private val closing = AtomicInteger(0)
+
     /** The loan ends and rpc-server is told to stop. Changes state only; call under the monitor, then [giveBack] outside it. */
     private fun endLoan(): Ended {
         val had = _lending.value
@@ -276,6 +290,7 @@ class RpcLender(private val env: LenderEnv) {
         env.clearActivity(ACTIVITY_OWNER)
         val items = restoreItems
         restoreItems = emptyList()
+        if (items.isNotEmpty()) closing.incrementAndGet() // before the monitor is left, so no new loan can slip in between
         return Ended(had, items)
     }
 
@@ -285,10 +300,14 @@ class RpcLender(private val env: LenderEnv) {
      * ([RPC_GONE_WAIT_MS]) and happens outside the monitor, so a new start is not held up by it.
      */
     private fun giveBack(ended: Ended, reason: String) {
-        if (ended.items.isNotEmpty()) env.awaitRpcGone(RPC_GONE_WAIT_MS)
-        for (i in ended.items) {
-            val role = Role.parse(i.role) ?: continue
-            if (env.modelFileExists(i.file)) env.restoreLocal(role, i.file)
+        try {
+            if (ended.items.isNotEmpty()) env.awaitRpcGone(RPC_GONE_WAIT_MS)
+            for (i in ended.items) {
+                val role = Role.parse(i.role) ?: continue
+                if (env.modelFileExists(i.file)) env.restoreLocal(role, i.file)
+            }
+        } finally {
+            if (ended.items.isNotEmpty()) closing.decrementAndGet()
         }
         if (ended.had != null) env.audit("memcloud.rpc.stop", "reason" to reason, "restored" to ended.items.size.toString())
     }
