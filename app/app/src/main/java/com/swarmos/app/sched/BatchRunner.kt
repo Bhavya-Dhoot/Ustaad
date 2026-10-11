@@ -5,8 +5,9 @@ import com.swarmos.app.llm.ChatMessage
 import com.swarmos.app.llm.ChatRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -203,6 +204,7 @@ class BatchStore(
     private val jobs = HashMap<String, Job>()                       // the coroutine of every batch that has not ended
     private val pending = LinkedHashMap<String, BatchReport>()      // newest report per batch that waits for the writer
     private var writer: CompletableFuture<Unit>? = null             // the writer at work (one at a time), completed when it is done
+    private val newest = HashMap<String, Long>()                    // rank of the newest report accepted per batch, written or queued
     private val _latest = MutableStateFlow<Map<String, BatchReport>>(emptyMap())
     private var lastWriteMs = 0L
 
@@ -213,6 +215,14 @@ class BatchStore(
 
     fun start(requests: List<ChatRequest>, mode: String): String = begin(requests, mode, onlyIfIdle = false)!!
 
+    /**
+     * [start] on an IO thread, for a caller on the main thread: the first report is written to disk before the batch begins, which
+     * must not hold up the screen. The id is not returned; the batch shows in [latest].
+     */
+    fun startInBackground(requests: List<ChatRequest>, mode: String) {
+        scope.launch(Dispatchers.IO) { start(requests, mode) }
+    }
+
     /** Starts the batch unless one is running; null then. The check and the start are one step. */
     fun tryStart(requests: List<ChatRequest>, mode: String): String? = begin(requests, mode, onlyIfIdle = true)
 
@@ -220,18 +230,9 @@ class BatchStore(
         val id = newJobId()
         val client = if (mode == MODE_LOCAL) localOnly() else swarm()
         val flow = MutableStateFlow(BatchRunner.buildReport(id, mode, RUNNING, requests.size, emptyList(), 0.0))
-        synchronized(lock) {
-            if (onlyIfIdle && flows.values.any { it.value.state == RUNNING }) return null
-            flows[id] = flow
-            // only finished batches are forgotten: a running one keeps its status (its coroutine goes on whatever the map holds)
-            while (flows.size > KEEP) {
-                val finished = flows.entries.firstOrNull { it.value.value.state != RUNNING } ?: break
-                flows.remove(finished.key)
-            }
-        }
-        publish(flow.value)
-        persist(flow.value, force = true)   // the id is about to be handed out: it must be known after a restart too
-        val job = scope.launch {
+        // created now but not started: it is in [jobs] before the first report is written, so [stopAll] in that moment ends it
+        // before it has sent a job, and it is started only after the write
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             val report = try {
                 BatchRunner(client).run(id, mode, requests) { r ->
                     // updates come from several workers; never let an older snapshot overwrite a newer one
@@ -253,7 +254,20 @@ class BatchStore(
             flow.value = report
             publish(report)
         }
-        synchronized(lock) { jobs[id] = job }
+        synchronized(lock) {
+            if (onlyIfIdle && flows.values.any { it.value.state == RUNNING }) {
+                job.cancel()
+                return null
+            }
+            flows[id] = flow
+            jobs[id] = job
+            // only finished batches are forgotten: a running one keeps its status (its coroutine goes on whatever the map holds)
+            while (flows.size > KEEP) {
+                val finished = flows.entries.firstOrNull { it.value.value.state != RUNNING } ?: break
+                flows.remove(finished.key)
+                newest.remove(finished.key)
+            }
+        }
         job.invokeOnCompletion { cause ->
             synchronized(lock) { jobs.remove(id) }
             // stopped ([stopAll], or the scope ended) before it finished, possibly before it ran a line: it will not go on, so it
@@ -265,17 +279,22 @@ class BatchStore(
                 persist(stopped, force = true)
             }
         }
+        publish(flow.value)
+        persist(flow.value, force = true)   // the id is about to be handed out: it must be known after a restart too
+        job.start()                         // does nothing if the batch was stopped meanwhile
         return id
     }
 
     /**
      * Ends every batch that is running (Stop Ustaad): no more jobs go to the phones, and each report says "interrupted", the
-     * state a coordinator that was killed leaves behind. Blocking; waits at most [STOP_WAIT_MS] for the batches to wind up.
+     * state a coordinator that was killed leaves behind. Blocking; every batch is told to stop first, then all of them are
+     * waited for together, at most [STOP_WAIT_MS]: one that is slow to wind up does not keep the others running.
      */
     fun stopAll() {
         val running = synchronized(lock) { jobs.values.toList() }
         if (running.isEmpty()) return
-        runBlocking { withTimeoutOrNull(STOP_WAIT_MS) { running.forEach { it.cancelAndJoin() } } }
+        running.forEach { it.cancel() }
+        runBlocking { withTimeoutOrNull(STOP_WAIT_MS) { running.forEach { it.join() } } }
     }
 
     /** The batch's status: from memory, else from the file written while it ran (an id of an interrupted batch answers "interrupted"). */
@@ -289,16 +308,18 @@ class BatchStore(
      * A forced report (the last of a batch, or the one that says it was stopped) is the exception: it returns only when the
      * writer is done, which is after that report is on disk.
      */
-    private fun persist(r: BatchReport, force: Boolean) {
+    internal fun persist(r: BatchReport, force: Boolean) {
         val d = dir() ?: return
         val mine = CompletableFuture<Unit>()
         val busy = synchronized(lock) {
             val now = clock()
             if (!force && now - lastWriteMs < WRITE_EVERY_MS) return
+            // a snapshot that arrives late (a slow worker, after a newer one was queued or even written) must not replace it
+            val rank = rankOf(r)
+            if (rank < (newest[r.id] ?: -1L)) return
+            newest[r.id] = rank
             lastWriteMs = now
-            val queued = pending[r.id]
-            // an older snapshot that arrives late must not replace a newer one
-            if (queued == null || force || r.done + r.failed >= queued.done + queued.failed) pending[r.id] = r
+            pending[r.id] = r
             writer ?: run {
                 writer = mine
                 null
@@ -322,6 +343,9 @@ class BatchStore(
             mine.complete(Unit)
         }
     }
+
+    /** How far a report is: finished items, and a report that is no longer "running" is ahead of a running one with the same items. */
+    private fun rankOf(r: BatchReport): Long = (r.done + r.failed) * 2L + if (r.state == RUNNING) 0L else 1L
 
     /** Writes the report to a temporary file of its own and moves it over the real one, so a reader never sees half a report. */
     private fun write(d: File, r: BatchReport) {

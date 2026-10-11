@@ -7,7 +7,9 @@ import com.swarmos.app.llm.ChatStats
 import com.swarmos.app.llm.LlmClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -182,5 +184,28 @@ class GatedLlmClientTest {
         waitUntil("b running beside a") { phone.llm.concurrent.get() == 2 }
         listOf(a, b).awaitAll()
         assertEquals(0, phone.node.chatExec.running)
+    }
+
+    @Test fun aCallerCancelledInTheInstantTheSlotWasTakenGivesTheSlotBack() = runBlocking {
+        val llm = TestLlm()
+        var caller: Job? = null
+        var cancelled = false
+        // acquire() reads the clock after it was called and before it returns true: the caller is cancelled in that instant, so
+        // withTimeoutOrNull throws the cancellation instead of handing the slot back to the caller
+        val node = SchedNode(scope, { "n" }, { llm }, { llm }, { null }, clock = {
+            val c = caller
+            if (c != null && !cancelled) {
+                cancelled = true
+                c.cancel()
+            }
+            System.currentTimeMillis()
+        })
+        val client = GatedLlmClient({ llm }, node)
+        caller = scope.launch(start = CoroutineStart.LAZY) { client.chat(req("x")) }
+        caller.start()
+        caller.join()
+        assertTrue("the clock hook ran", cancelled)
+        assertEquals("the slot is back", 0, node.chatExec.running)
+        assertTrue("the model was never called", llm.executed.isEmpty())
     }
 }

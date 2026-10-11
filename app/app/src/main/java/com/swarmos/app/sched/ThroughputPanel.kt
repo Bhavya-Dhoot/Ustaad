@@ -115,10 +115,10 @@ fun ThroughputPanel(modifier: Modifier = Modifier, showTitle: Boolean = true, pr
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val runSwarm = { Sched.batches.start(Bench.bench32(), BatchStore.MODE_SWARM); Unit }
+            val runSwarm = { Sched.batches.startInBackground(Bench.bench32(), BatchStore.MODE_SWARM) }
             if (primaryRun) PrimaryButton("Run on the swarm", runSwarm, Modifier.fillMaxWidth(), enabled = !running)
             else SecondaryButton("Run on the swarm", runSwarm, Modifier.fillMaxWidth(), enabled = !running)
-            SecondaryButton("Run on this phone only", { Sched.batches.start(Bench.bench32(), BatchStore.MODE_LOCAL) }, Modifier.fillMaxWidth(), enabled = !running)
+            SecondaryButton("Run on this phone only", { Sched.batches.startInBackground(Bench.bench32(), BatchStore.MODE_LOCAL) }, Modifier.fillMaxWidth(), enabled = !running)
         }
 
         Column {

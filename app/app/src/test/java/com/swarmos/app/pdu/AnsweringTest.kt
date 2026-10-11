@@ -2,7 +2,9 @@ package com.swarmos.app.pdu
 
 import com.swarmos.app.sched.JobExecutor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -27,6 +29,25 @@ class AnsweringTest {
         assertEquals(ModelWait.Result.Slot(true), ModelWait.acquire(exec, waitMs = 80))
         assertEquals(1, exec.running)
         exec.release()
+    }
+
+    @Test fun aCallerCancelledInTheInstantTheSlotWasTakenGivesTheSlotBack() = runBlocking {
+        var caller: Job? = null
+        var cancelled = false
+        // acquire() reads the clock after it was called and before it returns true: the caller is cancelled in that instant
+        val exec = JobExecutor(scope, clock = {
+            val c = caller
+            if (c != null && !cancelled) {
+                cancelled = true
+                c.cancel()
+            }
+            System.currentTimeMillis()
+        })
+        caller = scope.launch(start = CoroutineStart.LAZY) { ModelWait.acquire(exec, waitMs = 5_000) }
+        caller.start()
+        caller.join()
+        assertEquals(true, cancelled)
+        assertEquals("the slot is back", 0, exec.running)
     }
 
     @Test fun aSlotThatFreesUpInTimeIsTaken() = runBlocking {

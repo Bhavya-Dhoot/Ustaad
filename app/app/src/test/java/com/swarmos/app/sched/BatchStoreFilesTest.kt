@@ -1,12 +1,17 @@
 package com.swarmos.app.sched
 
 import com.swarmos.app.core.SwarmJson
+import com.swarmos.app.llm.ChatRequest
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -16,8 +21,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
+
+/** This phone, whose chat call ignores cancellation until [release] is completed: a batch on it is slow to wind up. */
+private class StuckPhone : PhoneEndpoint {
+    val release = CompletableDeferred<Unit>()
+    val started = CompletableDeferred<Unit>()
+    override val nodeId = "stuck"
+    override val isLocal = true
+    override suspend fun caps() = Caps("stuck", "T", 1, 0, 0, 10.0, 0, 80, false, 4096)
+    override suspend fun runChat(jobId: String, req: ChatRequest, pinModel: String?): ChatJobResult {
+        started.complete(Unit)
+        withContext(NonCancellable) { release.await() }
+        throw CancellationException("released")
+    }
+    override suspend fun runEmbed(jobId: String, texts: List<String>): EmbedJobResult = throw UnsupportedOperationException()
+}
 
 /** The report files of [BatchStore]: written before the id is handed out, one writer at a time, and the end of a stopped batch. */
 class BatchStoreFilesTest {
@@ -121,7 +146,110 @@ class BatchStoreFilesTest {
         assertEquals("done", reborn.status(id)!!.value.state)
     }
 
+    // ---- which report is the newest ---------------------------------------------------------------------------
+
+    private fun report(done: Int, state: String = "running") = BatchRunner.buildReport(
+        "b1", "local", state, 4, (0 until done).map { BatchItem(it, "b1-$it", "me", "T", "answer $it", 5, 9, 100.0) }, 100.0,
+    )
+
+    @Test fun anOlderSnapshotArrivingAfterANewerOneWasWrittenDoesNotReplaceIt() {
+        val dir = tempDir()
+        var now = 10_000L
+        val llm = swarm(phone("me"))
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir }, clock = { now })
+        val file = File(dir, "batch-b1.json")
+        store.persist(report(2), force = false)   // worker B: the newer snapshot is written, nothing is queued any more
+        assertEquals(2, read(file).done)
+        now += 2_000                               // worker A arrives with the older one it held, after the one-second throttle
+        store.persist(report(1), force = false)
+        assertEquals("the newer report stays", 2, read(file).done)
+        now += 2_000
+        store.persist(report(3), force = false)
+        assertEquals("a report that is further on still replaces it", 3, read(file).done)
+    }
+
+    @Test fun aReportThatSaysStoppedIsNotReplacedByARunningOneWithTheSameItems() {
+        val dir = tempDir()
+        val llm = swarm(phone("me"))
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir })
+        val file = File(dir, "batch-b1.json")
+        store.persist(report(1, BatchStore.INTERRUPTED), force = true)
+        store.persist(report(1), force = true)     // the first report, late
+        assertEquals(BatchStore.INTERRUPTED, read(file).state)
+    }
+
     // ---- stopping ---------------------------------------------------------------------------------------------
+
+    @Test fun stopAllWhileTheFirstReportIsBeingWrittenKeepsTheBatchFromEverSendingAJob() = runBlocking {
+        val real = tempDir()
+        val p = phone("me")
+        val llm = swarm(p)
+        val entered = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val first = AtomicBoolean(true)
+        // the first use of the folder (the first report of the batch) is held: Stop Ustaad comes in that moment
+        val store = BatchStore(scope, { llm }, { llm }, dir = {
+            if (first.getAndSet(false)) {
+                entered.countDown()
+                gate.await()
+            }
+            real
+        })
+        val id = AtomicReference<String>()
+        val starter = thread { id.set(store.start((0 until 3).map { req("p$it") }, BatchStore.MODE_LOCAL)) }
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        store.stopAll()
+        gate.countDown()
+        starter.join(5_000)
+        delay(300)
+        assertTrue("the batch sent no job after the stop", p.llm.requests.isEmpty())
+        assertEquals("interrupted", store.status(id.get())!!.value.state)
+        assertEquals("interrupted", read(File(real, "batch-${id.get()}.json")).state)
+        assertTrue(!store.isRunning())
+        // a batch started after "Start Ustaad" works as usual
+        val again = store.start(listOf(req("again")), BatchStore.MODE_LOCAL)
+        until { store.status(again)?.value?.state == "done" }
+        assertEquals(1, store.status(again)!!.value.done)
+    }
+
+    @Test fun startInBackgroundDoesNotHoldUpTheCallerWhileTheFirstReportIsBeingWritten() = runBlocking {
+        val real = tempDir()
+        val entered = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val llm = swarm(phone("me"))
+        // a slow disk: every use of the folder waits for the gate
+        val store = BatchStore(scope, { llm }, { llm }, dir = {
+            entered.countDown()
+            gate.await()
+            real
+        })
+        val t0 = System.nanoTime()
+        store.startInBackground(listOf(req("a")), BatchStore.MODE_LOCAL)
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        assertTrue("the caller (the main thread) was held up for $ms ms", ms < 500)
+        assertTrue("the write is under way on another thread", entered.await(5, TimeUnit.SECONDS))
+        gate.countDown()
+        until { store.latest.value[BatchStore.MODE_LOCAL]?.state == "done" }
+        assertEquals(1, store.latest.value[BatchStore.MODE_LOCAL]!!.done)
+    }
+
+    @Test fun stopAllEndsEveryBatchEvenWhenTheFirstIsSlowToWindUp() = runBlocking {
+        val stuck = StuckPhone()
+        val stuckSwarm = SwarmLlm({ listOf(stuck) }, scope, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100, msPerToken = 0)
+        val p = phone("me", delayMs = 30_000)
+        val store = BatchStore(scope, { swarm(p) }, { stuckSwarm }, dir = { tempDir() })
+        val first = store.start(listOf(req("a")), BatchStore.MODE_LOCAL)       // on the phone that does not let go
+        withTimeout(5_000) { stuck.started.await() }
+        val second = store.start(listOf(req("b")), BatchStore.MODE_SWARM)
+        until { p.llm.concurrent.get() == 1 }
+        store.stopAll()                                                          // the first one is still winding up when the 3 s are over
+        assertEquals("the second was told to stop as well", "interrupted", store.status(second)!!.value.state)
+        until { p.llm.concurrent.get() == 0 }
+        assertEquals("the first is still holding on", "running", store.status(first)!!.value.state)
+        stuck.release.complete(Unit)
+        until { !store.isRunning() }
+        assertEquals("interrupted", store.status(first)!!.value.state)
+    }
 
     @Test fun stopAllEndsARunningBatchSoItSendsNoMoreJobsAndItsReportSaysInterrupted() = runBlocking {
         val dir = tempDir()
