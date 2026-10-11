@@ -77,20 +77,20 @@ The models are not in the repository. Fetch them with `native/fetch-models.sh <h
 
 ## Status
 
-As of 2026-10-11 07:30 (HANDOFF.md).
+As of 2026-10-11 12:30 (HANDOFF.md).
 
 | | |
 |---|---|
-| Code | master 4821aea. 1567 unit tests, 0 failures (docs/BUILD.md, 07:10) |
-| Phones A, B and C | Build 4821aea on A and C since 07:13, chat on the GPU, on chargers. Phone B carries 0734013 (one change behind) and is in the founder's remote-control session until about 10:57, so Ustaad is paused on it |
+| Code | master 495a7d5. 1589 unit tests, 0 failures (docs/BUILD.md, 12:20). Not yet on a phone |
+| Phones A, B and C | Build 4821aea on A and C since 07:13, 0734013 on B. All three are in the founder's remote-control sessions from about 10:59 to 16:00, so Ustaad is paused on them and nothing can be tested |
 | Battery exemption | Not in effect on any phone at 05:50: Ustaad is not in the system's list and Settings reads "Runs only while Ustaad is on screen". Keep busy pauses when Ustaad is not in front |
 | Demo build | Builds. Installed once on Phone C for three closed-route checks with no recorded result. Not run end to end on a phone |
 | Gates 0 to 5 | Closed, each with measured numbers on the real phones |
 | Gate 6, polish | Open: the founder's rehearsal list, the battery exemption and QR pairing (taps only a person can do), the demo build end to end |
 | Gates 7 and 8 | Closed: the agent endpoint, then tool calling and file search for other apps |
 | Gate 9 | Closed for what two phones could show: audits, hardening, Keep busy |
-| Final audit | Four independent readers read the code and a tester ran the regression on phones A and B before the fixes and after each round of them. No blocker. 30 findings fixed with unit tests in three rounds, 21 written down with their reasons, 11 claims reworded. One fix slowed the watch for a frozen model server; the phone regression caught it and it was corrected (docs/review/2026-10-11-final-audit.md) |
-| Not yet seen on a phone | The 30B split with the fixed build (the planner refuses it on two phones, so it needs Phone B); three phones together on this build; Keep busy off screen; the pause for low memory, whose condition was not produced |
+| Final audit | Four independent readers read the code and a tester ran the regression on phones A and B before the fixes and after each round of them. No blocker. 43 findings fixed with unit tests (30 of the first pass in three rounds, 13 of a second Codex pass on those fixes), 23 written down with their reasons, 11 claims reworded. One fix slowed the watch for a frozen model server; the phone regression caught it and it was corrected (docs/review/2026-10-11-final-audit.md) |
+| Not yet seen on a phone | The 13 fixes of the second Codex pass; the 30B split with the fixed build (the planner refuses it on two phones, so it needs Phone B); three phones together on this build; Keep busy off screen; the pause for low memory, whose condition was not produced |
 
 The rule held throughout: a gate without measured numbers on the real phones did not close. The gate files are in [gates/](gates/); the newest is `gate-9-hardening.md`.
 
