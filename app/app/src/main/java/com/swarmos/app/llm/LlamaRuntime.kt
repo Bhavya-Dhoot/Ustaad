@@ -618,7 +618,8 @@ object LlamaRuntime {
                 run.wasReady = true
                 val doneNotice = fallbackNote ?: if (auto) "Restarted automatically after the server was killed." else null
                 publishSpeed(role, warm.sample) // before READY lands, so the row never shows a loaded server without its numbers
-                if (!board.setIfCurrent(role, epoch) { it.copy(state = ServerState.READY, readyAfterMs = ms, notice = doneNotice) }) {
+                var ready: ServerStatus? = null // the status as this start published it: a server killed a moment later must not turn this READY into FAILED
+                if (!board.setIfCurrent(role, epoch) { it.copy(state = ServerState.READY, readyAfterMs = ms, notice = doneNotice).also { s -> ready = s } }) {
                     // a stop() or a newer start got in between and owns the status now: this server is not wanted
                     run.stopRequested = true
                     running.remove(role, run)
@@ -627,7 +628,7 @@ object LlamaRuntime {
                 }
                 Log.i(TAG, "${role.tag}: READY on $backend after $ms ms")
                 watchHealth(run)
-                return Attempt(statusOf(role), false)
+                return Attempt(ready ?: statusOf(role), false)
             }
             delay(300)
         }
