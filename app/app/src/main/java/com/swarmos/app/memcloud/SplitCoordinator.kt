@@ -90,6 +90,9 @@ class SplitCoordinator(
 
     private val lock = Any()
     private var opJob: Job? = null
+
+    /** An operation exists and has not completed. `isActive` is false for a job created LAZY and not yet started (the delayed release of a degraded split), which still owns the phone. */
+    private fun opRunning(): Boolean = opJob?.isCompleted == false
     private var watchJob: Job? = null
     private var renewJob: Job? = null
     private var genJob: Job? = null
@@ -342,7 +345,7 @@ class SplitCoordinator(
     /** Returns null when the load was started, else the reason it was refused. */
     fun start(req: StartRequest): String? = synchronized(lock) {
         val ph = _state.value.phase
-        if (opJob?.isActive == true) return "busy: ${ph.name}"
+        if (opRunning()) return "busy: ${ph.name}"
         if (!MemCloudLogic.canStart(ph)) return "a split is $ph; stop it or re-plan first"
         val f = env.modelFile(req.file) ?: return "no such model file in the models folder: ${req.file}"
         val mode = if (req.mode.equals("ram", true)) SplitMode.RAM else SplitMode.EQUAL
@@ -354,7 +357,7 @@ class SplitCoordinator(
     fun replan(peers: List<String> = emptyList()): String? = synchronized(lock) {
         val st = _state.value
         val file = st.file ?: return "nothing to re-plan"
-        if (opJob?.isActive == true && st.phase != Phase.LOADING) return "busy: ${st.phase.name}"
+        if (opRunning() && st.phase != Phase.LOADING) return "busy: ${st.phase.name}"
         val registry = env.peers()
         val online = registry.filter { !it.away }.map { it.nodeId }
         val asked = peers.map { sel -> registry.firstOrNull { it.nodeId == sel || it.name.equals(sel, true) }?.nodeId ?: sel }
@@ -589,7 +592,7 @@ class SplitCoordinator(
             var wait = timing.restoreRetryMs
             while (isActive && unconfirmed.isNotEmpty()) {
                 timing.restoreWait(wait)
-                if (synchronized(lock) { opJob?.isActive == true }) continue
+                if (synchronized(lock) { opRunning() }) continue
                 var attempted = false
                 var progressed = false
                 for ((nodeId, addr) in unconfirmed.entries.toList()) {
@@ -847,7 +850,7 @@ class SplitCoordinator(
         degradedJob = scope.launch {
             delay(timing.degradedRestoreMs)
             val run = synchronized(lock) {
-                if (_state.value.phase != Phase.DEGRADED || opJob?.isActive == true) return@synchronized null
+                if (_state.value.phase != Phase.DEGRADED || opRunning()) return@synchronized null
                 scope.launch(start = CoroutineStart.LAZY) {
                     withContext(NonCancellable) { teardownAll() } // a Stop during the release must not leave a peer half released
                     if (_state.value.phase == Phase.DEGRADED) {
@@ -1011,7 +1014,7 @@ class SplitCoordinator(
         val file = file?.let { n -> env.modelFile(n)?.name ?: return "no such model file in the models folder: $n" } ?: st.file ?: return "choose a model first"
         // Any operation still running refuses it, whatever the phase says: the clean-up of a FAILED split and the delayed release of a DEGRADED one
         // are operations too, and a baseline started over them would have its own models restored over it when they finish.
-        if (opJob?.isActive == true) return "busy: ${st.phase.name}"
+        if (opRunning()) return "busy: ${st.phase.name}"
         // The phase is taken here, before the job suspends to release the workers: a second call (a double tap) then finds BASELINE
         // with a running job and is refused, instead of replacing the job and running two baselines.
         _state.update { it.copy(phase = Phase.BASELINE, released = false, file = file, baseline = BaselineView(true, "LOADING", "Releasing the other phones first", 0), updatedAtMs = env.nowMs()) }
