@@ -767,6 +767,16 @@ class SplitCoordinator(
         renewJob = null
     }
 
+    /** Runs [block] as the running operation, unless one is running or the split is no longer READY (checked and registered under the lock). */
+    private fun startOperationIfReady(block: suspend () -> Unit): Boolean {
+        val job = synchronized(lock) {
+            if (opRunning() || _state.value.phase != Phase.READY) return false
+            scope.launch(start = CoroutineStart.LAZY) { block() }.also { opJob = it }
+        }
+        job.start()
+        return true
+    }
+
     private fun startWatch() {
         stopWatch()
         watchJob = scope.launch {
@@ -777,12 +787,14 @@ class SplitCoordinator(
                 val ph = _state.value.phase
                 if (!MemCloudLogic.isActive(ph)) continue
                 lostPeer()?.let { (p, why) -> degrade(p, why); return@launch }
-                if (ph == Phase.READY && env.local(Role.CHAT).state != ServerState.READY && ownsChat) {
-                    val culprit = attribute(env.chatLog(30).joinToString(" ")) ?: unresponsivePeer()
-                    ownsChat = false
-                    if (culprit != null) degrade(culprit, "llama-server stopped") else fail("llama-server stopped")
-                    return@launch
-                }
+                // The clean-up after a dead chat server is the running operation from the moment it is decided, so a baseline, a start or a
+                // re-plan is refused while it runs instead of being restored over.
+                if (ph == Phase.READY && env.local(Role.CHAT).state != ServerState.READY && ownsChat && startOperationIfReady {
+                        val culprit = attribute(env.chatLog(30).joinToString(" ")) ?: unresponsivePeer()
+                        ownsChat = false
+                        if (culprit != null) degrade(culprit, "llama-server stopped") else fail("llama-server stopped")
+                    }
+                ) return@launch
                 refreshLive(final = false, rpcEvery = if (ph == Phase.LOADING) 1 else 2, tick = tick)
                 participants.firstOrNull { (probeFailures[it.nodeId] ?: 0) >= timing.probeFailLimit }?.let { p ->
                     degrade(p, "its rpc-server failed ${timing.probeFailLimit} state checks in a row")

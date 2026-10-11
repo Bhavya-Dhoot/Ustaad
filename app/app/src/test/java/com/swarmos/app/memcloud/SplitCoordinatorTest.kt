@@ -1070,6 +1070,25 @@ class SplitCoordinatorTest {
         awaitCall("accepted once the clean-up is over") { c.baseline(5) == null }
     }
 
+    @Test fun aBaselineAStartAndAReplanAreRefusedWhileTheCleanupAfterADeadChatServerIsRunning() {
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        val gate = CompletableDeferred<Unit>()
+        env.stopGate = gate // the lender is slow to answer /rpc/stop, so the clean-up the watch started is still running
+        env.local[Role.CHAT] = LocalServer(ServerState.STOPPED, null, null) // the split's llama-server died; every lender still answers
+        awaitState("FAILED") { it.phase == Phase.FAILED }
+        awaitCall("the clean-up is out") { env.stopParked.isNotEmpty() }
+        val baseline = c.baseline(5)
+        assertTrue("$baseline", baseline != null && baseline.startsWith("busy: FAILED"))
+        val started = start("Phone B")
+        assertTrue("$started", started != null && started.startsWith("busy"))
+        val replanned = c.replan()
+        assertTrue("$replanned", replanned != null && replanned.startsWith("busy"))
+        assertEquals("nothing of the baseline started", 0, env.calls.count { it.startsWith("startChat -ngl 0") })
+        gate.complete(Unit)
+        awaitCall("accepted once the clean-up is over") { c.baseline(5) == null }
+    }
+
     @Test fun aBaselineIsRefusedWhileTheDelayedReleaseOfADegradedSplitIsStillRunning() {
         degradeByLosingC()
         val gate = CompletableDeferred<Unit>()
