@@ -1,0 +1,37 @@
+GPT-6 (Codex); 57 repository files read, some as caller excerpts.
+
+HIGH sched/GatedLlmClient.kt:44 - Cancel the parent after acquire returns true but before the timeout scope delivers its result: CancellationException bypasses the got == null cleanup, and the caller never enters its release finally, permanently consuming the slot. pdu/Answering.kt:35 has the same leak - Release remembered ownership on every exceptional exit, transferring ownership only after successful acquisition returns.
+
+HIGH memcloud/SplitCoordinator.kt:599 - Suspend an old restore retry after its touched check, start loan B on that peer, then resume the retry: it reads B’s token from the mutable loans map and sends an accepted stop for B. The touched check after the request prevents record removal but cannot undo that stop - Bind each restore obligation to immutable items, token and generation, and serialize its admission against preparing a new loan.
+
+HIGH memcloud/RpcLender.kt:274 - Ending loan A clears loan ownership before giveBack waits for its RPC process to disappear, allowing loan B to pass its memory check and start during that wait. A then asynchronously reloads ordinary models alongside B’s split, invalidating B’s memory admission - Keep a closing reservation through restoration, and invalidate obsolete restoration callbacks when ownership changes.
+
+HIGH llm/SelfRecovery.kt:99 - Kill a revived CPU server immediately after READY, before the previous revival loop rechecks its state: the new exit watcher starts another revival loop while the previous loop also observes FAILED. Both can pass their delayed checks and queue starts under the same epoch, duplicating the revival budget and letting the later start kill the newly READY server - Maintain one revival owner per role and epoch, with the FAILED claim checked under the role lock.
+
+HIGH memcloud/SplitCoordinator.kt:1009 - Start a baseline while FAILED cleanup or the delayed DEGRADED release is still executing: the active-operation exception admits it and replaces opJob without joining that cleanup. The older teardown can subsequently restore ordinary chat over the baseline and consume its restoration records - Reject every active operation, or reserve the replacement and join its predecessor before starting.
+
+MEDIUM llm/LlamaRuntime.kt:495 - Run a benchmark or self-test across the CPU fallback’s ten-minute threshold: these callers use the raw client, so the scheduler idle clock can report sixty seconds of inactivity while generation is active. The GPU retry then stops the serving CPU process - Include raw model activity and maintenance runs in idle admission, and reserve that admission atomically before stopping chat.
+
+MEDIUM sched/BatchRunner.kt:233 - Block the initial report write, then press Stop Ustaad: the batch is already published but has no entry in jobs, so stopAll misses it. When persistence returns, begin launches it in Sched’s surviving scope and sends peer jobs after teardown - Register a lazy batch job before persistence and guard launch with shutdown admission.
+
+MEDIUM sched/BatchRunner.kt:278 - With two registered batches, keep the first inside a synchronous report write longer than three seconds and stop the service. The timeout ends the sequential cancelAndJoin loop before it cancels the second batch, which continues sending work - Cancel every captured job first, then join them within the shared deadline.
+
+MEDIUM memcloud/SplitCoordinator.kt:242 - Let a lender’s automatic restoration fail for heat, then let the driver retry restoration while the role is FAILED. The driver’s wait:false /models/load request starts a manual load, advances the epoch and cancels the automatic retry; its 202 response is treated as settled even if heat refuses it again - Make restoration loads automatic and retain the obligation until the expected model reaches READY.
+
+MEDIUM memcloud/SplitCoordinator.kt:515 - Disable autoload, end a split while hot, and kill the driver after teardown persists the cleared self record but before the automatic restoration succeeds. The retry exists only in memory, so restart has neither the models nor their restoration obligation; recoverAfterKill also clears local obligations after merely scheduling loads - Persist each local obligation until its expected model is confirmed READY.
+
+MEDIUM llm/LlamaRuntime.kt:791 - Kill a CPU fallback before its GPU retry and let the old watcher observe STARTING during the ordinary restart. That watcher ends, while the restart clears fallbackNote and therefore fails to install a replacement; the revived CPU server can remain on CPU indefinitely - Preserve fallback provenance through CPU restarts and revivals, and rearm the watcher unless the epoch’s GPU retry was spent.
+
+MEDIUM sched/BatchRunner.kt:233 - Tap either throughput Run button: ThroughputPanel calls start directly on the main thread, which now writes, renames and prunes report files synchronously and can join an existing writer. Slow storage therefore freezes the UI and can cause an ANR - Perform durable initial persistence on IO through a suspending start API, invoked from a UI coroutine.
+
+MEDIUM sched/BatchRunner.kt:301 - Pause worker A after it captures an older flow.value for persistence, let worker B finish writing newer progress, then resume A after the throttle interval. Because pending is now empty, A’s older snapshot is accepted and overwrites the newer file; killing the app then loses already persisted results - Compare snapshots against the latest accepted version per batch, including reports already written.
+
+MEDIUM sched/BatchRunner.kt:344 - Exhaust storage before the initial report or a final replacement: write swallows the failure and the forced writer completes successfully. An acknowledged batch can consequently be unknown after restart, or a batch published as done can restart as interrupted - Propagate persistence failures, reject an undurable initial start, and require successful final persistence before publishing durable completion.
+
+MEDIUM sched/SchedNode.kt:93 - Lose a completed job’s response, raise the receiver to thermal status 4, and resend the same job ID with a fresh request ID. The heat check rejects retrieval of the cached result before deduplication, so SwarmLlm can execute the completed job again on another phone - Apply heat admission only when creating a new deduplication entry, allowing existing jobs and cached results to be retrieved.
+
+Fixes that hold
+C1, C3, C6, C17, C27, R1, R2, R3, R4, R5, R6, R8, R12 (the claimed partial fix), R13, S1, S3, S4, S5, S6, S7 (wording), S8, S10, F2, F5, F6.
+
+Not examined
+Native llama.cpp implementations; Android, Kotlin coroutine, Ktor and vendor OS internals; tests, builds, device execution and network behavior; unrelated application code beyond relevant caller excerpts; historical Git objects independently of the supplied diff.
