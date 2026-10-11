@@ -168,6 +168,43 @@ class BatchStoreFilesTest {
         assertEquals("a report that is further on still replaces it", 3, read(file).done)
     }
 
+    @Test fun aForcedReportThatIsDroppedStillWaitsForTheWriterThatCarriesTheNewerOne() = runBlocking {
+        val real = tempDir()
+        val armed = AtomicBoolean(true)
+        val blocked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val dir = object : File(real.path) {
+            override fun mkdirs(): Boolean {
+                if (armed.getAndSet(false)) {
+                    blocked.countDown()
+                    release.await()
+                }
+                return super.mkdirs()
+            }
+        }
+        val llm = swarm(phone("me"))
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir })
+        val returned = AtomicBoolean(false)
+        val writing = thread { store.persist(report(1, BatchStore.INTERRUPTED), force = true) }   // the writer, held in the write
+        try {
+            assertTrue(blocked.await(5, TimeUnit.SECONDS))
+            // the first report of a batch that was stopped meanwhile: behind the one being written, so it is dropped
+            val late = thread {
+                store.persist(report(1), force = true)
+                returned.set(true)
+            }
+            delay(400)
+            assertTrue("a dropped forced report returned while the newer one was still being written", !returned.get())
+            release.countDown()
+            late.join(5_000)
+            assertTrue(returned.get())
+        } finally {
+            release.countDown()
+        }
+        writing.join(5_000)
+        assertEquals(BatchStore.INTERRUPTED, read(File(real, "batch-b1.json")).state)
+    }
+
     @Test fun aReportThatSaysStoppedIsNotReplacedByARunningOneWithTheSameItems() {
         val dir = tempDir()
         val llm = swarm(phone("me"))
@@ -233,6 +270,64 @@ class BatchStoreFilesTest {
         assertEquals(1, store.latest.value[BatchStore.MODE_LOCAL]!!.done)
     }
 
+    @Test fun aRunTapStillQueuedWhenStopAllRunsStartsNoBatchAfterIt() = runBlocking {
+        val p = phone("me")
+        val llm = swarm(p)
+        val manual = ManualDispatcher()   // the launcher of the tap is queued and does not run until the test lets it
+        val store = BatchStore(CoroutineScope(SupervisorJob() + manual), { llm }, { llm }, dir = { tempDir() })
+        store.startInBackground(listOf(req("a")), BatchStore.MODE_LOCAL)
+        store.stopAll()                    // Stop Ustaad: there is no batch to stop yet
+        manual.runPending()
+        delay(500)
+        assertTrue("no job was sent after the stop", p.llm.requests.isEmpty())
+        assertTrue("no batch was registered", store.latest.value.isEmpty() && !store.isRunning())
+        // Start Ustaad, then a tap: that batch runs (the scope's own coroutines wait in the manual dispatcher too, so keep running them)
+        store.startInBackground(listOf(req("again")), BatchStore.MODE_LOCAL)
+        until {
+            manual.runPending()
+            store.latest.value[BatchStore.MODE_LOCAL]?.state == "done"
+        }
+        assertEquals(1, store.latest.value[BatchStore.MODE_LOCAL]!!.done)
+    }
+
+    @Test fun stopAllCancelsEveryBatchEvenWhileTheWriterIsBlockedInAWrite() = runBlocking {
+        val real = tempDir()
+        val armed = AtomicBoolean(false)
+        val blocked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        // mkdirs() is the first call of a write: the first one after the test arms it stays inside until released
+        val dir = object : File(real.path) {
+            override fun mkdirs(): Boolean {
+                if (armed.getAndSet(false)) {
+                    blocked.countDown()
+                    release.await()
+                }
+                return super.mkdirs()
+            }
+        }
+        val p = phone("me", delayMs = 30_000)
+        val llm = swarm(p)
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir })
+        store.start(listOf(req("b")), BatchStore.MODE_LOCAL)          // a batch with a model call in flight
+        until { p.llm.concurrent.get() == 1 }
+        armed.set(true)
+        // a second batch: its first report makes its start() the writer, and the writer is held inside the write
+        val starter = thread { store.start(listOf(req("a")), BatchStore.MODE_LOCAL) }
+        var stopper: Thread? = null
+        try {
+            assertTrue(blocked.await(5, TimeUnit.SECONDS))
+            stopper = thread { store.stopAll() }
+            stopper.join(2_000)
+            assertTrue("stopAll is stuck behind the blocked write", !stopper.isAlive)
+            until { p.llm.concurrent.get() == 0 }                         // the other batch's model call was cancelled
+            assertTrue("every batch says it was stopped", !store.isRunning())
+        } finally {
+            release.countDown()
+        }
+        stopper?.join(5_000)
+        starter.join(5_000)
+    }
+
     @Test fun stopAllEndsEveryBatchEvenWhenTheFirstIsSlowToWindUp() = runBlocking {
         val stuck = StuckPhone()
         val stuckSwarm = SwarmLlm({ listOf(stuck) }, scope, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100, msPerToken = 0)
@@ -290,7 +385,7 @@ class BatchStoreFilesTest {
         ownScope.cancel()
         manual.runPending()
         assertEquals("interrupted", store.status(id)!!.value.state)
-        assertEquals("interrupted", read(File(dir, "batch-$id.json")).state)
         assertTrue(!store.isRunning())
+        runBlocking { until { runCatching { read(File(dir, "batch-$id.json")).state }.getOrNull() == "interrupted" } }
     }
 }

@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -206,7 +208,9 @@ class BatchStore(
     private var writer: CompletableFuture<Unit>? = null             // the writer at work (one at a time), completed when it is done
     private val newest = HashMap<String, Long>()                    // rank of the newest report accepted per batch, written or queued
     private val _latest = MutableStateFlow<Map<String, BatchReport>>(emptyMap())
+    private val stopWrites = CoroutineScope(SupervisorJob() + Dispatchers.IO)   // writes of the "interrupted" reports, off the stopping thread
     private var lastWriteMs = 0L
+    private var stops = 0L                                          // raised by stopAll: a start scheduled before a stop does not begin after it
 
     /** Most recent report of each mode, updated while a batch runs. */
     val latest: StateFlow<Map<String, BatchReport>> = _latest.asStateFlow()
@@ -221,13 +225,15 @@ class BatchStore(
      * second tap that lands before the button is disabled does not start a second batch.
      */
     fun startInBackground(requests: List<ChatRequest>, mode: String) {
-        scope.launch(Dispatchers.IO) { tryStart(requests, mode) }
+        val before = synchronized(lock) { stops }
+        scope.launch { withContext(Dispatchers.IO) { begin(requests, mode, onlyIfIdle = true, notAfterStop = before) } }
     }
 
     /** Starts the batch unless one is running; null then. The check and the start are one step. */
     fun tryStart(requests: List<ChatRequest>, mode: String): String? = begin(requests, mode, onlyIfIdle = true)
 
-    private fun begin(requests: List<ChatRequest>, mode: String, onlyIfIdle: Boolean): String? {
+    /** [notAfterStop] is the number of stops seen when the start was scheduled; if [stopAll] ran since, nothing begins. */
+    private fun begin(requests: List<ChatRequest>, mode: String, onlyIfIdle: Boolean, notAfterStop: Long = -1L): String? {
         val id = newJobId()
         val client = if (mode == MODE_LOCAL) localOnly() else swarm()
         val flow = MutableStateFlow(BatchRunner.buildReport(id, mode, RUNNING, requests.size, emptyList(), 0.0))
@@ -256,7 +262,7 @@ class BatchStore(
             publish(report)
         }
         synchronized(lock) {
-            if (onlyIfIdle && flows.values.any { it.value.state == RUNNING }) {
+            if ((onlyIfIdle && flows.values.any { it.value.state == RUNNING }) || (notAfterStop >= 0 && notAfterStop != stops)) {
                 job.cancel()
                 return null
             }
@@ -277,7 +283,9 @@ class BatchStore(
                 val stopped = flow.value.copy(state = INTERRUPTED)
                 flow.value = stopped
                 publish(stopped)
-                persist(stopped, force = true)
+                // cancel() runs this handler for a batch that never started, on the thread of [stopAll]: the file follows from
+                // another thread, so a slow write does not hold up the cancelling of the other batches
+                stopWrites.launch { persist(stopped, force = true) }
             }
         }
         publish(flow.value)
@@ -288,11 +296,14 @@ class BatchStore(
 
     /**
      * Ends every batch that is running (Stop Ustaad): no more jobs go to the phones, and each report says "interrupted", the
-     * state a coordinator that was killed leaves behind. Blocking; every batch is told to stop first, then all of them are
+     * state a coordinator that was killed leaves behind (the files follow a moment later). Blocking; every batch is told to stop first, then all of them are
      * waited for together, at most [STOP_WAIT_MS]: one that is slow to wind up does not keep the others running.
      */
     fun stopAll() {
-        val running = synchronized(lock) { jobs.values.toList() }
+        val running = synchronized(lock) {
+            stops++
+            jobs.values.toList()
+        }
         if (running.isEmpty()) return
         running.forEach { it.cancel() }
         runBlocking { withTimeoutOrNull(STOP_WAIT_MS) { running.forEach { it.join() } } }
@@ -312,12 +323,16 @@ class BatchStore(
     internal fun persist(r: BatchReport, force: Boolean) {
         val d = dir() ?: return
         val mine = CompletableFuture<Unit>()
+        var dropped = false
         val busy = synchronized(lock) {
             val now = clock()
             if (!force && now - lastWriteMs < WRITE_EVERY_MS) return
             // a snapshot that arrives late (a slow worker, after a newer one was queued or even written) must not replace it
             val rank = rankOf(r)
-            if (rank < (newest[r.id] ?: -1L)) return
+            if (rank < (newest[r.id] ?: -1L)) {
+                dropped = true
+                return@synchronized writer   // the newer report may still be in the writer's hands
+            }
             newest[r.id] = rank
             lastWriteMs = now
             pending[r.id] = r
@@ -326,8 +341,8 @@ class BatchStore(
                 null
             }
         }
-        if (busy != null) {
-            if (force) busy.join()
+        if (dropped || busy != null) {
+            if (force) busy?.join()   // also a dropped forced report: it is not acknowledged before the newer one is on disk
             return
         }
         try {
