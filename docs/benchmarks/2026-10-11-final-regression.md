@@ -519,3 +519,13 @@ None outside the app's own data (`pass7/04-final/new-files-A.txt`, `new-files-C.
 
 Phone C: chat READY on GPU (restarts 0, no lastError, no notice), embedder READY, rpc STOPPED, MemoryCloud IDLE with nothing pending, Keep busy enabled and `half_duty` (jobsFailed 0, hammer false), ramAvailMb 4450, thermal 2, battery 100 % (AC powered), agent access off (port 8790 HTTP 000), screen awake, Ustaad in front, peers: A online, B away.
 Phone A: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, MemoryCloud IDLE with nothing pending, Keep busy enabled and `half_duty` (jobsFailed 0, hammer false), ramAvailMb 4733, thermal 2, battery 100 % (AC powered), agent access off (HTTP 000), screen awake, Ustaad in front, peers: Phone C only.
+
+
+## Build 4821aea on phones A and C: one batch, and a watch
+
+Build 4821aea (the retry of a refused model start no longer gives up after ten minutes) was installed on Phone A at 07:12:52 and Phone C at 07:13:11; both came up with chat READY on the GPU (loadMs 17157 and 16561) and the embedder ready, read at 07:14:06. Phone B was in the founder's session and was not touched.
+
+One two-phone batch as a check that nothing else moved, started from Phone C at 07:16:41 with `python scripts/bench-batch.py 192.168.242.76 swarm C-swarm docs/benchmarks/raw/final-audit/pass8`: 32 / 32 finished, 0 failed, wall 46.6 s, 889 tokens, 19.06 tok/s aggregate; Phone C 16 jobs at 12.8 tok/s decode, Phone A 16 jobs at 11.9 tok/s; thermal 1 at the start, 2 at the end (`pass8/batch-C-swarm.json`). One run.
+
+A read-only watch of both phones (`scripts/throttle-watch.py`, one sample every 10 s, 220 minutes from 07:14) writes to `raw/final-audit/watch-AC/A.jsonl` and `C.jsonl`. It was started because Phone A was found at Thermal Status 4 at 05:32 with nothing recording the time before it.
+
