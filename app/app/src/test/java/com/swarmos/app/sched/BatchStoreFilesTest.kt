@@ -253,6 +253,44 @@ class BatchStoreFilesTest {
         assertEquals(1, store.latest.value[BatchStore.MODE_LOCAL]!!.done)
     }
 
+    @Test fun stopAllCancelsEveryBatchEvenWhileTheWriterIsBlockedInAWrite() = runBlocking {
+        val real = tempDir()
+        val armed = AtomicBoolean(false)
+        val blocked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        // mkdirs() is the first call of a write: the first one after the test arms it stays inside until released
+        val dir = object : File(real.path) {
+            override fun mkdirs(): Boolean {
+                if (armed.getAndSet(false)) {
+                    blocked.countDown()
+                    release.await()
+                }
+                return super.mkdirs()
+            }
+        }
+        val p = phone("me", delayMs = 30_000)
+        val llm = swarm(p)
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir })
+        store.start(listOf(req("b")), BatchStore.MODE_LOCAL)          // a batch with a model call in flight
+        until { p.llm.concurrent.get() == 1 }
+        armed.set(true)
+        // a second batch: its first report makes its start() the writer, and the writer is held inside the write
+        val starter = thread { store.start(listOf(req("a")), BatchStore.MODE_LOCAL) }
+        var stopper: Thread? = null
+        try {
+            assertTrue(blocked.await(5, TimeUnit.SECONDS))
+            stopper = thread { store.stopAll() }
+            stopper.join(2_000)
+            assertTrue("stopAll is stuck behind the blocked write", !stopper.isAlive)
+            until { p.llm.concurrent.get() == 0 }                         // the other batch's model call was cancelled
+            assertTrue("every batch says it was stopped", !store.isRunning())
+        } finally {
+            release.countDown()
+        }
+        stopper?.join(5_000)
+        starter.join(5_000)
+    }
+
     @Test fun stopAllEndsEveryBatchEvenWhenTheFirstIsSlowToWindUp() = runBlocking {
         val stuck = StuckPhone()
         val stuckSwarm = SwarmLlm({ listOf(stuck) }, scope, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100, msPerToken = 0)
@@ -310,7 +348,7 @@ class BatchStoreFilesTest {
         ownScope.cancel()
         manual.runPending()
         assertEquals("interrupted", store.status(id)!!.value.state)
-        assertEquals("interrupted", read(File(dir, "batch-$id.json")).state)
         assertTrue(!store.isRunning())
+        runBlocking { until { runCatching { read(File(dir, "batch-$id.json")).state }.getOrNull() == "interrupted" } }
     }
 }

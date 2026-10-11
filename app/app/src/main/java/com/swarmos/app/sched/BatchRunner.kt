@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -207,6 +208,7 @@ class BatchStore(
     private var writer: CompletableFuture<Unit>? = null             // the writer at work (one at a time), completed when it is done
     private val newest = HashMap<String, Long>()                    // rank of the newest report accepted per batch, written or queued
     private val _latest = MutableStateFlow<Map<String, BatchReport>>(emptyMap())
+    private val stopWrites = CoroutineScope(SupervisorJob() + Dispatchers.IO)   // writes of the "interrupted" reports, off the stopping thread
     private var lastWriteMs = 0L
     private var stops = 0L                                          // raised by stopAll: a start scheduled before a stop does not begin after it
 
@@ -281,7 +283,9 @@ class BatchStore(
                 val stopped = flow.value.copy(state = INTERRUPTED)
                 flow.value = stopped
                 publish(stopped)
-                persist(stopped, force = true)
+                // cancel() runs this handler for a batch that never started, on the thread of [stopAll]: the file follows from
+                // another thread, so a slow write does not hold up the cancelling of the other batches
+                stopWrites.launch { persist(stopped, force = true) }
             }
         }
         publish(flow.value)
@@ -292,7 +296,7 @@ class BatchStore(
 
     /**
      * Ends every batch that is running (Stop Ustaad): no more jobs go to the phones, and each report says "interrupted", the
-     * state a coordinator that was killed leaves behind. Blocking; every batch is told to stop first, then all of them are
+     * state a coordinator that was killed leaves behind (the files follow a moment later). Blocking; every batch is told to stop first, then all of them are
      * waited for together, at most [STOP_WAIT_MS]: one that is slow to wind up does not keep the others running.
      */
     fun stopAll() {
