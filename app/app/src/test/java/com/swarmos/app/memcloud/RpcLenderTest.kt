@@ -17,7 +17,7 @@ import org.junit.Test
 private class FakeLender : LenderEnv {
     var now = 1_000_000L
     var elapsed = 50_000L
-    val calls = mutableListOf<String>()
+    val calls: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
     var ready = false
     var bind: String? = null
     var port = 0
@@ -462,16 +462,21 @@ class RpcLenderTest {
         assertEquals(false, env.heldMonitorDuringWait)
     }
 
-    @Test fun anotherDriverCanStartWhileTheFirstLoanIsStillWaitingForRpcServerToLeave() {
+    @Test fun aNewLoanWaitsUntilTheModelsOfTheEndedOneAreDispatchedAndIsNotHeldByTheMonitor() {
         start(from = "c")
         var inner: RpcLender.StartResult? = null
+        var th: Thread? = null
         env.onWait = {
-            // the first loan is already over, so the phone is free: a start is taken at once, not after the wait
-            val t = Thread { inner = runBlocking { lender.start(req(), null, "x") } }
-            t.start(); t.join(2_000)
+            // the first loan is over, rpc-server is still leaving: a start from another driver gets every chance to get in
+            th = Thread { inner = runBlocking { lender.start(req(), null, "x") } }.also { it.start(); it.join(300) }
         }
-        lender.stop("test")
+        lender.stop("test") // returns: the monitor was not held by the wait
+        th!!.join(3_000)
         assertTrue("$inner", inner is RpcLender.StartResult.Ok)
+        // its memory check and its rpc-server came after the models of the first loan were dispatched, not during the wait
+        val secondStart = env.calls.indexOfLast { it.startsWith("startRpc") }
+        assertEquals(env.calls.toString(), 2, env.calls.count { it.startsWith("startRpc") })
+        assertTrue(env.calls.toString(), indexOfCall("restore chat") in 0 until secondStart)
     }
 
     @Test fun aRpcServerThatStaysPastTheTimeoutDoesNotStopTheModelsFromBeingRequested() {
