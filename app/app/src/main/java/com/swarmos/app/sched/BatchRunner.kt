@@ -203,6 +203,7 @@ class BatchStore(
     private val jobs = HashMap<String, Job>()                       // the coroutine of every batch that has not ended
     private val pending = LinkedHashMap<String, BatchReport>()      // newest report per batch that waits for the writer
     private var writer: CompletableFuture<Unit>? = null             // the writer at work (one at a time), completed when it is done
+    private val newest = HashMap<String, Long>()                    // rank of the newest report accepted per batch, written or queued
     private val _latest = MutableStateFlow<Map<String, BatchReport>>(emptyMap())
     private var lastWriteMs = 0L
 
@@ -227,6 +228,7 @@ class BatchStore(
             while (flows.size > KEEP) {
                 val finished = flows.entries.firstOrNull { it.value.value.state != RUNNING } ?: break
                 flows.remove(finished.key)
+                newest.remove(finished.key)
             }
         }
         publish(flow.value)
@@ -289,16 +291,18 @@ class BatchStore(
      * A forced report (the last of a batch, or the one that says it was stopped) is the exception: it returns only when the
      * writer is done, which is after that report is on disk.
      */
-    private fun persist(r: BatchReport, force: Boolean) {
+    internal fun persist(r: BatchReport, force: Boolean) {
         val d = dir() ?: return
         val mine = CompletableFuture<Unit>()
         val busy = synchronized(lock) {
             val now = clock()
             if (!force && now - lastWriteMs < WRITE_EVERY_MS) return
+            // a snapshot that arrives late (a slow worker, after a newer one was queued or even written) must not replace it
+            val rank = rankOf(r)
+            if (rank < (newest[r.id] ?: -1L)) return
+            newest[r.id] = rank
             lastWriteMs = now
-            val queued = pending[r.id]
-            // an older snapshot that arrives late must not replace a newer one
-            if (queued == null || force || r.done + r.failed >= queued.done + queued.failed) pending[r.id] = r
+            pending[r.id] = r
             writer ?: run {
                 writer = mine
                 null
@@ -322,6 +326,9 @@ class BatchStore(
             mine.complete(Unit)
         }
     }
+
+    /** How far a report is: finished items, and a report that is no longer "running" is ahead of a running one with the same items. */
+    private fun rankOf(r: BatchReport): Long = (r.done + r.failed) * 2L + if (r.state == RUNNING) 0L else 1L
 
     /** Writes the report to a temporary file of its own and moves it over the real one, so a reader never sees half a report. */
     private fun write(d: File, r: BatchReport) {

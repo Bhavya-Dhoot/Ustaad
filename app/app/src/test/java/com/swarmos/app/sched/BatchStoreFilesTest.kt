@@ -121,6 +121,38 @@ class BatchStoreFilesTest {
         assertEquals("done", reborn.status(id)!!.value.state)
     }
 
+    // ---- which report is the newest ---------------------------------------------------------------------------
+
+    private fun report(done: Int, state: String = "running") = BatchRunner.buildReport(
+        "b1", "local", state, 4, (0 until done).map { BatchItem(it, "b1-$it", "me", "T", "answer $it", 5, 9, 100.0) }, 100.0,
+    )
+
+    @Test fun anOlderSnapshotArrivingAfterANewerOneWasWrittenDoesNotReplaceIt() {
+        val dir = tempDir()
+        var now = 10_000L
+        val llm = swarm(phone("me"))
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir }, clock = { now })
+        val file = File(dir, "batch-b1.json")
+        store.persist(report(2), force = false)   // worker B: the newer snapshot is written, nothing is queued any more
+        assertEquals(2, read(file).done)
+        now += 2_000                               // worker A arrives with the older one it held, after the one-second throttle
+        store.persist(report(1), force = false)
+        assertEquals("the newer report stays", 2, read(file).done)
+        now += 2_000
+        store.persist(report(3), force = false)
+        assertEquals("a report that is further on still replaces it", 3, read(file).done)
+    }
+
+    @Test fun aReportThatSaysStoppedIsNotReplacedByARunningOneWithTheSameItems() {
+        val dir = tempDir()
+        val llm = swarm(phone("me"))
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir })
+        val file = File(dir, "batch-b1.json")
+        store.persist(report(1, BatchStore.INTERRUPTED), force = true)
+        store.persist(report(1), force = true)     // the first report, late
+        assertEquals(BatchStore.INTERRUPTED, read(file).state)
+    }
+
     // ---- stopping ---------------------------------------------------------------------------------------------
 
     @Test fun stopAllEndsARunningBatchSoItSendsNoMoreJobsAndItsReportSaysInterrupted() = runBlocking {
