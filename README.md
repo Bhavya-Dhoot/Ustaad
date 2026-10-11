@@ -77,12 +77,12 @@ The models are not in the repository. Fetch them with `native/fetch-models.sh <h
 
 ## Status
 
-As of 2026-10-11 07:15 (HANDOFF.md).
+As of 2026-10-11 07:30 (HANDOFF.md).
 
 | | |
 |---|---|
-| Code | master 0734013. 1562 unit tests, 0 failures (docs/BUILD.md, 05:30) |
-| Phones A, B and C | Build 0734013 on all three (A and B since 05:32, C since 05:48), chat on the GPU, all on chargers at 05:50. Phone B is in the founder's remote-control session until about 10:57, so Ustaad is paused on it |
+| Code | master 4821aea. 1567 unit tests, 0 failures (docs/BUILD.md, 07:10) |
+| Phones A, B and C | Build 4821aea on A and C since 07:13, chat on the GPU, on chargers. Phone B carries 0734013 (one change behind) and is in the founder's remote-control session until about 10:57, so Ustaad is paused on it |
 | Battery exemption | Not in effect on any phone at 05:50: Ustaad is not in the system's list and Settings reads "Runs only while Ustaad is on screen". Keep busy pauses when Ustaad is not in front |
 | Demo build | Builds. Installed once on Phone C for three closed-route checks with no recorded result. Not run end to end on a phone |
 | Gates 0 to 5 | Closed, each with measured numbers on the real phones |
@@ -90,7 +90,7 @@ As of 2026-10-11 07:15 (HANDOFF.md).
 | Gates 7 and 8 | Closed: the agent endpoint, then tool calling and file search for other apps |
 | Gate 9 | Closed for what two phones could show: audits, hardening, Keep busy |
 | Final audit | Four independent readers read the code and a tester ran the regression on phones A and B before the fixes and after each round of them. No blocker. 30 findings fixed with unit tests in three rounds, 21 written down with their reasons, 11 claims reworded. One fix slowed the watch for a frozen model server; the phone regression caught it and it was corrected (docs/review/2026-10-11-final-audit.md) |
-| Not yet seen on a phone | The 30B split with the fixed build; three phones together on this build; Keep busy off screen; the pause for low memory, whose condition was not produced |
+| Not yet seen on a phone | The 30B split with the fixed build (the planner refuses it on two phones, so it needs Phone B); three phones together on this build; Keep busy off screen; the pause for low memory, whose condition was not produced |
 
 The rule held throughout: a gate without measured numbers on the real phones did not close. The gate files are in [gates/](gates/); the newest is `gate-9-hardening.md`.
 

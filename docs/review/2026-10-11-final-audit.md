@@ -203,25 +203,35 @@ Fifth pass, on that build, 05:33 to 06:57 (docs/benchmarks/2026-10-11-final-regr
 - Regression: fault injection 4 of 4 (the frozen server killed after 34.5 s), agent endpoint 14 of 14, `memcloud-check` with Phone A driving and Phone C lending 9 of 9, a batch from Phone C 32 of 32 at 21.21 tok/s (C 17 jobs, A 15) whose file read `done` 0.11 s after its status did, end to end 12 of 12.
 - That split took 223 s to be READY, against 32 to 36 s with Phone B lending in the passes before (P4). Not looked into. Phone C reported a Wi-Fi link speed of 117 Mbit/s at 05:49, against 390 and 433 on phones A and B.
 
+## Fourth change, and the 30B model on two phones
+
+P2 is changed, master 4821aea, 1567 unit tests, 0 failures, installed on Phone A at 07:12:52 and Phone C at 07:13:11 (Phone B is in the founder's session and stays on 0734013 until it is free). The retry of a start that the heat gate or the memory check refused no longer gives up: after the 20 tries at 30 s it goes on every 5 minutes, until the start goes ahead, the owner stops or loads the model, the service stops or the file is gone (`StartRetryTest`, 19 tests). It has not run on a phone: the condition, a phone at Thermal Status 4 when the app starts, was not produced again.
+
+Sixth pass, build 0734013, phones C and A, 06:59 to 07:12 (docs/benchmarks/2026-10-11-final-regression.md, sixth section):
+- The 18.6 GB file loaded as a chat model on Phone C alone was refused after 0.4 s for memory, and the small model was back on the GPU.
+- The 30B split with Phone C driving and Phone A lending was refused by the planner, twice: "The plan does not fit: Phone C has 6.5 GB free and the planning estimate is 10.3 GB; Phone A has 6.7 GB free and the planning estimate is 9.9 GB. Nothing was started or stopped." Nothing had been started or stopped on either phone: chat on the GPU, embedder ready, no role FAILED. So the 30B model needs the third phone, and the lender's restore after a 30B split (S2) is still not seen on a phone.
+- After the refusal Phone C's MemoryCloud phase read FAILED until a stop was posted. Keep busy on Phone C ran filler again with the phase still FAILED (after its two-minute settle), so this is the screen keeping the reason, not a phone that counts as in use.
+- Four figures for Phone C's free memory were read within minutes: 9.2 GB in the refusal of the single load, 6.5 GB in the planner's answer, 5223 MB from the health reading and 4.27 GiB of MemAvailable. They count different things (what a load would free is added in two of them). Written down: the texts do not say which is which.
+
 ## Tally and what is open
 
 | | Count |
 |---|---:|
 | Findings fixed, each read against the code first | 30 (18 in the first round, 9 in the second, 3 in the third), plus the correction of the frozen-server watch, half of R12 and the batch report gap |
 | Written down with a reason | 21 |
-| Open from the phone passes | 3: the retry cap (P2, being changed), Phone A at Thermal Status 4 with no known cause (P3), a slow split with Phone C lending (P4) |
+| Open from the phone passes | 3: Phone A at Thermal Status 4 with no known cause (P3), a slow split with Phone C lending (P4), four different figures for free memory (above). P2, the retry cap, is changed and not yet seen on a phone |
 | Judged not a fault | 1 (C8) |
 | Measured on a phone and not borne out | 1 (C15) |
 | Claims reworded in docs/CLAIMS.md | 11 |
-| Unit tests | 1453 before, 1562 after, 0 failures |
-| Regression runs on phones | One on phones A and B before the fixes, two on Phone A after the first round, two on phones A and B (builds 02b15c2 and 17aad2d), one on phones A, B and then C (build 0734013) |
+| Unit tests | 1453 before, 1567 after, 0 failures |
+| Regression runs on phones | One on phones A and B before the fixes, two on Phone A after the first round, two on phones A and B (builds 02b15c2 and 17aad2d), one on phones A, B and then C and one on phones C and A (build 0734013) |
 
 Open, in the order they matter for a demo:
 1. Keep busy off screen. The battery exemption was not in effect on any phone at 05:50: Ustaad is not in the system's list (`dumpsys deviceidle whitelist`) and Settings on Phone C read "Runs only while Ustaad is on screen." Until it is, Keep busy pauses whenever Ustaad is not in front, and it has never been seen running off screen.
-2. The 30B split has not been run since the memory check before a load was added on 2026-10-10. The MemoryCloud fixes ran with the 4B model only. A run with the 30B model on phones C and A is the next pass.
+2. The 30B split has not been run since the memory check before a load was added on 2026-10-10. The MemoryCloud fixes ran with the 4B model only. On two phones the planner refuses the 30B model (sixth pass), so it needs Phone B.
 3. Three phones together. Phone B is in the founder's remote-control session until about 10:57, so three-phone throughput, Choir on three phones and the three-phone split are not run on this build.
 4. The batch checks across two phones (a peer dying, a peer joining, the coordinator killed) were last run on the build of 2026-10-10 evening: the permission layer of the session refused them for the tester. On this build only "Stop Ustaad" on the coordinator was run.
-5. P2, P3 and P4 above.
+5. P3 and P4 above, and the changed retry (P2) on a phone.
 6. Not seen on a phone, because the condition was not produced: the pause for low memory (R13), the back-off of the restore retry (S8), the 409 reading (F2), the resend signal (S10), the wording for failed jobs (R12).
 7. The 21 findings written down, of which these three should be known before a pitch: in the debug build, which the phones run, another app can replace the pairing secret with no tap (C2); the text of the last file deleted from a shared folder stays searchable until the folder is unshared (C21); a model stopped during a Choir run can put a labelled placeholder line among the voices (C13).
 
