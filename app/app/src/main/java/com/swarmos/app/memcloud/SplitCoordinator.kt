@@ -15,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -90,6 +91,9 @@ class SplitCoordinator(
 
     private val lock = Any()
     private var opJob: Job? = null
+
+    /** An operation exists and has not completed. `isActive` is false for a job created LAZY and not yet started (the delayed release of a degraded split), which still owns the phone. */
+    private fun opRunning(): Boolean = opJob?.isCompleted == false
     private var watchJob: Job? = null
     private var renewJob: Job? = null
     private var genJob: Job? = null
@@ -342,7 +346,7 @@ class SplitCoordinator(
     /** Returns null when the load was started, else the reason it was refused. */
     fun start(req: StartRequest): String? = synchronized(lock) {
         val ph = _state.value.phase
-        if (opJob?.isActive == true) return "busy: ${ph.name}"
+        if (opRunning()) return "busy: ${ph.name}"
         if (!MemCloudLogic.canStart(ph)) return "a split is $ph; stop it or re-plan first"
         val f = env.modelFile(req.file) ?: return "no such model file in the models folder: ${req.file}"
         val mode = if (req.mode.equals("ram", true)) SplitMode.RAM else SplitMode.EQUAL
@@ -354,7 +358,7 @@ class SplitCoordinator(
     fun replan(peers: List<String> = emptyList()): String? = synchronized(lock) {
         val st = _state.value
         val file = st.file ?: return "nothing to re-plan"
-        if (opJob?.isActive == true && st.phase != Phase.LOADING) return "busy: ${st.phase.name}"
+        if (opRunning() && st.phase != Phase.LOADING) return "busy: ${st.phase.name}"
         val registry = env.peers()
         val online = registry.filter { !it.away }.map { it.nodeId }
         val asked = peers.map { sel -> registry.firstOrNull { it.nodeId == sel || it.name.equals(sel, true) }?.nodeId ?: sel }
@@ -375,7 +379,7 @@ class SplitCoordinator(
             try {
                 onAppStart()
                 val old = synchronized(lock) { opJob }
-                old?.cancel()
+                old?.cancelAndJoin() // IDLE is published after the cancelled operation has finished its own clean-up, so a start right after Stop is not refused as busy
                 degradedJob?.cancel()
                 degradedNote = null
                 // a teardown that throws must not leave the phase on READY, LOADING or DEGRADED: Stop always ends in IDLE
@@ -589,7 +593,7 @@ class SplitCoordinator(
             var wait = timing.restoreRetryMs
             while (isActive && unconfirmed.isNotEmpty()) {
                 timing.restoreWait(wait)
-                if (synchronized(lock) { opJob?.isActive == true }) continue
+                if (synchronized(lock) { opRunning() }) continue
                 var attempted = false
                 var progressed = false
                 for ((nodeId, addr) in unconfirmed.entries.toList()) {
@@ -764,6 +768,16 @@ class SplitCoordinator(
         renewJob = null
     }
 
+    /** Runs [block] as the running operation, unless one is running or the split is no longer READY (checked and registered under the lock). */
+    private fun startOperationIfReady(block: suspend () -> Unit): Boolean {
+        val job = synchronized(lock) {
+            if (opRunning() || _state.value.phase != Phase.READY) return false
+            scope.launch(start = CoroutineStart.LAZY) { block() }.also { opJob = it }
+        }
+        job.start()
+        return true
+    }
+
     private fun startWatch() {
         stopWatch()
         watchJob = scope.launch {
@@ -774,12 +788,14 @@ class SplitCoordinator(
                 val ph = _state.value.phase
                 if (!MemCloudLogic.isActive(ph)) continue
                 lostPeer()?.let { (p, why) -> degrade(p, why); return@launch }
-                if (ph == Phase.READY && env.local(Role.CHAT).state != ServerState.READY && ownsChat) {
-                    val culprit = attribute(env.chatLog(30).joinToString(" ")) ?: unresponsivePeer()
-                    ownsChat = false
-                    if (culprit != null) degrade(culprit, "llama-server stopped") else fail("llama-server stopped")
-                    return@launch
-                }
+                // The clean-up after a dead chat server is the running operation from the moment it is decided, so a baseline, a start or a
+                // re-plan is refused while it runs instead of being restored over.
+                if (ph == Phase.READY && env.local(Role.CHAT).state != ServerState.READY && ownsChat && startOperationIfReady {
+                        val culprit = attribute(env.chatLog(30).joinToString(" ")) ?: unresponsivePeer()
+                        ownsChat = false
+                        if (culprit != null) degrade(culprit, "llama-server stopped") else fail("llama-server stopped")
+                    }
+                ) return@launch
                 refreshLive(final = false, rpcEvery = if (ph == Phase.LOADING) 1 else 2, tick = tick)
                 participants.firstOrNull { (probeFailures[it.nodeId] ?: 0) >= timing.probeFailLimit }?.let { p ->
                     degrade(p, "its rpc-server failed ${timing.probeFailLimit} state checks in a row")
@@ -847,7 +863,7 @@ class SplitCoordinator(
         degradedJob = scope.launch {
             delay(timing.degradedRestoreMs)
             val run = synchronized(lock) {
-                if (_state.value.phase != Phase.DEGRADED || opJob?.isActive == true) return@synchronized null
+                if (_state.value.phase != Phase.DEGRADED || opRunning()) return@synchronized null
                 scope.launch(start = CoroutineStart.LAZY) {
                     withContext(NonCancellable) { teardownAll() } // a Stop during the release must not leave a peer half released
                     if (_state.value.phase == Phase.DEGRADED) {
@@ -1011,7 +1027,7 @@ class SplitCoordinator(
         val file = file?.let { n -> env.modelFile(n)?.name ?: return "no such model file in the models folder: $n" } ?: st.file ?: return "choose a model first"
         // Any operation still running refuses it, whatever the phase says: the clean-up of a FAILED split and the delayed release of a DEGRADED one
         // are operations too, and a baseline started over them would have its own models restored over it when they finish.
-        if (opJob?.isActive == true) return "busy: ${st.phase.name}"
+        if (opRunning()) return "busy: ${st.phase.name}"
         // The phase is taken here, before the job suspends to release the workers: a second call (a double tap) then finds BASELINE
         // with a running job and is refused, instead of replacing the job and running two baselines.
         _state.update { it.copy(phase = Phase.BASELINE, released = false, file = file, baseline = BaselineView(true, "LOADING", "Releasing the other phones first", 0), updatedAtMs = env.nowMs()) }
