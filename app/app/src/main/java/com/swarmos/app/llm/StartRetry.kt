@@ -18,10 +18,14 @@ internal sealed interface StartRefusal {
  * is not touched here. A start the owner asked for is never retried: they get the message and decide.
  */
 internal object StartRetry {
+    /** A cause that passes quickly (a model killed a moment ago, a load that just collided with another) is caught within half a minute. */
     const val INTERVAL_MS = 30_000L
 
-    /** 20 tries, 30 s apart: ten minutes. */
-    const val MAX_TRIES = 20
+    /** The first tries are 30 s apart: 20 of them, ten minutes. */
+    const val FAST_TRIES = 20
+
+    /** After that, a phone that is still too hot or too full is looked at again this often, for as long as the loop runs: a heat or memory cause can outlast any cap (seen: a phone still at thermal status 4 when ten minutes were over). */
+    const val SLOW_INTERVAL_MS = 5 * 60_000L
 
     sealed interface Decision {
         /** The owner asked, or the role has no model to load: the refusal stands as it is. */
@@ -29,15 +33,12 @@ internal object StartRetry {
 
         /** Try again after [afterMs]; [text] is the status of the role while it waits. */
         data class Retry(val afterMs: Long, val text: String) : Decision
-
-        /** The cap is reached: [text] is the last status, and it tells the owner to tap Load. */
-        data class GiveUp(val text: String) : Decision
     }
 
-    /** [triesSoFar]: how many retries have been made already (0 for the first refusal). */
+    /** [triesSoFar]: how many retries have been made already (0 for the first refusal). There is no last try: only the end conditions of [retryRefusedStart] stop the loop. */
     fun decide(refusal: StartRefusal, byOwner: Boolean, triesSoFar: Int): Decision = when {
         byOwner -> Decision.NoRetry
-        triesSoFar >= MAX_TRIES -> Decision.GiveUp("Not loaded after ${MAX_TRIES * INTERVAL_MS / 60_000} minutes of trying: ${cause(refusal)}. Tap Load to try again.")
+        triesSoFar >= FAST_TRIES -> Decision.Retry(SLOW_INTERVAL_MS, "Not loaded: ${cause(refusal)}. Ustaad tries again every ${SLOW_INTERVAL_MS / 60_000} minutes.")
         else -> Decision.Retry(INTERVAL_MS, "Not loaded: ${cause(refusal)}. Ustaad tries again every ${INTERVAL_MS / 1000} seconds.")
     }
 
@@ -53,8 +54,9 @@ internal object StartRetry {
 
 /**
  * The wait-and-try-again loop of one refused automatic start of [role], all under [epoch] (the epoch the start was made under). It ends
- * when a start is not refused again, when the cap is reached, or when anything changed: the owner stopped or loaded the role (the epoch
- * moved), the role is no longer FAILED, the service is down, or the file is gone. The status of the role says what it is waiting for.
+ * when a start is not refused again, or when anything changed: the owner stopped or loaded the role (the epoch moved), the role is no
+ * longer FAILED, the service is down, or the file is gone. There is no cap: after the 20th try they slow down to every 5 minutes
+ * ([StartRetry.decide]). The status of the role says what it is waiting for.
  * @param attempt starts the model again; returns why it was refused again, or null when it went ahead (loading, ready or failed for another reason)
  * @param wait the sleep between tries (injected so tests can interleave a stop with it)
  */
@@ -69,10 +71,6 @@ internal suspend fun StatusBoard.retryRefusedStart(
     while (true) {
         when (val d = StartRetry.decide(refusal, byOwner, tries)) {
             StartRetry.Decision.NoRetry -> return
-            is StartRetry.Decision.GiveUp -> {
-                setIfCurrent(role, epoch) { it.copy(reason = d.text, notice = null) }
-                return
-            }
             is StartRetry.Decision.Retry -> {
                 if (statusOf(role).state != ServerState.FAILED) return
                 if (!setIfCurrent(role, epoch) { it.copy(reason = d.text, notice = null) }) return

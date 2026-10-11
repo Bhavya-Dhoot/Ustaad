@@ -38,19 +38,22 @@ class StartRetryTest {
         assertEquals(StartRetry.Decision.NoRetry, StartRetry.decide(memory, byOwner = true, triesSoFar = 0))
     }
 
-    @Test fun itGivesUpAfterTwentyTriesAndTellsTheOwnerToTapLoad() {
-        assertTrue(StartRetry.decide(StartRefusal.Hot, false, StartRetry.MAX_TRIES - 1) is StartRetry.Decision.Retry)
-        val last = StartRetry.decide(StartRefusal.Hot, false, StartRetry.MAX_TRIES) as StartRetry.Decision.GiveUp
-        assertEquals("Not loaded after 10 minutes of trying: the phone is too hot. Tap Load to try again.", last.text)
-        val mem = StartRetry.decide(memory, false, StartRetry.MAX_TRIES) as StartRetry.Decision.GiveUp
-        assertEquals("Not loaded after 10 minutes of trying: not enough free memory (needs 4.8 GB, 3.1 GB free). Tap Load to try again.", mem.text)
-        assertEquals("twenty tries, 30 s apart", 10 * 60_000L, StartRetry.MAX_TRIES * StartRetry.INTERVAL_MS)
+    @Test fun afterTwentyTriesItSlowsToEveryFiveMinutesAndNeverGivesUp() {
+        assertEquals(StartRetry.Decision.Retry(30_000, "Not loaded: the phone is too hot. Ustaad tries again every 30 seconds."), StartRetry.decide(StartRefusal.Hot, false, StartRetry.FAST_TRIES - 1))
+        val slowHot = StartRetry.Decision.Retry(5 * 60_000, "Not loaded: the phone is too hot. Ustaad tries again every 5 minutes.")
+        val slowMemory = StartRetry.Decision.Retry(5 * 60_000, "Not loaded: not enough free memory (needs 4.8 GB, 3.1 GB free). Ustaad tries again every 5 minutes.")
+        for (tries in listOf(StartRetry.FAST_TRIES, StartRetry.FAST_TRIES + 1, 100, 100_000)) {
+            assertEquals("try ${tries + 1}", slowHot, StartRetry.decide(StartRefusal.Hot, false, tries))
+            assertEquals(slowMemory, StartRetry.decide(memory, false, tries))
+        }
+        assertEquals("twenty fast tries, 30 s apart: ten minutes", 10 * 60_000L, StartRetry.FAST_TRIES * StartRetry.INTERVAL_MS)
+        assertEquals("an owner's load is still never retried, late or not", StartRetry.Decision.NoRetry, StartRetry.decide(StartRefusal.Hot, true, 500))
     }
 
     @Test fun theTextsArePlainEnglishWithoutDashesOrJargon() {
         val all = listOf(StartRefusal.Hot, memory).flatMap { r ->
-            listOf(StartRetry.decide(r, false, 0), StartRetry.decide(r, false, StartRetry.MAX_TRIES)).map {
-                when (it) { is StartRetry.Decision.Retry -> it.text; is StartRetry.Decision.GiveUp -> it.text; else -> "" }
+            listOf(StartRetry.decide(r, false, 0), StartRetry.decide(r, false, StartRetry.FAST_TRIES)).map {
+                (it as StartRetry.Decision.Retry).text
             }
         } + StartRetry.fileGone("a.gguf")
         for (t in all) {
@@ -113,15 +116,52 @@ class StartRetryTest {
         assertEquals(ServerState.STARTING, b.statusOf(role).state)
     }
 
-    @Test fun itGivesUpAfterTwentyTriesWithAFinalMessageThatTellsTheOwnerToTapLoad() {
+    @Test fun afterTheTwentyFastTriesItKeepsTryingEveryFiveMinutesAndSaysSoUntilItWorks() {
         val (b, epoch) = refusedBoard()
         val h = Harness()
-        b.runLoop(epoch, h) { StartRefusal.Hot }
-        assertEquals(StartRetry.MAX_TRIES, h.attempts)
-        assertEquals(StartRetry.MAX_TRIES, h.waits.size)
-        val st = b.statusOf(role)
-        assertEquals(ServerState.FAILED, st.state)
-        assertEquals("Not loaded after 10 minutes of trying: the phone is too hot. Tap Load to try again.", st.reason)
+        val seen = mutableListOf<String?>()
+        // the phone cools down after the 25th try (the 10 minutes of 30 s tries are long over)
+        b.runLoop(epoch, h, wait = { h.waits += it; seen += b.statusOf(role).reason }) { if (h.attempts < 25) StartRefusal.Hot else null }
+        assertEquals(25, h.attempts)
+        assertEquals("twenty waits of 30 s, then five of 5 minutes", List(20) { 30_000L } + List(5) { 300_000L }, h.waits)
+        assertEquals("Not loaded: the phone is too hot. Ustaad tries again every 30 seconds.", seen[19])
+        assertEquals("Not loaded: the phone is too hot. Ustaad tries again every 5 minutes.", seen[20])
+        assertEquals("and it stays FAILED, not given up, until a start goes ahead", ServerState.FAILED, b.statusOf(role).state)
+        assertTrue(b.statusOf(role).reason!!.endsWith("every 5 minutes."))
+    }
+
+    /** The loop in its slow phase (the 21st wait, 5 minutes): [change] happens during that wait and must end the loop before the 21st try. */
+    private fun endsInTheSlowPhase(change: (StatusBoard, Int, Harness) -> Unit): Pair<Harness, StatusBoard> {
+        val (b, epoch) = refusedBoard()
+        val h = Harness()
+        b.runLoop(epoch, h, wait = { h.waits += it; if (h.waits.size == 21) change(b, epoch, h) }) { StartRefusal.Hot }
+        assertEquals("the 21st wait is the first slow one", 300_000L, h.waits.last())
+        assertEquals(21, h.waits.size)
+        assertEquals("twenty tries were made, the 21st was not", 20, h.attempts)
+        return h to b
+    }
+
+    @Test fun theOwnersStopEndsTheLoopInTheSlowPhase() {
+        val (_, b) = endsInTheSlowPhase { b, _, _ -> b.stop(role) { null } }
+        assertEquals(ServerState.STOPPED, b.statusOf(role).state)
+    }
+
+    @Test fun aNewLoadByTheOwnerEndsTheLoopInTheSlowPhase() {
+        endsInTheSlowPhase { b, _, _ -> b.newEpoch(role) }
+    }
+
+    @Test fun theServiceStoppingEndsTheLoopInTheSlowPhase() {
+        endsInTheSlowPhase { _, _, h -> h.serviceUp = false }
+    }
+
+    @Test fun theFileGoingEndsTheLoopInTheSlowPhaseAndTheStatusSaysSo() {
+        val (_, b) = endsInTheSlowPhase { _, _, h -> h.fileExists = false }
+        assertEquals(StartRetry.fileGone("Qwen3.5-4B-Q4_K_M.gguf"), b.statusOf(role).reason)
+    }
+
+    @Test fun theRoleLeavingFailedEndsTheLoopInTheSlowPhase() {
+        val (_, b) = endsInTheSlowPhase { b, epoch, _ -> b.setIfCurrent(role, epoch) { it.copy(state = ServerState.READY, reason = null) } }
+        assertEquals(ServerState.READY, b.statusOf(role).state)
     }
 
     @Test fun theNumbersInTheMessageFollowTheLatestRefusal() {
