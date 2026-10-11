@@ -12,7 +12,6 @@ import com.swarmos.app.link.PeerLinks
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.LlmClient
 import com.swarmos.app.llm.ModelStore
-import com.swarmos.app.llm.ModelsModule
 import com.swarmos.app.llm.ModelsStateDto
 import com.swarmos.app.llm.Role
 import com.swarmos.app.llm.ServerState
@@ -192,7 +191,7 @@ object AndroidSplitEnv : SplitEnv {
     override fun stopLocal(role: Role) = LlamaRuntime.stop(role)
 
     override fun restoreLocal(role: Role, file: String) {
-        if (ModelStore.fileOf(file).isFile) ModelsModule.loadModelAsync(role, file, automatic = true)
+        if (ModelStore.fileOf(file).isFile) LlamaRuntime.restoreAsync(role, ModelStore.fileOf(file).absolutePath) // the next split sees the role as running
     }
 
     override fun startChat(path: String, args: List<String>, readyTimeoutMs: Long) =

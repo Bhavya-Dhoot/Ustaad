@@ -82,6 +82,9 @@ object LlamaRuntime {
     private const val GPU_READY_TIMEOUT_MS = 120_000L
     private const val LOG_FILE_CAP = 8L * 1024 * 1024
 
+    /** How long [restoreAsync] waits for a restored role to show as starting (the port check and the lock come first; normally milliseconds). */
+    private const val RESTORE_VISIBLE_MS = 2_000L
+
     /** How long to wait for a killed orphan to vanish from /proc before its port is checked. */
     private const val ORPHAN_WAIT_MS = 5_000L
 
@@ -381,6 +384,18 @@ object LlamaRuntime {
         val epoch = board.newEpoch(role)
         val cfg = StartConfig(modelPath, extraArgs, port, env, readyTimeoutMs = readyTimeoutMs, automatic = automatic)
         return scope.async { startInternal(role, cfg, epoch, auto = false) }
+    }
+
+    /**
+     * The app puts a model back by itself (MemoryCloud giving a phone its models back): an [automatic] start whose epoch is taken here, not in a
+     * queued coroutine, so a stop of the role by a loan that begins next supersedes it. Blocks, at most [RESTORE_VISIBLE_MS], until the role no
+     * longer reads STOPPED, so that loan sees the role as running and stops it, and the load does not arrive beside it. Call off the main thread.
+     */
+    fun restoreAsync(role: Role, modelPath: String): Deferred<ServerStatus> {
+        val started = startAsync(role, modelPath, automatic = true)
+        val end = System.currentTimeMillis() + RESTORE_VISIBLE_MS
+        while (statusOf(role).state == ServerState.STOPPED && System.currentTimeMillis() < end) Thread.sleep(20)
+        return started
     }
 
     /** Result of launching one server process: [retry] is true when the process failed for a reason worth trying the next backend for. */

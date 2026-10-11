@@ -5,7 +5,6 @@ import com.swarmos.app.AppGraph
 import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.ModelStore
-import com.swarmos.app.llm.ModelsModule
 import com.swarmos.app.llm.ProcInfo
 import com.swarmos.app.llm.Role
 import com.swarmos.app.llm.ServerState
@@ -71,7 +70,7 @@ object AndroidLenderEnv : LenderEnv {
     override fun modelFileExists(file: String) = ModelStore.fileOf(file).isFile
 
     override fun restoreLocal(role: Role, file: String) {
-        ModelsModule.loadModelAsync(role, file, automatic = true)
+        LlamaRuntime.restoreAsync(role, ModelStore.fileOf(file).absolutePath) // the start's epoch exists before the lender lets a new loan in
     }
 
     override fun ownModels(): List<RestoreItem> = listOf(Role.CHAT, Role.EMBED).mapNotNull { r ->
