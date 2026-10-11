@@ -53,6 +53,17 @@ internal object SelfRecovery {
     fun shouldWatch(gpuWanted: Boolean, chat: ServerStatus, gpuFailureRemembered: Boolean, retryUsed: Boolean): Boolean =
         gpuWanted && gpuFailureRemembered && !retryUsed && chat.state == ServerState.READY && chat.backend == Backend.CPU
 
+    /**
+     * How long the phone has had no real model work: the scheduler's figure ([schedIdleMs]), but 0 while a benchmark or a self-test runs
+     * ([maintenanceRunning]) and counted from the last moment one was seen ([lastMaintenanceSeenMs], null when never) after it. Those runs use
+     * the raw client, so the scheduler does not see them, and stopping the CPU server in the middle of one would spoil it.
+     */
+    fun quietMs(schedIdleMs: Long, maintenanceRunning: Boolean, lastMaintenanceSeenMs: Long?, nowMs: Long): Long = when {
+        maintenanceRunning -> 0L
+        lastMaintenanceSeenMs == null -> schedIdleMs
+        else -> minOf(schedIdleMs, (nowMs - lastMaintenanceSeenMs).coerceAtLeast(0L))
+    }
+
     /** [chat] is the chat status now; [epochCurrent] false when a stop, a load or the like moved the epoch the CPU server was started under. */
     fun gpuWatch(epochCurrent: Boolean, chat: ServerStatus, nowMs: Long, o: Outside): Watch {
         val onCpuFallback = chat.state == ServerState.READY && chat.backend == Backend.CPU

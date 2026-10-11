@@ -77,6 +77,26 @@ class SelfRecoveryTest {
         assertEquals(SelfRecovery.Watch.End, watch(chat = cpuChat(state = ServerState.STOPPED, backend = null)))
     }
 
+    // ---- the GPU try: a benchmark or a self-test is real model work too ----
+
+    @Test fun aRunningBenchmarkOrSelfTestMakesThePhoneBusyWhateverTheSchedulerSays() {
+        // the scheduler has seen nothing for an hour, but the benchmark uses the raw client
+        val busy = SelfRecovery.quietMs(schedIdleMs = 60 * min, maintenanceRunning = true, lastMaintenanceSeenMs = 5 * min, nowMs = 10 * min)
+        assertEquals(0L, busy)
+        assertEquals(SelfRecovery.Watch.Wait, watch(o = SelfRecovery.Outside(realIdleMs = busy)))
+    }
+
+    @Test fun aMinuteOfQuietIsCountedFromTheEndOfTheRunNotFromTheSchedulersLastJob() {
+        assertEquals("seen 20 s ago", 20_000L, SelfRecovery.quietMs(60 * min, false, lastMaintenanceSeenMs = 10 * min - 20_000, nowMs = 10 * min))
+        assertEquals(SelfRecovery.Watch.Wait, watch(o = SelfRecovery.Outside(realIdleMs = SelfRecovery.quietMs(60 * min, false, 10 * min - 20_000, 10 * min))))
+        assertEquals(SelfRecovery.Watch.Go, watch(o = SelfRecovery.Outside(realIdleMs = SelfRecovery.quietMs(60 * min, false, 10 * min - 60_000, 10 * min))))
+    }
+
+    @Test fun withNoRunSeenTheSchedulersFigureStands() {
+        assertEquals(45_000L, SelfRecovery.quietMs(45_000, false, null, 10 * min))
+        assertEquals("the scheduler's own recent work still counts", 5_000L, SelfRecovery.quietMs(5_000, false, 0L, 10 * min))
+    }
+
     // ---- the GPU try: who is watched ----
 
     @Test fun aCpuServerRestartedAfterADeathIsWatchedAgainThoughItCarriesNoFallbackNote() {

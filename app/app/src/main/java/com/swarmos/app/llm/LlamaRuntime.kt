@@ -487,13 +487,18 @@ object LlamaRuntime {
 
     private fun watchCpuFallback(cfg: StartConfig, epoch: Int) {
         gpuWatcher?.cancel()
+        var maintenanceSeenAtMs: Long? = null // the benchmark and the self-test use the raw client: the scheduler does not see them
         gpuWatcher = scope.launch {
             board.watchCpuFallback(
                 epoch,
                 outside = {
+                    val now = System.currentTimeMillis()
+                    val maintenance = Bench.running.value || Selftest.running.value
+                    if (maintenance) maintenanceSeenAtMs = now
                     SelfRecovery.Outside(
                         serviceUp = serviceUp, gpuAllowed = ModelStore.useGpu.value && ModelStore.gpuFailedStamp() != null, retryUsed = gpuRetriedEpoch == epoch,
-                        inFront = AppGraph.foreground.value, realIdleMs = Sched.node.chatExec.realIdleMs(),
+                        inFront = AppGraph.foreground.value,
+                        realIdleMs = SelfRecovery.quietMs(Sched.node.chatExec.realIdleMs(), maintenance, maintenanceSeenAtMs, now),
                         heatAllows = ThermalGate.decide(Bench.thermalStatusNow(), WorkKind.MODEL_LOAD).allowed,
                     )
                 },
