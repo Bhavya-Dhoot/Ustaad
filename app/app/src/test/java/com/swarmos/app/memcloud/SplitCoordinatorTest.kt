@@ -483,7 +483,7 @@ class SplitCoordinatorTest {
         assertNull(start("Phone B"))
         awaitState("READY") { it.phase == Phase.READY }
         env.chatMode = FakeEnv.Chat.FAIL
-        assertNull(c.baseline(5))
+        awaitCall("the baseline is accepted") { c.baseline(5) == null } // the load job may take a moment to finish after READY
         val s = awaitState("baseline result") { it.phase == Phase.IDLE && it.baseline?.running == false }
         assertEquals("FAILED", s.baseline!!.outcome)
         awaitCall("peer released") { env.count("rpcStop 10.0.0.2:8787") >= 1 }
@@ -953,7 +953,7 @@ class SplitCoordinatorTest {
         degradeByLosingC()
         awaitState("released") { it.released }
         awaitCall("the release is over") { env.local[Role.CHAT]!!.state == ServerState.READY }
-        assertNull(c.baseline(5))
+        awaitCall("the baseline is accepted") { c.baseline(5) == null } // the release job is still finishing for a moment
         assertFalse("the phone is used by the baseline now", c.state.value.released)
         val s = awaitState("baseline result") { it.phase == Phase.IDLE && it.baseline?.running == false }
         assertFalse(s.released)
@@ -1044,7 +1044,7 @@ class SplitCoordinatorTest {
         awaitState("READY") { it.phase == Phase.READY }
         val gate = CompletableDeferred<Unit>()
         env.stopGate = gate // releasing Phone B takes a while
-        assertNull(c.baseline(5))
+        awaitCall("the baseline is accepted") { c.baseline(5) == null } // the load job may take a moment to finish after READY
         awaitCall("the release is out") { env.stopParked.isNotEmpty() }
         val second = c.baseline(5)
         assertTrue("$second", second != null && second.startsWith("busy: BASELINE"))
@@ -1054,6 +1054,31 @@ class SplitCoordinatorTest {
         assertEquals(1, env.count("rpcStop 10.0.0.2:8787"))
         awaitCall("the next one is accepted") { c.baseline(5) == null }
         awaitCall("and it runs") { env.calls.count { it.startsWith("startChat -ngl 0") } == 2 }
+    }
+
+    @Test fun aBaselineIsRefusedWhileTheCleanupOfAFailedSplitIsStillRunning() {
+        val gate = CompletableDeferred<Unit>()
+        env.stopGate = gate // the lender is slow to answer /rpc/stop, so the clean-up after the failure is still running
+        env.chatMode = FakeEnv.Chat.FAIL
+        assertNull(start("Phone B"))
+        awaitState("FAILED") { it.phase == Phase.FAILED }
+        awaitCall("the clean-up is out") { env.stopParked.isNotEmpty() }
+        val refused = c.baseline(5)
+        assertTrue("$refused", refused != null && refused.startsWith("busy: FAILED"))
+        assertEquals("nothing of the baseline started", 0, env.calls.count { it.startsWith("startChat -ngl 0") })
+        gate.complete(Unit)
+        awaitCall("accepted once the clean-up is over") { c.baseline(5) == null }
+    }
+
+    @Test fun aBaselineIsRefusedWhileTheDelayedReleaseOfADegradedSplitIsStillRunning() {
+        degradeByLosingC()
+        val gate = CompletableDeferred<Unit>()
+        env.stopGate = gate // the automatic release starts after degradedRestoreMs and waits for the lender
+        awaitCall("the release is out") { env.stopParked.isNotEmpty() }
+        val refused = c.baseline(5)
+        assertTrue("$refused", refused != null && refused.startsWith("busy: DEGRADED"))
+        gate.complete(Unit)
+        awaitCall("accepted once the release is over") { c.baseline(5) == null }
     }
 
     // ---------- a stop that could not be confirmed carries the loan's token, so a late retry cannot end a newer loan ----------

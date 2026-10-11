@@ -1009,7 +1009,9 @@ class SplitCoordinator(
     fun baseline(timeoutSec: Int = 120, file: String? = null): String? = synchronized(lock) {
         val st = _state.value
         val file = file?.let { n -> env.modelFile(n)?.name ?: return "no such model file in the models folder: $n" } ?: st.file ?: return "choose a model first"
-        if (opJob?.isActive == true && st.phase != Phase.READY && st.phase != Phase.DEGRADED && st.phase != Phase.FAILED) return "busy: ${st.phase.name}"
+        // Any operation still running refuses it, whatever the phase says: the clean-up of a FAILED split and the delayed release of a DEGRADED one
+        // are operations too, and a baseline started over them would have its own models restored over it when they finish.
+        if (opJob?.isActive == true) return "busy: ${st.phase.name}"
         // The phase is taken here, before the job suspends to release the workers: a second call (a double tap) then finds BASELINE
         // with a running job and is refused, instead of replacing the job and running two baselines.
         _state.update { it.copy(phase = Phase.BASELINE, released = false, file = file, baseline = BaselineView(true, "LOADING", "Releasing the other phones first", 0), updatedAtMs = env.nowMs()) }
