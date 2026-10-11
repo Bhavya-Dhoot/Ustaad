@@ -69,7 +69,7 @@ Checked and found sound by this reviewer: the Hammer and Keep busy switches are 
 | S6 | llm/ModelStore.kt:239, ModelsUi.kt, memcloud/RpcWorker.kt:150 | A model whose load failed is treated as in use: it cannot be deleted and the list offers neither Load nor Delete for it until the server card's Stop is used. The same class again: FAILED tested as "not STOPPED". | Fix now. |
 | S7 | link/LinkRoute.kt, link/LinkRuntime.kt `adopt` | The pairing message added on 2026-10-10 says "Will keep trying", and the retries end after ten minutes. Separately, a pairing with a host that never answers has already replaced the old secret, and nothing puts it back. | Wording fixed now. Restoring the old secret is written down: what a failed pairing should leave behind is the founder's decision. |
 | S8 | memcloud/SplitCoordinator.kt restore retry | The retry that gives a peer its models back never gives up: a model file deleted on the peer, or a peer that left for good, keeps it running every five seconds, also after a restart. | Written down. Second round: fixed (below). |
-| S9 | llm/StatusBoard.kt, RestartPolicy.kt | Two deaths of the GPU model server inside two minutes switch the phone to the CPU build for good, whatever killed it, the vendor system included. A note is shown and the GPU switch brings it back. | Written down; check the backend of every phone before the demo (all three are on the GPU as of 00:31). |
+| S9 | llm/StatusBoard.kt, RestartPolicy.kt | Two deaths of the GPU model server inside two minutes switch the phone to the CPU build for good, whatever killed it, the vendor system included. A note is shown and the GPU switch brings it back. | Written down; check the backend of every phone before the demo (all three are on the GPU as of 00:31). Third round: the GPU is tried again once by itself (below). |
 | S10 | sched/SwarmLlm.kt:466 | The one resend to a phone that missed a ping uses an abort signal that has already fired, so the job moves to another phone for nothing. Heals at the next probe. | Written down. Second round: fixed (below). |
 | S11 | memcloud/RpcWorker.kt:104, RpcLender.kt:118 | A narrow race can leave a loan's lease without its timer; the list of models to restore is kept in memory only, so a lender whose process dies gets its default models back and not a non-default one. | Written down. |
 | S12 | link/LinkRuntime.kt:156 | The link is marked started before its ten start steps; an exception in the middle leaves it half up until it is stopped. No thrower shown. | Written down. |
@@ -95,7 +95,7 @@ Raw output: `2026-10-11-codex-audit.txt` (8 high, 18 medium, 1 low). Of the 23 f
 | C13 | AppGraph.kt:100, choir/ChoirRuntime.kt:73 | Choir and the split use the gated model client without the guard that refuses the placeholder model. If the chat model is stopped while a Choir voice waits for its slot, that voice can answer "[FAKE] No chat model is loaded on this phone." The text is labelled; it would count as one voice's answer. | Written down: do not stop a model during a Choir run. |
 | C14 | busy/BusyLoop.kt:143 | Switching Hammer off, the phone getting too hot, the battery falling or the app going to the background do not stop a filler job that is already running; they take effect at the next job. A job is a few seconds, and at most 60 s after R2. | Written down. |
 | C15 | busy/BusyApp.kt:76 | Claim about the bundled model server: filler jobs sent with the prompt cache off may still push real conversations' cached prompts out of the server's cache, and a real request may be given the slot meant for filler. Read from native code Codex says it mostly did not examine. | Measured on Phone A and not borne out for one conversation: 0.33 to 0.35 s for the repeated prompt after 18 filler jobs (see the last section). |
-| C16 | llm/LlamaRuntime.kt:711 | A model server death during filler uses up the one automatic restart; a second death within two minutes, during real work, leaves the phone without a chat model until the owner loads it. | Written down with R8. Still written down: the second round retries a refused start, not a second death. |
+| C16 | llm/LlamaRuntime.kt:711 | A model server death during filler uses up the one automatic restart; a second death within two minutes, during real work, leaves the phone without a chat model until the owner loads it. | Written down with R8. Still written down: the second round retries a refused start, not a second death. Third round: fixed, the model is started again three times, five minutes apart (below). |
 | C17 | memcloud/MemCloudLogic.kt:137 | DEGRADED after its own release still counts as in use (S1), found independently. | Fix now (S1). |
 | C18 | sched/SwarmLlm.kt:441 | Says the overall deadline of a job is not enforced across phones, each attempt getting a fresh budget. Reviewer 1 read the same function as ending at twice the budget. | Not settled; written down as a disagreement between two readers. |
 | C19, C20 | sched/BatchRunner.kt:224, :264 | A batch accepted and the coordinator killed before the first report is written answers "not found" instead of "interrupted"; two workers can write the report file at the same time. | Written down. Second round: both fixed (below). |
@@ -183,25 +183,46 @@ Fourth pass, on that build, phones A and B, 03:19 to 04:08 (same file, fourth se
 - Not seen on a phone, because the condition was not produced: the pause for low memory (R13), a refused start being retried (R8, C10), the back-off of the restore retry (S8), the 409 reading (F2), the resend signal (S10) and the wording for failed jobs (R12). Unit tests hold them.
 - The pass left one file on Phone A, `/sdcard/__ui.xml` (24 KB, a screen dump). It was not deleted.
 
+## Third round, and the fifth pass
+
+Third round, master 0734013, 1562 unit tests, 0 failures, installed on Phone A at 05:32:26, Phone B at 05:32:41 and Phone C at 05:48:30 (the founder released Phone C at about 05:45). It is about the two ways a phone could stay worse off until its owner noticed, which P1 had shown to be reachable with no fault at all (plans/2026-10-11-final-audit.md, step 9):
+
+| Finding | Change | Held by |
+|---|---|---|
+| S9, P1 on the CPU build for good | A chat model that runs on the CPU build after an automatic fallback tries the GPU again by itself, once per load: not sooner than 10 minutes after the CPU server became READY, only while Ustaad is in front, after 60 s without real model work and with no heat refusal. If the GPU works the note is gone. If it fails again the note says so and no further automatic try is made. A CPU server the owner chose is never touched. | `SelfRecoveryTest` (29 tests for this row and the next); the wiring in the runtime is not unit-testable and was checked on a phone |
+| C16 no model after the restarts ran out | A chat or embedding model left FAILED because its automatic restarts ran out is started again after 5 minutes, at most 3 times. The status says when. | Same test class; checked on a phone |
+| New, found by a unit test that failed on a loaded PC | A batch read `done` in memory a few milliseconds before its last report was on disk, and since the second round that report could also wait behind a write in progress. A kill in that window left a file that said `running`, so a restart answered `interrupted` for a batch that had finished. The last report is now written before the batch reads `done`. | `whenTheStatusSaysDoneTheFileSaysDoneEvenWithASlowWriter`; failed before |
+| Two unit tests that failed on a loaded PC | Both were the tests. The stream test let the local phone go after 400 ms, before the other phones' status reports were in: 30 of 30 runs failed under load, 30 of 30 pass now. The batch restart test waited for a file that exists from the start since the second round. Traces: docs/benchmarks/raw/final-audit/stream-test-flake/ and batch-restart-flake/. | 30 runs each under the same load, 0 failures |
+
+Fifth pass, on that build, 05:33 to 06:57 (docs/benchmarks/2026-10-11-final-regression.md, fifth section). Phone B went back to the founder at about 05:55, so the two-phone checks of this pass ran with phones A and C:
+- The GPU came back by itself. Two kills put Phone A on the CPU build at 05:57:04. With no real work and Ustaad in front, the chat model went to STARTING at 06:07:06, 601.6 s after the CPU server was READY, and was READY on the GPU 18.6 s later with the note gone. Keep busy ran filler on the CPU build meanwhile (0 to 79 jobs, 0 failed) and again after the switch.
+- One try only. Forced onto the CPU build again, the phone made no second try in 13.0 minutes (139 reads).
+- The revival. Three kills left the chat model FAILED at 06:28:36 with "Ustaad starts it again at 06:33 (try 1 of 3)". It was started 299 s later and READY at 06:33:39, on the CPU build.
+- A refused start being retried (R8, C10), seen for the first time, and too short (P2). Phone A was at Thermal Status 4 when the app started at 05:32 (skin 48 C, battery 47.3 C at 05:39). The heat gate refused both models 21 times in 10 minutes and the retry then gave up, as written. The phone was at status 1 by about 05:50 and stayed without a model until the tester loaded it by hand at 05:54. Being changed: after the 20 tries at 30 s the retry goes on every 5 minutes.
+- What heated Phone A to status 4 is not known (P3). No watch ran between 04:08 and 05:32, and the phone's log no longer holds that time. No run under Keep busy or Hammer had reached status 4 before.
+- Regression: fault injection 4 of 4 (the frozen server killed after 34.5 s), agent endpoint 14 of 14, `memcloud-check` with Phone A driving and Phone C lending 9 of 9, a batch from Phone C 32 of 32 at 21.21 tok/s (C 17 jobs, A 15) whose file read `done` 0.11 s after its status did, end to end 12 of 12.
+- That split took 223 s to be READY, against 32 to 36 s with Phone B lending in the passes before (P4). Not looked into. Phone C reported a Wi-Fi link speed of 117 Mbit/s at 05:49, against 390 and 433 on phones A and B.
+
 ## Tally and what is open
 
 | | Count |
 |---|---:|
-| Findings fixed, each read against the code first | 27 (18 in the first round, 9 in the second), plus the correction of the frozen-server watch and half of R12 |
-| Written down with a reason | 24 (23 of the first 32, and P1) |
+| Findings fixed, each read against the code first | 30 (18 in the first round, 9 in the second, 3 in the third), plus the correction of the frozen-server watch, half of R12 and the batch report gap |
+| Written down with a reason | 21 |
+| Open from the phone passes | 3: the retry cap (P2, being changed), Phone A at Thermal Status 4 with no known cause (P3), a slow split with Phone C lending (P4) |
 | Judged not a fault | 1 (C8) |
 | Measured on a phone and not borne out | 1 (C15) |
 | Claims reworded in docs/CLAIMS.md | 11 |
-| Unit tests | 1453 before, 1532 after, 0 failures |
-| Regression runs on phones | One on phones A and B before the fixes, two on Phone A after the first round, two on phones A and B (builds 02b15c2 and 17aad2d); none on Phone C |
+| Unit tests | 1453 before, 1562 after, 0 failures |
+| Regression runs on phones | One on phones A and B before the fixes, two on Phone A after the first round, two on phones A and B (builds 02b15c2 and 17aad2d), one on phones A, B and then C (build 0734013) |
 
 Open, in the order they matter for a demo:
-1. Phone C. It is in the founder's remote-control session since about 00:25, still carries f62da67 without any fix of this audit, and nothing was run on it.
-2. The 30B split on three phones has not been run since the memory check before a load was added on 2026-10-10. The MemoryCloud fixes ran on two phones with the 4B model only (third and fourth pass).
-3. Keep busy is paused on any phone where Ustaad is not in front, until the battery exemption is granted, and a phone started with its screen asleep fell back to the CPU build (P1). Only the founder can grant the exemption.
+1. Keep busy off screen. The battery exemption was not in effect on any phone at 05:50: Ustaad is not in the system's list (`dumpsys deviceidle whitelist`) and Settings on Phone C read "Runs only while Ustaad is on screen." Until it is, Keep busy pauses whenever Ustaad is not in front, and it has never been seen running off screen.
+2. The 30B split has not been run since the memory check before a load was added on 2026-10-10. The MemoryCloud fixes ran with the 4B model only. A run with the 30B model on phones C and A is the next pass.
+3. Three phones together. Phone B is in the founder's remote-control session until about 10:57, so three-phone throughput, Choir on three phones and the three-phone split are not run on this build.
 4. The batch checks across two phones (a peer dying, a peer joining, the coordinator killed) were last run on the build of 2026-10-10 evening: the permission layer of the session refused them for the tester. On this build only "Stop Ustaad" on the coordinator was run.
-5. The pauses and retries of the second round whose condition could not be produced on a phone (list above).
-6. The 24 findings written down, of which these three should be known before a pitch: in the debug build, which the phones run, another app can replace the pairing secret with no tap (C2); the text of the last file deleted from a shared folder stays searchable until the folder is unshared (C21); a model stopped during a Choir run can put a labelled placeholder line among the voices (C13).
-7. One unit test, `SchedStreamTest.aStreamThatBreaksAfterTokensIsNotRetriedOnAnotherPhone`, failed in some runs on a loaded PC and passes in full runs. No failure trace was kept, so its cause is not known.
+5. P2, P3 and P4 above.
+6. Not seen on a phone, because the condition was not produced: the pause for low memory (R13), the back-off of the restore retry (S8), the 409 reading (F2), the resend signal (S10), the wording for failed jobs (R12).
+7. The 21 findings written down, of which these three should be known before a pitch: in the debug build, which the phones run, another app can replace the pairing secret with no tap (C2); the text of the last file deleted from a shared folder stays searchable until the folder is unshared (C21); a model stopped during a Choir run can put a labelled placeholder line among the voices (C13).
 
 "Production grade" stays unproven (docs/CLAIMS.md HD9). What can be said is what this file lists: who read the code, what they found, what was fixed and how it is held, what was run on phones, and what was left.
