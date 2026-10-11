@@ -45,6 +45,14 @@ internal object SelfRecovery {
         data object Go : Watch
     }
 
+    /**
+     * Whether a watcher is armed after a chat start ended as [chat]: it runs on the CPU build while the GPU is wanted ([gpuWanted]: the switch is
+     * on, the GPU build is there, no split) and a GPU failure is remembered, and the one try of this epoch is not spent. Judged from what is
+     * true, not from the fallback note: a CPU server restarted after a death carries no note, and must be watched all the same.
+     */
+    fun shouldWatch(gpuWanted: Boolean, chat: ServerStatus, gpuFailureRemembered: Boolean, retryUsed: Boolean): Boolean =
+        gpuWanted && gpuFailureRemembered && !retryUsed && chat.state == ServerState.READY && chat.backend == Backend.CPU
+
     /** [chat] is the chat status now; [epochCurrent] false when a stop, a load or the like moved the epoch the CPU server was started under. */
     fun gpuWatch(epochCurrent: Boolean, chat: ServerStatus, nowMs: Long, o: Outside): Watch {
         val onCpuFallback = chat.state == ServerState.READY && chat.backend == Backend.CPU

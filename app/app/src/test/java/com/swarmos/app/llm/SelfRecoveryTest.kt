@@ -77,6 +77,25 @@ class SelfRecoveryTest {
         assertEquals(SelfRecovery.Watch.End, watch(chat = cpuChat(state = ServerState.STOPPED, backend = null)))
     }
 
+    // ---- the GPU try: who is watched ----
+
+    @Test fun aCpuServerRestartedAfterADeathIsWatchedAgainThoughItCarriesNoFallbackNote() {
+        val restarted = cpuChat().copy(notice = null) // the restart after a death clears the note and keeps the server on the CPU
+        assertTrue(SelfRecovery.shouldWatch(gpuWanted = true, chat = restarted, gpuFailureRemembered = true, retryUsed = false))
+        assertTrue(SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(), gpuFailureRemembered = true, retryUsed = false))
+    }
+
+    @Test fun noWatcherForACpuServerTheOwnerChoseOrWhenNoGpuFailureIsRemembered() {
+        assertFalse("GPU switch off, no GPU build, or a split", SelfRecovery.shouldWatch(gpuWanted = false, chat = cpuChat(), gpuFailureRemembered = true, retryUsed = false))
+        assertFalse("the owner cleared the failure with the switch", SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(), gpuFailureRemembered = false, retryUsed = false))
+    }
+
+    @Test fun noWatcherOnceTheOneTryOfThisEpochIsSpentOrWhenChatIsNotReadyOnTheCpu() {
+        assertFalse(SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(), gpuFailureRemembered = true, retryUsed = true))
+        assertFalse(SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(backend = Backend.GPU), gpuFailureRemembered = true, retryUsed = false))
+        assertFalse(SelfRecovery.shouldWatch(gpuWanted = true, chat = cpuChat(state = ServerState.FAILED), gpuFailureRemembered = true, retryUsed = false))
+    }
+
     // ---- the GPU try: the loop ----
 
     private class Clock {

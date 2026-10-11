@@ -474,8 +474,9 @@ object LlamaRuntime {
         // remember a GPU failure only once the CPU build has served the same model: a broken model file fails on both and says nothing about the GPU
         if (gpuFailed && last.state == ServerState.READY && last.backend == Backend.CPU) ModelStore.markGpuFailed()
         if (cfg.gpuRetry && last.state == ServerState.READY && last.backend == Backend.GPU) ModelStore.clearGpuFailed() // the GPU works again
-        // a chat server on the CPU build because the GPU failed (now, in an earlier start, or after dying twice) gets one more GPU try when the phone is quiet
-        if (role == Role.CHAT && gpuWanted && !cfg.gpuRetry && fallbackNote != null && last.state == ServerState.READY && last.backend == Backend.CPU) watchCpuFallback(cfg, epoch)
+        // a chat server on the CPU build because the GPU failed (now, in an earlier start, after dying twice, or restarted after a death on the CPU)
+        // gets one more GPU try when the phone is quiet
+        if (role == Role.CHAT && SelfRecovery.shouldWatch(gpuWanted, last, ModelStore.gpuFailedStamp() != null, gpuRetriedEpoch == epoch)) watchCpuFallback(cfg, epoch)
         last
     }
 
