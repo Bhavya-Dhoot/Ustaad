@@ -529,3 +529,15 @@ One two-phone batch as a check that nothing else moved, started from Phone C at 
 
 A read-only watch of both phones (`scripts/throttle-watch.py`, one sample every 10 s, 220 minutes from 07:14) writes to `raw/final-audit/watch-AC/A.jsonl` and `C.jsonl`. It was started because Phone A was found at Thermal Status 4 at 05:32 with nothing recording the time before it.
 
+Result of the watch, 07:14:16 to 10:53 (it ended when the founder opened remote-control sessions on the phones at about 10:53; computed from `watch-AC/A.jsonl` and `C.jsonl`, 1276 and 1275 samples, one every 10 s):
+
+| | Phone A | Phone C |
+|---|---|---|
+| Filler jobs | 0 to 3002, 0 failed | 0 to 2843, 0 failed |
+| Time generating | 8072 s of 13152 s, 61 % | 7565 s of 13142 s, 58 % |
+| Keep busy state, samples | running 391, half_duty 785, paused_hot 77, waiting_for_idle 13, paused_model_restarted 8, paused_background 1 | running 216, half_duty 1034, waiting_for_idle 11, paused_model_restarted 9, paused_background 4 |
+| Thermal Status, samples | 1: 105, 2: 1100, 3: 71, never 4 | 1: 237, 2: 1038, never 3 |
+| Highest skin and battery temperature | 45.0 C and 42.8 C | 42.7 C and 40.1 C |
+
+Both phones were charging at 100 % with Ustaad on screen, and the batch above ran inside this time. Phone A reached Thermal Status 3 under normal Keep busy (no Hammer); the loop paused each time and carried on by itself. Status 4, at which Phone A had been found at 05:32, did not come back, so its cause stays unknown.
+

@@ -39,6 +39,8 @@ A filler job that has not finished after 60 s is cancelled and counted as failed
 | 16 minutes, same | C | 84 % (796 of 952 s) | 0 | same |
 | 45 minutes, Thermal Status 2 for 41.5 and 35.0 minutes | B, C | 49.0 % and 57.8 % | 0 | docs/benchmarks/2026-10-10-evening-checks.md section 2 |
 | Two hours, app on screen | B, C | about half | 0 | same file, section 9 |
+| 3 hours 39 minutes, charging, app on screen, final build | A | 61 % (8072 of 13152 s), 3002 jobs | 0 | docs/benchmarks/2026-10-11-final-regression.md, last section |
+| Same watch | C | 58 % (7565 of 13142 s), 2843 jobs | 0 | same |
 
 In the 16-minute run it generated 99.5 % of the time at Thermal Status 0 or 1 and about half (49 to 51 %) at 2. So over a long run the share is about half. The time a real request spent outside the model was 0.07 to 0.59 s with filler running (6 requests, final build) against 0.04 to 0.13 s with the mode off, and 9 of 9 real requests were answered. With the screen off a phone does nothing: Phone C ran no filler and answered no other phone for 61 minutes until it was woken, and then resumed by itself.
 
@@ -87,7 +89,7 @@ Usage over speed. A duty rule that reads the step was tried and not merged. Phon
 ## What is not measured
 
 - Battery use. The battery exemption was never granted on a phone, so whether Keep busy survives with the screen off is unknown.
-- Hammer for longer than 25 minutes, on battery, or on a phone that is not charging at 100 %. Thermal Status 4 under Keep busy or Hammer (it was not reached). The Hammer buttons on Phone C and with a finger.
+- Hammer for longer than 25 minutes, on battery, or on a phone that is not charging at 100 %. Thermal Status 4 under Keep busy or Hammer: no run that was watched reached it. Phone A was found at status 4 once, at 05:32 on 2026-10-11, with nothing recording the time before; in the 3 hour 39 minute watch after it, Phone A was at status 3 in 71 of 1276 samples (Keep busy paused each time and carried on by itself) and never at 4. The Hammer buttons on Phone C and with a finger.
 - How long a phone needs after Hammer to leave the slow step, and why an install resets it.
 - After a pause for heat the loop resumes at the first reading under status 3 with no settling time; with Hammer it could move back and forth on that edge (docs/review/2026-10-11-final-audit.md, R11). The pause under 1024 MB of free memory (rule 7) is held by unit tests only.
 - A benchmark started while a filler job runs can overlap it for up to a quarter of a second. Switch Keep busy off before a benchmark whose figure will be quoted, and before a timed demo run.
