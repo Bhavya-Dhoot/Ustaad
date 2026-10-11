@@ -1293,7 +1293,12 @@ class AgentServerTest {
         assertTrue(r.body.contains("\"tool_calls\""))
     }
 
-    private fun repairsOf(): Int = audit.last { it.first == "agent.chat" }.second.getValue("repairs").jsonPrimitive.int
+    private fun repairsOf(): Int {
+        // a stream's audit entry is written after its body was sent, so the client can be back before the entry is there
+        val end = System.currentTimeMillis() + 2_000
+        while (audit.none { it.first == "agent.chat" } && System.currentTimeMillis() < end) Thread.sleep(5)
+        return audit.last { it.first == "agent.chat" }.second.getValue("repairs").jsonPrimitive.int
+    }
 
     @Test fun aGoodCallIsNotAskedForAgain() {
         val llm = SequenceLlm(listOf(nativeCall))

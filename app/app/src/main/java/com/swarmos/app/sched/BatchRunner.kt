@@ -216,11 +216,12 @@ class BatchStore(
     fun start(requests: List<ChatRequest>, mode: String): String = begin(requests, mode, onlyIfIdle = false)!!
 
     /**
-     * [start] on an IO thread, for a caller on the main thread: the first report is written to disk before the batch begins, which
-     * must not hold up the screen. The id is not returned; the batch shows in [latest].
+     * [tryStart] on an IO thread, for a caller on the main thread: the first report is written to disk before the batch begins, which
+     * must not hold up the screen. The id is not returned; the batch shows in [latest]. Nothing starts while a batch runs, so a
+     * second tap that lands before the button is disabled does not start a second batch.
      */
     fun startInBackground(requests: List<ChatRequest>, mode: String) {
-        scope.launch(Dispatchers.IO) { start(requests, mode) }
+        scope.launch(Dispatchers.IO) { tryStart(requests, mode) }
     }
 
     /** Starts the batch unless one is running; null then. The check and the start are one step. */
