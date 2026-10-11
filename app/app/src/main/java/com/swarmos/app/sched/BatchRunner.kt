@@ -323,12 +323,16 @@ class BatchStore(
     internal fun persist(r: BatchReport, force: Boolean) {
         val d = dir() ?: return
         val mine = CompletableFuture<Unit>()
+        var dropped = false
         val busy = synchronized(lock) {
             val now = clock()
             if (!force && now - lastWriteMs < WRITE_EVERY_MS) return
             // a snapshot that arrives late (a slow worker, after a newer one was queued or even written) must not replace it
             val rank = rankOf(r)
-            if (rank < (newest[r.id] ?: -1L)) return
+            if (rank < (newest[r.id] ?: -1L)) {
+                dropped = true
+                return@synchronized writer   // the newer report may still be in the writer's hands
+            }
             newest[r.id] = rank
             lastWriteMs = now
             pending[r.id] = r
@@ -337,8 +341,8 @@ class BatchStore(
                 null
             }
         }
-        if (busy != null) {
-            if (force) busy.join()
+        if (dropped || busy != null) {
+            if (force) busy?.join()   // also a dropped forced report: it is not acknowledged before the newer one is on disk
             return
         }
         try {

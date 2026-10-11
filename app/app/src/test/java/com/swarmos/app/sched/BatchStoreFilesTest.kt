@@ -168,6 +168,43 @@ class BatchStoreFilesTest {
         assertEquals("a report that is further on still replaces it", 3, read(file).done)
     }
 
+    @Test fun aForcedReportThatIsDroppedStillWaitsForTheWriterThatCarriesTheNewerOne() = runBlocking {
+        val real = tempDir()
+        val armed = AtomicBoolean(true)
+        val blocked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val dir = object : File(real.path) {
+            override fun mkdirs(): Boolean {
+                if (armed.getAndSet(false)) {
+                    blocked.countDown()
+                    release.await()
+                }
+                return super.mkdirs()
+            }
+        }
+        val llm = swarm(phone("me"))
+        val store = BatchStore(scope, { llm }, { llm }, dir = { dir })
+        val returned = AtomicBoolean(false)
+        val writing = thread { store.persist(report(1, BatchStore.INTERRUPTED), force = true) }   // the writer, held in the write
+        try {
+            assertTrue(blocked.await(5, TimeUnit.SECONDS))
+            // the first report of a batch that was stopped meanwhile: behind the one being written, so it is dropped
+            val late = thread {
+                store.persist(report(1), force = true)
+                returned.set(true)
+            }
+            delay(400)
+            assertTrue("a dropped forced report returned while the newer one was still being written", !returned.get())
+            release.countDown()
+            late.join(5_000)
+            assertTrue(returned.get())
+        } finally {
+            release.countDown()
+        }
+        writing.join(5_000)
+        assertEquals(BatchStore.INTERRUPTED, read(File(real, "batch-b1.json")).state)
+    }
+
     @Test fun aReportThatSaysStoppedIsNotReplacedByARunningOneWithTheSameItems() {
         val dir = tempDir()
         val llm = swarm(phone("me"))
