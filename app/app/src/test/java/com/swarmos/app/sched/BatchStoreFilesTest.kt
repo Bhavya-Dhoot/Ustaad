@@ -212,6 +212,27 @@ class BatchStoreFilesTest {
         assertEquals(1, store.status(again)!!.value.done)
     }
 
+    @Test fun startInBackgroundDoesNotHoldUpTheCallerWhileTheFirstReportIsBeingWritten() = runBlocking {
+        val real = tempDir()
+        val entered = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val llm = swarm(phone("me"))
+        // a slow disk: every use of the folder waits for the gate
+        val store = BatchStore(scope, { llm }, { llm }, dir = {
+            entered.countDown()
+            gate.await()
+            real
+        })
+        val t0 = System.nanoTime()
+        store.startInBackground(listOf(req("a")), BatchStore.MODE_LOCAL)
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        assertTrue("the caller (the main thread) was held up for $ms ms", ms < 500)
+        assertTrue("the write is under way on another thread", entered.await(5, TimeUnit.SECONDS))
+        gate.countDown()
+        until { store.latest.value[BatchStore.MODE_LOCAL]?.state == "done" }
+        assertEquals(1, store.latest.value[BatchStore.MODE_LOCAL]!!.done)
+    }
+
     @Test fun stopAllEndsEveryBatchEvenWhenTheFirstIsSlowToWindUp() = runBlocking {
         val stuck = StuckPhone()
         val stuckSwarm = SwarmLlm({ listOf(stuck) }, scope, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100, msPerToken = 0)

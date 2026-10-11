@@ -6,6 +6,7 @@ import com.swarmos.app.llm.ChatRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -213,6 +214,14 @@ class BatchStore(
     fun isRunning(): Boolean = synchronized(lock) { flows.values.any { it.value.state == RUNNING } }
 
     fun start(requests: List<ChatRequest>, mode: String): String = begin(requests, mode, onlyIfIdle = false)!!
+
+    /**
+     * [start] on an IO thread, for a caller on the main thread: the first report is written to disk before the batch begins, which
+     * must not hold up the screen. The id is not returned; the batch shows in [latest].
+     */
+    fun startInBackground(requests: List<ChatRequest>, mode: String) {
+        scope.launch(Dispatchers.IO) { start(requests, mode) }
+    }
 
     /** Starts the batch unless one is running; null then. The check and the start are one step. */
     fun tryStart(requests: List<ChatRequest>, mode: String): String? = begin(requests, mode, onlyIfIdle = true)
