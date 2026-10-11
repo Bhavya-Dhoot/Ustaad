@@ -1,0 +1,2 @@
+thermal start 89: Thermal Status: 0
+thermal start 76: Thermal Status: 1

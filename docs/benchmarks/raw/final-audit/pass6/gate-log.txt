@@ -1,0 +1,12 @@
+05:54:27 pass6-after-manual-load | 89: chat_ready=0 embed_ready=0 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+05:54:39 pass6-after-manual-load | 89: chat_ready=0 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+05:54:50 pass6-after-manual-load | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+05:56:16 pass6-before-b | 89: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1 | 23: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=1
+06:10:39 pass6-before-c | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+06:24:52 pass6-before-d | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=2
+06:36:29 pass6-before-e-hardening | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+06:43:24 pass6-before-agent | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+06:48:40 pass6-before-memcloud | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+06:54:33 pass6-before-swarm | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+06:55:45 pass6-before-e2e2 | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0
+06:56:12 pass6-final | A: chat_ready=1 embed_ready=1 rpc_stopped=1 thermal=0

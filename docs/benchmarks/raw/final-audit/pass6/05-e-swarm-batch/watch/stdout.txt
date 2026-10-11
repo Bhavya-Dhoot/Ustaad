@@ -1,0 +1,4 @@
+06:54:45 files before: 16
+06:54:49 new file batch-b9c1a4f00403440d.json (id b9c1a4f00403440d) seen 4.1 s after the watcher started
+06:54:49 first read of the file: state=running done=0 total=32
+06:55:31 status done seen; file read 0.11 s later: state=done done=32 failed=0 total=32

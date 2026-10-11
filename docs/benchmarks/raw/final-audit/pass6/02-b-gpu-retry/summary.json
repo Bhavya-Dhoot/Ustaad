@@ -1,0 +1,21 @@
+{
+ "mode": "b",
+ "twoKillsSeconds": 32.1,
+ "cpuReadyClock": "05:57:04",
+ "cpuReadyBackend": "CPU",
+ "cpuReadyNotice": "The GPU server failed (killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer)). Running on the CPU build.",
+ "cpuReadyLoadMs": 5081,
+ "cpuReadyAt": 1791678424.466043,
+ "gpuReadyClock": "06:07:24",
+ "gpuReadyAfterCpuReadySeconds": 620.2,
+ "gpuReadyNotice": null,
+ "watchSecondsAfterCpuReady": 620.2,
+ "firstChange": [
+  "06:07:06",
+  601.6119766235352,
+  "STARTING",
+  "GPU"
+ ],
+ "notReadySecondsInSwitch": 18.553923845291138,
+ "result": "PASS"
+}

@@ -1,0 +1,11 @@
+{
+ "enabled": true,
+ "state": "no_model",
+ "jobsDone": 209,
+ "jobsCancelled": 0,
+ "jobsFailed": 1,
+ "tokens": 4758,
+ "secondsGenerating": 552.274,
+ "share60s": 0.148,
+ "hammer": false
+}

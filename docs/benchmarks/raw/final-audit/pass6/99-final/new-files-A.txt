@@ -1,0 +1,8 @@
+== A external files newer than 05:33
+run-as files:
+files/audit.jsonl
+files/datastore/swarm.preferences_pb
+files/profileInstalled
+files/logs/chat.log
+files/logs/embed.log
+files/pdu.db-shm

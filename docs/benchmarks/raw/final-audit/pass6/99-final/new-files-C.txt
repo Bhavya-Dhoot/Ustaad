@@ -1,0 +1,32 @@
+== C external files newer than 05:33
+run-as files:
+files/audit.jsonl
+files/profileInstalled
+files/logs/chat.log
+files/logs/embed.log
+files/logs/rpc.log
+files/llama-cache/rpc/11a91d5df7dba1b7
+files/llama-cache/rpc/cb0d212e8143f2f5
+files/llama-cache/rpc/2d685f437cb2788e
+files/llama-cache/rpc/fdfd17b353112f22
+files/llama-cache/rpc/b0d942998cca5074
+files/llama-cache/rpc/89f882fbfca4d02c
+files/llama-cache/rpc/806c4a5741446be7
+files/llama-cache/rpc/dd7226eb232fb7da
+files/llama-cache/rpc/ff37664c627331d6
+files/llama-cache/rpc/8eb2e566358c1ca5
+files/llama-cache/rpc/17abb996b902d07a
+files/llama-cache/rpc/639c286f1b159681
+files/llama-cache/rpc/d5c493a7ba34c6f4
+files/llama-cache/rpc/7429f0c6da3c7679
+files/llama-cache/rpc/fb80a656125c0c8a
+files/llama-cache/rpc/291add027c68f82c
+files/llama-cache/rpc/5e751de678de0c21
+files/llama-cache/rpc/b71214de2bac53d8
+files/llama-cache/rpc/c47b6c109c97fe8b
+files/llama-cache/rpc/f385195351bb7c59
+files/llama-cache/rpc/8f51d60dd9f3eda5
+files/llama-cache/rpc/13a68937d19e924b
+files/llama-cache/rpc/51e996a0fce64174
+files/llama-cache/rpc/ea685385762a3590
+files/llama-cache/rpc/6f06b474f4b19a2c

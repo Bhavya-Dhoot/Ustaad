@@ -1,0 +1,54 @@
+05:34:34 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:34:55 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:35:15 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:35:36 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:35:57 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:36:18 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:36:38 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:36:59 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:37:20 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:37:40 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:38:01 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:38:22 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:38:43 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:39:03 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:39:24 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:39:45 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:40:05 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:40:26 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:40:47 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:41:08 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:41:28 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:41:49 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:42:10 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:42:31 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:42:51 thermal 4 mValue=99.6 | chat {'state': 'FAILED', 'file': 'Qwen3.5-4B-Q4_K_M.gguf', 'lastError': 'This phone is too
+05:43:17 	{mValue=48.513, mName=skin, mStatus=4} 	CoolingDevice{mValue=6, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:43:47 	{mValue=48.488, mName=skin, mStatus=4} 	CoolingDevice{mValue=6, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:44:18 	{mValue=48.442, mName=skin, mStatus=4} 	CoolingDevice{mValue=6, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:44:48 	{mValue=47.695, mName=skin, mStatus=4} 	CoolingDevice{mValue=6, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:45:18 	{mValue=46.907, mName=skin, mStatus=3} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:45:49 	{mValue=46.097, mName=skin, mStatus=3} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:46:19 	{mValue=45.291, mName=skin, mStatus=3} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:46:50 	{mValue=44.542, mName=skin, mStatus=3} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:47:20 	{mValue=43.877, mName=skin, mStatus=2} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:47:51 	{mValue=43.283, mName=skin, mStatus=2} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:48:21 	{mValue=43.196, mName=skin, mStatus=2} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:48:51 	{mValue=42.776, mName=skin, mStatus=2} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:49:22 	{mValue=42.415, mName=skin, mStatus=2} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:49:52 	{mValue=42.019, mName=skin, mStatus=2} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:50:23 	{mValue=41.372, mName=skin, mStatus=2} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:50:53 	{mValue=41.01, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Threshol
+05:51:24 	{mValue=40.716, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:51:54 	{mValue=40.496, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:52:24 	{mValue=40.315, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:52:54 	{mValue=40.219, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:53:25 	{mValue=39.997, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:53:56 	{mValue=39.86, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Threshol
+05:54:26 	{mValue=39.736, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:54:57 	{mValue=40.214, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:55:28 	{mValue=40.029, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:55:58 	{mValue=39.84, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Threshol
+05:56:30 	{mValue=39.752, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:57:00 	{mValue=40.116, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho
+05:57:31 	{mValue=40.197, mName=skin, mStatus=1} 	CoolingDevice{mValue=0, mName=battery} 	Threshold{mName=battery, mHotThrottlingThresholds=[NaN, NaN, NaN, 80.0, NaN, NaN, 90.0], mColdThrottlingThresholds=[NaN, NaN, NaN, NaN, NaN, NaN, NaN]} 	Thresho

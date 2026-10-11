@@ -1,0 +1,2 @@
+05:33:57 192.168.242.89 phone A battery level 73 AC false USB false wireless false status 3
+05:33:57 192.168.242.23 phone B battery level 100 AC false USB false wireless false status 3

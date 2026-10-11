@@ -1,0 +1,17 @@
+date: 2026-10-11 06:55:55 IST
+repo head: 503f7f6 (CLAUDE.md: taps on Phone B again for five hours at the founder's word; tests on )
+steps: s; chat file Qwen3.5-4B-Q4_K_M.gguf
+phone 1: Phone C 192.168.242.76:8787 node 82d2676d; secret: SWARM_SECRET
+      versionName=0.1.0
+      lastUpdateTime=2026-10-11 05:48:30
+  
+  18556686752 2026-10-10 09:18 Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
+  2740937888 2026-10-10 01:15 Qwen3.5-4B-Q4_K_M.gguf
+  333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf
+  5154941280 2026-10-10 01:10 gemma-4-E4B_q4_0-it.gguf
+phone 2: Phone A 192.168.242.89:8787 node c6f72247; secret: SWARM_SECRET
+      versionName=0.1.0
+      lastUpdateTime=2026-10-11 05:32:26
+  
+  2740937888 2026-10-10 00:17 Qwen3.5-4B-Q4_K_M.gguf
+  333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf

@@ -1,0 +1,1 @@
+health {'ramAvailMb': 4248, 'thermalStatus': 2, 'batteryPct': 96, 'charging': True}

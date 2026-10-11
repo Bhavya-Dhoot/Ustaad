@@ -1,0 +1,17 @@
+Tasks: 970 total,   1 running, 969 sleeping,   0 stopped,   0 zombie
+  Mem:    15218M total,     9297M used,     5921M free,        3M buffers
+ Swap:    16383M total,     2257M used,    14126M free,     3367M cached
+800%cpu  52%user   0%nice  42%sys 700%idle   0%iow   6%irq   0%sirq   0%host
+  PID USER         %CPU  RES[ARGS]
+ 1757 root          0.0  66M zygote64
+ 2947 gps           0.0 7.5M xtra-daemon
+18513 wifi          0.0 8.7M wpa_supplicant -O/data/vendor/wifi/wpa/sockets -puse_p2p_group_interface=1 -dd -g@android:wpa_wlan0
+ 2564 wifi          0.0 5.9M wificond
+ 4977 webview_zygote 0.0 17M webview_zygote
+ 3102 root          6.4  10M vtsthp --thp 0
+ 2563 root          0.0 3.9M vspflinger
+ 1047 root          0.0 7.5M vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
+ 1025 system        0.0 4.6M vndservicemanager /dev/vndbinder
+ 2561 root          0.0 5.8M vivosymphonyservice
+ 2558 system        0.0 4.4M vivoperfservice
+u0_a346       5668  1757   16779952 330036 0                   0 R com.swarmos.app

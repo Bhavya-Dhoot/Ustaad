@@ -1,0 +1,11 @@
+  mCurrentFocus=Window{a5a7134 u0 com.swarmos.app/com.swarmos.app.MainActivity type=1 }
+  mWakefulness=Awake
+Thermal Status: 2
+  AC powered: true
+  USB powered: false
+  board temp status: 0
+  low bat status: 0
+  reverse wl chg status: 0
+  status: 2
+  level: 96
+  Capacity level: -1

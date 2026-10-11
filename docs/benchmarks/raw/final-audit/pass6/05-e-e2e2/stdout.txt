@@ -1,0 +1,16 @@
+e2e2-check 2026-10-11 06:55:45 results=docs/benchmarks/raw/final-audit/pass6/05-e-e2e2/results phones=192.168.242.76:8787 192.168.242.89:8787  steps=s
+PASS  s1-hello-1  Phone C node 82d2676d: HTTP 200 in 92 ms, chat 'Qwen3.5-4B-Q4_K_M', embed 'embeddinggemma-300M-Q8_0'
+PASS  s2-health-1  Phone C: signed GET /v1/health HTTP 200 in 139 ms (secret: SWARM_SECRET; answer MAC: ok); thermal 1, battery 100 %, link 11ac 390 Mbps
+PASS  s3-unsigned-1  Phone C: unsigned GET /v1/health -> 401
+PASS  s1-hello-2  Phone A node c6f72247: HTTP 200 in 124 ms, chat 'Qwen3.5-4B-Q4_K_M', embed 'embeddinggemma-300M-Q8_0'
+PASS  s2-health-2  Phone A: signed GET /v1/health HTTP 200 in 95 ms (secret: SWARM_SECRET; answer MAC: ok); thermal 0, battery 100 %, link 11ac 433 Mbps
+PASS  s3-unsigned-2  Phone A: unsigned GET /v1/health -> 401
+PASS  s4-peer-1-2  Phone C lists Phone A online after 634 ms
+PASS  s4-peer-2-1  Phone A lists Phone C online after 846 ms
+PASS  s5-models-1  Phone C: chat=Qwen3.5-4B-Q4_K_M.gguf backend=GPU loadMs=18131 rssMb=1576; embed=embeddinggemma-300M-Q8_0.gguf; thermal=1
+PASS  s6-backend-1  Phone C: chat backend GPU
+PASS  s5-models-2  Phone A: chat=Qwen3.5-4B-Q4_K_M.gguf backend=GPU loadMs=14582 rssMb=1529; embed=embeddinggemma-300M-Q8_0.gguf; thermal=0
+PASS  s6-backend-2  Phone A: chat backend GPU
+RESPONSE-MAC  ok=2 wrong=0 missing=0 (calls made from the main shell only; problems in rsp-problems.log)
+SUMMARY  pass=12 fail=0 warn=0  results=docs/benchmarks/raw/final-audit/pass6/05-e-e2e2/results
+exit 0

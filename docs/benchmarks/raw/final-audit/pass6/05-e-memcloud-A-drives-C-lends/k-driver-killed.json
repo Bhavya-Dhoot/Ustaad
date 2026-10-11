@@ -1,0 +1,86 @@
+{
+ "before": {
+  "chat": "READY",
+  "embed": "READY",
+  "rpc": "STOPPED"
+ },
+ "mid": {
+  "chat": "STOPPED",
+  "embed": "STOPPED",
+  "rpc": "READY"
+ },
+ "lend_mid": {
+  "state": "READY",
+  "port": 50052,
+  "bind": "192.168.242.76",
+  "pid": 29552,
+  "rssMb": 4,
+  "peakMb": 4,
+  "anonMb": 1,
+  "cachedBytes": 1427343360,
+  "cachedFiles": 65,
+  "reason": null,
+  "lastLog": [
+   "  local cache    : /data/user/0/com.swarmos.app/files/llama-cache/rpc",
+   "Devices:",
+   "  CPU: CPU (15229 MiB, 15229 MiB free)",
+   "  transport      : TCP",
+   "Accepted client connection",
+   "Client connection closed",
+   "Accepted client connection",
+   "Client connection closed"
+  ],
+  "thermalStatus": 1,
+  "ramAvailMb": 5595,
+  "args": [
+   "-H",
+   "127.0.0.1",
+   "-p",
+   "50052",
+   "-H",
+   "192.168.242.76",
+   "-t",
+   "8",
+   "-c"
+  ],
+  "lendingTo": "Phone A",
+  "leaseMsLeft": 8737,
+  "stoppedOwn": null,
+  "loan": null
+ },
+ "after": {
+  "chat": "READY",
+  "embed": "READY",
+  "rpc": "STOPPED"
+ },
+ "seconds": 27.16360855102539,
+ "lend_after": {
+  "state": "STOPPED",
+  "port": 50052,
+  "bind": null,
+  "pid": null,
+  "rssMb": null,
+  "peakMb": null,
+  "anonMb": null,
+  "cachedBytes": 1427343360,
+  "cachedFiles": 65,
+  "reason": null,
+  "lastLog": [
+   "  local cache    : /data/user/0/com.swarmos.app/files/llama-cache/rpc",
+   "Devices:",
+   "  CPU: CPU (15229 MiB, 15229 MiB free)",
+   "  transport      : TCP",
+   "Accepted client connection",
+   "Client connection closed",
+   "Accepted client connection",
+   "Client connection closed"
+  ],
+  "thermalStatus": 1,
+  "ramAvailMb": 5145,
+  "args": [],
+  "lendingTo": null,
+  "leaseMsLeft": null,
+  "stoppedOwn": null,
+  "loan": null
+ }
+}

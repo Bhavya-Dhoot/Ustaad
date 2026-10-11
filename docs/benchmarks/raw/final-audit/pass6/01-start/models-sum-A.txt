@@ -1,0 +1,1 @@
+{"chat": {"state": "FAILED", "backend": null, "restarts": 0, "lastError": "This phone is too hot (thermal status critical). Loading a m...", "notice": null}, "embed": {"state": "FAILED", "backend": null, "restarts": 0, "lastError": "This phone is too hot (thermal status critical). Loading a m...", "notice": null}, "rpc": {"state": "STOPPED", "backend": null, "restarts": 0, "las

@@ -1,0 +1,2 @@
+05:54:26 MANUAL: thermal on A 1, models still FAILED (heat refusals, retries ended 05:42:28 after 20 tries; evidence applog-heat-retries-A.txt). POST /v1/models/load {role: defaults} on A (the e2e2 ensure_models call).
+{"node": "Phone A", "roles": {"chat": {"state": "FAILED", "model": "Qwen3.5-4B-Q4_K_M", "file": "Qwen3.5-4B-Q4_K_M.gguf", "reason": "Not loaded after 10 minutes of trying: the phone is too hot. Tap Lo

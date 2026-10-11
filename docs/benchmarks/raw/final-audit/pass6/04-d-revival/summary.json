@@ -1,0 +1,53 @@
+{
+ "mode": "d",
+ "kills": [
+  {
+   "kill": 1,
+   "pid": 30811,
+   "state": "READY",
+   "backend": "GPU",
+   "reason": null,
+   "notice": "Restarted automatically after the server was killed.",
+   "restarts": 1,
+   "clock": "06:28:21"
+  },
+  {
+   "kill": 2,
+   "pid": 31791,
+   "state": "READY",
+   "backend": "CPU",
+   "reason": null,
+   "notice": "The GPU server failed (killed by signal 9 (SIGKILL: lmkd, phantom-process killer or the vendor task killer)). Running on the CPU build.",
+   "restarts": 1,
+   "clock": "06:28:32"
+  },
+  {
+   "kill": 3,
+   "pid": 31909,
+   "state": "FAILED",
+   "backend": "CPU",
+   "reason": "Not loaded: the server stopped and could not be restarted. Ustaad starts it again at 06:33 (try 1 of 3).",
+   "notice": null,
+   "restarts": 1,
+   "clock": "06:28:38"
+  }
+ ],
+ "failedClock": "06:28:38",
+ "failedReason": "Not loaded: the server stopped and could not be restarted. Ustaad starts it again at 06:33 (try 1 of 3).",
+ "failedNotice": null,
+ "revivalStarting": null,
+ "revivalReady": [
+  "06:33:40",
+  302.41045570373535,
+  "CPU",
+  "Restarted automatically after the server was killed."
+ ],
+ "result": "PASS",
+ "restoreResult": {
+  "state": "READY",
+  "backend": "GPU",
+  "loadMs": 17218,
+  "notice": null,
+  "at": "06:36:01"
+ }
+}

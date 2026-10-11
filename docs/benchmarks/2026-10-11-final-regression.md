@@ -381,3 +381,81 @@ Phone A: `/sdcard/__ui.xml` (24424 bytes, 03:48), created by my one `uiautomator
 
 Phone A: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, MemoryCloud IDLE, Keep busy enabled and `running` (jobsFailed 0, hammer false), `ramAvailMb` 5506, thermal 1, battery 95 %, agent access off (port 8790 HTTP 000), shared folders `Documents/SwarmDemo` and `Pictures/SwarmDemo` shared, screen awake, Ustaad in front, peer list: Phone B only.
 Phone B: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, MemoryCloud IDLE, Keep busy enabled and `half_duty` (jobsFailed 0, hammer false), `ramAvailMb` 5258, thermal 2, battery 100 % charging, agent access off (HTTP 000), screen awake, Ustaad in front, peer list: Phone A only.
+
+
+## Fifth pass, build 0734013, self-recovery on Phone A
+
+Date and time: 2026-10-11, 05:33 to 06:57 IST. Build 0734013 (apk sha256 prefix 80b6c274fb559cf0 on A, B and C; lastUpdateTime A 05:32:26, B 05:32:41, C 05:48:30; `pass6/01-start/build-*.txt`, `apk-sha-*.txt`). Raw files: `docs/benchmarks/raw/final-audit/pass6/` (called `pass6/` below); helper scripts (not repo scripts) in `pass6/helpers/`. The pairing secret was read from Phone A, never printed or written; no raw file under `pass6/` contains it or the agent key. Nothing installed, no `pm clear`, no uninstall, no Hammer, no system setting changed, nothing committed; `batch-failover-check.py` not run.
+
+Scope changes during the pass, as sent by the coordinator: Phone C released about 05:45 and in the pool from 05:48:30; Phone B out of the pool from about 05:55 (remote-control session, taps). I sent Phone B no command after 05:56:30; my last reads of B are 05:56:16 (gate: chat READY, embedder READY, rpc STOPPED, thermal 1) and 05:56:30 (battery 97 %, not charging), a minute after the 05:55 change and before the message reached me (`pass6/gate-log.txt`, `battery-log.txt`). Before that: start state read 05:33 (`01-start`: chat READY on GPU, Keep busy `paused_model_restarted`, thermal 3, ramAvailMb 5946, battery 100 %), battery 98 % at 05:54:57. No step e check ran with Phone B. Step e used Phone C in B's place: memcloud lender C, swarm batch from C, e2e2 with C and A.
+
+Phone A battery: 73 % at 05:33:57, rising to 100 % by 06:28 because A showed `AC powered: true` from 05:54:02 on (it did not at 05:33:57); never below 73 % (`pass6/battery-log.txt`, `battery-end.txt`; read every ten minutes). Phone C: AC powered true at every read from 06:25 (96 to 100 %). Phone C's start state (read 06:25): chat/embedder READY on GPU, rpc STOPPED, MemoryCloud IDLE, Keep busy `half_duty`, ramAvailMb 4248, thermal 2; Ustaad in front and awake (`01-start/*-C.*`).
+
+### Start state of Phone A and a manual load (`pass6/01-start/`)
+
+At 05:33 Phone A's chat and embedder were `FAILED`: "This phone is too hot (thermal status critical). Loading a model is off until it cools down." (`models-sum-A.txt`). Thermal status 4, ramAvailMb 10134, battery 73 %, Ustaad in front, Keep busy `no_model`. `dumpsys thermalservice` showed skin 48.0 to 48.5 °C and battery 47.3 °C at 05:39 (`thermalservice-A-0543.txt`); skin was 40.0 °C and status 1 by 05:53 (`cooling-A.txt`). The app's log has 21 refusals of each model, 05:32:28 to 05:42:28 at 30 s intervals, and none after (`applog-heat-retries-A.txt`: 42 lines). The models stayed FAILED after A had cooled, with reason "Not loaded after 10 minutes of trying: the phone is too hot. Tap Lo..." (first line of the answer to `POST /v1/models/load` at 05:54:26). I loaded them by hand with `POST /v1/models/load {"role":"defaults"}` (the call e2e2's ensure_models makes); chat READY on GPU, loadMs 19296, embedder READY at 05:54:50 (`manual-steps.txt`, `state-A-after-load.txt`). I did not look for what heated the phone.
+
+### Timeline of b, c and d (all on Phone A). Ustaad was in front and the screen awake at the start of each test (focus lines printed before each run) and in every 60 s sample taken during the watches (b 11 samples 05:57:04 to 06:07:09, c 13 samples 06:11:15 to 06:23:22, d 6 samples 06:28:38 to 06:33:40; `focus` rows in each `samples.jsonl`); the kill phases, the 180 s pre-wait of d and the restores were not sampled
+
+| Test | Clock | Event | Raw |
+|---|---|---|---|
+| b | 05:56:32 and 05:56:56 | forced fallback: two `kill -9` of the GPU chat server, 24 s apart | `02-b-gpu-retry/events.log` |
+| b | 05:57:04 | chat READY on CPU after 32.1 s; notice "The GPU server failed (killed by signal 9 ...). Running on the CPU build." | `events.log`, `state-at-cpu-ready.json` |
+| b | 05:57:19 to 05:59:20 | Keep busy `paused_model_restarted`, then `running` / `half_duty` filler on the CPU build; jobsDone 0 to 79 by 06:06:38 | `samples.jsonl` |
+| b | 06:03:52 to 06:04:22 and 06:05:53 to 06:06:38 | Keep busy `paused_hot`, then `half_duty` again | `samples.jsonl` |
+| b | **06:07:06** | chat STARTING on GPU by itself, **601.6 s (10 min 1.6 s) after the CPU READY**; notice cleared; Keep busy `no_model` | `events.log` |
+| b | **06:07:24** | **chat READY on GPU**, restarts 0, no fallback notice; not READY for 18.6 s (3 s polls) | `summary.json` |
+| b | 06:07:39, 06:09:40 | Keep busy `paused_model_restarted`, then `half_duty` (121 s after READY); jobsDone 84 to 86; jobsFailed 0 throughout | `samples.jsonl` |
+| b result | | **PASS** (expected 10 to about 11 minutes) | |
+| c | 06:10:40 and 06:11:07 | forced fallback again, no load in between | `03-c-one-try/events.log` |
+| c | 06:11:15 | chat READY on CPU after 34.3 s with the same notice | `state-at-cpu-ready.json` |
+| c | 06:11:15 to 06:24:15 | 780 s (13.0 min) watched: chat stayed READY on CPU, pid 26902, no STARTING, no change of notice (139 samples); Keep busy `half_duty` with four `paused_hot` spells; jobsDone 97 to 196; jobsFailed 1 (counted at 06:10:41, when the first forced kill hit a filler job in flight) | `samples.jsonl`, `summary.json` |
+| c | 06:24:15 to 06:24:38 | restore with the step c calls (GPU off, on, stop, load): chat READY on GPU, loadMs 19613, no notice | `events.log` |
+| c result | | **PASS** (no GPU try in 13 min) | |
+| d | 06:24:54 to 06:27:54 | 180 s of continuous READY on GPU before the first kill | `04-d-revival/events.log` |
+| d | 06:27:55 | kill 1, GPU server (pid 30811): restarted by itself, READY on GPU 06:28:19 (first sample), notice "Restarted automatically after the server was killed." | `events.log` |
+| d | 06:28:23 | kill 2, GPU server (pid 31791): CPU fallback, READY on CPU 06:28:30, notice "The GPU server failed (...). Running on the CPU build." | `events.log` |
+| d | 06:28:35 | kill 3, CPU server (pid 31909) | `events.log` |
+| d | **06:28:36** | **chat FAILED**, reason: "Not loaded: the server stopped and could not be restarted. Ustaad starts it again at 06:33 (try 1 of 3)." Keep busy `no_model` from 06:28:38 | `state-at-failed.json`, `summary.json` |
+| d | **06:33:35** | server started again (app log, 299 s after FAILED); READY on **CPU** at 06:33:39.6, loadMs 4457; notice "Restarted automatically after the server was killed." First poll that saw it: 06:33:40, 303 s after FAILED. The 15 s polls did not catch STARTING (`revivalStarting` null); the app log has it | `applog-0632-0634.txt`, `summary.json` |
+| d | 06:33:55, 06:35:41 | Keep busy `paused_model_restarted`, then `running` (121 s after READY); jobsFailed 1 unchanged | `samples.jsonl` |
+| d | 06:35:41 to 06:36:01 | chat was on the CPU build, so restored with the step c calls: READY on GPU, loadMs 17218 | `events.log` |
+| d result | | **PASS** (revived by itself on the first try, about 5 minutes after FAILED, on the CPU build) | |
+
+### Step e, regression (A; Phone C in Phone B's place)
+
+| Check | Result | Figures (raw file) |
+|---|---|---|
+| hardening-check g, t, h on A | PASS 4 / FAIL 0 | g three reloads READY on GPU, loadMs 17513, 17789, 17814; t HTTP 500 "the model stopped mid-answer", chat READY on GPU 0 s later, restarts 0; h frozen server killed after 34.5 s (pid 4019, state STARTING) (`05-e-hardening/stdout.txt`) |
+| agent endpoint check on A (a, b, c, d, f, g, h, i, j) | PASS 14 / FAIL 0 | d-chat 7.29 s, 87 tokens; d-stream first token 0.46 s, 13.3 tok/s; d-embed 0.18 s; two at once 1.85 times a single call; background at 5, 60, 180 s 13.3, 13.4, 13.4 tok/s (in front 13.2); agent access off afterwards, HTTP 000 on A and on C (`05-e-agent/stdout.txt`, `99-final/agent-off-A.txt`, `agent-off-C.txt`) |
+| memcloud-check v,n,s,k, A drives, C lends (lender name "Phone C"; Ustaad in front and screen awake on C before it, `05-e-memcloud-A-drives-C-lends/C-focus-before.txt`) | PASS 9 / FAIL 0 | split READY after 223 s (loadMs 214965); 67 tokens, first token 6611 ms, 4.30 tok/s; driver READY after stop 18 s, lender 3 s; lender READY after driver killed 27 s; driver READY after relaunch 16 s; afterwards both A and C: chat READY on GPU, embedder READY, rpc STOPPED, restarts 0, lastError null, MemoryCloud IDLE (`stdout.txt`, `models-state-A.json`, `-C.json`, `memcloud-state-A.json`, `-C.json`). Phone B not involved (explicit lender C) |
+| swarm batch from C (`bench-batch.py 192.168.242.76 swarm`), file read at done | PASS | before it, C's `/v1/sched/phones` listed C (local) and A only, both up; C's peer list: A online, B away (`05-e-swarm-batch/sched-phones-C-before.json`). 32 / 32 finished, 0 failed, wall 41.9 s, 889 tokens, 21.21 tok/s; jobs C 17 (decode 13.5 tok/s), A 15 (13.5); **Phone B took 0 jobs** (`bench/batch-C-swarm.json`); thermal at start A 0, C 1 (`bench/thermal-before.txt`). Batch file on C: first read 4.1 s after the watcher started, state `running`, done 0 (`watch/file-first-read.json`); read **0.11 s after the status read `done`**: **state `done`**, done 32, failed 0 (`watch/file-at-done.json`, `status-at-done.json`, `watch.log`) |
+| e2e2-check.sh --steps s, C asks, A peer | PASS 12 / FAIL 0 / WARN 0 | hello 92 ms (C), 124 ms (A); signed health 139 and 95 ms, answer MAC ok; unsigned 401; C lists A online after 634 ms, A lists C after 846 ms; GPU on both; Ustaad in front and awake on C before it (`05-e-e2e2/stdout.txt`, `results/checks.log`, `C-focus-before.txt`) |
+
+### Things that looked odd, with the evidence
+
+- Start of the pass: both models on Phone A FAILED from heat and still FAILED after the phone had cooled (above). The retries stopped after the 20th (05:42:28), about eight minutes before the status fell to 1. Manual load needed.
+- The split with Phone C as lender took 223 s to READY (loadMs 214965), against 32 to 36 s with Phone B as lender in the third and fourth passes (`pass4/02-memcloud-A-drives/stdout.txt`, `pass5/03-memcloud-A-drives/stdout.txt`). Not investigated.
+- Keep busy flipped between `half_duty` and `paused_hot` on the CPU build in tests b and c (`samples.jsonl`); Phone A's thermal status in the gate reads was 0 to 2.
+- A and C reported AC power connected while the coordinator's note said none was charging (`battery-log.txt`).
+- At the end Phone A's peer list shows only Phone C (Phone B not listed); Phone C's shows A online and B away (`99-final`, `01-start/peers-C.txt`).
+
+### Not run
+
+`batch-failover-check.py` (excluded); hardening step c (covered by tests b to d); hardening step m (no 30B file); agent-check step e; any check with Phone B after 05:55; Hammer.
+
+### Manual interventions
+
+1. `POST /v1/models/load {"role":"defaults"}` on Phone A at 05:54:26, after the heat refusals (above).
+2. The step c restore calls at the end of tests c and d, as briefed (d: needed because the revival came back on the CPU build).
+3. `KEYCODE_WAKEUP` and `wm dismiss-keyguard` before each script. The agent-check key was set and removed by the script's own `am start` calls.
+
+### Files created on a phone
+
+None outside the app's own data on A and C (`pass6/99-final/new-files-A.txt`, `new-files-C.txt`: `audit.jsonl`, logs, `pdu.db-*`, datastore, batch reports). No `/sdcard` or `/data/local/tmp` files; no screen dump file in this pass (the `/sdcard/__ui.xml` left on Phone A in the fourth pass is older and was not touched).
+
+### Final state (`pass6/99-final/`, read 06:56)
+
+Phone A: chat READY on GPU (restarts 0, no lastError, no notice), embedder READY, rpc STOPPED, MemoryCloud IDLE, Keep busy enabled and `running` (jobsFailed 0, hammer false), ramAvailMb 4841, thermal 0, battery 100 % (AC powered), agent access off (port 8790 HTTP 000), screen awake, Ustaad in front, peers: Phone C.
+Phone C: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, MemoryCloud IDLE, Keep busy enabled and `paused_model_restarted` (jobsFailed 0, hammer false), ramAvailMb 4534, thermal 1, battery 100 % (AC powered), agent access off (HTTP 000), screen awake, Ustaad in front.
+Phone B: not touched after 05:56:30; last read before the change: chat READY on GPU, embedder READY, rpc STOPPED, thermal 1 at 05:56:16; battery 97 % at 05:56:30.

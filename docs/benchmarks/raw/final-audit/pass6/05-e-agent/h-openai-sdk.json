@@ -1,0 +1,18 @@
+{
+ "text": "Here are three common uses for a phone without an internet connection:\n\n1.  **Making and Receiving Calls**: This is the primary function of a mobile phone. Even without Wi-Fi or cellular data, a device can connect to the cellular voice network to place calls and receive text messages (SMS).\n2.  **Using Offline Maps and Navigation**: Many mapping applications (like Google Maps or",
+ "usage": {
+  "completion_tokens": 80,
+  "prompt_tokens": 22,
+  "total_tokens": 102,
+  "completion_tokens_details": null,
+  "prompt_tokens_details": null
+ },
+ "seconds": 7.31192421913147,
+ "stream_first": 0.8087630271911621,
+ "stream_chunks": 52,
+ "embedding_dims": 256,
+ "models": [
+  "ustaad-local",
+  "ustaad-swarm"
+ ]
+}
