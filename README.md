@@ -77,11 +77,11 @@ The models are not in the repository. Fetch them with `native/fetch-models.sh <h
 
 ## Status
 
-As of 2026-10-11 12:30 (HANDOFF.md).
+As of 2026-10-11 11:45 (HANDOFF.md).
 
 | | |
 |---|---|
-| Code | master 495a7d5. 1589 unit tests, 0 failures (docs/BUILD.md, 12:20). Not yet on a phone |
+| Code | master 495a7d5. 1589 unit tests, 0 failures (docs/BUILD.md, 11:35). Not yet on a phone |
 | Phones A, B and C | Build 4821aea on A and C since 07:13, 0734013 on B. All three are in the founder's remote-control sessions from about 10:59 to 16:00, so Ustaad is paused on them and nothing can be tested |
 | Battery exemption | Not in effect on any phone at 05:50: Ustaad is not in the system's list and Settings reads "Runs only while Ustaad is on screen". Keep busy pauses when Ustaad is not in front |
 | Demo build | Builds. Installed once on Phone C for three closed-route checks with no recorded result. Not run end to end on a phone |
