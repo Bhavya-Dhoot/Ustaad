@@ -5,6 +5,7 @@ import com.swarmos.app.llm.ChatMessage
 import com.swarmos.app.llm.ChatRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -220,19 +221,9 @@ class BatchStore(
         val id = newJobId()
         val client = if (mode == MODE_LOCAL) localOnly() else swarm()
         val flow = MutableStateFlow(BatchRunner.buildReport(id, mode, RUNNING, requests.size, emptyList(), 0.0))
-        synchronized(lock) {
-            if (onlyIfIdle && flows.values.any { it.value.state == RUNNING }) return null
-            flows[id] = flow
-            // only finished batches are forgotten: a running one keeps its status (its coroutine goes on whatever the map holds)
-            while (flows.size > KEEP) {
-                val finished = flows.entries.firstOrNull { it.value.value.state != RUNNING } ?: break
-                flows.remove(finished.key)
-                newest.remove(finished.key)
-            }
-        }
-        publish(flow.value)
-        persist(flow.value, force = true)   // the id is about to be handed out: it must be known after a restart too
-        val job = scope.launch {
+        // created now but not started: it is in [jobs] before the first report is written, so [stopAll] in that moment ends it
+        // before it has sent a job, and it is started only after the write
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             val report = try {
                 BatchRunner(client).run(id, mode, requests) { r ->
                     // updates come from several workers; never let an older snapshot overwrite a newer one
@@ -254,7 +245,20 @@ class BatchStore(
             flow.value = report
             publish(report)
         }
-        synchronized(lock) { jobs[id] = job }
+        synchronized(lock) {
+            if (onlyIfIdle && flows.values.any { it.value.state == RUNNING }) {
+                job.cancel()
+                return null
+            }
+            flows[id] = flow
+            jobs[id] = job
+            // only finished batches are forgotten: a running one keeps its status (its coroutine goes on whatever the map holds)
+            while (flows.size > KEEP) {
+                val finished = flows.entries.firstOrNull { it.value.value.state != RUNNING } ?: break
+                flows.remove(finished.key)
+                newest.remove(finished.key)
+            }
+        }
         job.invokeOnCompletion { cause ->
             synchronized(lock) { jobs.remove(id) }
             // stopped ([stopAll], or the scope ended) before it finished, possibly before it ran a line: it will not go on, so it
@@ -266,6 +270,9 @@ class BatchStore(
                 persist(stopped, force = true)
             }
         }
+        publish(flow.value)
+        persist(flow.value, force = true)   // the id is about to be handed out: it must be known after a restart too
+        job.start()                         // does nothing if the batch was stopped meanwhile
         return id
     }
 

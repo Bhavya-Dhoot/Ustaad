@@ -21,8 +21,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 
 /** This phone, whose chat call ignores cancellation until [release] is completed: a batch on it is slow to wind up. */
 private class StuckPhone : PhoneEndpoint {
@@ -174,6 +179,38 @@ class BatchStoreFilesTest {
     }
 
     // ---- stopping ---------------------------------------------------------------------------------------------
+
+    @Test fun stopAllWhileTheFirstReportIsBeingWrittenKeepsTheBatchFromEverSendingAJob() = runBlocking {
+        val real = tempDir()
+        val p = phone("me")
+        val llm = swarm(p)
+        val entered = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val first = AtomicBoolean(true)
+        // the first use of the folder (the first report of the batch) is held: Stop Ustaad comes in that moment
+        val store = BatchStore(scope, { llm }, { llm }, dir = {
+            if (first.getAndSet(false)) {
+                entered.countDown()
+                gate.await()
+            }
+            real
+        })
+        val id = AtomicReference<String>()
+        val starter = thread { id.set(store.start((0 until 3).map { req("p$it") }, BatchStore.MODE_LOCAL)) }
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        store.stopAll()
+        gate.countDown()
+        starter.join(5_000)
+        delay(300)
+        assertTrue("the batch sent no job after the stop", p.llm.requests.isEmpty())
+        assertEquals("interrupted", store.status(id.get())!!.value.state)
+        assertEquals("interrupted", read(File(real, "batch-${id.get()}.json")).state)
+        assertTrue(!store.isRunning())
+        // a batch started after "Start Ustaad" works as usual
+        val again = store.start(listOf(req("again")), BatchStore.MODE_LOCAL)
+        until { store.status(again)?.value?.state == "done" }
+        assertEquals(1, store.status(again)!!.value.done)
+    }
 
     @Test fun stopAllEndsEveryBatchEvenWhenTheFirstIsSlowToWindUp() = runBlocking {
         val stuck = StuckPhone()
