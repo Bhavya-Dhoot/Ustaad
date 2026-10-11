@@ -1,12 +1,17 @@
 package com.swarmos.app.sched
 
 import com.swarmos.app.core.SwarmJson
+import com.swarmos.app.llm.ChatRequest
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -18,6 +23,21 @@ import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+
+/** This phone, whose chat call ignores cancellation until [release] is completed: a batch on it is slow to wind up. */
+private class StuckPhone : PhoneEndpoint {
+    val release = CompletableDeferred<Unit>()
+    val started = CompletableDeferred<Unit>()
+    override val nodeId = "stuck"
+    override val isLocal = true
+    override suspend fun caps() = Caps("stuck", "T", 1, 0, 0, 10.0, 0, 80, false, 4096)
+    override suspend fun runChat(jobId: String, req: ChatRequest, pinModel: String?): ChatJobResult {
+        started.complete(Unit)
+        withContext(NonCancellable) { release.await() }
+        throw CancellationException("released")
+    }
+    override suspend fun runEmbed(jobId: String, texts: List<String>): EmbedJobResult = throw UnsupportedOperationException()
+}
 
 /** The report files of [BatchStore]: written before the id is handed out, one writer at a time, and the end of a stopped batch. */
 class BatchStoreFilesTest {
@@ -154,6 +174,24 @@ class BatchStoreFilesTest {
     }
 
     // ---- stopping ---------------------------------------------------------------------------------------------
+
+    @Test fun stopAllEndsEveryBatchEvenWhenTheFirstIsSlowToWindUp() = runBlocking {
+        val stuck = StuckPhone()
+        val stuckSwarm = SwarmLlm({ listOf(stuck) }, scope, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100, msPerToken = 0)
+        val p = phone("me", delayMs = 30_000)
+        val store = BatchStore(scope, { swarm(p) }, { stuckSwarm }, dir = { tempDir() })
+        val first = store.start(listOf(req("a")), BatchStore.MODE_LOCAL)       // on the phone that does not let go
+        withTimeout(5_000) { stuck.started.await() }
+        val second = store.start(listOf(req("b")), BatchStore.MODE_SWARM)
+        until { p.llm.concurrent.get() == 1 }
+        store.stopAll()                                                          // the first one is still winding up when the 3 s are over
+        assertEquals("the second was told to stop as well", "interrupted", store.status(second)!!.value.state)
+        until { p.llm.concurrent.get() == 0 }
+        assertEquals("the first is still holding on", "running", store.status(first)!!.value.state)
+        stuck.release.complete(Unit)
+        until { !store.isRunning() }
+        assertEquals("interrupted", store.status(first)!!.value.state)
+    }
 
     @Test fun stopAllEndsARunningBatchSoItSendsNoMoreJobsAndItsReportSaysInterrupted() = runBlocking {
         val dir = tempDir()

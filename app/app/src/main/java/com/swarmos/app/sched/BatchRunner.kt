@@ -6,7 +6,6 @@ import com.swarmos.app.llm.ChatRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -272,12 +271,14 @@ class BatchStore(
 
     /**
      * Ends every batch that is running (Stop Ustaad): no more jobs go to the phones, and each report says "interrupted", the
-     * state a coordinator that was killed leaves behind. Blocking; waits at most [STOP_WAIT_MS] for the batches to wind up.
+     * state a coordinator that was killed leaves behind. Blocking; every batch is told to stop first, then all of them are
+     * waited for together, at most [STOP_WAIT_MS]: one that is slow to wind up does not keep the others running.
      */
     fun stopAll() {
         val running = synchronized(lock) { jobs.values.toList() }
         if (running.isEmpty()) return
-        runBlocking { withTimeoutOrNull(STOP_WAIT_MS) { running.forEach { it.cancelAndJoin() } } }
+        running.forEach { it.cancel() }
+        runBlocking { withTimeoutOrNull(STOP_WAIT_MS) { running.forEach { it.join() } } }
     }
 
     /** The batch's status: from memory, else from the file written while it ran (an id of an interrupted batch answers "interrupted"). */
