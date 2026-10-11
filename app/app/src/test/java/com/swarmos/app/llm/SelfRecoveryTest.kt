@@ -202,8 +202,11 @@ class SelfRecoveryTest {
         var fileExists = true
     }
 
-    private fun StatusBoard.runRevive(epoch: Int, r: Revive, so: Int = 0, wait: suspend (Long) -> Unit = { r.waits += it }, attempt: suspend (Int) -> Unit) = runBlocking {
-        reviveFailed(role, epoch, so, "q.gguf", { r.serviceUp }, { r.fileExists }, { 0L }, wait) { n -> r.attempts += n; attempt(n) }
+    /** [result]: what the start ended as; null reads the board after [attempt], as a start that fails does. */
+    private fun StatusBoard.runRevive(
+        epoch: Int, r: Revive, so: Int = 0, result: ServerState? = null, wait: suspend (Long) -> Unit = { r.waits += it }, attempt: suspend (Int) -> Unit,
+    ) = runBlocking {
+        reviveFailed(role, epoch, so, "q.gguf", { r.serviceUp }, { r.fileExists }, { 0L }, wait) { n -> r.attempts += n; attempt(n); result ?: statusOf(role).state }
     }
 
     @Test fun threeFailedTriesEndWithATapLoadMessageAndTheStatusSaysWhenTheNextOneIs() {
@@ -226,6 +229,17 @@ class SelfRecoveryTest {
         assertEquals(listOf(1, 2), r.attempts)
         assertEquals(2, r.waits.size)
         assertEquals(ServerState.READY, b.statusOf(role).state)
+    }
+
+    @Test fun aRevivedServerKilledBeforeTheLoopLooksIsLeftToTheLoopOfItsOwnDeath() {
+        val (b, epoch) = failedBoard()
+        val r = Revive()
+        // the start ended READY, the process was killed at once, and the board already says FAILED when the loop looks again: that death has
+        // its own loop (watchExit), so this one must end, not wait and start a second server under the same epoch
+        b.runRevive(epoch, r, result = ServerState.READY) { }
+        assertEquals(listOf(1), r.attempts)
+        assertEquals(1, r.waits.size)
+        assertEquals(ServerState.FAILED, b.statusOf(role).state)
     }
 
     @Test fun revivalsAlreadyMadeCount() {

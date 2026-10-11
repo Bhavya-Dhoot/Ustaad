@@ -802,7 +802,7 @@ object LlamaRuntime {
                     role, run.epoch, cfg.revivals, File(path ?: "").name,
                     serviceUp = { serviceUp }, fileExists = { path != null && File(path).isFile }, nowMs = { System.currentTimeMillis() },
                     wait = { delay(it) },
-                ) { n -> startInternal(role, cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU, fallbackNote = null, revivals = n), run.epoch, auto = true) { } }
+                ) { n -> startInternal(role, cfg.copy(cpuOnly = cfg.cpuOnly || run.backend == Backend.CPU, fallbackNote = null, revivals = n), run.epoch, auto = true) { }.state }
             }
         }
     }

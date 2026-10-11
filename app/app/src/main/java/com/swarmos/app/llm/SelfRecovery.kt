@@ -85,15 +85,16 @@ internal suspend fun StatusBoard.watchCpuFallback(
 }
 
 /**
- * [role] is FAILED because its automatic restarts ran out: starts it again by [attempt] (told which try it is), [SelfRecovery.REVIVE_AFTER_MS]
- * apart, at most [SelfRecovery.MAX_REVIVALS] times. The status says when the next try is, and after the last one to tap Load. Ends when a try
- * does not leave the role FAILED, or when anything changed: the epoch moved (Stop, a new load), the role is no longer FAILED, the service is
+ * [role] is FAILED because its automatic restarts ran out: starts it again by [attempt] (told which try it is, and returning what the start ended
+ * as), [SelfRecovery.REVIVE_AFTER_MS] apart, at most [SelfRecovery.MAX_REVIVALS] times. The status says when the next try is, and after the last
+ * one to tap Load. Ends when a try does not end FAILED (a server that got READY and is killed again is a new death, with a loop of its own: the
+ * status is not read again here), or when anything changed: the epoch moved (Stop, a new load), the role is no longer FAILED, the service is
  * down, or the file is gone.
  */
 internal suspend fun StatusBoard.reviveFailed(
     role: Role, epoch: Int, revivalsSoFar: Int, fileName: String,
     serviceUp: () -> Boolean, fileExists: () -> Boolean, nowMs: () -> Long,
-    wait: suspend (Long) -> Unit, attempt: suspend (revival: Int) -> Unit,
+    wait: suspend (Long) -> Unit, attempt: suspend (revival: Int) -> ServerState,
 ) {
     var n = revivalsSoFar
     while (statusOf(role).state == ServerState.FAILED) {
@@ -104,7 +105,7 @@ internal suspend fun StatusBoard.reviveFailed(
                 wait(d.afterMs)
                 if (!serviceUp() || !isCurrent(role, epoch) || statusOf(role).state != ServerState.FAILED) return
                 if (!fileExists()) { setIfCurrent(role, epoch) { it.copy(reason = StartRetry.fileGone(fileName), notice = null) }; return }
-                attempt(++n)
+                if (attempt(++n) != ServerState.FAILED) return
             }
         }
     }
