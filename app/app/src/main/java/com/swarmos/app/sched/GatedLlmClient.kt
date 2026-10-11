@@ -39,9 +39,15 @@ class GatedLlmClient(
 
     /** True when a slot was taken (give it back); false when there is no model server and the call runs without one. */
     private suspend fun enter(): Boolean {
-        // the timeout can fire in the instant acquire() has returned true; withTimeoutOrNull then drops the block's value, so the block keeps it
+        // the timeout can fire, or the caller be cancelled, in the instant acquire() has returned true; withTimeoutOrNull then drops
+        // the block's value (or throws), so the block keeps it, and the slot is given back on every exit but a normal return
         var taken: Boolean? = null
-        val got = withTimeoutOrNull(maxWaitMs) { node.chatExec.acquire().also { taken = it } }
+        val got = try {
+            withTimeoutOrNull(maxWaitMs) { node.chatExec.acquire().also { taken = it } }
+        } catch (e: Throwable) {
+            if (taken == true) node.chatExec.release()
+            throw e
+        }
         if (got == null) {
             if (taken == true) node.chatExec.release()
             throw ModelBusyTimeoutException(maxWaitMs, node.chatExec.capacity)
