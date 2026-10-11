@@ -1,0 +1,5 @@
+06:59:54 start | A: front=1 awake=1 thermal=2 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1 | C: front=1 awake=1 thermal=1 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1
+07:00:09 before-step2 | A: front=1 awake=1 thermal=2 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1 | C: front=1 awake=1 thermal=1 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1
+07:01:21 before-step3 | A: front=1 awake=1 thermal=2 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1 | C: front=1 awake=1 thermal=1 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1
+07:02:34 before-refusal-check | A: front=1 awake=1 thermal=2 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1 | C: front=1 awake=1 thermal=0 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1
+07:10:01 step4 | A: front=1 awake=1 thermal=2 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1 | C: front=1 awake=1 thermal=2 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1

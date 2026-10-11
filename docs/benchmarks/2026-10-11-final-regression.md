@@ -459,3 +459,63 @@ None outside the app's own data on A and C (`pass6/99-final/new-files-A.txt`, `n
 Phone A: chat READY on GPU (restarts 0, no lastError, no notice), embedder READY, rpc STOPPED, MemoryCloud IDLE, Keep busy enabled and `running` (jobsFailed 0, hammer false), ramAvailMb 4841, thermal 0, battery 100 % (AC powered), agent access off (port 8790 HTTP 000), screen awake, Ustaad in front, peers: Phone C.
 Phone C: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, MemoryCloud IDLE, Keep busy enabled and `paused_model_restarted` (jobsFailed 0, hammer false), ramAvailMb 4534, thermal 1, battery 100 % (AC powered), agent access off (HTTP 000), screen awake, Ustaad in front.
 Phone B: not touched after 05:56:30; last read before the change: chat READY on GPU, embedder READY, rpc STOPPED, thermal 1 at 05:56:16; battery 97 % at 05:56:30.
+
+
+## Sixth pass, build 0734013, the 30B model on phones C and A
+
+Date and time: 2026-10-11, 06:59 to 07:12 IST. Phones C (`192.168.242.76`, driver, holds the 30B file) and A (`192.168.242.89`, lender), build 0734013 on both (apk sha256 prefix 80b6c274fb559cf0; lastUpdateTime A 05:32:26, C 05:48:30; `pass7/01-start/build-*.txt`, `apk-sha-*.txt`). Phone B received no adb command and no API call. Raw files: `docs/benchmarks/raw/final-audit/pass7/` (called `pass7/` below); my helper scripts (not repo scripts) are in `pass7/helpers/`. The pairing secret was read from Phone A and is in no raw file. Before every step I read Ustaad's focus, wakefulness, Thermal Status and battery on both phones (`pass7/pre-log.txt`): Ustaad in front and screen awake on both every time, Thermal Status 0 to 2 (never 3 or more, so no thermal wait), both phones at 100 % with AC powered.
+
+The result in one line: the 30B split was refused by the planner ("The plan does not fit") on both attempts, so no 30B load, no question through the split and no S2 restore of a 30B lender took place. Step 2 passed.
+
+### Start state (`pass7/01-start/`, read 06:59:54)
+
+| | Phone C | Phone A |
+|---|---|---|
+| chat / embedder / rpc | READY on GPU / READY / STOPPED | READY on GPU / READY / STOPPED |
+| MemoryCloud phase | IDLE, nothing pending | IDLE, nothing pending |
+| Keep busy | `running`, jobsDone 797, jobsFailed 0, hammer false | `half_duty`, jobsDone 77, jobsFailed 0, hammer false |
+| ramAvailMb, thermal | 4334, 1 | 4648, 2 |
+| battery, charging | 100 %, AC powered | 100 %, AC powered |
+| link (`/v1/health`) | 11ac, 390 Mbps | 11ac, 390 Mbps |
+| models folder | 30B file 18556686752 bytes, 4B, embedder, gemma-4-E4B (`models-dir-C.txt`) | 4B and embedder only (`models-dir-A.txt`) |
+| peers | A online, B away | C online (B not listed) |
+
+### Timeline
+
+| Clock | Event | Raw file |
+|---|---|---|
+| 07:00:11 to 07:00:31 | **Step 2**, hardening-check step m on Phone C: load of the 18.6 GB file as chat refused after **0.4 s**: "Not enough free memory to load Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf: it needs about 22.2 GB free (the file is 17.3 GB; rule: 1.2 x file + 1.5 GB) and this phone has 9.2 GB available. Close other apps, choose a smaller model, or split it over phones with Mem..." (script line cut at 300 characters); the script's own `MemAvailable` read was 4479060 kB; small model back, READY on GPU. **PASS** (refused under 30 s, reason names memory, small model back) | `02-hardening-m-C/stdout.txt`, `state-after.txt` |
+| 07:01:25 | **Step 3, first attempt**: `POST /v1/memcloud/start {"file": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf", "peers": ["Phone A"]}` on C: **HTTP 202**, body phase IDLE; phase PLANNING at once | `03-split30b/start-response.json`, `events.log` |
+| 07:01:35 (next 10 s poll) | phase **FAILED**, failReason, in full: "The plan does not fit: Phone C has 6.5 GB free and the planning estimate is 10.3 GB; Phone A has 6.7 GB free and the planning estimate is 9.9 GB. Nothing was started or stopped. Give a phone fewer layers, add a phone, or start with force to try anyway." Steps: "Reading the model header", "Asking Phone A what it is running", "Failed: ..." My helper posted `POST /v1/memcloud/stop` at once (HTTP 202); at its first read both phones had chat READY on GPU, embedder READY, rpc STOPPED and C was IDLE (0 s after the stop; no role went FAILED) | `03-split30b/memcloud-state-002-FAILED.json`, `events.log`, `summary.json` |
+| 07:02:37 | **Second attempt without any stop call** (the stop in the first attempt made the "30 s later" state uninformative): HTTP 202; the first poll already showed FAILED with the same message (C 6.5 GB, A 6.6 GB free) | `03-refusal-no-stop/start-response.json`, `state-at-answer.json`, `events.log` |
+| 07:03:07 (30 s later) | C: chat READY on GPU, embedder READY, rpc STOPPED, **MemoryCloud phase still FAILED** (same failReason), Keep busy `paused_model_restarted`, jobsDone 802, jobsFailed 0. A: chat READY on GPU, embedder READY, rpc STOPPED, MemoryCloud IDLE, lendingTo null, Keep busy `half_duty`, jobsDone 120, jobsFailed 0 | `03-refusal-no-stop/events.log` |
+| 07:03:37 (60 s later) | same; A jobsDone 126; C jobsDone still 802 | `events.log` |
+| 07:03:53 to 07:08:59 | C polled every 30 s: phase FAILED throughout; Keep busy `paused_model_restarted` with jobsDone 802 until 07:05:25, then `running` at **07:05:55** (jobsDone 813) and counting (891 at 07:08:59), jobsFailed 0, phase still FAILED | `03-refusal-no-stop/watch-C-busy.txt` |
+| 07:09:40 | manual `POST /v1/memcloud/stop {}` on C: C phase IDLE, notices empty, pendingRestore empty; A IDLE | `03-refusal-no-stop/manual-steps.txt` |
+| 07:10:03 and 07:11:04 | **Step 4**, two Keep busy reads 60 s apart: A `half_duty`, jobsDone 199 to 208, jobsFailed 0; C `half_duty`, jobsDone 905 to 920, jobsFailed 0 | `04-final/busy-reads.txt` |
+
+Not run because the planner refused: the 40 minute load poll, the load-time `ramAvailMb` and thermal log, the two questions through the split, the stop-and-restore timing of the lender (S2) and the lender's log lines about waiting for the rpc server, and the app log lines of both phones for a failed load. The planner's message offers "start with force to try anyway"; the brief did not ask for it and I did not use it.
+
+### Things that looked odd, with the evidence
+
+- After the planner's refusal, Phone C's MemoryCloud phase did not return to IDLE by itself: FAILED at 07:02:37 and still FAILED at 07:08:59, until I posted the stop at 07:09:40 (`03-refusal-no-stop/events.log`, `watch-C-busy.txt`). The brief expected both phones to be as before with MemoryCloud IDLE 30 s later; Phone A was IDLE, Phone C was not.
+- Phone C's Keep busy sat in `paused_model_restarted` with jobsDone 802 from my first read after step 2 at 07:00:31 (printed, not saved; jobsDone 802) until 07:05:55 (the saved reads are `03-refusal-no-stop/events.log` from 07:02:36 and `watch-C-busy.txt`), then counted again, with the MemoryCloud phase still FAILED. I did not look for why it took about five minutes.
+- Step 2 and the planner give different free-memory figures for Phone C: `MemAvailable` 4479060 kB (script), "9.2 GB available" (the app's refusal text), "6.5 GB free" (the planner), `ramAvailMb` 5223 (`/v1/health`, `03-refusal-no-stop/events.log`). Not investigated.
+- Phone A's link speed in `/v1/health` was 390 Mbps at the start and 234 Mbps at the end (`01-start/health-A.txt`, `04-final/health-A.txt`).
+
+### Not run
+
+The S2 check with the 30B model and everything that needs a started split (above); `batch-failover-check.py`; any call to Phone B; the planner's `force` option.
+
+### Manual interventions
+
+1. The stop posted by my helper right after the first FAILED answer (07:01:35), and the manual stop at 07:09:40 after the observation. Nothing else: no hand load, no restart, no screen action.
+
+### Files created on a phone
+
+None outside the app's own data (`pass7/04-final/new-files-A.txt`, `new-files-C.txt`: `audit.jsonl`, logs, `pdu.db-*`, datastore); nothing in `/sdcard` or `/data/local/tmp`; nothing deleted, the lenders' caches untouched.
+
+### Final state of both phones (`pass7/04-final/`, read 07:10 to 07:12)
+
+Phone C: chat READY on GPU (restarts 0, no lastError, no notice), embedder READY, rpc STOPPED, MemoryCloud IDLE with nothing pending, Keep busy enabled and `half_duty` (jobsFailed 0, hammer false), ramAvailMb 4450, thermal 2, battery 100 % (AC powered), agent access off (port 8790 HTTP 000), screen awake, Ustaad in front, peers: A online, B away.
+Phone A: chat READY on GPU (restarts 0, no lastError), embedder READY, rpc STOPPED, MemoryCloud IDLE with nothing pending, Keep busy enabled and `half_duty` (jobsFailed 0, hammer false), ramAvailMb 4733, thermal 2, battery 100 % (AC powered), agent access off (HTTP 000), screen awake, Ustaad in front, peers: Phone C only.

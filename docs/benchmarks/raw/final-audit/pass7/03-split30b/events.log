@@ -1,0 +1,16 @@
+07:01:25 +    0.4s  POST 192.168.242.76 /v1/memcloud/start {"file": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf", "peers": ["Phone A"]} -> HTTP 202
+07:01:25 +    0.4s  start response body: {"phase": "IDLE", "file": null, "model": null, "layers": null, "experts": null, "expertsUsed": null, "moeLayers": null, "fileBytes": null, "ctx": null, "args": [], "shares": [], "phones": [], "boundariesPerToken": null, "warnings": [], "lostPhone": null, "released": false, "failReason": null, "loadStartedAtMs": 0, "loadMs": null, "log": null, "steps": [], "generation": null, "baseline": null, "smallModel": null, "pendingRestore": [], "notices": [], "rttMs": null, "tcpRttMs": null, "updatedAtMs": 0}
+07:01:25 +    0.4s  PHASE PLANNING steps=1 last_step='Reading the model header' loadMs=None failReason=None notices=[] log_tail=''
+07:01:25 +    0.6s  SAMPLE C ram=5235 th=1 busy=paused_model_restarted chat=READY | A ram=4706 th=2 busy=half_duty chat=READY rpc=STOPPED
+07:01:35 +   10.7s  PHASE FAILED steps=3 last_step='Failed: The plan does not fit: Phone C has 6.5 GB free and the planning estimate is 10.3 GB; Phone A has 6.7 GB free and the planning estimate is 9.9 GB. Nothing was started or stopped. Give a phone fewer layers, add a phone, or start with force to try anyway.' loadMs=None failReason='The plan does not fit: Phone C has 6.5 GB free and the planning estimate is 10.3 GB; Phone A has 6.7 GB free and the planning estimate is 9.9 GB. Nothing was started or stopped. Give a phone fewer layers, add a phone, or start with force to try anyway.' notices=[] log_tail=''
+07:01:35 +   10.7s  load ended: phase FAILED after 10 s; loadMs None
+07:01:35 +   10.8s  POST 192.168.242.76 /v1/memcloud/stop -> 202 {"phase": "FAILED", "file": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf", "model": null, "layers": null, "experts": null, "expertsUsed": null, "moeLayers": null, "fileBytes": null, "ctx": null, "args": [
+07:01:35 +   10.9s  RESTORE C chat -> READY/GPU  (0 s after the stop)
+07:01:35 +   10.9s  RESTORE C embed -> READY  (0 s after the stop)
+07:01:35 +   10.9s  RESTORE C rpc -> STOPPED  (0 s after the stop)
+07:01:35 +   10.9s  RESTORE A chat -> READY/GPU  (0 s after the stop)
+07:01:35 +   10.9s  RESTORE A embed -> READY  (0 s after the stop)
+07:01:35 +   10.9s  RESTORE A rpc -> STOPPED  (0 s after the stop)
+07:01:35 +   10.9s  RESTORE C memcloud phase -> IDLE  (0 s after the stop) notices=[] pendingRestore=[]
+07:01:41 +   16.7s  restore summary: {"A": {"rpcGone": 0.0, "chatGpuReady": 0.0, "embedReady": 0.0}, "C": {"rpcGone": 0.0, "chatGpuReady": 0.0, "embedReady": 0.0}}; failed roles seen: 0
+07:01:41 +   16.7s  done

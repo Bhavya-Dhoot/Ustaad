@@ -1,0 +1,1 @@
+health {'ramAvailMb': 4648, 'thermalStatus': 2, 'batteryPct': 100, 'charging': True, 'linkStandard': '11ac', 'linkSpeedMbps': 390}

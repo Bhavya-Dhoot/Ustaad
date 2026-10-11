@@ -1,0 +1,62 @@
+{
+ "C": {
+  "chat": {
+   "state": "READY",
+   "backend": "GPU",
+   "pid": 31892,
+   "reason": null,
+   "lastError": null,
+   "notice": null,
+   "restarts": 0
+  },
+  "embed": {
+   "state": "READY",
+   "backend": null,
+   "pid": 29587,
+   "reason": null,
+   "lastError": null,
+   "notice": null,
+   "restarts": 0
+  },
+  "rpc": {
+   "state": "STOPPED",
+   "backend": null,
+   "pid": null,
+   "reason": null,
+   "lastError": null,
+   "notice": null,
+   "restarts": 0
+  },
+  "http": 200
+ },
+ "A": {
+  "chat": {
+   "state": "READY",
+   "backend": "GPU",
+   "pid": 10798,
+   "reason": null,
+   "lastError": null,
+   "notice": null,
+   "restarts": 0
+  },
+  "embed": {
+   "state": "READY",
+   "backend": null,
+   "pid": 10783,
+   "reason": null,
+   "lastError": null,
+   "notice": null,
+   "restarts": 0
+  },
+  "rpc": {
+   "state": "STOPPED",
+   "backend": null,
+   "pid": null,
+   "reason": null,
+   "lastError": null,
+   "notice": null,
+   "restarts": 0
+  },
+  "http": 200
+ }
+}

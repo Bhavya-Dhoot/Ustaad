@@ -1,0 +1,4 @@
+07:10:03 read 1 A {"enabled": true, "state": "half_duty", "jobsDone": 199, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 4213, "secondsGenerating": 471.461, "share60s"
+07:10:04 read 1 C {"enabled": true, "state": "half_duty", "jobsDone": 905, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 19471, "secondsGenerating": 2254.904, "share60
+07:11:04 read 2 A {"enabled": true, "state": "half_duty", "jobsDone": 208, "jobsCancelled": 0, "jobsFailed": 0, "tokens": 4476, "secondsGenerating": 501.214, "share60s"
+07:11:04 read 2 C {"enabled": true, "state": "half_duty", "jobsDone": 920, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 19763, "secondsGenerating": 2284.585, "share60

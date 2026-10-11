@@ -1,0 +1,11 @@
+07:03:53 C memcloud=FAILED busy={"enabled": true, "state": "paused_model_restarted", "jobsDone": 802, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 17260, "secondsGenerating": 2026.381, "share60s": 0.0, "ha
+07:04:23 C memcloud=FAILED busy={"enabled": true, "state": "paused_model_restarted", "jobsDone": 802, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 17260, "secondsGenerating": 2026.381, "share60s": 0.0, "ha
+07:04:54 C memcloud=FAILED busy={"enabled": true, "state": "paused_model_restarted", "jobsDone": 802, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 17260, "secondsGenerating": 2026.381, "share60s": 0.0, "ha
+07:05:25 C memcloud=FAILED busy={"enabled": true, "state": "paused_model_restarted", "jobsDone": 802, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 17260, "secondsGenerating": 2026.381, "share60s": 0.0, "ha
+07:05:55 C memcloud=FAILED busy={"enabled": true, "state": "running", "jobsDone": 813, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 17461, "secondsGenerating": 2049.377, "share60s": 0.383, "hammer": false}
+07:06:26 C memcloud=FAILED busy={"enabled": true, "state": "running", "jobsDone": 826, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 17780, "secondsGenerating": 2079.879, "share60s": 0.892, "hammer": false}
+07:06:57 C memcloud=FAILED busy={"enabled": true, "state": "running", "jobsDone": 840, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 18077, "secondsGenerating": 2110.432, "share60s": 0.995, "hammer": false}
+07:07:27 C memcloud=FAILED busy={"enabled": true, "state": "running", "jobsDone": 854, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 18379, "secondsGenerating": 2140.942, "share60s": 0.994, "hammer": false}
+07:07:58 C memcloud=FAILED busy={"enabled": true, "state": "running", "jobsDone": 868, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 18644, "secondsGenerating": 2171.343, "share60s": 0.995, "hammer": false}
+07:08:29 C memcloud=FAILED busy={"enabled": true, "state": "running", "jobsDone": 881, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 18981, "secondsGenerating": 2201.81, "share60s": 0.995, "hammer": false}
+07:08:59 C memcloud=FAILED busy={"enabled": true, "state": "half_duty", "jobsDone": 891, "jobsCancelled": 2, "jobsFailed": 0, "tokens": 19164, "secondsGenerating": 2221.362, "share60s": 0.813, "hammer": fals

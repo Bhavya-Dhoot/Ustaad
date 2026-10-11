@@ -1,0 +1,1 @@
+06:59:54 start | A: front=1 awake=1 thermal=2 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1 | C: front=1 awake=1 thermal=1 battery=100 AC=true chatGPU=1 embed=1 rpcStopped=1

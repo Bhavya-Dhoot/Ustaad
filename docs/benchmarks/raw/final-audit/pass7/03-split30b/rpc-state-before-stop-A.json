@@ -1,0 +1,29 @@
+{
+ "state": "STOPPED",
+ "port": 50052,
+ "bind": null,
+ "pid": null,
+ "rssMb": null,
+ "peakMb": null,
+ "anonMb": null,
+ "cachedBytes": 7122683904,
+ "cachedFiles": 113,
+ "reason": null,
+ "lastLog": [
+  "  local cache    : /data/user/0/com.swarmos.app/files/llama-cache/rpc",
+  "Devices:",
+  "  CPU: CPU (15218 MiB, 15218 MiB free)",
+  "  transport      : TCP",
+  "Accepted client connection",
+  "Client connection closed",
+  "Accepted client connection",
+  "Client connection closed"
+ ],
+ "thermalStatus": 2,
+ "ramAvailMb": 4662,
+ "args": [],
+ "lendingTo": null,
+ "leaseMsLeft": null,
+ "stoppedOwn": null,
+ "loan": null
+}

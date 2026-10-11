@@ -1,0 +1,1 @@
+   health ramAvailMb 4733 thermal 2 battery 100 charging True 11ac 234

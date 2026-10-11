@@ -1,0 +1,4 @@
+INFO  phone 192.168.242.76  thermal 1  chat {'state': 'READY', 'backend': 'GPU', 'loadMs': 18131, 'restarts': 0}
+PASS  m-memory-preflight  MemAvailable:    4479060 kB; load of the 18.6 GB file: HTTP 200, chat FAILED after 0.4 s: Not enough free memory to load Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf: it needs about 22.2 GB free (the file is 17.3 GB; rule: 1.2 x file + 1.5 GB) and this phone has 9.2 GB available. Close other apps, choose a smaller model, or split it over phones with Mem
+INFO  small model back: READY on GPU
+INFO  end  thermal 1  chat {'state': 'READY', 'backend': 'GPU', 'restarts': 0}

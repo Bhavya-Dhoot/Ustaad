@@ -1,0 +1,33 @@
+{
+ "phase": "PLANNING",
+ "file": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf",
+ "model": null,
+ "layers": null,
+ "experts": null,
+ "expertsUsed": null,
+ "moeLayers": null,
+ "fileBytes": null,
+ "ctx": null,
+ "args": [],
+ "shares": [],
+ "phones": [],
+ "boundariesPerToken": null,
+ "warnings": [],
+ "lostPhone": null,
+ "released": false,
+ "failReason": null,
+ "loadStartedAtMs": 1791682284971,
+ "loadMs": null,
+ "log": null,
+ "steps": [
+  "Reading the model header"
+ ],
+ "generation": null,
+ "baseline": null,
+ "smallModel": null,
+ "pendingRestore": [],
+ "notices": [],
+ "rttMs": null,
+ "tcpRttMs": null,
+ "updatedAtMs": 1791682284971
+}

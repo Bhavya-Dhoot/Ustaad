@@ -1,0 +1,11 @@
+{
+ "enabled": true,
+ "state": "half_duty",
+ "jobsDone": 97,
+ "jobsCancelled": 0,
+ "jobsFailed": 0,
+ "tokens": 2047,
+ "secondsGenerating": 211.701,
+ "share60s": 0.494,
+ "hammer": false
+}

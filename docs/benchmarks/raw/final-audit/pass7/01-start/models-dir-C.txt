@@ -1,0 +1,5 @@
+total 26184100
+-rw-rw---- 1 shell ext_data_rw 18556686752 2026-10-10 09:18 Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
+-rw-rw---- 1 shell ext_data_rw  2740937888 2026-10-10 01:15 Qwen3.5-4B-Q4_K_M.gguf
+-rw-rw-rw- 1 shell ext_data_rw   333590944 2026-10-10 00:40 embeddinggemma-300M-Q8_0.gguf
+-rw-rw-rw- 1 shell ext_data_rw  5154941280 2026-10-10 01:10 gemma-4-E4B_q4_0-it.gguf

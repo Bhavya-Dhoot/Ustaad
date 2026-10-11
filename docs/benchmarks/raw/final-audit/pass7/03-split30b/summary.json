@@ -1,0 +1,25 @@
+{
+ "logStartEpoch": 1791682285.1055193,
+ "startClock": "07:01:25",
+ "startHttp": 202,
+ "phaseAtEnd": "FAILED",
+ "loadSeconds": 10.3,
+ "result": "FAILED",
+ "loadMs": null,
+ "stopClock": "07:01:35",
+ "restore": {
+  "A": {
+   "rpcGone": 0.0,
+   "chatGpuReady": 0.0,
+   "embedReady": 0.0
+  },
+  "C": {
+   "rpcGone": 0.0,
+   "chatGpuReady": 0.0,
+   "embedReady": 0.0
+  }
+ },
+ "failedRoles": [],
+ "restoreSeconds": 5.9,
+ "restoreClean": true
+}

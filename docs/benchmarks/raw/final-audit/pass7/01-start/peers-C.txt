@@ -1,0 +1,1 @@
+peers Phone C [('Phone A', 'online', 42.732188), ('Phone B', 'away', None)]

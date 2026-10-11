@@ -1,0 +1,11 @@
+{
+ "enabled": true,
+ "state": "paused_model_restarted",
+ "jobsDone": 802,
+ "jobsCancelled": 2,
+ "jobsFailed": 0,
+ "tokens": 17260,
+ "secondsGenerating": 2026.381,
+ "share60s": 0.0,
+ "hammer": false
+}
