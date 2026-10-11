@@ -15,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -378,7 +379,7 @@ class SplitCoordinator(
             try {
                 onAppStart()
                 val old = synchronized(lock) { opJob }
-                old?.cancel()
+                old?.cancelAndJoin() // IDLE is published after the cancelled operation has finished its own clean-up, so a start right after Stop is not refused as busy
                 degradedJob?.cancel()
                 degradedNote = null
                 // a teardown that throws must not leave the phase on READY, LOADING or DEGRADED: Stop always ends in IDLE
