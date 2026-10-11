@@ -119,7 +119,12 @@ class JobExecutor(
     /** Number of jobIds currently remembered (running plus finished and not yet expired). */
     val remembered: Int get() = synchronized(lock) { entries.size }
 
-    suspend fun <T : Any> submit(jobId: String, block: suspend () -> T): T {
+    /**
+     * Runs [block] for [jobId], or joins the job (or takes the stored result) if the id is already known. [newWork] is called,
+     * under the lock, only when the id is new, before a slot is counted for it: it may throw to refuse the job, and a repeat of a
+     * running or finished job never reaches it.
+     */
+    suspend fun <T : Any> submit(jobId: String, newWork: () -> Unit = {}, block: suspend () -> T): T {
         var created = false
         var lendingFiller: FillerSlot? = null
         val entry = synchronized(lock) {
@@ -129,6 +134,7 @@ class JobExecutor(
                 existing.interest++
                 return@synchronized existing
             }
+            newWork()
             val immediate = freeNowLocked()
             if (!immediate && refusedLocked(maxQueue)) throw BusyException(runningLocked(), capacity, waiting.size - shadowedLocked())
             lendingFiller = arrivalLocked()

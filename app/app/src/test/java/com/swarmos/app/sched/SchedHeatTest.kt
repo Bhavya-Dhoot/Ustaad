@@ -91,4 +91,29 @@ class SchedHeatTest {
         status = 4
         assertEquals("T:early", running.await().text)
     }
+
+    @Test fun aResendOfAFinishedJobGetsItsResultEvenWhenThePhoneHasGotHot() = runBlocking {
+        assertEquals("T:x", node.chat("j1", req("x")).text)
+        assertEquals(listOf(listOf(3f)), node.embed("e1", listOf("abc")).vectors)
+        status = 4   // the reply was lost and the phone got hot: the sender asks again with the same job id
+        assertEquals("the stored result, not a refusal", "T:x", node.chat("j1", req("x")).text)
+        assertEquals(listOf(listOf(3f)), node.embed("e1", listOf("abc")).vectors)
+        assertEquals("the job was not run again", 1, llm.executed.size)
+        assertEquals(1, llm.embedCalls.get())
+        try {
+            node.chat("j2", req("y"))
+            fail("a new job id is still refused")
+        } catch (e: BusyException) {
+            assertEquals(0, e.running)
+        }
+    }
+
+    @Test fun aResendOfAJobStillRunningSharesItWhenThePhoneHasGotHot() = runBlocking {
+        val first = async { node.chat("slow", req("slow")) }
+        while (node.chatExec.running == 0) delay(5)
+        status = 4
+        assertEquals("joins the running job", "T:slow", node.chat("slow", req("slow")).text)
+        assertEquals("T:slow", first.await().text)
+        assertEquals("one run for both", 1, llm.executed.size)
+    }
 }

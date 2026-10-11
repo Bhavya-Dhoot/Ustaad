@@ -90,10 +90,10 @@ class SchedNode(
      * own request ([fromPeer] false) is never refused for heat.
      */
     suspend fun chat(jobId: String, req: ChatRequest, pinModel: String? = null, fromPeer: Boolean = true): ChatJobResult {
-        if (fromPeer) refuseWhenTooHot(chatExec)
         val model = llm().modelName
         if (pinModel != null && pinModel != model) throw ModelMismatchException(model)
-        return chatExec.submit(jobId) {
+        // heat is asked only for a job id this phone does not know yet: a resend of a running or finished job gets its result
+        return chatExec.submit(jobId, newWork = { if (fromPeer) refuseWhenTooHot(chatExec) }) {
             val client = llm()
             val r = client.chat(req)
             noteStats(r.stats)
@@ -128,8 +128,8 @@ class SchedNode(
     }
 
     suspend fun embed(jobId: String, texts: List<String>): EmbedJobResult {
-        refuseWhenTooHot(embedExec)   // only another phone comes here; [LocalEndpoint] embeds with the embedder directly
-        return embedExec.submit(jobId) {
+        // only another phone comes here ([LocalEndpoint] embeds with the embedder directly); as for chat, only a new job id is refused for heat
+        return embedExec.submit(jobId, newWork = { refuseWhenTooHot(embedExec) }) {
             val client = embedder()
             EmbedJobResult(jobId, client.embed(texts).map { it.toList() }, selfId(), client.modelName)
         }
@@ -138,7 +138,8 @@ class SchedNode(
     /**
      * A phone at thermal status 4 or more takes on no new job from another phone ([WorkKind.REMOTE_JOB] in the shared
      * [CoreThermalGate]). It answers as a full phone does, with [BusyException], which the sender already handles by going
-     * elsewhere. The status is this phone's latest reading, the one [caps] reports. Jobs already running are not touched.
+     * elsewhere. The status is this phone's latest reading, the one [caps] reports. Jobs already running are not touched, and a
+     * repeat of a job id this phone already has gets that job's result.
      */
     private fun refuseWhenTooHot(exec: JobExecutor) {
         val status = health()?.thermalStatus ?: 0
