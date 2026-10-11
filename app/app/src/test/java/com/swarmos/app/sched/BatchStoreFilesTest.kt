@@ -233,6 +233,26 @@ class BatchStoreFilesTest {
         assertEquals(1, store.latest.value[BatchStore.MODE_LOCAL]!!.done)
     }
 
+    @Test fun aRunTapStillQueuedWhenStopAllRunsStartsNoBatchAfterIt() = runBlocking {
+        val p = phone("me")
+        val llm = swarm(p)
+        val manual = ManualDispatcher()   // the launcher of the tap is queued and does not run until the test lets it
+        val store = BatchStore(CoroutineScope(SupervisorJob() + manual), { llm }, { llm }, dir = { tempDir() })
+        store.startInBackground(listOf(req("a")), BatchStore.MODE_LOCAL)
+        store.stopAll()                    // Stop Ustaad: there is no batch to stop yet
+        manual.runPending()
+        delay(500)
+        assertTrue("no job was sent after the stop", p.llm.requests.isEmpty())
+        assertTrue("no batch was registered", store.latest.value.isEmpty() && !store.isRunning())
+        // Start Ustaad, then a tap: that batch runs (the scope's own coroutines wait in the manual dispatcher too, so keep running them)
+        store.startInBackground(listOf(req("again")), BatchStore.MODE_LOCAL)
+        until {
+            manual.runPending()
+            store.latest.value[BatchStore.MODE_LOCAL]?.state == "done"
+        }
+        assertEquals(1, store.latest.value[BatchStore.MODE_LOCAL]!!.done)
+    }
+
     @Test fun stopAllEndsEveryBatchEvenWhenTheFirstIsSlowToWindUp() = runBlocking {
         val stuck = StuckPhone()
         val stuckSwarm = SwarmLlm({ listOf(stuck) }, scope, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100, msPerToken = 0)

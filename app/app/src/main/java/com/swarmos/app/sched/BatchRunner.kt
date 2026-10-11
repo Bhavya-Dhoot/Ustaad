@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -207,6 +208,7 @@ class BatchStore(
     private val newest = HashMap<String, Long>()                    // rank of the newest report accepted per batch, written or queued
     private val _latest = MutableStateFlow<Map<String, BatchReport>>(emptyMap())
     private var lastWriteMs = 0L
+    private var stops = 0L                                          // raised by stopAll: a start scheduled before a stop does not begin after it
 
     /** Most recent report of each mode, updated while a batch runs. */
     val latest: StateFlow<Map<String, BatchReport>> = _latest.asStateFlow()
@@ -221,13 +223,15 @@ class BatchStore(
      * second tap that lands before the button is disabled does not start a second batch.
      */
     fun startInBackground(requests: List<ChatRequest>, mode: String) {
-        scope.launch(Dispatchers.IO) { tryStart(requests, mode) }
+        val before = synchronized(lock) { stops }
+        scope.launch { withContext(Dispatchers.IO) { begin(requests, mode, onlyIfIdle = true, notAfterStop = before) } }
     }
 
     /** Starts the batch unless one is running; null then. The check and the start are one step. */
     fun tryStart(requests: List<ChatRequest>, mode: String): String? = begin(requests, mode, onlyIfIdle = true)
 
-    private fun begin(requests: List<ChatRequest>, mode: String, onlyIfIdle: Boolean): String? {
+    /** [notAfterStop] is the number of stops seen when the start was scheduled; if [stopAll] ran since, nothing begins. */
+    private fun begin(requests: List<ChatRequest>, mode: String, onlyIfIdle: Boolean, notAfterStop: Long = -1L): String? {
         val id = newJobId()
         val client = if (mode == MODE_LOCAL) localOnly() else swarm()
         val flow = MutableStateFlow(BatchRunner.buildReport(id, mode, RUNNING, requests.size, emptyList(), 0.0))
@@ -256,7 +260,7 @@ class BatchStore(
             publish(report)
         }
         synchronized(lock) {
-            if (onlyIfIdle && flows.values.any { it.value.state == RUNNING }) {
+            if ((onlyIfIdle && flows.values.any { it.value.state == RUNNING }) || (notAfterStop >= 0 && notAfterStop != stops)) {
                 job.cancel()
                 return null
             }
@@ -292,7 +296,10 @@ class BatchStore(
      * waited for together, at most [STOP_WAIT_MS]: one that is slow to wind up does not keep the others running.
      */
     fun stopAll() {
-        val running = synchronized(lock) { jobs.values.toList() }
+        val running = synchronized(lock) {
+            stops++
+            jobs.values.toList()
+        }
         if (running.isEmpty()) return
         running.forEach { it.cancel() }
         runBlocking { withTimeoutOrNull(STOP_WAIT_MS) { running.forEach { it.join() } } }
