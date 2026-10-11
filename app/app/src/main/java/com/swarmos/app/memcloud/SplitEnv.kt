@@ -154,7 +154,7 @@ object AndroidSplitEnv : SplitEnv {
     }
 
     override suspend fun peerLoadModel(addr: String, role: String, file: String) {
-        AppGraph.nodeClient.raw(HttpMethod.Post, addr, "/models/load", """{"role":"$role","file":"$file","wait":false}""", 15_000)
+        AppGraph.nodeClient.raw(HttpMethod.Post, addr, "/models/load", restoreLoadBody(role, file), 15_000)
     }
 
     override suspend fun peerRpcStart(addr: String, req: RpcStartRequest): RpcStateDto =
@@ -236,6 +236,9 @@ object AndroidSplitEnv : SplitEnv {
     /** Link addresses a worker may bind rpc-server to: Wi-Fi, hotspot and Direct interfaces only (the link module's advertisable set), never cellular. */
     fun linkAddresses(): List<LinkAddr> = LinkRoute.advertisable().map { LinkAddr(it.address, it.type == LinkType.DIRECT) }
 }
+
+/** The driver's request to a phone to load a model it stopped for a split: the phone's own restore, so it is marked automatic (a refusal for heat is retried there). */
+internal fun restoreLoadBody(role: String, file: String): String = """{"role":"$role","file":"$file","wait":false,"automatic":true}"""
 
 /** The lender refused a stop (HTTP 409): its loan belongs to another phone or to a newer loan of this one, so there is nothing of ours left to end. */
 class LoanNotOurs(message: String) : Exception(message)
