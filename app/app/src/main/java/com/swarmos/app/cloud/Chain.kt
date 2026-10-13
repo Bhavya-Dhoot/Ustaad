@@ -183,6 +183,21 @@ class ChainEntry private constructor(
 }
 
 /** The rules of 3.3: what each operation requires of the state it follows. */
+/**
+ * What the rules ask of the chain they run in: whether a signature holds (the chain remembers the ones it has verified, so the same
+ * authenticated entries are never verified twice, Codex Chain.kt:452) and whether a key was evicted from a full member list by a
+ * recovery transfer before a given number (a lookup in the chain instead of a growing set, Codex Chain.kt:267).
+ */
+internal interface RuleContext {
+    fun signatureOk(key: ByteArray, e: ChainEntry): Boolean
+    fun evicted(id: String, upTo: Long): Boolean
+}
+
+internal object PlainContext : RuleContext {
+    override fun signatureOk(key: ByteArray, e: ChainEntry) = Crypto.ecdsaVerify(key, ChainEntry.signedMessage(e.body), e.signature)
+    override fun evicted(id: String, upTo: Long) = false
+}
+
 internal object ChainRules {
     private fun bad(why: String): Nothing = throw ProtocolError(CloudError.BAD_ENTRY, why)
 
@@ -200,13 +215,13 @@ internal object ChainRules {
     }
 
     /** The state after [e], or [ProtocolError] `bad_entry` if [e] does not follow from [s]. */
-    fun apply(s: ChainState, e: ChainEntry): ChainState {
+    fun apply(s: ChainState, e: ChainEntry, ctx: RuleContext = PlainContext): ChainState {
         if (e.seq != s.nextSeq) bad("wrong number")
         if (e.seq >= ChainEntry.MAX_ENTRIES) bad("the chain is full")
         if (!e.prev.contentEquals(s.headId)) bad("wrong predecessor")
         if (!e.cloudId.contentEquals(s.cloudId)) bad("another cloud")
         val signer = if (e.role == 1) s.ownerKey else s.recoveryKey
-        if (!Crypto.ecdsaVerify(signer, ChainEntry.signedMessage(e.body), e.signature)) bad("not signed by the key in force")
+        if (!ctx.signatureOk(signer, e)) bad("not signed by the key in force")
         val next = s.nextSeq + 1
         return when (val p = e.payload) {
             is Payload.Genesis -> bad("a second genesis")
@@ -227,7 +242,7 @@ internal object ChainRules {
                     id = tokenMemberId(issuer, p.keyId!!)
                     m = ChainMember(id, p.nodeId, p.name, p.kind, null, issuer, p.keyId, e.seq)
                 }
-                if (s.member(id) != null || s.isRemoved(id)) bad("member exists or was removed")
+                if (s.member(id) != null || s.isRemoved(id) || ctx.evicted(id, s.headSeq)) bad("member exists or was removed")
                 s.copy(members = s.members.associateBy { it.id } + (id to m), nextSeq = next, headId = e.idBytes)
             }
             is Payload.Remove -> {
@@ -245,7 +260,7 @@ internal object ChainRules {
             }
             is Payload.Transfer -> {
                 val newId = Hex.of(Crypto.fingerprint(p.newOwner))
-                if (s.isRemoved(newId)) bad("a removed key cannot own the cloud")
+                if (s.isRemoved(newId) || ctx.evicted(newId, s.headSeq)) bad("a removed key cannot own the cloud")
                 if (p.newOwner.contentEquals(s.recoveryKey)) bad("the recovery key is not a device key")
                 if (e.role == 1) {
                     if (p.newRecovery != null) bad("only the recovery key sets a recovery key")
@@ -256,23 +271,23 @@ internal object ChainRules {
                 }
                 val existing = s.member(newId)
                 val members = s.members.associateBy { it.id }.toMutableMap()
-                var removed = s.removed
                 if (existing != null) {
                     if (existing.kind != MemberKind.NODE || existing.publicKey == null) bad("the new owner must be a node")
                 } else {
                     // an owner transfer stops one short of the limit like an add; the recovery key may take the last place, and if the
-                    // list is full the new owner takes the old owner's place (the old owner and its token clients become removed)
+                    // list is full the new owner takes the old owner's place: the old owner and its token clients leave the list. They are
+                    // NOT added to the removed set (it keeps its bound): the chain remembers them as evicted and the rules look them up
+                    // (RuleContext.evicted), so they cannot come back, and a recovery transfer never fails for lack of room (Codex Chain.kt:267).
                     if (e.role == 1 && members.size >= ChainEntry.MAX_MEMBERS - 1) bad("member limit")
                     if (s.byNodeId(p.nodeId) != null) bad("node id in use")
                     if (members.size >= ChainEntry.MAX_MEMBERS) {
                         val gone = HashSet<String>().apply { add(s.ownerId); s.members.filter { it.issuer == s.ownerId }.forEach { add(it.id) } }
                         gone.forEach { members.remove(it) }
-                        removed = removed + gone
                     }
                     members[newId] = ChainMember(newId, p.nodeId, p.name, MemberKind.NODE, p.newOwner, null, null, e.seq)
                 }
                 s.copy(
-                    ownerKey = p.newOwner, recoveryKey = p.newRecovery ?: s.recoveryKey, members = members, removed = removed,
+                    ownerKey = p.newOwner, recoveryKey = p.newRecovery ?: s.recoveryKey, members = members,
                     needsRotation = s.needsRotation || e.role == 2, nextSeq = next, headId = e.idBytes,
                 )
             }
@@ -281,7 +296,7 @@ internal object ChainRules {
                 if (e.role != 2) bad("only the recovery key replaces the recovery key")
                 if (nr.contentEquals(s.recoveryKey) || nr.contentEquals(s.ownerKey)) bad("the new recovery key must be new")
                 val nrId = Hex.of(Crypto.fingerprint(nr))
-                if (s.member(nrId) != null || s.isRemoved(nrId)) bad("the recovery key is not a device key")
+                if (s.member(nrId) != null || s.isRemoved(nrId) || ctx.evicted(nrId, s.headSeq)) bad("the recovery key is not a device key")
                 s.copy(recoveryKey = nr, nextSeq = next, headId = e.idBytes)
             }
         }
@@ -320,13 +335,33 @@ class Chain private constructor(
 
     private val auths = ArrayList<Auth>()
     private val snaps = ArrayList<ChainState>() // snaps[k] is the state after entry SNAP * k
+    private val verified = LinkedHashSet<String>() // signatures that held: hash of key and entry, newest last, at most VERIFIED_MAX
+    private val evictedAt = HashMap<String, Long>() // keys a recovery transfer pushed out of a full list, and the number it happened at
+
+    /** The rules' view of this chain: remembered signature checks and the evicted keys. */
+    internal val ctx: RuleContext = object : RuleContext {
+        override fun signatureOk(key: ByteArray, e: ChainEntry): Boolean {
+            val k = Hex.of(Crypto.sha256(key, e.encode()))
+            if (k in verified) { verified.remove(k); verified.add(k); return true }
+            verifies++
+            val ok = Crypto.ecdsaVerify(key, ChainEntry.signedMessage(e.body), e.signature)
+            if (ok) {
+                verified.add(k)
+                if (verified.size > VERIFIED_MAX) verified.remove(verified.first())
+            }
+            return ok
+        }
+
+        override fun evicted(id: String, upTo: Long): Boolean = evictedAt[id]?.let { it <= upTo } == true
+    }
     private val flagMap = LinkedHashMap<String, Flag>()
     private var droppedList: List<ChainEntry> = emptyList()
     private var floor = 0L // the highest number of a recovery-signed entry held: the recovery boundary
 
-    /** Test instruments: how many times history was replayed, and how many entries that replay applied. */
+    /** Test instruments: how many times history was replayed, how many entries that replay applied, and how many signatures were really verified. */
     internal var replays = 0
     internal var replayedEntries = 0L
+    internal var verifies = 0L
 
     init {
         snaps.add(tip)
@@ -354,7 +389,7 @@ class Chain private constructor(
         val k = (seq / SNAP).toInt().coerceAtMost(snaps.size - 1)
         var s = snaps[k]
         for (i in s.headSeq + 1..seq) {
-            s = ChainRules.apply(s, held[i.toInt()])
+            s = ChainRules.apply(s, held[i.toInt()], ctx)
             replayedEntries++
         }
         return s
@@ -367,6 +402,9 @@ class Chain private constructor(
             auths.add(Auth(e.seq + 1, after.ownerKey, after.recoveryKey))
         }
         if (e.role == 2) floor = maxOf(floor, e.seq)
+        if (e.op == ChainEntry.TRANSFER && e.role == 2) {
+            for (m in before.members) if (after.member(m.id) == null && !after.isRemoved(m.id)) evictedAt[m.id] = e.seq
+        }
     }
 
     private fun append(e: ChainEntry, after: ChainState) {
@@ -383,6 +421,7 @@ class Chain private constructor(
         snaps.removeAll { it.headSeq >= f }
         auths.removeAll { it.fromSeq > f }
         floor = held.filter { it.role == 2 }.maxOfOrNull { it.seq } ?: 0L
+        evictedAt.entries.removeAll { it.value >= f }
         tip = stateAt(f - 1)
     }
 
@@ -408,7 +447,7 @@ class Chain private constructor(
         var st = tip
         val states = ArrayList<ChainState>(entries.size)
         for (e in entries) {
-            st = ChainRules.apply(st, e)
+            st = ChainRules.apply(st, e, ctx)
             states.add(st)
         }
         for ((i, e) in entries.withIndex()) append(e, states[i]) // only now, when the whole run is valid
@@ -425,7 +464,7 @@ class Chain private constructor(
         // 1. authenticate against the keys in force at f: one signature check, no replay of history (Codex Chain.kt:414)
         val a = authorityFor(f)
         val key = if (e.role == 1) a.owner else a.recovery
-        if (!Crypto.ecdsaVerify(key, ChainEntry.signedMessage(e.body), e.signature)) return Offer.Refused("not signed by a key in force there")
+        if (!ctx.signatureOk(key, e)) return Offer.Refused("not signed by a key in force there")
         // 2. a branch that carries a recovery-signed entry replaces a branch that has none after the fork (Codex Chain.kt:430):
         //    whether the run's first entry is the recovery one or owner entries lead up to it. Never below this device's boundary:
         //    `floor < f` says that no held entry from f on is recovery-signed.
@@ -433,7 +472,7 @@ class Chain private constructor(
         if (floor < f && j != null) {
             // the first recovery-signed entry is checked against the recovery key in force at f before any replay: owner entries
             // cannot change that key, so it is the key of the common prefix
-            if (j != k && !Crypto.ecdsaVerify(a.recovery, ChainEntry.signedMessage(run[j].body), run[j].signature)) {
+            if (j != k && !ctx.signatureOk(a.recovery, run[j])) {
                 return Offer.Refused("the recovery entry is not signed by the recovery key in force at the fork")
             }
             return switchTo(run, k)
@@ -442,7 +481,7 @@ class Chain private constructor(
         //    This includes two branches that both carry recovery entries after the fork: they never converge by themselves (3.5).
         val id = "$f:${Hex.of(Crypto.fingerprint(key))}"
         if (flagMap.containsKey(id) || flagMap.size >= MAX_FLAGS) return Offer.Equivocation(f)
-        val valid = try { ChainRules.apply(stateAt(f - 1), e); true } catch (x: ProtocolError) { false }
+        val valid = try { ChainRules.apply(stateAt(f - 1), e, ctx); true } catch (x: ProtocolError) { false }
         if (!valid) return Offer.Refused("not a valid entry")
         flagMap[id] = Flag(f, mine.id, e.id, Hex.of(Crypto.fingerprint(key)))
         return Offer.Equivocation(f)
@@ -455,7 +494,7 @@ class Chain private constructor(
             var st = stateAt(f - 1)
             val states = ArrayList<ChainState>()
             for (x in run.drop(k)) {
-                st = ChainRules.apply(st, x)
+                st = ChainRules.apply(st, x, ctx)
                 states.add(st)
             }
             truncateTo(f)
@@ -484,7 +523,7 @@ class Chain private constructor(
         if (k == run.size || run[k].seq == 0L) return false
         val j = (k until run.size).firstOrNull { run[it].role == 2 } ?: return false
         val recovery = authorityFor(run[k].seq).recovery
-        if (!Crypto.ecdsaVerify(recovery, ChainEntry.signedMessage(run[j].body), run[j].signature)) return false
+        if (!ctx.signatureOk(recovery, run[j])) return false
         return when (offer(run)) {
             is Offer.Adopted, is Offer.RolledBack -> true
             else -> false
@@ -515,7 +554,7 @@ class Chain private constructor(
     private fun write(identity: DeviceIdentity, build: (ChainState) -> ByteArray): ChainEntry {
         check(identity.publicKey.contentEquals(tip.ownerKey)) { "only the owner key writes the member list" }
         val e = ChainEntry.sign(identity, build(tip))
-        append(e, ChainRules.apply(tip, e))
+        append(e, ChainRules.apply(tip, e, ctx))
         return e
     }
 
@@ -554,7 +593,7 @@ class Chain private constructor(
         val before = stateAt(forkAt - 1)
         check(recovery.publicKey.contentEquals(before.recoveryKey)) { "this is not the recovery key in force there" }
         val e = ChainEntry.sign(recovery, ChainEntry.transferBody(before, 2, now, newOwner, Shape.requireNodeId(nodeId), Shape.requireName(name), newRecovery))
-        val after = ChainRules.apply(before, e)
+        val after = ChainRules.apply(before, e, ctx)
         truncateTo(forkAt)
         append(e, after)
         return e
@@ -564,7 +603,7 @@ class Chain private constructor(
     @Synchronized fun replaceRecovery(recovery: DeviceIdentity, newRecovery: ByteArray, now: Long): ChainEntry {
         check(recovery.publicKey.contentEquals(tip.recoveryKey)) { "this is not the recovery key in force" }
         val e = ChainEntry.sign(recovery, ChainEntry.replaceRecoveryBody(tip, now, newRecovery))
-        append(e, ChainRules.apply(tip, e))
+        append(e, ChainRules.apply(tip, e, ctx))
         return e
     }
 
@@ -575,6 +614,9 @@ class Chain private constructor(
         const val MAX_RUN_OUT = MAX_RUN
         const val MAX_FLAGS = 64
         const val SNAP = 64L
+
+        /** Signature checks remembered: enough for a whole run of [MAX_RUN] entries and more. */
+        const val VERIFIED_MAX = 4096
 
         /** A new cloud: the creator's key is the owner, [recoveryPublic] is the recovery key's public half, epoch 0 is [secrets0]. */
         fun create(owner: DeviceIdentity, recoveryPublic: ByteArray, nodeId: String, name: String, secrets0: EpochSecrets, now: Long): Chain {
@@ -618,7 +660,7 @@ class Chain private constructor(
                     chain = Chain(s0.cloudId, arrayListOf(e), s0)
                     state = s0
                 } else {
-                    val next = ChainRules.apply(state!!, e)
+                    val next = ChainRules.apply(state!!, e, c.ctx)
                     c.append(e, next)
                     state = next
                 }
@@ -679,9 +721,12 @@ class ChainPuller(private val chain: Chain) {
 
 /**
  * The budget in front of [Chain.adoptRecoveryProof]: the one door that opens to a sender nobody has authenticated (docs 3.8). Small
- * on purpose. A run is charged to its source address and to the whole device before anything is verified; the table of addresses
- * has a hard cap and refuses a new address when full (nothing is inserted, nothing leaks), and a run longer than [maxRun] is
- * refused unread. It adopts or it does not; the caller learns nothing else.
+ * on purpose, and it takes the **raw body**: nothing is decoded before the budget has been charged (Codex Chain.kt:713). Order: the
+ * address and the whole device are charged one run; a body over [maxBytes] or announcing more than [maxRun] entries is refused
+ * before anything is allocated; the entries are charged to the same two budgets (work is paid by entries, not by runs, Codex
+ * Chain.kt:452); only then is the body decoded and verified, and the chain remembers the signatures it has verified, so a repeated
+ * prefix costs nothing. The table of addresses has a hard cap and refuses a new address when full, leaving no record. It adopts or it
+ * does not; the caller learns nothing else.
  */
 class RecoveryIntake(
     private val chain: Chain,
@@ -689,15 +734,27 @@ class RecoveryIntake(
     maxPerMinutePerSource: Int = 6,
     maxSources: Int = 256,
     private val maxRun: Int = Chain.MAX_RUN,
+    maxEntriesPerMinute: Int = 8 * Chain.MAX_RUN,
+    maxEntriesPerMinutePerSource: Int = 2 * Chain.MAX_RUN,
 ) {
     private val all = WindowBudget(maxPerMinute, maxKeys = 1)
     private val perSource = WindowBudget(maxPerMinutePerSource, maxKeys = maxSources)
+    private val allEntries = WindowBudget(maxEntriesPerMinute, maxKeys = 1)
+    private val sourceEntries = WindowBudget(maxEntriesPerMinutePerSource, maxKeys = maxSources)
 
-    /** [source] is the socket's peer address, never a header. */
-    fun receive(run: List<ChainEntry>, source: String, now: Long): Boolean {
-        if (run.isEmpty() || run.size > maxRun) return false
+    /** The most a body may hold: the count and [maxRun] entries of the largest size the format allows. Whoever reads the socket stops here. */
+    val maxBytes: Int = 4 + maxRun * EntryRun.MAX_ENTRY_BYTES
+
+    /** [body] is an `EntryRun` as received (at most [maxBytes] bytes read), [source] the socket's peer address, never a header. */
+    fun receive(body: ByteArray, source: String, now: Long): Boolean {
         if (!perSource.allow(source, now)) return false
         if (!all.allow("", now)) return false
+        if (body.size > maxBytes || body.size < 4) return false
+        val r = Reader(body)
+        val count = try { r.u32() } catch (e: ProtocolError) { return false }
+        if (count < 1 || count > maxRun) return false // refused before a single entry is allocated
+        if (!sourceEntries.allow(source, now, count) || !allEntries.allow("", now, count)) return false
+        val run = try { EntryRun.decode(Reader(body), maxRun) } catch (e: ProtocolError) { return false }
         return chain.adoptRecoveryProof(run)
     }
 }
@@ -710,9 +767,14 @@ internal object EntryRun {
         return w.bytes()
     }
 
-    fun decode(r: Reader): List<ChainEntry> {
+    /** One entry as it travels in a list: `lp(lp(body) || sig)`, at most this many bytes. */
+    const val MAX_ENTRY_BYTES = 4 + 4 + ChainEntry.MAX_BODY + Crypto.SIG_BYTES
+
+    /** [max] entries at most: the count is checked before anything is allocated. */
+    fun decode(r: Reader, max: Int = ChainEntry.MAX_ENTRIES): List<ChainEntry> {
         val n = r.u32()
-        if (n > ChainEntry.MAX_ENTRIES) malformed("too many entries")
+        if (n > max || n > ChainEntry.MAX_ENTRIES) malformed("too many entries")
+        if (n.toLong() * 8 > r.remaining()) malformed("short input") // each entry is at least its two length fields: a count the bytes cannot hold is refused before allocation
         return List(n) { ChainEntry.parse(r.lp(ChainEntry.MAX_BODY + 4 + Crypto.SIG_BYTES)) }
     }
 }
