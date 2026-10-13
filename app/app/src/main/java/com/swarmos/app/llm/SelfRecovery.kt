@@ -1,7 +1,6 @@
 package com.swarmos.app.llm
 
 import java.time.Instant
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -80,7 +79,7 @@ internal object SelfRecovery {
     /** [revivalsSoFar]: starts already made after the restarts ran out. [zone] is for the time the text names. */
     fun revival(revivalsSoFar: Int, nowMs: Long, zone: ZoneId = ZoneId.systemDefault()): Revival {
         if (revivalsSoFar >= MAX_REVIVALS) return Revival.GiveUp("Not loaded: the server stopped and $MAX_REVIVALS tries to start it again failed. Tap Load to start it.")
-        val at = LocalTime.ofInstant(Instant.ofEpochMilli(nowMs + REVIVE_AFTER_MS), zone).format(DateTimeFormatter.ofPattern("HH:mm"))
+        val at = Instant.ofEpochMilli(nowMs + REVIVE_AFTER_MS).atZone(zone).toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
         return Revival.Wait(REVIVE_AFTER_MS, "Not loaded: the server stopped and could not be restarted. Ustaad starts it again at $at (try ${revivalsSoFar + 1} of $MAX_REVIVALS).")
     }
 }

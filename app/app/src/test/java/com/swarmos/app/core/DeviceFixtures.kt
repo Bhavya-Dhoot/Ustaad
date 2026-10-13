@@ -40,6 +40,25 @@ internal object DeviceFixtures {
     /** A 2.5 GB device: not even the embedding model fits. */
     val phone2gb = phone4gb.copy(totalRamMb = 2_500)
 
+    /**
+     * A 6 GB phone on Android 8.0 (API 26), made up like the others: eight cores with the frequencies readable, a 64-bit build (the only one
+     * the APK installs on), no Adreno OpenCL library so no GPU. Build.SOC_MODEL does not exist before API 31, so the chip is the board name
+     * or "unknown"; the system reports about 5.5 GB of its 6.
+     */
+    val android8_6gb = DeviceProfile(
+        measuredAtMs = 1L, appVersion = "t", totalRamMb = 5_600, cores = 8,
+        coreMaxKhz = List(4) { 2_200_000L } + List(4) { 1_800_000L },
+        chip = "unknown", abi = "arm64-v8a", osLevel = 26, freeStorageMb = 20_000,
+        gpuBinaryPresent = true, openClPresent = false,
+    )
+
+    /** A 3 GB phone on Android 8.0 (API 26) whose system hides the core frequencies (sysfs not readable): the plan counts all eight cores. */
+    val android8_3gb = DeviceProfile(
+        measuredAtMs = 1L, appVersion = "t", totalRamMb = 2_800, cores = 8, coreMaxKhz = emptyList(),
+        chip = "mt6762", abi = "arm64-v8a", osLevel = 26, freeStorageMb = 6_000,
+        gpuBinaryPresent = true, openClPresent = false,
+    )
+
     /** A 32 GB desktop: 16 equal cores, no GPU build, a big disk. */
     val desktop32 = DeviceProfile(
         measuredAtMs = 1L, appVersion = "t", totalRamMb = 31_900, cores = 16, coreMaxKhz = List(16) { 4_500_000L },

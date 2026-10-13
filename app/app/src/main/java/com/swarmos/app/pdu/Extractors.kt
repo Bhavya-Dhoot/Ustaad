@@ -2,11 +2,15 @@ package com.swarmos.app.pdu
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.ImageDecoder
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
+import androidx.exifinterface.media.ExifInterface
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
@@ -50,8 +54,12 @@ object Ocr {
         return OcrResult(latin, deva, OcrMerge.merge(latin, deva))
     }
 
-    /** Decode an image (EXIF rotation applied), scaled so the longest side is at most [maxSide]. Software bitmap for ML Kit. */
+    /**
+     * Decode an image (EXIF rotation applied), scaled so the longest side is at most [maxSide]. Software bitmap for ML Kit. ImageDecoder
+     * is Android 9 (API 28); on Android 8 the same is done with BitmapFactory ([decodeWithBitmapFactory]).
+     */
     fun decode(ctx: Context, uri: String, maxSide: Int = 2400): Bitmap {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return decodeWithBitmapFactory(ctx, uri, maxSide)
         val src = if (uri.startsWith("file:")) ImageDecoder.createSource(File(Uri.parse(uri).path!!))
         else ImageDecoder.createSource(ctx.contentResolver, Uri.parse(uri))
         return ImageDecoder.decodeBitmap(src) { dec, info, _ ->
@@ -62,6 +70,56 @@ object Ocr {
                 dec.setTargetSize((info.size.width * f).toInt(), (info.size.height * f).toInt())
             }
         }
+    }
+
+    /** [decode] for Android 8: BitmapFactory (a power-of-two sample size, then an exact resize) and the EXIF turn applied by hand. */
+    private fun decodeWithBitmapFactory(ctx: Context, uri: String, maxSide: Int): Bitmap {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        Extractors.open(ctx, uri).use { BitmapFactory.decodeStream(it, null, bounds) }
+        val options = BitmapFactory.Options().apply { inSampleSize = ImageTurn.sampleSize(bounds.outWidth, bounds.outHeight, maxSide) }
+        val sampled = Extractors.open(ctx, uri).use { BitmapFactory.decodeStream(it, null, options) } ?: error("cannot decode $uri")
+        val longest = maxOf(sampled.width, sampled.height)
+        val scale = if (longest > maxSide) maxSide.toFloat() / longest else 1f
+        val orientation = runCatching {
+            Extractors.open(ctx, uri).use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) }
+        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+        val turn = ImageTurn.forExif(orientation)
+        if (scale == 1f && turn.isNone) return sampled
+        val matrix = Matrix().apply {
+            postScale(scale, scale)
+            if (turn.degrees != 0) postRotate(turn.degrees.toFloat())
+            if (turn.mirror) postScale(-1f, 1f)
+        }
+        return Bitmap.createBitmap(sampled, 0, 0, sampled.width, sampled.height, matrix, true)
+    }
+}
+
+/** The two decisions of the BitmapFactory decode used on Android 8, pure so they are tested on the JVM. */
+object ImageTurn {
+    /** The EXIF orientation as the turn to undo it: rotate clockwise by [degrees], then mirror left to right when [mirror]. */
+    data class Turn(val degrees: Int, val mirror: Boolean) {
+        val isNone: Boolean get() = degrees == 0 && !mirror
+    }
+
+    /** [orientation] is the EXIF tag value 1 to 8 (ExifInterface.ORIENTATION_*); anything else is no turn. */
+    fun forExif(orientation: Int): Turn = when (orientation) {
+        2 -> Turn(0, true)      // flip horizontal
+        3 -> Turn(180, false)   // rotate 180
+        4 -> Turn(180, true)    // flip vertical
+        5 -> Turn(90, true)     // transpose
+        6 -> Turn(90, false)    // rotate 90
+        7 -> Turn(270, true)    // transverse
+        8 -> Turn(270, false)   // rotate 270
+        else -> Turn(0, false)
+    }
+
+    /** The largest power-of-two sample size that keeps the longest side at [maxSide] or more (so the exact resize after it only shrinks). 1 when the size is unknown. */
+    fun sampleSize(width: Int, height: Int, maxSide: Int): Int {
+        val longest = maxOf(width, height)
+        if (longest <= 0 || maxSide <= 0) return 1
+        var sample = 1
+        while (longest / (sample * 2) >= maxSide) sample *= 2
+        return sample
     }
 }
 

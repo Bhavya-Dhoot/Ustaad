@@ -32,6 +32,7 @@ class VoiceInput(
             onState(VoiceState.IDLE, "No on-device speech recognition on this phone")
             return
         }
+        if (Build.VERSION.SDK_INT < 33) return // not reached: [available] is false below 33; the lint check cannot read through it
         destroy()
         val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         recognizer = r

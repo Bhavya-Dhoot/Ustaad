@@ -87,4 +87,13 @@ class HealthMonitorTest {
         assertEquals("11ax", HealthMonitor.standardName(6))
         assertNull(HealthMonitor.standardName(0))
     }
+
+    @Test
+    fun aReadingWithoutAWifiStandardIsNamedByItsBandAsOnAndroid8To10() {
+        // before API 30 WifiInfo has no standard: the reading carries 0 and the strip shows the band with the speed
+        val r = LinkReading(standard = 0, speedMbps = 433, freqMhz = 5765)
+        val label = HealthMonitor.linkLabel(HealthMonitor.standardName(r.standard) ?: HealthMonitor.bandName(r.freqMhz) ?: "wifi", r.speedMbps)
+        assertEquals("5 GHz 433 Mbps", label)
+        assertEquals(r, HealthMonitor.pickLink(listOf(r)))
+    }
 }

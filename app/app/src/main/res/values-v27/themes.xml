@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Base.Theme.SwarmOS.V27" parent="Base.Theme.SwarmOS.V26">
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="Base.Theme.SwarmOS" parent="Base.Theme.SwarmOS.V27" />
+</resources>

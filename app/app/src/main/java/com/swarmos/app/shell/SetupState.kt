@@ -1,6 +1,7 @@
 package com.swarmos.app.shell
 
 import android.Manifest
+import android.annotation.SuppressLint
 import com.swarmos.app.core.DeviceState
 import com.swarmos.app.core.ProbeVerdict
 import com.swarmos.app.core.nominalRamGb
@@ -24,17 +25,38 @@ data class SetupState(
     val doneCount: Int get() = listOf(nearby, notifications, battery).count { it }
 }
 
-/**
- * Runtime permissions behind "Allow nearby devices". NEARBY_WIFI_DEVICES only exists from Android 13;
- * on 12 the Wi-Fi Direct calls are covered by location.
+/*
+ * Which runtime permissions on which Android version: [nearbyPermissions], [notificationPermission] and [photoLibraryPermission] are the one
+ * place that picks. InlinedApi is suppressed on them: the permission names are plain strings and the version test is the sdkInt parameter,
+ * which the lint check cannot follow (the manifest side is maxSdkVersion on the old Bluetooth and storage permissions).
  */
+
+/**
+ * Runtime permissions behind "Allow nearby devices", by Android version:
+ *  - 26 to 30: location only. Wi-Fi Direct discovery, the Wi-Fi scan and the Bluetooth scan are all gated by it, and Bluetooth itself
+ *    (BLUETOOTH, BLUETOOTH_ADMIN) is granted at install, declared in the manifest up to API 30.
+ *  - 31 and 32: location plus the three Bluetooth permissions, which exist from Android 12 (API 31). Wi-Fi Direct is still covered by location.
+ *  - 33 and up: NEARBY_WIFI_DEVICES (Android 13) as well.
+ */
+@SuppressLint("InlinedApi")
 fun nearbyPermissions(sdkInt: Int): List<String> = buildList {
     if (sdkInt >= 33) add(Manifest.permission.NEARBY_WIFI_DEVICES)
     add(Manifest.permission.ACCESS_FINE_LOCATION)
-    add(Manifest.permission.BLUETOOTH_SCAN)
-    add(Manifest.permission.BLUETOOTH_ADVERTISE)
-    add(Manifest.permission.BLUETOOTH_CONNECT)
+    if (sdkInt >= 31) {
+        add(Manifest.permission.BLUETOOTH_SCAN)
+        add(Manifest.permission.BLUETOOTH_ADVERTISE)
+        add(Manifest.permission.BLUETOOTH_CONNECT)
+    }
 }
+
+/** The notification permission, which exists from Android 13 (API 33); below it notifications are on until the user turns them off, and nothing is asked. */
+@SuppressLint("InlinedApi")
+fun notificationPermission(sdkInt: Int): String? = if (sdkInt >= 33) Manifest.permission.POST_NOTIFICATIONS else null
+
+/** The permission that lets the Data Union read the photo library: READ_MEDIA_IMAGES from Android 13 (API 33), READ_EXTERNAL_STORAGE below. */
+@SuppressLint("InlinedApi")
+fun photoLibraryPermission(sdkInt: Int): String =
+    if (sdkInt >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
 
 /** The helper line under the "Keep busy" switch: whether the mode can also run with the screen off, which needs the battery exemption. */
 fun keepBusyScreenOffLine(batteryExempt: Boolean): String =

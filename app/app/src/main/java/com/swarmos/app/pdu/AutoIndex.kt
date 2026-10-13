@@ -1,8 +1,8 @@
 package com.swarmos.app.pdu
 
-import android.Manifest
 import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.ThermalLevel
+import com.swarmos.app.shell.photoLibraryPermission
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -167,7 +168,7 @@ object PduAutoIndex {
             parts += "$name: " + (r.error ?: "${r.indexed} indexed, ${r.unchanged} unchanged, ${r.removed} removed")
         }
         if (due.photos && photosFollowed() &&
-            ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(ctx, photoLibraryPermission(Build.VERSION.SDK_INT)) == PackageManager.PERMISSION_GRANTED
         ) step("photos") { PduEngine.indexPhotos() }
         if (due.trees) {
             for (t in ctx.contentResolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri }) {

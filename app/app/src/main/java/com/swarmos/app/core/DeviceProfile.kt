@@ -75,7 +75,18 @@ data class DeviceProfile(
     val chatTokPerSec: Double? = null,
     val chatTokPerSecModel: String? = null,
 ) {
-    companion object { const val SCHEMA = 1 }
+    companion object {
+        const val SCHEMA = 1
+
+        /**
+         * The chip name: the SoC model when the system gives one (Android 12 and up), else the board name (Build.HARDWARE: "qcom",
+         * "mt6765"), else "unknown". Informational only: no rule of [ProfilePlan.plan] reads it, so an older phone gets the same plan
+         * from its memory, cores and GPU as a newer one.
+         */
+        fun chipName(socModel: String?, hardware: String): String =
+            listOf(socModel, hardware).firstNotNullOfOrNull { n -> n?.trim()?.takeIf { it.isNotEmpty() && !it.equals("unknown", ignoreCase = true) } }
+                ?: "unknown"
+    }
 }
 
 /** What a device does in the swarm; the enum order is smallest to largest. */

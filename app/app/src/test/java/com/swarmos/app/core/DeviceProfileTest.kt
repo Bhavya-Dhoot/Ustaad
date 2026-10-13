@@ -9,6 +9,7 @@ import com.swarmos.app.llm.CatalogEntry
 import com.swarmos.app.llm.LlamaArgs
 import com.swarmos.app.llm.ModelCatalog
 import com.swarmos.app.llm.Role
+import com.swarmos.app.shell.deviceCheckLine
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -129,6 +130,59 @@ class DeviceProfileTest {
         assertEquals("largest first, so the first one on the disk is loaded", listOf(QWEN_30B, QWEN_4B), p.chatModels)
         assertFalse("Gemma 4 E4B returns nothing for JSON-schema calls: never picked on its own", GEMMA in p.chatModels)
         assertEquals(QWEN_30B, p.chatModel)
+    }
+
+    // ---- older Android (API 26): the plan reads memory, cores and the GPU, never the system version or the chip name ---------
+
+    @Test fun aSixGigabytePhoneOnAndroid8IsAClientThatSearchesLendsAndOffersStorage() {
+        val p = plan(DeviceFixtures.android8_6gb)
+        assertEquals("65 % of 5,600 MB is 3,640, below the 4,672 MB the 4B model needs", DeviceClass.CLIENT, p.deviceClass)
+        assertEquals(emptyList<String>(), p.chatModels)
+        assertEquals(EMBED, p.embedModel)
+        assertFalse("no OpenCL library and no probe", p.useGpu)
+        assertEquals(0, p.schedCapacity)
+        assertTrue("3,640 minus the split planner's 1,536 is 2,104, over the 2 GB a lender must have", p.mayLend)
+        assertEquals(2_104L, p.lendMaxMb)
+        assertEquals("10 % of 20,000 MB", 2_000L, p.storageOfferMb)
+        assertEquals(4_672L, p.smallestChatNeedMb)
+        assertEquals(200L, p.msPerToken)
+        assertEquals(
+            "6 GB memory: too little for a chat model, so this phone asks the other phones to compute and still stores and searches files.",
+            deviceCheckLine(DeviceState(DeviceFixtures.android8_6gb, p), checking = false),
+        )
+    }
+
+    @Test fun aThreeGigabytePhoneOnAndroid8LoadsNoModelButStillStoresAndAsks() {
+        val p = plan(DeviceFixtures.android8_3gb)
+        assertTrue(p.isClient)
+        assertNull("65 % of 2,800 MB is 1,820, below the 1,917 MB the embedder needs", p.embedModel)
+        assertEquals(emptyList<String>(), p.chatModels)
+        assertEquals(0, p.schedCapacity)
+        assertFalse(p.mayLend)
+        assertEquals(0L, p.lendMaxMb)
+        assertEquals("10 % of 6,000 MB is under the 1 GB minimum", 1_024L, p.storageOfferMb)
+        assertEquals("hidden core frequencies: all eight cores count, minus two", 6, p.chatThreads)
+        assertEquals(
+            "3 GB memory: too little to run any model here, so this phone uses the other phones and stores files.",
+            deviceCheckLine(DeviceState(DeviceFixtures.android8_3gb, p), checking = false),
+        )
+    }
+
+    @Test fun theSystemVersionAndTheChipNameDoNotChangeThePlan() {
+        for (base in listOf(DeviceFixtures.android8_6gb, DeviceFixtures.android8_3gb)) {
+            val newer = base.copy(osLevel = 36, chip = "SM8850")
+            assertEquals(plan(base), plan(newer))
+            assertEquals(plan(base), plan(base.copy(osLevel = 0, chip = "")))
+        }
+    }
+
+    @Test fun theChipNameIsTheSocModelThenTheBoardNameThenUnknown() {
+        assertEquals("SM8850", DeviceProfile.chipName("SM8850", "qcom"))
+        assertEquals("API 31 and up with a blank model: the board name", "qcom", DeviceProfile.chipName("", "qcom"))
+        assertEquals("the system's own word for no answer", "qcom", DeviceProfile.chipName("unknown", "qcom"))
+        assertEquals("below API 31 there is no model to read", "mt6762", DeviceProfile.chipName(null, "mt6762"))
+        assertEquals("unknown", DeviceProfile.chipName(null, "unknown"))
+        assertEquals("unknown", DeviceProfile.chipName(" ", ""))
     }
 
     // ---- single rules ---------------------------------------------------------------------------------------------

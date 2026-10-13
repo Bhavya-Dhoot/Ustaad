@@ -57,6 +57,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.core.Ports
+import com.swarmos.app.shell.nearbyPermissions
+import com.swarmos.app.shell.notificationPermission
 import com.swarmos.app.ui.BackLink
 import com.swarmos.app.ui.Jitter
 import com.swarmos.app.ui.DoodleConnector
@@ -92,15 +94,10 @@ private sealed interface Page {
     data class Detail(val key: String) : Page
 }
 
-private val RUNTIME_PERMISSIONS = arrayOf(
-    Manifest.permission.NEARBY_WIFI_DEVICES,
-    Manifest.permission.ACCESS_FINE_LOCATION,
-    Manifest.permission.CAMERA,
-    Manifest.permission.POST_NOTIFICATIONS,
-    Manifest.permission.BLUETOOTH_SCAN,
-    Manifest.permission.BLUETOOTH_ADVERTISE,
-    Manifest.permission.BLUETOOTH_CONNECT,
-)
+private val RUNTIME_PERMISSIONS = (
+    nearbyPermissions(android.os.Build.VERSION.SDK_INT) + Manifest.permission.CAMERA +
+        listOfNotNull(notificationPermission(android.os.Build.VERSION.SDK_INT))
+).toTypedArray()
 
 /** The Swarm tab: home (topology and peers), host (QR), join (scanner), link detail (probe result). */
 @Composable
