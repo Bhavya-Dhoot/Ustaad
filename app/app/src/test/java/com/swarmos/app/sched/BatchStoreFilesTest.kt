@@ -386,6 +386,8 @@ class BatchStoreFilesTest {
         manual.runPending()
         assertEquals("interrupted", store.status(id)!!.value.state)
         assertTrue(!store.isRunning())
-        runBlocking { until { runCatching { read(File(dir, "batch-$id.json")).state }.getOrNull() == "interrupted" } }
+        // the file follows from another thread; read it once, not while it is being replaced (Windows refuses the replacement then)
+        Thread.sleep(1_000)
+        assertEquals("interrupted", read(File(dir, "batch-$id.json")).state)
     }
 }
