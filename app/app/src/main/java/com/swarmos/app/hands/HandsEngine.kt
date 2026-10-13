@@ -46,6 +46,7 @@ class HandsEngine(
 
     private val callMutex = Mutex()
     private val callApprovals = Approvals(clock, CALL_APPROVAL_MS)
+    private val callMemory = StepMemory()
     private var lastReadHash: String? = null
 
     override val runs: StateFlow<List<RunState>> get() = state
@@ -151,7 +152,7 @@ class HandsEngine(
                 continue
             }
             setSub(id, idx, SubStatus.RUNNING, "")
-            val r = runSub(id, idx, sub, outcomes, approvals, budget)
+            val r = runSub(id, idx, sub, outcomes, approvals, budget, run.task)
             setSub(id, idx, r.status, r.outcome)
             if (r.stopped) {
                 finish(id, Phase.STOPPED, r.outcome)
@@ -172,7 +173,7 @@ class HandsEngine(
 
     private class SubResult(val status: SubStatus, val outcome: String, val stopped: Boolean = false)
 
-    private suspend fun runSub(id: String, idx: Int, sub: SubTask, outcomes: List<String>, approvals: Approvals, budget: Budget): SubResult =
+    private suspend fun runSub(id: String, idx: Int, sub: SubTask, outcomes: List<String>, approvals: Approvals, budget: Budget, task: String): SubResult =
         when (sub.kind) {
             Kind.PHONE -> {
                 val d = firstReady()
@@ -186,6 +187,7 @@ class HandsEngine(
                             onWaiting = { w ->
                                 live(id) { it.copy(phase = if (w) Phase.WAITING_FOR_PERSON else Phase.RUNNING) }
                             },
+                            task = task,
                         ),
                     )
                     when (r.end) {
@@ -263,22 +265,22 @@ class HandsEngine(
     override suspend fun call(call: ToolCall, origin: Origin): ToolResult = callMutex.withLock {
         val spec = HandsTools.spec(call.tool) ?: return@withLock ToolResult(false, "unknown tool '${call.tool}'")
         val text = (call.args["text"] as? JsonPrimitive)?.content.orEmpty()
-        if (call.tool == "done" || call.tool == "fail") return@withLock ToolResult(call.tool == "done", text)
+        if (call.tool == "done" || call.tool == "fail") return@withLock ToolResult(call.tool == "done", callMemory.scrub(text))
         if (spec.risk != Risk.READ && synchronized(lock) { active } != null) {
             return@withLock ToolResult(false, "another task is running")
         }
         val driver = firstReady()
         val needsId = call.tool == "tap" || call.tool == "type" || (call.tool == "scroll" && call.args["id"] != null)
+        val ctx = ToolRunner.Ctx("call-${origin.name.lowercase()}", driver, emptySet(), callApprovals, driver?.apps().orEmpty(), memory = callMemory)
         // The guard judges the screen as it is now. Numbers refer to what read_screen last returned to this caller.
         var screen: Screen? = null
         if (spec.risk != Risk.READ && driver != null) {
-            screen = ScreenReader.compact(driver.read())
+            screen = runner.look(ctx).screen
             if (needsId) {
                 val seen = lastReadHash ?: return@withLock ToolResult(false, "call read_screen first, then use the numbers it returns")
                 if (seen != screen.hash) return@withLock ToolResult(false, "the screen changed since read_screen; call read_screen again")
             }
         }
-        val ctx = ToolRunner.Ctx("call-${origin.name.lowercase()}", driver, emptySet(), callApprovals, driver?.apps().orEmpty())
         val o = runner.execute(ctx, call, screen)
         if (call.tool == "read_screen") lastReadHash = o.screen?.hash
         ToolResult(o.ok, o.text)

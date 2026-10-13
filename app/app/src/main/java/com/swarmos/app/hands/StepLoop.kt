@@ -30,6 +30,8 @@ class StepLoop(
         val budget: Budget,
         val onLine: (StepLine) -> Unit,
         val onWaiting: (Boolean) -> Unit = {},
+        /** The task the person gave; a link written in it needs no question. */
+        val task: String = "",
     )
 
     enum class End { DONE, FAILED, STOPPED }
@@ -44,10 +46,10 @@ class StepLoop(
         }
         val sub = i.sub
         val ctx = ToolRunner.Ctx(
-            i.runId, i.driver, if (sub.app.isEmpty()) emptySet() else setOf(sub.app), i.approvals, i.apps, i.budget, i.onWaiting,
+            i.runId, i.driver, if (sub.app.isEmpty()) emptySet() else setOf(sub.app), i.approvals, i.apps, i.budget, i.onWaiting, i.task,
         )
         var steps = 0
-        var screen = ScreenReader.compact(i.driver.read())
+        var screen = runner.look(ctx).screen
 
         fun line(t: Tier, tool: String, o: ToolRunner.Outcome, result: String) =
             StepLine(clock(), i.subIndex, t, tool, o.args, o.verdict, result.take(RESULT_MAX))
@@ -61,7 +63,7 @@ class StepLoop(
             i.onLine(line(tier, "open_app", o, o.text))
             if (o.verdict == Verdict.DECLINED) return Result(End.STOPPED, "the person declined: ${o.action}", steps)
             if (!o.ok) return Result(End.FAILED, "could not open ${appName(i, sub.app)}: ${o.text}", steps)
-            screen = settle(i.driver, screen.hash)
+            screen = settle(ctx, screen.hash)
         }
 
         val card = cardFor(i)
@@ -115,7 +117,7 @@ class StepLoop(
             val call = mapped.call
 
             if (call.tool == "done" || call.tool == "fail") {
-                val text = (call.args["text"] as? JsonPrimitive)?.content.orEmpty()
+                val text = ctx.memory.scrub((call.args["text"] as? JsonPrimitive)?.content.orEmpty())
                 val o = ToolRunner.Outcome(Verdict.ALLOWED, true, text, text.take(80))
                 i.onLine(line(stepTier, call.tool, o, text))
                 return Result(if (call.tool == "done") End.DONE else End.FAILED, text, steps)
@@ -144,9 +146,9 @@ class StepLoop(
             var next = screen
             if (o.verdict != Verdict.REFUSED) {
                 next = when {
-                    call.tool in CHANGES_SCREEN && o.ok -> settle(i.driver, screen.hash)
+                    call.tool in CHANGES_SCREEN && o.ok -> settle(ctx, screen.hash)
                     // a failed action, a wait or a question may still have left the screen different from the one the model saw
-                    call.tool in CHANGES_SCREEN || call.tool in READS_AGAIN -> ScreenReader.compact(i.driver.read())
+                    call.tool in CHANGES_SCREEN || call.tool in READS_AGAIN -> runner.look(ctx).screen
                     else -> screen
                 }
                 if (call.tool == "type" && o.ok) {
@@ -169,15 +171,15 @@ class StepLoop(
     // ------------------------------------------------------------ screen
 
     /** Re-reads up to [settleTries] times, [settleMs] apart, until the screen differs from [before] or the tries end. */
-    private suspend fun settle(driver: PhoneDriver, before: String): Screen {
+    private suspend fun settle(ctx: ToolRunner.Ctx, before: String): Screen {
         var s: Screen? = null
         repeat(settleTries) {
             delayMs(settleMs)
-            val now = ScreenReader.compact(driver.read())
+            val now = runner.look(ctx).screen
             if (now.hash != before) return now
             s = now
         }
-        return s ?: ScreenReader.compact(driver.read())
+        return s ?: runner.look(ctx).screen
     }
 
     /** After a type: the field must show the text. Null when it does (or cannot be checked), else what the model is told. */
