@@ -71,7 +71,7 @@ In one sentence: a cloud is a named, closed group of devices with one identity e
 
 - Discovery carries a short tag of the cloud id; a device ignores other tags and no longer probes them. The unsigned hello answers with the tag and the protocol version only; name, serial, address and model names move behind the signature.
 - Bodies and streamed replies are sealed (authenticated encryption with the session key) on every link, the home Wi-Fi included, so another device on the same Wi-Fi reads nothing. Always on for anything that leaves the local network.
-- Memory lending: the lender and the driver must be on the same local subnet over Wi-Fi or Wi-Fi Direct, the bind address must be the one the request arrived on, and a `client` or a remote link is refused. rpc-server itself still has no authentication; that stays written down.
+- Memory lending: the request must arrive on one of the lender's Wi-Fi or Wi-Fi Direct addresses with the driver on that same local network, the address rpc-server binds must be one of the lender's Wi-Fi or Wi-Fi Direct addresses (it may differ from the arrival address: a pair with both links sends the request over Wi-Fi and the bulk over Wi-Fi Direct), and a `client` or a remote link is refused. rpc-server itself still has no authentication; that stays written down.
 - Sharing stays per folder; the private-folder rule is unchanged and applies to graph results too.
 
 ### 3. Device capability profile
