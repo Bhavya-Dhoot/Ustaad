@@ -89,6 +89,7 @@ class SwarmService : Service() {
                 launch { s.start() }
                 launch { serveAgentWhileEnabled() }
                 launch { BusyMode.serve { BusyApp.loop().run() } } // filler jobs while the "Keep busy" switch is on; ends with this job
+                launch { com.swarmos.app.pdu.PduAutoIndex.serve() } // library observer and 15-minute timer for the Data Union index; ends with this job
                 AppGraph.audit.append("service.start")
                 launch { keepNotificationCurrent() }
                 holdLocksWhileNeeded()

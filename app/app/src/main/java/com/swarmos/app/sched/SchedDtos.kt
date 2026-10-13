@@ -72,6 +72,18 @@ data class Caps(
     val batteryPct: Int,
     val charging: Boolean,
     val ramAvailMb: Long,
+    // What the device check found, added later: optional so a phone on the older build ignores them (SwarmJson skips unknown keys)
+    // and a report from an older build reads with these defaults.
+    /** [com.swarmos.app.core.DeviceClass] name; null while the check has not run or on an older build. */
+    val deviceClass: String? = null,
+    val totalRamMb: Long = 0,
+    /** "GPU" or "CPU": the build the plan chose for chat. */
+    val backend: String? = null,
+    /** Smoothed decode tokens/s stored across restarts (of [modelName]); null until one was measured. */
+    val profileTokPerSec: Double? = null,
+    /** Storage this phone offers to the cloud by default, in MB. */
+    val storageOfferMb: Long = 0,
+    val freeStorageMb: Long = 0,
 )
 
 /** Body of the 429 answer: the phone has no free slot. */

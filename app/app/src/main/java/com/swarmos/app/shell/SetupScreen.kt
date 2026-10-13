@@ -34,10 +34,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,6 +57,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.swarmos.app.core.DeviceProbe
 import com.swarmos.app.ui.LineIcon
 import com.swarmos.app.ui.Note
 import com.swarmos.app.ui.PrimaryButton
@@ -64,6 +68,7 @@ import com.swarmos.app.ui.SwarmIcon
 import com.swarmos.app.ui.SwarmShape
 import com.swarmos.app.ui.SwarmTheme
 import com.swarmos.app.ui.SwarmType
+import kotlinx.coroutines.launch
 
 /** Small Bricolage wordmark, used only at the top of the setup screen and in the settings sheet. */
 @Composable
@@ -82,6 +87,11 @@ fun SetupScreen(onFinish: () -> Unit) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { tick++ } // back from a system dialog or settings page
     var batteryAsked by rememberSaveable { mutableStateOf(false) }
     val vivo = remember { isVivoFamily(Build.MANUFACTURER, Build.BRAND) }
+    // the device check runs here on the first start (the model runtime also runs it before loading anything; one at a time)
+    val device by DeviceProbe.result.collectAsState()
+    val checking by DeviceProbe.checking.collectAsState()
+    val checkScope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { runCatching { DeviceProbe.ensure() } }
 
     val nearbyPerms = remember { nearbyPermissions(Build.VERSION.SDK_INT) }
     var nearbyAsked by rememberSaveable { mutableStateOf(false) }
@@ -170,6 +180,15 @@ fun SetupScreen(onFinish: () -> Unit) {
                         Modifier.align(Alignment.End).padding(start = 48.dp, end = 4.dp),
                     )
                 }
+                // not a permission: what the check of this phone found (memory, cores, GPU) and what Ustaad will do with it
+                SetupRow(
+                    icon = SwarmIcon.Gauge,
+                    title = "What this phone can do",
+                    reason = deviceCheckLine(device, checking),
+                    done = false,
+                    button = if (checking) "Checking" else "Check again",
+                    onClick = { if (!checking) checkScope.launch { runCatching { DeviceProbe.ensure(force = true) } } },
+                )
             }
         }
         Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {

@@ -1,6 +1,7 @@
 package com.swarmos.app.llm
 
 import com.swarmos.app.core.Ports
+import com.swarmos.app.core.ProfilePlan
 
 /** Which llama.cpp process. CHAT and EMBED are llama-server instances, RPC is rpc-server (MemoryCloud workers). */
 enum class Role(val tag: String, val binary: String, val defaultPort: Int) {
@@ -66,7 +67,7 @@ object LlamaArgs {
     const val GPU_LAYERS = 99
 
     /**
-     * Scheduler capacity of a phone with a READY chat server. The server keeps [CHAT_SLOTS] slots so a local stream and a
+     * Scheduler capacity of a phone with a READY chat server (the fallback of [ProfilePlan.schedCapacity]). The server keeps [CHAT_SLOTS] slots so a local stream and a
      * short call can overlap without errors, but slots add no throughput (docs/benchmarks/2026-10-10-throughput-tuning.md),
      * so the scheduler hands out one job at a time.
      */
@@ -100,9 +101,11 @@ object LlamaArgs {
      * Threads of the CPU chat build for a phone where the app may run on [allowedCores] cores (memcloud/CpuSet.allowed): one core
      * stays free for the app, at most [CHAT_THREADS], at least [MIN_CHAT_THREADS]. A child forked while the app is in the background
      * inherits fewer cores, and llama.cpp's thread barriers spin, so more threads than cores make every graph wait for a
-     * descheduled thread (measured 0.3 against 3 tok/s, see CpuSet). The GPU build keeps [GPU_THREADS].
+     * descheduled thread (measured 0.3 against 3 tok/s, see CpuSet). The GPU build keeps [GPU_THREADS]. [maxThreads] is the
+     * device plan's bound ([ProfilePlan.chatThreads]); without a plan it is [CHAT_THREADS].
      */
-    fun cpuChatThreads(allowedCores: Int): Int = (allowedCores - 1).coerceAtMost(CHAT_THREADS).coerceAtLeast(MIN_CHAT_THREADS)
+    fun cpuChatThreads(allowedCores: Int, maxThreads: Int = CHAT_THREADS): Int =
+        (allowedCores - 1).coerceAtMost(maxThreads).coerceAtLeast(MIN_CHAT_THREADS)
     const val CHAT_CTX = 8192
     const val CHAT_SLOTS = 2
 
@@ -138,19 +141,25 @@ object LlamaArgs {
     fun build(
         role: Role, modelPath: String?, port: Int, extra: List<String> = emptyList(), backend: Backend = Backend.CPU,
         apiKey: String = LlamaKey.value,
-        /** Cores this process may run on; the CPU chat build sizes its threads from it ([cpuChatThreads]). Null: [CHAT_THREADS]. */
+        /** Cores this process may run on; the CPU chat build sizes its threads from it ([cpuChatThreads]). Null: the plan's bound or [CHAT_THREADS]. */
         allowedCores: Int? = null,
+        /**
+         * What the device check decided for this phone (threads, context, slots, GPU layers). Null (no check yet) keeps the constants
+         * of this object, which are the iQOO 15's. [extra] still comes last and wins.
+         */
+        plan: ProfilePlan? = null,
     ): List<String> {
         val gpu = role == Role.CHAT && backend == Backend.GPU
-        val chatThreads = if (gpu) GPU_THREADS else allowedCores?.let(::cpuChatThreads) ?: CHAT_THREADS
+        val maxThreads = plan?.chatThreads ?: CHAT_THREADS
+        val chatThreads = if (gpu) plan?.gpuThreads ?: GPU_THREADS else allowedCores?.let { cpuChatThreads(it, maxThreads) } ?: maxThreads
         val base = when (role) {
             Role.CHAT -> listOf(
                 "-m", requireNotNull(modelPath) { "chat needs a model" },
                 "--host", "127.0.0.1", "--port", port.toString(),
-            ) + (if (gpu) listOf("-ngl", GPU_LAYERS.toString()) else emptyList()) + listOf(
+            ) + (if (gpu) listOf("-ngl", (plan?.gpuLayers ?: GPU_LAYERS).toString()) else emptyList()) + listOf(
                 "-t", chatThreads.toString(),
-                "-c", CHAT_CTX.toString(),
-                "-np", CHAT_SLOTS.toString(),
+                "-c", (plan?.contextSize ?: CHAT_CTX).toString(),
+                "-np", (plan?.slots ?: CHAT_SLOTS).toString(),
                 "-ctxcp", CHAT_CTX_CHECKPOINTS.toString(),
                 "-cram", CHAT_CACHE_RAM_MIB.toString(),
                 "--reasoning", "off", // Qwen3.5 thinking off for every request (the client also sends enable_thinking=false)
@@ -161,7 +170,7 @@ object LlamaArgs {
                 "-m", requireNotNull(modelPath) { "embed needs a model" },
                 "--host", "127.0.0.1", "--port", port.toString(),
                 "--embedding",
-                "-t", EMBED_THREADS.toString(),
+                "-t", (plan?.embedThreads ?: EMBED_THREADS).toString(),
                 "-c", EMBED_CTX.toString(),
                 "-np", EMBED_SLOTS.toString(),
                 "-b", (EMBED_CTX / EMBED_SLOTS).toString(), "-ub", (EMBED_CTX / EMBED_SLOTS).toString(), // longest text one slot can embed

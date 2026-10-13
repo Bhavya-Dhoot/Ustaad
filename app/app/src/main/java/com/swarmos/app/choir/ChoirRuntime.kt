@@ -76,7 +76,8 @@ object ChoirController {
         )
     }
 
-    private val coordinator by lazy { ChoirCoordinator(audit = { kind, payload -> AppGraph.audit.append(kind, payload) }) }
+    // carryOn: a lane whose phone leaves mid-run, and a judge that fails, are run again once on another phone
+    private val coordinator by lazy { ChoirCoordinator(audit = { kind, payload -> AppGraph.audit.append(kind, payload) }, config = ChoirConfig(carryOn = true)) }
 
     private val _run = MutableStateFlow<RunTrace?>(null)
     val run: StateFlow<RunTrace?> = _run.asStateFlow()

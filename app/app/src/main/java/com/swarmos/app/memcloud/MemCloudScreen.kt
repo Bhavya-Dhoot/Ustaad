@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,6 +57,7 @@ import com.swarmos.app.ui.SwarmTextField
 import com.swarmos.app.ui.SwarmType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private fun gb(bytes: Long) = "%.1f".format(bytes / 1073741824.0)
@@ -127,6 +129,32 @@ fun MemCloudScreen() {
             Phase.PLANNING, Phase.STARTING_PEERS, Phase.LOADING -> LoadingView(st)
             Phase.READY -> RunningView(st, onExpert = { showExpert = true })
             Phase.DEGRADED -> DroppedView(st, peers.filter { !it.away }.map { it.info.nodeId }.toSet())
+        }
+        CacheCard(lending != null)
+    }
+}
+
+/** The tensor cache this phone keeps for lending: its size against the budget, and the button that clears it (refused while lending, as the route is). */
+@Composable
+private fun CacheCard(lending: Boolean) {
+    var report by remember { mutableStateOf<RpcCacheKeeper.Report?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(lending) {
+        while (true) {
+            report = withContext(Dispatchers.IO) { runCatching { RpcWorker.cacheReport() }.getOrNull() }
+            delay(5_000)
+        }
+    }
+    report?.let { r ->
+        SwarmCard {
+            Text("Lending cache", style = SwarmType.body)
+            Text("${gb(r.bytes)} GB of ${gb(r.budgetBytes)} GB used, ${r.files} files. When it is over the budget the model used longest ago goes first.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+            message?.let { Note(it) }
+            Spacer(Modifier.height(8.dp))
+            SecondaryButton("Clear cache", {
+                scope.launch { message = withContext(Dispatchers.IO) { RpcCache.clearMessage(RpcWorker.clearCache()) } }
+            }, Modifier.fillMaxWidth())
         }
     }
 }

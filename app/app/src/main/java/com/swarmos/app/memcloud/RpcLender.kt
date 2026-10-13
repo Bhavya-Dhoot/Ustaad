@@ -34,6 +34,13 @@ interface LenderEnv {
     /** Addresses rpc-server may bind to: Wi-Fi, hotspot and Direct interfaces from the link module's advertisable set, never cellular. */
     fun linkAddresses(): List<LinkAddr>
     fun peerName(nodeId: String?): String?
+
+    /** Whether [nodeId] is a device of this local network (a later package that knows device kinds overrides this: an away client never borrows memory). */
+    fun peerIsLocalNode(nodeId: String?): Boolean = true
+
+    /** A loan for [model] (a file name, null from an older driver) is about to start rpc-server / has ended and rpc-server is gone: the cache budget keeper's two moments. */
+    fun cacheLoanStarted(model: String?) {}
+    fun cacheLoanEnded() {}
     fun threads(): Int
 
     /** Starts rpc-server (the shipped binary) and returns true once it is READY. */
@@ -137,13 +144,16 @@ class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CL
 
     fun leaseMsLeft(): Long? = if (_lending.value == null) null else (leaseUntilMs - env.elapsedMs()).coerceAtLeast(0)
 
-    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): StartResult {
+    /** [viaAddress]: the local address the signed request arrived on. [driverAddr]: the address it came from. */
+    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?, driverAddr: String? = null): StartResult {
         val bind = (req.bind ?: viaAddress)?.trim().orEmpty()
         if (bind.isEmpty() || bind == "0.0.0.0" || bind == "::" || bind.startsWith("127.")) {
             return StartResult.Refused("rpc-server is never bound to '$bind': it needs the address of the link the split uses")
         }
         val link = env.linkAddresses().firstOrNull { it.address == bind }
             ?: return StartResult.Refused("$bind is not a Wi-Fi or Direct link address of this phone")
+        // memory is lent over the local link only: the request arrived on a Wi-Fi or Direct address with the driver on that network, and rpc-server binds such an address (maybe another link's)
+        MemCloudLogic.lendRefusal(bind, viaAddress?.trim(), driverAddr, env.linkAddresses(), env.peerIsLocalNode(fromNode))?.let { return StartResult.Refused(it) }
         val where = if (link.direct) "direct link" else "Wi-Fi network"
         val driverName = env.peerName(fromNode) ?: fromNode ?: "another phone"
 
@@ -225,6 +235,7 @@ class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CL
         } else if (items.isNotEmpty()) {
             restoreItems = items
         }
+        if (!sameBind) env.cacheLoanStarted(req.model?.let { ModelFiles.clean(it) }) // before rpc-server writes its first tensor
         val ready = try {
             sameBind || env.startRpc(bind, req.port, req.threads ?: env.threads(), req.cache)
         } catch (e: Throwable) {
@@ -286,7 +297,10 @@ class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CL
     }
 
     /** What ending a loan leaves to do: the loan that was running (null when none) and the model servers to bring back. */
-    private class Ended(val had: Lending?, val items: List<RestoreItem>)
+    private class Ended(val had: Lending?, val items: List<RestoreItem>) {
+        /** Something is still to be done after the monitor is left: models to bring back, or a running loan whose cache files are to be recorded. */
+        val closes: Boolean get() = items.isNotEmpty() || had != null
+    }
 
     /** Loans that have ended and whose models are not yet dispatched ([giveBack] still waiting or loading): a new [start] waits while this is above 0. */
     private val closing = AtomicInteger(0)
@@ -300,8 +314,7 @@ class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CL
         env.clearActivity(ACTIVITY_OWNER)
         val items = restoreItems
         restoreItems = emptyList()
-        if (items.isNotEmpty()) closing.incrementAndGet() // before the monitor is left, so no new loan can slip in between
-        return Ended(had, items)
+        return Ended(had, items).also { if (it.closes) closing.incrementAndGet() } // before the monitor is left, so no new loan can slip in between
     }
 
     /**
@@ -316,8 +329,10 @@ class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CL
                 val role = Role.parse(i.role) ?: continue
                 if (env.modelFileExists(i.file)) env.restoreLocal(role, i.file)
             }
+            // the files this loan's rpc-server cached are recorded for its model once the process is gone (a new loan waits for this, see [closing])
+            if (ended.had != null) env.cacheLoanEnded()
         } finally {
-            if (ended.items.isNotEmpty()) closing.decrementAndGet()
+            if (ended.closes) closing.decrementAndGet()
         }
         if (ended.had != null) env.audit("memcloud.rpc.stop", "reason" to reason, "restored" to ended.items.size.toString())
     }

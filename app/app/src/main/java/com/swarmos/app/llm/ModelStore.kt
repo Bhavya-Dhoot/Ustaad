@@ -4,6 +4,10 @@ import android.content.Context
 import android.os.StatFs
 import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
+import com.swarmos.app.core.DeviceProfiles
+import com.swarmos.app.core.DeviceState
+import com.swarmos.app.core.ProfilePlan
+import com.swarmos.app.core.nominalRamGb
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 
 /** One downloadable model. [bytes] == 0 means the size is not pinned yet; [sha256] empty means unverified. */
@@ -123,14 +128,44 @@ object ModelStore {
     /**
      * The file to load for [role] at service start: the catalog default for the role (Qwen3.5-4B chat, EmbeddingGemma-300M
      * embedder), never the model that was loaded last (that could be the 18.5 GB split model, which no single phone can load).
-     * Null when the default file is not on this phone or is incomplete.
+     * Once the device check has run ([DeviceProfiles]) the chat model is the largest one the plan says fits and that is on this
+     * phone, and a phone where none fits (a client) loads no chat model; the embedder is decided apart by the same load rule.
+     * Null when that file is not on this phone or is incomplete.
      */
     fun autoLoadFile(role: Role): File? = autoLoadChoice(role, present())?.let(::fileOf)
 
-    internal fun autoLoadChoice(role: Role, present: List<PresentModel>): String? {
-        val want = ModelCatalog.defaultFor(role)?.file ?: return null
-        return want.takeIf { f -> present.any { it.file == f && it.complete } }
+    internal fun autoLoadChoice(role: Role, present: List<PresentModel>, plan: ProfilePlan? = DeviceProfiles.current?.plan): String? {
+        fun there(f: String) = present.any { it.file == f && it.complete }
+        if (plan == null) return ModelCatalog.defaultFor(role)?.file?.takeIf(::there)
+        return when (role) {
+            Role.CHAT -> plan.chatModels.firstOrNull(::there) // empty for a client
+            Role.EMBED -> plan.embedModel?.takeIf(::there) // decided apart from chat: a client still searches
+            Role.RPC -> null
+        }
     }
+
+    /**
+     * Why the automatic load starts no model for [role] on this phone, in plain words; null when the plan has one (or no check has
+     * run). Shown as that server's notice on the Models tab. The chat and the embedding model are decided apart: a phone too small
+     * for chat still loads the embedder and searches its files.
+     */
+    fun noModelNote(role: Role, state: DeviceState? = DeviceProfiles.current): String? {
+        val d = state ?: return null
+        fun gb(mb: Long) = "%.1f".format(Locale.US, mb / 1024.0)
+        val small = "This phone has ${nominalRamGb(d.profile.totalRamMb)} GB of memory, too little for"
+        return when {
+            role == Role.CHAT && d.plan.chatModels.isEmpty() ->
+                "$small the smallest chat model (it needs about ${gb(d.plan.smallestChatNeedMb)} GB free). " +
+                    if (d.plan.embedModel != null) "It can still search its files and use the other devices."
+                    else "It is too small for the search model too, so Ustaad loads no model here and this phone uses the other devices."
+            role == Role.EMBED && d.plan.embedModel == null ->
+                "$small the search model (it needs about ${gb(d.plan.embedNeedMb)} GB free), so Ustaad does not load it."
+            else -> null
+        }
+    }
+
+    /** "Use GPU for chat" is on and the device check did not rule the GPU build out for this phone. */
+    fun gpuWanted(): Boolean = useGpu.value && (DeviceProfiles.current?.plan?.useGpu ?: true)
 
     private val _autoload by lazy { MutableStateFlow(prefs().getBoolean(KEY_AUTOLOAD, true)) }
 

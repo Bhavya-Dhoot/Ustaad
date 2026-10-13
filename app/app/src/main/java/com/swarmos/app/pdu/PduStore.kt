@@ -31,6 +31,44 @@ data class StoreCounts(
     val lastRunMs: Long = 0,
 )
 
+/**
+ * Two counters in the meta table, each raised inside the transaction of the change itself.
+ * The local one (`indexVersion`) counts every committed change to the index: a file added, replaced, moved or removed, a folder
+ * shared or made private, everything wiped for a re-index. It is for this device's own use and never leaves it.
+ * The shared one (`sharedVersion`) is the only one another device can read. It goes up only when a change touches what a peer answer
+ * could contain: a document added, replaced, moved or removed while it is not private (before or after), a folder switched between
+ * shared and private. A change wholly inside a private folder leaves it alone, so the number says nothing about private activity.
+ * A peer reads it to know when to drop what it cached; nothing here caches.
+ */
+object IndexVersion {
+    const val KEY = "indexVersion"
+    const val SHARED_KEY = "sharedVersion"
+
+    /** Run inside the change's own transaction; the first change makes the counter 1. */
+    const val BUMP_SQL = "INSERT INTO meta(k,v) VALUES('$KEY','1') ON CONFLICT(k) DO UPDATE SET v=CAST(v AS INTEGER)+1"
+    const val BUMP_SHARED_SQL = "INSERT INTO meta(k,v) VALUES('$SHARED_KEY','1') ON CONFLICT(k) DO UPDATE SET v=CAST(v AS INTEGER)+1"
+
+    fun parse(stored: String?): Long = stored?.toLongOrNull()?.coerceAtLeast(0) ?: 0L
+
+    /**
+     * Whether a change from [oldPrivate] to [newPrivate] touches what a peer answer could contain. Each is whether the document (or
+     * folder) was private before and is after; null is "not there": a document added has no old state, one removed has no new state.
+     */
+    fun touchesShared(oldPrivate: Boolean?, newPrivate: Boolean?): Boolean = oldPrivate == false || newPrivate == false
+
+    /** The statements a committed change runs: the local counter always, the shared one when [touchesShared]. */
+    fun statements(oldPrivate: Boolean?, newPrivate: Boolean?): List<String> =
+        if (touchesShared(oldPrivate, newPrivate)) listOf(BUMP_SQL, BUMP_SHARED_SQL) else listOf(BUMP_SQL)
+
+    /** Switching a folder to [newValue] (1 private, 0 shared) changes what peers see unless it is that already; a folder with no row counts as private. */
+    fun folderChanges(prior: Long?, newValue: Long): Boolean = (prior ?: 1L) != newValue
+}
+
+/** Both counters. Only [forPeers] may be put in anything another device receives. */
+class VersionCounters(val local: Long, val shared: Long) {
+    val forPeers: Long get() = shared
+}
+
 data class FolderInfo(val folder: String, val isPrivate: Boolean, val docs: Int)
 
 data class DocInfo(val docId: String, val uri: String, val title: String, val kind: String, val isPrivate: Boolean)
@@ -50,6 +88,9 @@ class PduStore(path: String) : IndexBacking {
 
     private val mx = VectorMatrix(DIM)
     private var txDepth = 0
+
+    /** The entity graph in this same file; see [GraphSql]. */
+    internal val graph = GraphSql(this)
 
     init {
         synchronized(lock) {
@@ -73,6 +114,7 @@ class PduStore(path: String) : IndexBacking {
             )
             exec("CREATE TABLE IF NOT EXISTS folders(folder TEXT PRIMARY KEY, isPrivate INTEGER NOT NULL)")
             exec("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+            GraphSql.DDL.forEach(::exec)
             repairPrivacy()
             loadMatrix()
         }
@@ -127,6 +169,25 @@ class PduStore(path: String) : IndexBacking {
         write("INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)") { it.bindText(1, key); it.bindText(2, value) }
     }
 
+    /** Builds the graph of up to [batch] documents stored before the graph existed; 0 when none is left. Call until it returns 0. */
+    fun backfillGraph(batch: Int = 20): Int = graph.backfill(batch)
+
+    /** Both counters of this index; see [IndexVersion]. 0 for an index that has had no change since the counters exist. */
+    fun versions(): VersionCounters = synchronized(lock) {
+        VersionCounters(IndexVersion.parse(meta(IndexVersion.KEY)), IndexVersion.parse(meta(IndexVersion.SHARED_KEY)))
+    }
+
+    /** Whether the stored document is private (its folder is not shared, or is a Private folder); null when it is not stored. */
+    private fun docPrivate(docId: String): Boolean? = query(
+        "SELECT d.folder, COALESCE(f.isPrivate,1) FROM docs d LEFT JOIN folders f ON f.folder=d.folder WHERE d.docId=?",
+        { it.bindText(1, docId) },
+    ) { SharePolicy.effectivePrivate(it.getText(0), it.getLong(1) == 1L) }.firstOrNull()
+
+    /** Counts a committed change; call inside its transaction. See [IndexVersion.statements]. */
+    private fun countChange(oldPrivate: Boolean?, newPrivate: Boolean?) {
+        for (sql in IndexVersion.statements(oldPrivate, newPrivate)) exec(sql)
+    }
+
     // ---- writes -------------------------------------------------------------------------------------------
 
     /** True when this exact document version (same uri, same lastModified) is already indexed. A file waiting for a re-read (chunks = -1) is not. */
@@ -144,6 +205,7 @@ class PduStore(path: String) : IndexBacking {
         var removed: List<Long> = emptyList()
         val newIds = ArrayList<Long>(chunks.size)
         inTransaction {
+            val before = docPrivate(doc.docId)
             val old = query("SELECT id FROM chunks WHERE docId=?", { it.bindText(1, doc.docId) }) { it.getLong(0) }
             if (!ChunkCap.fits(mx.rows, old.size, chunks.size)) throw IndexFull()
             removed = deleteChunks(doc.docId, old)
@@ -170,6 +232,8 @@ class PduStore(path: String) : IndexBacking {
                 it.bindText(5, doc.folder); it.bindLong(6, doc.lastModified); it.bindLong(7, doc.dateMs)
                 it.bindLong(8, chunks.size.toLong()); it.bindLong(9, nowMs)
             }
+            graph.replaceDoc(doc.docId, newIds.mapIndexed { i, id -> id to chunks[i].text })
+            countChange(before, priv == 1L)
         }
         try {
             mx.removeAll(removed.toHashSet())
@@ -195,6 +259,7 @@ class PduStore(path: String) : IndexBacking {
      * their privacy is decided again for the new folder, so a file that moved into a private folder stops being shared at once.
      */
     fun moveDoc(docId: String, folder: String) = inTransaction {
+        val before = docPrivate(docId)
         write("INSERT OR IGNORE INTO folders(folder,isPrivate) VALUES(?,?)") {
             it.bindText(1, folder); it.bindLong(2, if (SharePolicy.startsPrivate(folder)) 1 else 0)
         }
@@ -202,6 +267,7 @@ class PduStore(path: String) : IndexBacking {
         val priv = if (SharePolicy.privacyAfterMove(folder, stored)) 1L else 0L
         write("UPDATE docs SET folder=? WHERE docId=?") { it.bindText(1, folder); it.bindText(2, docId) }
         write("UPDATE chunks SET folder=?, isPrivate=? WHERE docId=?") { it.bindText(1, folder); it.bindLong(2, priv); it.bindText(3, docId) }
+        if (before != null) countChange(before, priv == 1L)
     }
 
     /** Forget these files: their chunks, their text index entries and their rows. Returns how many documents were named. */
@@ -210,10 +276,13 @@ class PduStore(path: String) : IndexBacking {
         val gone = HashSet<Long>()
         inTransaction {
             for (d in docIds) {
+                val before = docPrivate(d)
                 val ids = query("SELECT id FROM chunks WHERE docId=?", { it.bindText(1, d) }) { it.getLong(0) }
                 deleteChunks(d, ids)
+                graph.dropDoc(d)
                 gone += ids
                 write("DELETE FROM docs WHERE docId=?") { it.bindText(1, d) }
+                if (before != null) countChange(before, null)
             }
         }
         try { mx.removeAll(gone) } catch (t: Throwable) { loadMatrix() }
@@ -245,8 +314,10 @@ class PduStore(path: String) : IndexBacking {
      */
     fun setFolderPrivate(folder: String, isPrivate: Boolean) = inTransaction {
         val v = if (SharePolicy.effectivePrivate(folder, isPrivate)) 1L else 0L
+        val prior = query("SELECT isPrivate FROM folders WHERE folder=?", { it.bindText(1, folder) }) { it.getLong(0) }.firstOrNull()
         write("INSERT OR REPLACE INTO folders(folder,isPrivate) VALUES(?,?)") { it.bindText(1, folder); it.bindLong(2, v) }
         write("UPDATE chunks SET isPrivate=? WHERE folder=?") { it.bindLong(1, v); it.bindText(2, folder) }
+        if (IndexVersion.folderChanges(prior, v)) countChange((prior ?: 1L) == 1L, v == 1L)
     }
 
     /**
@@ -256,7 +327,10 @@ class PduStore(path: String) : IndexBacking {
     override fun wipe() = synchronized(lock) {
         exec("BEGIN")
         try {
+            val anyShared = query("SELECT 1 FROM chunks WHERE isPrivate=0 LIMIT 1", {}) { 1 }.isNotEmpty()
             exec("DELETE FROM chunks"); exec("DELETE FROM chunks_fts"); exec("UPDATE docs SET chunks=-1 WHERE chunks>0")
+            graph.clear()
+            countChange(!anyShared, null)
             exec("COMMIT")
         } catch (t: Throwable) {
             runCatching { exec("ROLLBACK") }
@@ -422,17 +496,17 @@ class PduStore(path: String) : IndexBacking {
         } finally { st.close() }
     }
 
-    private fun exec(sql: String) {
+    internal fun exec(sql: String) {
         val st = db.prepare(sql)
         try { st.step() } finally { st.close() }
     }
 
-    private inline fun write(sql: String, bind: (SQLiteStatement) -> Unit) {
+    internal inline fun write(sql: String, bind: (SQLiteStatement) -> Unit) {
         val st = db.prepare(sql)
         try { bind(st); st.step() } finally { st.close() }
     }
 
-    private inline fun <T> query(sql: String, bind: (SQLiteStatement) -> Unit, read: (SQLiteStatement) -> T): List<T> {
+    internal inline fun <T> query(sql: String, bind: (SQLiteStatement) -> Unit, read: (SQLiteStatement) -> T): List<T> {
         val st = db.prepare(sql)
         try {
             bind(st)

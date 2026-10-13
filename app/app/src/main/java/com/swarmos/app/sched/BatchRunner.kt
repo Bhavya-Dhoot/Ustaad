@@ -11,6 +11,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.io.IOException
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicInteger
@@ -33,12 +35,16 @@ import java.util.concurrent.atomic.AtomicInteger
  * Every input index gets exactly one [BatchItem], returned in input order; a request that no phone could
  * answer is reported with its error and does not stop the batch. The number of workers follows the phones that are up:
  * every [rescanMs] it is worked out again, so a phone that becomes ready mid-batch gets workers and one that goes away
- * does not leave idle ones.
+ * does not leave idle ones. An item that no device could take, or whose device left (see [retryable]), is run again after
+ * [retryPauseMs], at most [MAX_RETRIES] more times and only while a device is up; any other failure is an error row at once.
+ * [onRetry] is told each time an item is run again.
  */
 class BatchRunner(
     private val swarm: SwarmLlm,
     private val nanoClock: () -> Long = System::nanoTime,
     private val rescanMs: Long = RESCAN_MS,
+    private val retryPauseMs: Long = RETRY_PAUSE_MS,
+    private val onRetry: (index: Int) -> Unit = {},
 ) {
 
     suspend fun run(
@@ -102,23 +108,70 @@ class BatchRunner(
 
     private suspend fun runOne(batchId: String, i: Int, req: ChatRequest, startNs: Long): BatchItem {
         val jobId = "$batchId-$i"
-        val timing = JobTiming()
-        return try {
-            // a batch item is a one-shot prompt, on this phone or another: no prompt cache state is kept for it
-            val r = swarm.chatJob(jobId, req.copy(cachePrompt = false), timing = timing)
-            BatchItem(
-                i, jobId, r.nodeId, r.modelName, r.text, r.stats.promptTokens, r.stats.completionTokens, r.stats.genMs,
-                promptMs = r.stats.promptMs, waitedMs = timing.waitedMs.toDouble(), endMs = (nanoClock() - startNs) / 1e6,
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            BatchItem(i, jobId, error = e.message ?: e.javaClass.simpleName, waitedMs = timing.waitedMs.toDouble(), endMs = (nanoClock() - startNs) / 1e6)
+        var timing = JobTiming()
+        var failure: Exception? = null
+        for (attempt in 0..MAX_RETRIES) {
+            if (attempt > 0) {
+                delay(retryPauseMs)             // the item is back on the queue after a pause; Stop Ustaad ends the batch here
+                if (!deviceUp()) continue       // nobody to try it on this time
+                onRetry(i)
+            }
+            timing = JobTiming()
+            try {
+                // a batch item is a one-shot prompt, on this phone or another: no prompt cache state is kept for it
+                val r = swarm.chatJob(jobId, req.copy(cachePrompt = false), timing = timing)
+                return BatchItem(
+                    i, jobId, r.nodeId, r.modelName, r.text, r.stats.promptTokens, r.stats.completionTokens, r.stats.genMs,
+                    promptMs = r.stats.promptMs, waitedMs = timing.waitedMs.toDouble(), endMs = (nanoClock() - startNs) / 1e6,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failure = e
+                if (!retryable(e)) break
+            }
         }
+        val e = failure!!
+        return BatchItem(i, jobId, error = e.message ?: e.javaClass.simpleName, waitedMs = timing.waitedMs.toDouble(), endMs = (nanoClock() - startNs) / 1e6)
+    }
+
+    /**
+     * At least one phone (this one included) answers its report. A phone the scheduler marked down is asked again by a probe that
+     * runs beside this call, so when nobody is up yet the answer is looked at once more after [PROBE_WAIT_MS].
+     */
+    private suspend fun deviceUp(): Boolean {
+        repeat(2) { look ->
+            if (look > 0) delay(PROBE_WAIT_MS)
+            try {
+                swarm.refreshCaps(force = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // a phone that does not answer is simply not up
+            }
+            if (swarm.phoneViews().any { it.up }) return true
+        }
+        return false
     }
 
     companion object {
         const val RESCAN_MS = 1_000L
+
+        /** An item that no device could take waits this long before it is tried again. */
+        const val RETRY_PAUSE_MS = 5_000L
+
+        /** How many more times such an item is tried. */
+        const val MAX_RETRIES = 2
+
+        private const val PROBE_WAIT_MS = 300L
+
+        /**
+         * Whether a failed item is worth trying again later: no phone could take it, no slot came free in time, a phone did not
+         * answer, or the connection to its phone broke (the phone left). A phone that answered with a refusal or an error
+         * (the model, a bad request) will answer the same again.
+         */
+        fun retryable(e: Throwable): Boolean =
+            e is NoPhoneAvailableException || e is SwarmWaitTimeoutException || e is PhoneTimeoutException || e is IOException
 
         /** Workers for [liveSlots] free-able slots with [remaining] items left: one per slot, never more than items, at least 1. */
         fun workersFor(liveSlots: Int, remaining: Int): Int = liveSlots.coerceAtMost(remaining).coerceAtLeast(1)
@@ -200,6 +253,7 @@ class BatchStore(
     private val dir: () -> File? = { null },
     private val audit: (String, JsonObject) -> Unit = { _, _ -> },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val retryPauseMs: Long = BatchRunner.RETRY_PAUSE_MS,
 ) {
     private val lock = Any()
     private val flows = LinkedHashMap<String, MutableStateFlow<BatchReport>>()
@@ -241,7 +295,7 @@ class BatchStore(
         // before it has sent a job, and it is started only after the write
         val job = scope.launch(start = CoroutineStart.LAZY) {
             val report = try {
-                BatchRunner(client).run(id, mode, requests) { r ->
+                BatchRunner(client, retryPauseMs = retryPauseMs).run(id, mode, requests) { r ->
                     // updates come from several workers; never let an older snapshot overwrite a newer one
                     flow.update { cur -> if (r.done + r.failed >= cur.done + cur.failed) r else cur }
                     publish(flow.value)

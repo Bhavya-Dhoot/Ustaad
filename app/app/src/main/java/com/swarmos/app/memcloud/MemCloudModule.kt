@@ -6,6 +6,7 @@ import com.swarmos.app.core.Signer
 import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.ErrorBody
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.plugins.origin
 import io.ktor.server.request.header
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
@@ -34,7 +35,8 @@ object MemCloudModule : SwarmModule {
             // the address the signed request arrived on is the link the driver uses: bind there unless the body names one
             val via = runCatching { call.request.local.localAddress }.getOrNull()
             val from = call.request.headers[Signer.HEADER_NODE]
-            when (val r = RpcWorker.start(req, via, from)) {
+            val driver = runCatching { call.request.origin.remoteAddress }.getOrNull() // memory is lent only to a driver on the same local network
+            when (val r = RpcWorker.start(req, via, from, driver)) {
                 is RpcLender.StartResult.Ok -> call.respond(if (r.ready) HttpStatusCode.OK else HttpStatusCode.Conflict, RpcWorker.state(r.stopped, r.loan))
                 is RpcLender.StartResult.Refused -> call.respond(HttpStatusCode.BadRequest, ErrorBody(r.message))
             }

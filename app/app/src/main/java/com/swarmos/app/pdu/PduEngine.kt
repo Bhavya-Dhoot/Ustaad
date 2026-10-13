@@ -201,6 +201,8 @@ object PduEngine {
                 leanSources = SwarmPrefs(AppGraph.appContext).pduLeanSources()
                 refresh()
             }
+            // an index from before the graph existed gets its graph, a few files at a time, beside the status loop below
+            launch { StepGuard.run(::noteError) { while (store.backfillGraph() > 0) delay(20) } }
             while (true) {
                 if (StepGuard.run(::noteError) { embedderStatus(); refresh() }) _note.value = null
                 delay(4_000)
@@ -246,10 +248,11 @@ object PduEngine {
     /**
      * One run at a time. [list] runs on the IO dispatcher; each file is committed as soon as it is embedded, so a killed run resumes.
      * [roots] say which stored files this run is responsible for: when the run finishes, stored files of those roots that the listing
-     * did not contain are removed (a deleted file, or one moved out of the listed folder, stops being searchable and served).
+     * did not contain are removed (a deleted file, or one moved out of the listed folder, stops being searchable and served), including
+     * every file of a folder that was listed fine and is empty now. A listing that did not succeed removes nothing ([Listing]).
      * [stopIndex] ends the run after the file in hand.
      */
-    suspend fun runIndex(label: String, ownerForce: Boolean, roots: List<IndexRoot> = emptyList(), list: () -> List<DocRef>): IndexReport {
+    suspend fun runIndex(label: String, ownerForce: Boolean, roots: List<IndexRoot> = emptyList(), list: () -> Listing): IndexReport {
         if (!indexLock.tryLock()) return IndexReport(label, error = "an index run is already in progress")
         val control = IndexControl()
         indexControl = control
@@ -268,7 +271,8 @@ object PduEngine {
                 val t0 = now()
                 _progress.value = IndexProgress(true, label, current = "listing files")
                 PduActivity.set(PduActivity.listing())
-                val refs = list()
+                val listing = list()
+                val refs = listing.refs
                 val ctx = AppGraph.appContext
                 val res = IndexLoop.run(
                     refs, control, IndexLoop.FILE_TIMEOUT_MS,
@@ -284,7 +288,7 @@ object PduEngine {
                     // embedding is slower for a long text, so the budget of the embedding step grows with the number of chunks
                     commitBudgetMs = { p -> IndexLoop.FILE_TIMEOUT_MS + (p as? PduIndexer.Ready)?.bodies?.size.let { (it ?: 0) * 250L } },
                 )
-                if (res.end == LoopEnd.COMPLETE && roots.isNotEmpty()) stats.removed += sweep(roots, refs, stats)
+                if (res.end == LoopEnd.COMPLETE && roots.isNotEmpty()) stats.removed += sweep(roots, listing, stats)
                 stats.totalMs = now() - t0
                 store.setMeta("lastRunMs", System.currentTimeMillis().toString())
                 refresh()
@@ -326,16 +330,17 @@ object PduEngine {
     fun stopIndex(): Boolean = indexControl?.let { it.stop(); true } ?: false
 
     /** Removes the stored files of [roots] that a finished run did not see. Returns how many files went. */
-    private fun sweep(roots: List<IndexRoot>, refs: List<DocRef>, stats: IndexStats): Int {
-        val seen = refs.mapTo(HashSet(refs.size * 2)) { it.uri }
+    private fun sweep(roots: List<IndexRoot>, listing: Listing, stats: IndexStats): Int {
+        val seen = listing.refs.mapTo(HashSet(listing.refs.size * 2)) { it.uri }
         var n = 0
         for (root in roots) {
             val stored = store.docsUnder(root)
-            if (!IndexSweep.mayRemove(refs.size, stored.size)) {
-                stats.errors += "nothing was listed, so ${stored.size} stored files were left alone"
+            val stale = IndexSweep.toRemove(stored, seen, listing.succeeded)
+            if (stale == null) {
+                stats.errors += "the listing did not succeed, so ${stored.size} stored files were left alone"
                 continue
             }
-            n += store.removeDocs(IndexSweep.stale(stored, seen).map { it.docId })
+            n += store.removeDocs(stale.map { it.docId })
         }
         return n
     }
@@ -376,7 +381,7 @@ object PduEngine {
     /** The owner's explicit "Re-index everything": read every known file again with the current embedder. */
     suspend fun reindexAll(): IndexReport {
         val refs = store.allDocRefs()
-        return runIndex("re-index", true) { refs }
+        return runIndex("re-index", true) { Listing(refs) }
     }
 
     /** True when the stored vectors were made under a different embedder or document prefix than the current ones. */
@@ -413,12 +418,13 @@ object PduEngine {
         return runIndex(label, req.force, roots) {
             val ctx = AppGraph.appContext
             val out = ArrayList<DocRef>()
-            if (req.photos) out += PduIndexer.listPhotos(ctx, req.relPrefix, req.limit)
+            var ok = true
+            if (req.photos) PduIndexer.listPhotos(ctx, req.relPrefix, req.limit).let { out += it.refs; ok = ok && it.succeeded }
             req.dir?.let { d ->
                 check(Environment.isExternalStorageManager()) { "all-files access is not granted to this app" }
-                out += PduIndexer.listDir(File(d))
+                PduIndexer.listDir(File(d)).let { out += it.refs; ok = ok && it.succeeded }
             }
-            out
+            Listing(out, ok)
         }
     }
 
@@ -427,8 +433,25 @@ object PduEngine {
         kinds = setOf("photo"), folderPrefix = relPrefix?.trim('/')?.takeIf { it.isNotEmpty() },
     )
 
-    suspend fun indexPhotos(relPrefix: String? = null): IndexReport =
-        runIndex("photos", false, listOf(photosRoot(relPrefix))) { PduIndexer.listPhotos(AppGraph.appContext, relPrefix, null) }
+    suspend fun indexPhotos(relPrefix: String? = null): IndexReport {
+        PduAutoIndex.followPhotos()
+        return runIndex("photos", false, listOf(photosRoot(relPrefix))) { PduIndexer.listPhotos(AppGraph.appContext, relPrefix, null) }
+    }
+
+    /**
+     * Asks for an incremental run of everything this phone follows (photos once indexed, picked folders), for another part of the app to
+     * call (the shared storage after a file arrives). It does not start at once: the automatic runner takes it up at its next check, when
+     * the gate ([AutoIndexGate]) allows, and a request made while the service is stopped waits for the service.
+     */
+    fun requestIndex(reason: String) = PduAutoIndex.request(reason)
+
+    private val servingNow = java.util.concurrent.atomic.AtomicInteger()
+
+    /**
+     * True while a question is being searched or answered on this phone, or a peer's question is being served from it: the embedder is
+     * the same, and an index run in front of a query would cost it the deadline. An automatic index run does not start then.
+     */
+    val asking: Boolean get() = askSlot.running || servingNow.get() > 0
 
     suspend fun indexTree(tree: android.net.Uri): IndexReport {
         val rootDoc = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, android.provider.DocumentsContract.getTreeDocumentId(tree)).toString()
@@ -510,10 +533,19 @@ object PduEngine {
     /** Serve a peer: search, apply the share policy, return only what policy allows. Logs one audit line, keeps nothing else. */
     suspend fun servePeer(q: PduQuery, fromNode: String): PduResponse {
         val knownName = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == fromNode }?.info?.name
-        return PduActivity.during(PduActivity.servingPeer(knownName)) {
+        servingNow.incrementAndGet()
+        try {
+            return servePeerNow(q, fromNode, knownName)
+        } finally {
+            servingNow.decrementAndGet()
+        }
+    }
+
+    private suspend fun servePeerNow(q: PduQuery, fromNode: String, knownName: String?): PduResponse =
+        PduActivity.during(PduActivity.servingPeer(knownName)) {
             val t0 = now()
             val ls = searchLocal(q.text)
-            val resp = PeerResponder.respond(q.qid, ls.candidates, ls.terms, q.k.coerceIn(1, 10), store.chunkCount, now() - t0)
+            val resp = PeerResponder.respond(q.qid, ls.candidates, ls.terms, q.k.coerceIn(1, 10), store.chunkCount, now() - t0, store.versions())
             val bytes = SwarmJson.encodeToString(resp).toByteArray().size
             AppGraph.audit.append(
                 "pdu.served",
@@ -527,7 +559,6 @@ object PduEngine {
             _served.update { (listOf(ServedRecord(q.qid, peerName, resp.hits.size, bytes, resp.withheldPrivate, resp.hits.map { it.title }, System.currentTimeMillis())) + it).take(20) }
             resp
         }
-    }
 
     // ---- the federated ask --------------------------------------------------------------------------------
 
@@ -717,7 +748,10 @@ object PduEngine {
         }
 
         // cards are final; now the answer
-        val sources = _query.value?.takeIf { it.qid == qid }?.sources.orEmpty()
+        val found = _query.value?.takeIf { it.qid == qid }?.sources.orEmpty()
+        // documents linked to the entities the question names: off until a measurement on phones says it helps (GraphRetrieval.ENABLED)
+        val sources = if (GraphRetrieval.ENABLED) found + PduGraph.linkedSources(text, found) else found
+        if (sources.size > found.size) update { it.copy(sources = sources) }
         val incomplete = _query.value?.incomplete ?: false
         update { it.copy(phase = "answering", auditHash = AppGraph.audit.lastEntryHash) }
         val sb = StringBuilder()
