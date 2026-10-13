@@ -107,7 +107,7 @@ fun QueryUi.toReport(): AskReport = AskReport(
  * Routes under /v1/pdu (signed by NodeServer):
  *  POST /query        peer asks this phone; answered through the share policy
  *  POST /open         peer asks this phone to open a cited file on its own screen
- *  GET  /version      this phone's index version: a counter that goes up with every committed change to its index
+ *  GET  /version      this phone's shared index version: it goes up only when a change touches what a peer answer could contain
  *  POST /graph        peer asks a question of this phone's entity graph; answered through the share policy, like /query
  *  POST /index        test/dev: index MediaStore photos and/or an all-files-access directory, returns timings
  *  POST /ask          test/dev: run the whole federated flow from this phone and return sources and timings
@@ -127,7 +127,7 @@ fun Route.pduRoutes() {
         call.respond(PduEngine.openForPeer(r.uriHash, call.request.header(Signer.HEADER_NODE) ?: "unknown"))
     }
 
-    get("/version") { call.respond(PduVersion(PduEngine.store.indexVersion())) }
+    get("/version") { call.respond(PduVersion.of(PduEngine.store.versions())) }
 
     post("/graph") {
         val q = SwarmJson.decodeFromString<GraphQuery>(call.receiveText())

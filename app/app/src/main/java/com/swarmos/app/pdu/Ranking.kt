@@ -130,11 +130,11 @@ object SharePolicy {
 /** Builds the only thing that leaves a phone for a query. */
 object PeerResponder {
     fun respond(
-        qid: String, candidates: List<Candidate>, terms: List<String>, k: Int, indexedChunks: Int, tookMs: Long, indexVersion: Long? = null,
+        qid: String, candidates: List<Candidate>, terms: List<String>, k: Int, indexedChunks: Int, tookMs: Long, versions: VersionCounters? = null,
     ): PduResponse {
         val sel = SharePolicy.forPeer(candidates, k)
         val hits = sel.shared.mapIndexed { i, c -> hit(c, terms, i + 1) }
-        return PduResponse(qid, hits, indexedChunks, tookMs, sel.withheldPrivate, indexVersion)
+        return PduResponse(qid, hits, indexedChunks, tookMs, sel.withheldPrivate, versions?.forPeers)
     }
 
     /** Same shape for the owner's own screen (private items allowed there). */

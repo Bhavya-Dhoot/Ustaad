@@ -210,7 +210,7 @@ class GraphAnswersTest {
     }
 
     @Test fun theAnswerCarriesThePhonesIndexVersion() {
-        assertEquals(7L, GraphAnswers.answer(q("match", "x"), graph(), false, indexVersion = 7).indexVersion)
+        assertEquals(7L, GraphAnswers.answer(q("match", "x"), graph(), false, versions = VersionCounters(local = 40, shared = 7)).indexVersion)
     }
 
     // ---- what a question names ----------------------------------------------------------------------------------------

@@ -89,7 +89,7 @@ interface GraphRows {
  * alone, so no wording of a private file reaches another device through a shared entity.
  */
 object GraphAnswers {
-    fun answer(q: GraphQuery, rows: GraphRows, includePrivate: Boolean, indexVersion: Long? = null): GraphResponse {
+    fun answer(q: GraphQuery, rows: GraphRows, includePrivate: Boolean, versions: VersionCounters? = null): GraphResponse {
         val limit = q.limit.coerceIn(1, GraphWire.MAX_ENTITIES)
         val withheld = HashSet<String>()
         fun visible(d: DocRow): Boolean = (includePrivate || !d.isPrivate).also { if (!it) withheld += d.docId }
@@ -120,7 +120,7 @@ object GraphAnswers {
                 docs = GraphRetrieval.linked(named, rows, ::visible).take(limit).map { (d, about) -> doc(d, about) }
             }
         }
-        return GraphResponse(q.qid, q.op, entities, docs, withheld.size, indexVersion)
+        return GraphResponse(q.qid, q.op, entities, docs, withheld.size, versions?.forPeers)
     }
 }
 

@@ -17,7 +17,7 @@ object PduGraph {
     /** A peer's question, answered from this phone's graph and never with a private document. Logs counts only. */
     suspend fun serve(q: GraphQuery, fromNode: String): GraphResponse = withContext(Dispatchers.IO) {
         val store = PduEngine.store
-        val r = GraphAnswers.answer(q, store.graph, includePrivate = false, indexVersion = store.indexVersion())
+        val r = GraphAnswers.answer(q, store.graph, includePrivate = false, versions = store.versions())
         AppGraph.audit.append(
             "pdu.graph_served",
             JsonObject(mapOf(
@@ -35,7 +35,7 @@ object PduGraph {
     suspend fun ask(q: GraphQuery, deadlineMs: Int = 1500, ownPrivate: Boolean): MergedGraph = coroutineScope {
         val self = AppGraph.registry.self.value
         val local = async(Dispatchers.IO) {
-            DeviceGraph(self.nodeId, self.name, true, GraphAnswers.answer(q, PduEngine.store.graph, ownPrivate, PduEngine.store.indexVersion()))
+            DeviceGraph(self.nodeId, self.name, true, GraphAnswers.answer(q, PduEngine.store.graph, ownPrivate, PduEngine.store.versions()))
         }
         val remote = AppGraph.registry.peers.value.filter { !it.away }.map { p -> async { askPeer(p, q, deadlineMs) } }
         GraphMerge.merge(listOf(local.await()) + remote.mapNotNull { it.await() })
