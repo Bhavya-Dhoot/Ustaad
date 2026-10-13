@@ -1,0 +1,18 @@
+You are doing a third adversarial, read-only security review of a protocol and its core implementation. Do not modify any file. Do not run builds, tests or network calls. You may run read-only git commands. Read source only.
+
+Context. "Ustaad" is an Android app in which a few devices form a private, closed group ("cloud") with one owner key that signs a hash-chained member list. Your earlier reviews are docs/review/2026-10-13-cloud-protocol-codex-1.txt and docs/review/2026-10-13-cloud-protocol-codex-2.txt. In answer to the second: checkpoints and compaction were removed (every device holds the whole chain from the genesis, whose hash must equal the cloud id read from the QR code); a recovery transfer is a boundary below which no fork is accepted and a replaced recovery key signs nothing; a "replace recovery key" entry was added; the six-digit comparison became a committed short authentication string; token sessions complete once; tables were bounded; a resync path was added for a member that missed rotations. Nothing is wired into the running app yet.
+
+The change under review is `git diff ae36a99 HEAD -- docs/CLOUD-PROTOCOL.md app/app/src/main/java/com/swarmos/app/cloud app/app/src/test/java/com/swarmos/app/cloud`. Read that diff, then docs/CLOUD-PROTOCOL.md in full and every changed function in the current tree with its callers.
+
+Do three things.
+1. For each finding of your second review, decide whether the change closes the sequence you described. Report only the ones NOT closed, with the sequence that still works.
+2. Attack what is new: the whole-chain rule (a newcomer or a returning member given a shorter but valid chain, a chain with a valid prefix and garbage after, the cost of verifying 65,536 entries, the snapshots every 64 entries); the recovery boundary and the replace-recovery-key entry (can either be used to lock the real owner out, to undo a removal, or to split devices for good; what a holder of only the owner key, only the current recovery key, or only a replaced recovery key can do); the committed six digits (every message as it passes through a malicious host: can the host learn or steer the digits, replay an opening, make the owner approve a key the newcomer does not hold, or make the newcomer believe it was admitted when it was not; what one wrong opening costs an honest newcomer); the resync path (can a removed device or a stranger use it to learn anything or to exhaust the budget kept for honest members); the bounds added to tables (can a bound itself be used to lock out an honest member).
+3. Say whether, in your judgement, this core is now sound enough to be wired into the app's network layer, given that section 19 of the document lists what the wiring must do, and name anything that must still change first.
+
+Output format, plain text, nothing else:
+- First line: the model you are and how many repository files you read.
+- Then findings, most severe first, one per paragraph: SEVERITY (BLOCKER, HIGH, MEDIUM, LOW) file:line (or document section) - the attack or failing sequence in two or three sentences, concrete enough to reproduce - the smallest fix.
+- Then "Second-review findings closed:" and "Not closed:".
+- Then "Ready to wire:" yes or no, with the conditions.
+- Then "Not examined:".
+Report only what you confirmed by reading the code path or the document end to end. At most 15 findings. No praise, no summary, no style remarks.

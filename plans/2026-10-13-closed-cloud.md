@@ -194,3 +194,5 @@ Not started:
 Decisions taken by the orchestrator after reviews, to tell the founder if not yet acknowledged: one owner signs the member list, with a recovery code (replaces "every node may add or remove"); the web page is off by default; an unknown heat reading counts as status 2.
 
 Push: the founder asked for a push once all packages are merged. A push at 41a5549 was refused by the session's permission layer as premature. Push when P2 stage 1 is merged, or when the founder says so.
+
+Update 18:10: stage 1c is committed on the branch (head 304417c or later; 2075 unit tests there, 191 in cloud/). The third Codex read was started at 18:10 with scripts/review/codex-prompt-cloud-3.txt, run from that worktree, output to the session scratchpad as codex-audit-cloud3.txt and to be copied to docs/review/2026-10-13-cloud-protocol-codex-3.txt. If this session ended before it finished, run it again; then merge the branch if it says ready to wire, else send its findings back to the builder.
