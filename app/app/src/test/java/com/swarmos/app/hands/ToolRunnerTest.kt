@@ -78,17 +78,27 @@ class ToolRunnerTest {
         assertEquals(3, d.reads)
     }
 
-    @Test fun c3_aControlThatMovedALittleIsTheSameControlAndOneThatMovedFarIsNot() {
+    @Test fun c3_aControlThatMovedALittleIsTheSameControlAndTheTapGoesToItsFreshCentre() {
         val near = ScriptDriver { _, n -> raw(button("Add", if (n == 0) 300 else 310, handle = "a$n"), pkg = FOOD) }
         val r = runner()
         val c1 = ctx(near)
         assertTrue(r.run(c1, call("tap", id = 1), r.see(c1)).ok)
         assertEquals(ScriptDriver.Tap("a1", 240, 350), near.taps.single()) // the fresh centre, not the old one
+    }
 
-        val far = ScriptDriver { _, n -> raw(button("Add", if (n == 0) 300 else 400, handle = "a$n"), pkg = FOOD) }
-        val c2 = ctx(far)
-        assertFalse(r.run(c2, call("tap", id = 1), r.see(c2)).ok)
-        assertTrue(far.taps.isEmpty())
+    @Test fun r14_aControlThatIsTheOnlyOneOfItsKindIsFoundWhereverItLiesNow() {
+        val far = ScriptDriver { _, n -> raw(button("Add", if (n == 0) 300 else 700, handle = "a$n"), pkg = FOOD) }
+        val r = runner(); val c = ctx(far)
+        assertTrue(r.run(c, call("tap", id = 1), r.see(c)).ok)
+        assertEquals(ScriptDriver.Tap("a1", 240, 740), far.taps.single())
+    }
+
+    @Test fun r14_aControlThatHadALookalikeOnTheScreenTheModelSawIsFoundByPositionOnly() {
+        // two "Add" in the model's read; in the fresh read one is left, 400 px away: it may be the other one
+        val d = ScriptDriver { _, n -> if (n == 0) raw(button("Add", 300), button("Add", 600), pkg = FOOD) else raw(button("Add", 700), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        assertFalse(r.run(c, call("tap", id = 1), r.see(c)).ok)
+        assertTrue(d.taps.isEmpty())
     }
 
     @Test fun c3_anotherControlWithTheSameWordsElsewhereIsNotMistakenForTheOneThatWasChosen() {
@@ -287,6 +297,92 @@ class ToolRunnerTest {
         val o = r.run(c, call("scroll", direction = "down"), r.see(c))
         assertEquals(Verdict.REFUSED, o.verdict)
         assertTrue(d.scrolls.isEmpty())
+    }
+
+    // ------------------------------------------------------------ after the answer: our own window is in front, the app below has moved on (fix round 3)
+
+    private fun carefulRunner(gate: HumanGate, delays: MutableList<Long>) =
+        ToolRunner(Guard(), gate, FakeDesk(), { setOf(LAUNCHER) }, { 0L }, { delays += it }, { Caution.CAREFUL })
+
+    private fun results(): FakeFoodDriver = FakeFoodDriver().also { it.page = "results" }
+
+    private fun cardId(s: Screen) = s.elements.first { it.label.startsWith("Biryani House") }.id
+
+    @Test fun r14_theActionIsDoneAfterTheAppHasComeBackToTheFront() {
+        val d = results()
+        val gate = FakeGate(answer = { d.ownWindowReads = 3; true }) // the window of the question is still in front for three reads
+        val delays = CopyOnWriteArrayList<Long>()
+        val r = carefulRunner(gate, delays); val c = ctx(d)
+        val seen = r.see(c)
+        val o = r.run(c, call("tap", id = cardId(seen)), seen)
+        assertTrue(o.text, o.ok)
+        assertEquals(listOf(400L, 400L, 400L), delays.toList())
+        assertEquals(listOf("res:0"), d.taps.toList())
+        assertEquals(1, gate.prompts.size)
+    }
+
+    @Test fun r14_aTargetThatMovedBeyondTheRadiusWhileTheQuestionWasInFrontIsActedOnAndNotAskedAgain() {
+        val d = results()
+        val gate = FakeGate(answer = { d.ownWindowReads = 2; d.shiftY = 150; true })
+        val r = carefulRunner(gate, CopyOnWriteArrayList()); val c = ctx(d)
+        val seen = r.see(c)
+        val o = r.run(c, call("tap", id = cardId(seen)), seen)
+        assertTrue(o.text, o.ok)
+        assertEquals(listOf("res:0"), d.taps.toList())
+        assertEquals("the same kind for the same target is asked once, only the position changed", 1, gate.prompts.size)
+    }
+
+    @Test fun r14_aMovedTargetThatNowHasATwinIsRefusedAndNothingIsDone() {
+        val d = results()
+        val gate = FakeGate(answer = { d.ownWindowReads = 1; d.shiftY = 150; d.twinCard = true; true })
+        val r = carefulRunner(gate, CopyOnWriteArrayList()); val c = ctx(d)
+        val seen = r.see(c)
+        val o = r.run(c, call("tap", id = cardId(seen)), seen)
+        assertFalse(o.ok)
+        assertTrue(o.text, o.text.contains("ambiguous") && o.text.contains("nothing was done"))
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun r14_anAppThatNeverComesBackGivesTheClearResultAndNothingIsDone() {
+        val d = results()
+        val gate = FakeGate(answer = { d.ownWindowForever = true; true })
+        val delays = CopyOnWriteArrayList<Long>()
+        val r = carefulRunner(gate, delays); val c = ctx(d)
+        val seen = r.see(c)
+        val o = r.run(c, call("tap", id = cardId(seen)), seen)
+        assertFalse(o.ok)
+        assertEquals(Verdict.CONFIRMED, o.verdict)
+        assertTrue(o.text, o.text.contains("did not come back") && o.text.contains("nothing was done"))
+        assertEquals("eight reads, seven gaps", 7, delays.size)
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun r14_afterAnAnswerToAskUserTheRunnerWaitsForTheAppToo() {
+        val d = results()
+        val gate = FakeGate(reply = { d.ownWindowReads = 2; "veg" })
+        val delays = CopyOnWriteArrayList<Long>()
+        val r = carefulRunner(gate, delays); val c = ctx(d)
+        val o = r.run(c, call("ask_user", text = "veg or non-veg?"), null)
+        assertTrue(o.ok)
+        assertEquals("the person answered: veg", o.text)
+        assertEquals(listOf(400L, 400L), delays.toList())
+    }
+
+    @Test fun r14_anAnswerToAskUserIsStillReturnedWhenTheAppDoesNotComeBack() {
+        val d = results()
+        val gate = FakeGate(reply = { d.ownWindowForever = true; "veg" })
+        val r = carefulRunner(gate, CopyOnWriteArrayList()); val c = ctx(d)
+        val o = r.run(c, call("ask_user", text = "veg or non-veg?"), null)
+        assertTrue(o.text, o.text.startsWith("the person answered: veg") && o.text.contains("did not come back"))
+    }
+
+    @Test fun r14_aRunnerWithoutAQuestionNeverWaits() {
+        val d = results()
+        val delays = CopyOnWriteArrayList<Long>()
+        val r = ToolRunner(Guard(), FakeGate(), FakeDesk(), { setOf(LAUNCHER) }, { 0L }, { delays += it }, { Caution.FEWER_QUESTIONS }); val c = ctx(d)
+        val seen = r.see(c)
+        assertTrue(r.run(c, call("tap", id = cardId(seen)), seen).ok)
+        assertTrue(delays.isEmpty())
     }
 
     // ------------------------------------------------------------ R6: the target must be the only one of its kind

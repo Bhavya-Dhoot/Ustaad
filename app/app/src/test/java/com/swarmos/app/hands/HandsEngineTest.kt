@@ -248,6 +248,22 @@ class HandsEngineTest {
         assertEquals(0, r.driver.cart)
     }
 
+    @Test fun r14_aCarefulRunDoesNotLoopWhenTheQuestionWindowStaysInFrontAndTheListMovesUnderIt() {
+        // what the first run in a real app showed: the answer came, the window of the question was still in front, the other app had moved its list
+        val d = FakeFoodDriver().also { it.page = "results" }
+        val gate = FakeGate(answer = { d.ownWindowReads = 3; d.shiftY = 150; true })
+        val r = rig(driver = d, gate = gate)
+        r.caution = Caution.CAREFUL
+        r.brain.reply(phonePlan())
+        r.brain.replyWith(tapLabel("Biryani House"), { step("done", text = "opened") })
+        r.brain.reply("""{"reply":"Opened the restaurant."}""")
+        val run = r.await(r.engine.start("open the biryani place", Origin.OWN_SHEET))
+        assertEquals(run.result, Phase.DONE, run.phase)
+        assertEquals(listOf("res:0"), d.taps.toList())
+        assertEquals(1, gate.prompts.size)
+        assertEquals(listOf("tap", "done"), run.log.map { it.tool })
+    }
+
     @Test fun r1_theSameRunInFewerQuestionsModeAsksNothing() {
         val gate = FakeGate()
         val r = rig(gate = gate)

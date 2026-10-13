@@ -61,7 +61,9 @@ class StepLoop(
             i.onLine(line(tier, "open_app", o, o.text))
             if (o.verdict == Verdict.DECLINED) return Result(End.STOPPED, "the person declined: ${o.action}", steps)
             if (!o.ok) return Result(End.FAILED, "could not open ${appName(i, sub.app)}: ${o.text}", steps)
-            screen = settle(ctx, screen.hash)
+            // our own window (the task sheet) may still be in front: wait for the app before anything is read as its screen
+            screen = runner.waitForApp(ctx)?.screen
+                ?: return Result(End.FAILED, "could not open ${appName(i, sub.app)}: the app did not come back to the front", steps)
         }
 
         val card = cardFor(i)

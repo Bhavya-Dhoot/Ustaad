@@ -249,8 +249,22 @@ class FakeFoodDriver(
 
     private fun priceOf(name: String) = dishes.firstOrNull { it.first == name }?.second ?: 0
 
+    /** The next reads see the window of our own question in front (the driver cannot read it). A test sets it from the gate's answer. */
+    @Volatile var ownWindowReads = 0
+    @Volatile var ownWindowForever = false
+    /** After openApp our own window stays in front for this many reads. */
+    @Volatile var ownWindowAfterOpen = 0
+    /** The results list has moved down by this many pixels (the other app closed its keyboard while the question was in front). */
+    @Volatile var shiftY = 0
+    /** A second result card with the same words as the first one shows up. */
+    @Volatile var twinCard = false
+
     override suspend fun read(): RawScreen {
         reads++
+        if (ownWindowForever || ownWindowReads > 0) {
+            if (ownWindowReads > 0) ownWindowReads--
+            return RawScreen(OWN, "Question", W, H, null, true)
+        }
         if (unreadable) return RawScreen(foreground, "Main", W, H, null, true)
         otherScreen?.let { return it }
         if (foreground != FOOD) return RawScreen(foreground, "Other", W, H, root(text("Other app", 100), button("Open", 200, handle = "other:open")), false)
@@ -266,13 +280,17 @@ class FakeFoodDriver(
         )
         "results" -> listOf(
             text("Results", 100),
-            rn(cls = "android.view.ViewGroup", clickable = true, l = 0, t = 400, r = W, b = 600, handle = "res:0", children = listOf(
-                text(if (hostile) hostileName else "Biryani House", 410), text("4.3 star 30 min", 500),
+            rn(cls = "android.view.ViewGroup", clickable = true, l = 0, t = 400 + shiftY, r = W, b = 600 + shiftY, handle = "res:0", children = listOf(
+                text(if (hostile) hostileName else "Biryani House", 410 + shiftY), text("4.3 star 30 min", 500 + shiftY),
             )),
-            rn(cls = "android.view.ViewGroup", clickable = true, l = 0, t = 620, r = W, b = 820, handle = "res:1", children = listOf(
-                text("Pasta Place", 630), text("4.0 star 25 min", 720),
+            rn(cls = "android.view.ViewGroup", clickable = true, l = 0, t = 620 + shiftY, r = W, b = 820 + shiftY, handle = "res:1", children = listOf(
+                text("Pasta Place", 630 + shiftY), text("4.0 star 25 min", 720 + shiftY),
             )),
-        )
+        ) + (if (twinCard) listOf(
+            rn(cls = "android.view.ViewGroup", clickable = true, l = 0, t = 900 + shiftY, r = W, b = 1100 + shiftY, handle = "res:0b", children = listOf(
+                text(if (hostile) hostileName else "Biryani House", 910 + shiftY), text("4.3 star 30 min", 1000 + shiftY),
+            )),
+        ) else emptyList())
         "restaurant" -> buildList {
             add(text("Biryani House", 100))
             if (hostile) {
@@ -354,6 +372,7 @@ class FakeFoodDriver(
         actions += "open:$pkg"
         if (FAKE_APPS.none { it.pkg == pkg }) return false
         foreground = pkg
+        ownWindowReads = ownWindowAfterOpen
         return true
     }
 

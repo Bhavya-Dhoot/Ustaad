@@ -447,6 +447,27 @@ class StepLoopTest {
         assertTrue(s.lines[0].result, s.lines[0].result.contains("protected"))
     }
 
+    // ------------------------------------------------------------ the sheet is still in front after open_app (fix round 3)
+
+    @Test fun r14_aSubtaskWaitsForTheAppToComeToTheFrontBeforeItReadsItsScreen() {
+        val d = FakeFoodDriver(foreground = OWN).also { it.ownWindowAfterOpen = 3 }
+        val s = Setup(driver = d)
+        s.brain.reply(step("done", text = "ok"))
+        val r = s.run()
+        assertEquals(StepLoop.End.DONE, r.end)
+        assertEquals(listOf(400L, 400L, 400L), s.delays.toList())
+        assertTrue("the model's first screen is the app's, not our own window", s.brain.calls[0].user.contains("app: $FOOD"))
+    }
+
+    @Test fun r14_aSubtaskWhoseAppNeverComesToTheFrontFailsWithAClearResult() {
+        val d = FakeFoodDriver(foreground = OWN).also { it.ownWindowAfterOpen = 100 }
+        val s = Setup(driver = d)
+        val r = s.run()
+        assertEquals(StepLoop.End.FAILED, r.end)
+        assertTrue(r.outcome, r.outcome.contains("did not come back"))
+        assertTrue("the model was never asked", s.brain.calls.isEmpty())
+    }
+
     // ------------------------------------------------------------ what the model is shown (C7) and which apps are protected by label (C9)
 
     @Test fun c7_theModelIsShownNothingOfAProtectedAppAndCannotActThere() {

@@ -102,7 +102,13 @@ class ToolRunner(
     )
 
     /** A read of the phone as the model and the log may see it: a protected screen has no elements. */
-    class Looked(val screen: Screen, val areas: Map<Int, Long>, val checkout: Boolean = false)
+    class Looked(
+        val screen: Screen,
+        val areas: Map<Int, Long>,
+        val checkout: Boolean = false,
+        /** The driver could read the window (a protected screen is read, then hidden from the model; our own window is not readable). */
+        val read: Boolean = !screen.unreadable,
+    )
 
     /** Whether the screen is protected (a blocked app, or a text anywhere on it that asks for a code) is decided on the complete tree, before the cap cut anything. */
     suspend fun look(ctx: Ctx): Looked {
@@ -110,7 +116,22 @@ class ToolRunner(
         val full = ScreenReader.compactFull(d.read())
         ctx.memory.remember(full.masked)
         val shown = guard.shield(full.screen, ctx.apps, full.asksForCode)
-        return Looked(shown, if (shown === full.screen) full.areas else emptyMap(), full.checkout)
+        return Looked(shown, if (shown === full.screen) full.areas else emptyMap(), full.checkout, !full.screen.unreadable)
+    }
+
+    /**
+     * After the person answered, the window of the question is still in front for a moment, and the app below may be closing a keyboard
+     * or moving a list. Reads up to [BACK_ATTEMPTS] times, [BACK_GAP_MS] apart, until the driver can read a window that is not one of
+     * ours. Null when it never is: the caller does nothing then.
+     */
+    suspend fun waitForApp(ctx: Ctx): Looked? {
+        if (ctx.driver == null) return null
+        repeat(BACK_ATTEMPTS) { i ->
+            if (i > 0) delayMs(BACK_GAP_MS)
+            val l = look(ctx)
+            if (l.read && !guard.isOwn(l.screen.pkg)) return l
+        }
+        return null
     }
 
     suspend fun execute(ctx: Ctx, call0: ToolCall, screen: Screen?): Outcome {
@@ -187,7 +208,8 @@ class ToolRunner(
                 }
                 if (!revalidate) break
                 if (++rounds > MAX_ASK_ROUNDS) return changed(Verdict.CONFIRMED, target, "the screen keeps changing")
-                val second = look(ctx)
+                val second = waitForApp(ctx)
+                    ?: return Outcome(Verdict.CONFIRMED, false, "the app did not come back to the front after your answer; nothing was done", args, action = actionText(call, target, ctx, uri, linkTarget))
                 var moved: UiElement? = null
                 if (target != null) {
                     moved = when (val m = refind(target, seen, second.screen)) {
@@ -230,18 +252,24 @@ class ToolRunner(
     }
 
     /**
-     * The same control in a fresh screen: same app, role, flags and guard text, its centre within [NEAR] pixels. It must be the only one:
-     * if another control with the same guard text, role and flags lies within [NEAR] of the old centre or of the one found, nothing is
-     * chosen between them.
+     * The same control in a fresh screen: same app, role, flags and guard text. If it is the only such element on the whole fresh screen
+     * (and was the only one on the screen the model saw) it is THE target, wherever it lies now: a list that moved while a question was in
+     * front is still the list. Where several look the same, the old centre decides: exactly one within [NEAR] pixels of it, and no other
+     * lookalike within [NEAR] of that one; anything else is ambiguous and nothing is chosen.
      */
     private fun refind(orig: UiElement, origScreen: Screen?, fresh: Screen): Match {
         if (fresh.unreadable) return Match.None
         if (origScreen != null && origScreen.pkg != fresh.pkg) return Match.None
-        val same = fresh.elements.filter { it.role == orig.role && it.flags == orig.flags && it.guard == orig.guard }
-        val near = same.filter { abs(it.cx - orig.cx) <= NEAR && abs(it.cy - orig.cy) <= NEAR }
-        if (near.isEmpty()) return Match.None
-        val best = near.minByOrNull { abs(it.cx - orig.cx) + abs(it.cy - orig.cy) }!!
-        val twin = same.any { it !== best && ((abs(it.cx - orig.cx) <= NEAR && abs(it.cy - orig.cy) <= NEAR) || (abs(it.cx - best.cx) <= NEAR && abs(it.cy - best.cy) <= NEAR)) }
+        fun same(e: UiElement) = e.role == orig.role && e.flags == orig.flags && e.guard == orig.guard
+        val all = fresh.elements.filter(::same)
+        if (all.isEmpty()) return Match.None
+        val origUnique = origScreen == null || origScreen.elements.count(::same) <= 1
+        if (all.size == 1 && origUnique) return Match.One(all[0])
+        val near = all.filter { abs(it.cx - orig.cx) <= NEAR && abs(it.cy - orig.cy) <= NEAR }
+        if (near.isEmpty()) return if (all.size > 1) Match.Twin else Match.None
+        if (near.size > 1) return Match.Twin
+        val best = near[0]
+        val twin = all.any { it !== best && abs(it.cx - best.cx) <= NEAR && abs(it.cy - best.cy) <= NEAR }
         return if (twin) Match.Twin else Match.One(best)
     }
 
@@ -305,7 +333,13 @@ class ToolRunner(
             }
             "ask_user" -> {
                 val a = waitForPerson(ctx) { gate.ask(ctx.runId, ctx.memory.scrub(str(call, "text"))) }
-                if (a == null) Triple(false, "the person dismissed the question", null) else Triple(true, "the person answered: $a", null)
+                if (a == null) {
+                    Triple(false, "the person dismissed the question", null)
+                } else {
+                    // the window of the question is still in front: wait for the app before the loop reads the screen
+                    val back = if (ctx.driver == null || waitForApp(ctx) != null) "" else " (the app did not come back to the front)"
+                    Triple(true, "the person answered: $a$back", null)
+                }
             }
             "ask_expert" -> {
                 // a question the step model wrote may hold what it read on a screen: it stays on this phone unless the owner shares screens
@@ -357,6 +391,10 @@ class ToolRunner(
     companion object {
         /** How far, in pixels, the centre of a control may have moved between two reads and still be the same control. */
         const val NEAR = 24
+
+        /** After a question: how often the screen is read while our own window is still in front, and how far apart. */
+        const val BACK_ATTEMPTS = 8
+        const val BACK_GAP_MS = 400L
 
         /** How many times one action may ask again because the screen gave a new reason after a yes. */
         const val MAX_ASK_ROUNDS = 3
