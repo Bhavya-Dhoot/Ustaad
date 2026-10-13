@@ -113,6 +113,15 @@ In one sentence: a cloud is a named, closed group of devices with one identity e
 
 - A headless node for Linux, Windows and macOS on the JVM: the Android-free part of the code compiled as it is, with a start-up, discovery, system readings and the upstream llama-server for that OS. It is managed through the web page of section 6. Other Android phones need only the profile of section 3. iOS is not attempted.
 
+### 11. A faster local protocol that older devices can still use (asked by the founder on 2026-10-13)
+
+- Measured today (gates/gate-1-swarmlink.md): 305 to 503 Mbit/s over Wi-Fi Direct and 96 to 104 Mbit/s through the access point for a 100 MiB probe; a request round trip averages 12 to 26 ms against a minimum of 2.7 ms, put down to Wi-Fi power save and a connection set up per request. Traffic is HTTP with JSON bodies, capped at 1 MiB.
+- A persistent sealed channel per pair of devices: one long-lived connection with length-prefixed frames and stream ids, shared by requests, answers, streamed tokens and the heartbeat, so nothing is set up per request.
+- A bulk path for files and model files: several parallel streams over the best link the two devices share (Wi-Fi Direct before the access point), frames up to 1 MiB, sealed, resumable, checked by a hash of the whole.
+- Negotiation when two devices connect: each says what it supports (protocol versions, links, parallel streams, frame size, ciphers) and they use the best common set. A device that supports none of it stays on signed and sealed HTTP requests, so an older or weaker device is never locked out. A chip without AES instructions uses ChaCha20-Poly1305.
+- Older devices in the other sense, the Android version: the app needs Android 12 (minSdk 31) today. Lowering it is a separate package: find what needs 31 with the lint check and guard or replace it. A device that cannot run a model joins as a client that stores, searches and asks (section 3).
+- The frame format is shared with the relay of section 7, so one implementation serves the channel, the bulk path and the relay. It is specified in docs/CLOUD-PROTOCOL.md with the rest.
+
 ## Work packages, order and owners
 
 Phase 1, in parallel, files kept apart:
@@ -129,6 +138,9 @@ Phase 3, on top of P2:
 - P6 shared storage: a storage builder (a new store/ package, routes, placement, repair, the Cloud screen).
 - P7 the web gateway and the page: the network engineer for the gateway, a front-end builder for the page.
 - P8 the away link: the network engineer.
+
+- P10 the persistent channel, the bulk path and the negotiation: the network engineer, after P2 (it uses the session keys and the sealed frames).
+- P11 a lower minimum Android version: the Android builder, after P1 (it reads device facts with calls that need newer versions).
 
 Phase 4:
 - P9 the desktop node: a builder for a new Gradle module that compiles the Android-free sources.
@@ -147,4 +159,5 @@ Ledger: surveys and research delegated (bounded, checkable by reading); P1 to P9
 - Who may add or remove devices: every `node` member (a household, not an organisation). An owner-only rule can be added later.
 - A device's default storage offer: 10 % of its free space at the time of the profile, at least 1 GB, never more than half.
 - Away for how long before a device is taken out of routing and its chunks are re-copied: 10 minutes.
+- The lowest Android version to support: 8.0 (API 26), unless the lint check shows a dependency that cannot go that low.
 - Phones: none is connected (2026-10-13 14:31). Unit tests and a desktop run come first; phone runs need a window from the founder.
