@@ -1,5 +1,6 @@
 package com.swarmos.app.memcloud
 
+import com.swarmos.app.core.DeviceFixtures
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -165,6 +166,33 @@ class RpcCacheKeeperTest {
             "This phone is lending memory to Phone A; stop the loan first.",
             RpcCache.clearMessage(RpcCache.ClearResult.Refused("this phone is lending memory to Phone A; stop the loan first")),
         )
+    }
+
+    // ---- the budget from the device profile ----
+
+    private val gib = 1024L * 1024 * 1024
+
+    @Test fun theBudgetIsATenthOfTheFreeStorageWithinTwoAndSixteenGigabytes() {
+        assertEquals(4_000L * 1024 * 1024, RpcCacheKeeper.budgetFor(40_000))
+        assertEquals("exactly the lower bound", 2 * gib, RpcCacheKeeper.budgetFor(20_480))
+        assertEquals("below it, one 4B model's tensors still fit", 2 * gib, RpcCacheKeeper.budgetFor(8_000))
+        assertEquals(2 * gib, RpcCacheKeeper.budgetFor(1))
+        assertEquals("exactly the upper bound", 16 * gib, RpcCacheKeeper.budgetFor(163_840))
+        assertEquals(16 * gib, RpcCacheKeeper.budgetFor(500_000))
+    }
+
+    @Test fun withoutAProfileOrAFreeStorageFigureTheBudgetIsEightGigabytes() {
+        assertEquals(8 * gib, RpcCacheKeeper.budgetFor(null))
+        assertEquals("the profile could not read the storage", 8 * gib, RpcCacheKeeper.budgetFor(0))
+        assertEquals(8 * gib, RpcCacheKeeper.budgetFor(-5))
+        assertEquals(RpcCacheKeeper.DEFAULT_BUDGET_BYTES, 8 * gib)
+    }
+
+    @Test fun theBudgetOfTheFixtureDevices() {
+        assertEquals("iQOO 15, 200 GB free", 16 * gib, RpcCacheKeeper.budgetFor(DeviceFixtures.iqoo15.freeStorageMb))
+        assertEquals("8 GB phone, 40 GB free", 4_000L * 1024 * 1024, RpcCacheKeeper.budgetFor(DeviceFixtures.phone8gb.freeStorageMb))
+        assertEquals("4 GB phone, 8 GB free", 2 * gib, RpcCacheKeeper.budgetFor(DeviceFixtures.phone4gb.freeStorageMb))
+        assertEquals("desktop", 16 * gib, RpcCacheKeeper.budgetFor(DeviceFixtures.desktop32.freeStorageMb))
     }
 
     @Test fun theBudgetIsAskedEachTimeSoAProfileCanChangeIt() {

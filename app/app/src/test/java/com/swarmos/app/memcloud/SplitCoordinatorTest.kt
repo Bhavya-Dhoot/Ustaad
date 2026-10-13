@@ -180,6 +180,10 @@ private class FakeEnv : SplitEnv {
     private fun reach(addr: String) { if (addr in unreachable) throw java.io.IOException("$addr does not answer") }
 
     override suspend fun peerModels(addr: String): Map<String, RoleSnap> { reach(addr); return peerRoles.getValue(addr) }
+
+    /** The device class each peer's capacity report gives (address to class name); a peer not in it does not say. */
+    val deviceClasses = java.util.concurrent.ConcurrentHashMap<String, String>()
+    override suspend fun peerDeviceClass(addr: String): String? { reach(addr); return deviceClasses[addr] }
     override suspend fun peerStopRole(addr: String, role: String) { reach(addr); calls += "stopRole $addr $role" }
     override suspend fun peerLoadModel(addr: String, role: String, file: String) {
         reach(addr)
@@ -1295,6 +1299,31 @@ class SplitCoordinatorTest {
         assertEquals(listOf("Phone A", "Phone B", "Phone C"), s.phones.map { it.name })
     }
 
+    @Test fun aPhoneWhoseReportSaysItIsAClientIsNotPlannedOntoAndTheReasonIsShown() {
+        env.deviceClasses["10.0.0.3:8787"] = "CLIENT"
+        env.deviceClasses["10.0.0.2:8787"] = "STANDARD"
+        assertNull(start("Phone B", "Phone C"))
+        val s = awaitState("READY") { it.phase == Phase.READY }
+        assertEquals(listOf("Phone A", "Phone B"), s.phones.map { it.name })
+        assertTrue(s.warnings.single().let { it.startsWith("Phone C is a client device") && it.contains("asks other devices to compute") })
+        assertEquals("nothing was sent to it", 0, env.count("rpcStart 10.0.0.3"))
+        assertEquals("the preview leaves it out too", 2, c.previewPlan("model.gguf", emptyList(), SplitMode.EQUAL).shares.size)
+    }
+
+    @Test fun whenEveryPhoneIsAClientTheLoadFailsAndSaysWhy() {
+        env.deviceClasses["10.0.0.2:8787"] = "CLIENT"
+        env.deviceClasses["10.0.0.3:8787"] = "CLIENT"
+        assertNull(start("Phone B", "Phone C"))
+        val s = awaitState("FAILED") { it.phase == Phase.FAILED }
+        assertTrue(s.failReason!!, s.failReason!!.startsWith("No other phone is online that can take part (Phone B is a client device") && s.failReason!!.contains("Phone C is a client device"))
+    }
+
+    @Test fun aPhoneThatDoesNotSayItsClassOrAnswersStandardIsPlannedOnAsToday() {
+        env.deviceClasses["10.0.0.2:8787"] = "STANDARD" // Phone C says nothing: an older build
+        assertNull(start("Phone B", "Phone C"))
+        assertEquals(listOf("Phone A", "Phone B", "Phone C"), awaitState("READY") { it.phase == Phase.READY }.phones.map { it.name })
+    }
+
     @Test fun theDriverNamesTheModelToEveryLenderSoItsCacheFilesBelongToIt() {
         assertNull(start("Phone B", "Phone C"))
         awaitState("READY") { it.phase == Phase.READY }
@@ -1320,7 +1349,7 @@ class SplitCoordinatorTest {
         env.peerList = listOf(offLinkC)
         assertNull(start("Phone C"))
         val s = awaitState("FAILED") { it.phase == Phase.FAILED }
-        assertTrue(s.failReason!!, s.failReason!!.startsWith("No other phone is online on this phone's local network") && s.failReason!!.contains("Phone C (172.20.1.9)"))
+        assertTrue(s.failReason!!, s.failReason!!.startsWith("No other phone is online that can take part") &&s.failReason!!.contains("Phone C (172.20.1.9)"))
         assertEquals(0, env.count("stopLocal"))
     }
 

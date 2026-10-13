@@ -63,8 +63,24 @@ class RpcCacheKeeper(
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
     companion object {
-        /** Holds the 30B model's 6 GB and the 4B model's 1.6 GB together; the device profile supplies the real budget later. */
+        /** The budget when the device has no profile (or it did not read the free storage): holds the 30B model's 6 GB and the 4B model's 1.6 GB together. */
         const val DEFAULT_BUDGET_BYTES = 8L * 1024 * 1024 * 1024
+
+        /** The least the budget is: one 4B model's tensors (1.6 GB) fit with room to spare. */
+        const val MIN_BUDGET_BYTES = 2L * 1024 * 1024 * 1024
+
+        /** The most the budget is: the 30B model's 6 GB, the 4B model's 1.6 GB and two models more. */
+        const val MAX_BUDGET_BYTES = 16L * 1024 * 1024 * 1024
+
+        /**
+         * The budget from the device's profile. PROPOSED RULE, NOT A MEASUREMENT: a tenth of the storage that was free when the device was profiled,
+         * but at least [MIN_BUDGET_BYTES] and at most [MAX_BUDGET_BYTES]; [DEFAULT_BUDGET_BYTES] when the profile has no figure ([freeStorageMb] null or 0).
+         * A tenth keeps the cache from taking storage the owner needs for models and photos; the bounds keep a small phone able to cache one model and a
+         * desktop from holding more than a few.
+         */
+        fun budgetFor(freeStorageMb: Long?): Long =
+            if (freeStorageMb == null || freeStorageMb <= 0) DEFAULT_BUDGET_BYTES
+            else (freeStorageMb * 1024L * 1024L / 10).coerceIn(MIN_BUDGET_BYTES, MAX_BUDGET_BYTES)
         const val UNKNOWN = "(unknown origin)"
 
         /** The group of a loan whose driver did not say which model it loads (an older driver). */

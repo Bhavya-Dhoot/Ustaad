@@ -2,6 +2,7 @@ package com.swarmos.app.memcloud
 
 import android.os.SystemClock
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.DeviceProfiles
 import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.ModelStore
@@ -46,6 +47,8 @@ object AndroidLenderEnv : LenderEnv {
 
     /** The pid of the rpc-server that [stopRpc] last stopped, until [awaitRpcGone] has seen it leave. LlamaRuntime forgets the pid at once. */
     @Volatile private var stoppedPid: Long? = null
+
+    override fun lendPolicy() = MemCloudLogic.lendPolicyOf(DeviceProfiles.current?.plan)
 
     override fun cacheLoanStarted(model: String?) = RpcWorker.keeper.loanStarted(model)
 
@@ -184,8 +187,8 @@ object RpcWorker {
         return RpcCache.clear(cacheDir(), busy).also { if (it is RpcCache.ClearResult.Cleared) keeper.forgetAll() }
     }
 
-    /** The cache budget in bytes, asked each time; the device profile replaces this later. */
-    @Volatile var cacheBudget: () -> Long = { RpcCacheKeeper.DEFAULT_BUDGET_BYTES }
+    /** The cache budget in bytes, asked each time: from the free storage in the device profile ([RpcCacheKeeper.budgetFor]), a default while there is none. */
+    @Volatile var cacheBudget: () -> Long = { RpcCacheKeeper.budgetFor(DeviceProfiles.current?.profile?.freeStorageMb) }
 
     /** Records which model's loan created which cache files, and keeps the cache within [cacheBudget] by dropping whole models, least recently used first. */
     internal val keeper by lazy { RpcCacheKeeper(cacheDir(), File(AppGraph.appContext.filesDir, "llama-cache"), { cacheBudget() }) }
