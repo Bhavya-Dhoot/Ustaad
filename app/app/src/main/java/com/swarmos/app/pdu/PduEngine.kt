@@ -529,7 +529,7 @@ object PduEngine {
         return PduActivity.during(PduActivity.servingPeer(knownName)) {
             val t0 = now()
             val ls = searchLocal(q.text)
-            val resp = PeerResponder.respond(q.qid, ls.candidates, ls.terms, q.k.coerceIn(1, 10), store.chunkCount, now() - t0)
+            val resp = PeerResponder.respond(q.qid, ls.candidates, ls.terms, q.k.coerceIn(1, 10), store.chunkCount, now() - t0, store.indexVersion())
             val bytes = SwarmJson.encodeToString(resp).toByteArray().size
             AppGraph.audit.append(
                 "pdu.served",

@@ -25,7 +25,13 @@ data class PduResponse(
     val indexedChunks: Int,
     val tookMs: Long,
     val withheldPrivate: Int,
+    /** The sender's index version when it was asked ([IndexVersion]); null from a build that does not send it. */
+    val indexVersion: Long? = null,
 )
+
+/** Answer of GET /v1/pdu/version. */
+@Serializable
+data class PduVersion(val indexVersion: Long)
 
 /**
  * A phone is not trusted for the size of what it sends back. A response is cut to what a phone may send: at most [MAX_HITS] hits

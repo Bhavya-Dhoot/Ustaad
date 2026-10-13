@@ -31,6 +31,23 @@ data class StoreCounts(
     val lastRunMs: Long = 0,
 )
 
+/**
+ * The counter in the meta table that goes up inside the transaction of every committed change to the index: a file added, replaced,
+ * moved or removed, a folder shared or made private, everything wiped for a re-index. A peer reads it to know when to drop what it
+ * cached; nothing here caches. It says that something changed, never what.
+ */
+object IndexVersion {
+    const val KEY = "indexVersion"
+
+    /** Run inside the change's own transaction; the first change makes it 1. */
+    const val BUMP_SQL = "INSERT INTO meta(k,v) VALUES('$KEY','1') ON CONFLICT(k) DO UPDATE SET v=CAST(v AS INTEGER)+1"
+
+    fun parse(stored: String?): Long = stored?.toLongOrNull()?.coerceAtLeast(0) ?: 0L
+
+    /** Switching a folder to [newValue] (1 private, 0 shared) changes what peers see unless it is that already; a folder with no row counts as private. */
+    fun folderChanges(prior: Long?, newValue: Long): Boolean = (prior ?: 1L) != newValue
+}
+
 data class FolderInfo(val folder: String, val isPrivate: Boolean, val docs: Int)
 
 data class DocInfo(val docId: String, val uri: String, val title: String, val kind: String, val isPrivate: Boolean)
@@ -127,6 +144,9 @@ class PduStore(path: String) : IndexBacking {
         write("INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)") { it.bindText(1, key); it.bindText(2, value) }
     }
 
+    /** How many committed changes this index has had; see [IndexVersion]. 0 for an index that has had none since the counter exists. */
+    fun indexVersion(): Long = IndexVersion.parse(meta(IndexVersion.KEY))
+
     // ---- writes -------------------------------------------------------------------------------------------
 
     /** True when this exact document version (same uri, same lastModified) is already indexed. A file waiting for a re-read (chunks = -1) is not. */
@@ -170,6 +190,7 @@ class PduStore(path: String) : IndexBacking {
                 it.bindText(5, doc.folder); it.bindLong(6, doc.lastModified); it.bindLong(7, doc.dateMs)
                 it.bindLong(8, chunks.size.toLong()); it.bindLong(9, nowMs)
             }
+            exec(IndexVersion.BUMP_SQL)
         }
         try {
             mx.removeAll(removed.toHashSet())
@@ -202,6 +223,7 @@ class PduStore(path: String) : IndexBacking {
         val priv = if (SharePolicy.privacyAfterMove(folder, stored)) 1L else 0L
         write("UPDATE docs SET folder=? WHERE docId=?") { it.bindText(1, folder); it.bindText(2, docId) }
         write("UPDATE chunks SET folder=?, isPrivate=? WHERE docId=?") { it.bindText(1, folder); it.bindLong(2, priv); it.bindText(3, docId) }
+        exec(IndexVersion.BUMP_SQL)
     }
 
     /** Forget these files: their chunks, their text index entries and their rows. Returns how many documents were named. */
@@ -209,12 +231,15 @@ class PduStore(path: String) : IndexBacking {
         if (docIds.isEmpty()) return 0
         val gone = HashSet<Long>()
         inTransaction {
+            var rows = 0
             for (d in docIds) {
                 val ids = query("SELECT id FROM chunks WHERE docId=?", { it.bindText(1, d) }) { it.getLong(0) }
                 deleteChunks(d, ids)
                 gone += ids
                 write("DELETE FROM docs WHERE docId=?") { it.bindText(1, d) }
+                rows += query("SELECT changes()", {}) { it.getLong(0).toInt() }.first()
             }
+            if (rows > 0) exec(IndexVersion.BUMP_SQL)
         }
         try { mx.removeAll(gone) } catch (t: Throwable) { loadMatrix() }
         docIds.size
@@ -245,8 +270,10 @@ class PduStore(path: String) : IndexBacking {
      */
     fun setFolderPrivate(folder: String, isPrivate: Boolean) = inTransaction {
         val v = if (SharePolicy.effectivePrivate(folder, isPrivate)) 1L else 0L
+        val prior = query("SELECT isPrivate FROM folders WHERE folder=?", { it.bindText(1, folder) }) { it.getLong(0) }.firstOrNull()
         write("INSERT OR REPLACE INTO folders(folder,isPrivate) VALUES(?,?)") { it.bindText(1, folder); it.bindLong(2, v) }
         write("UPDATE chunks SET isPrivate=? WHERE folder=?") { it.bindLong(1, v); it.bindText(2, folder) }
+        if (IndexVersion.folderChanges(prior, v)) exec(IndexVersion.BUMP_SQL)
     }
 
     /**
@@ -257,6 +284,7 @@ class PduStore(path: String) : IndexBacking {
         exec("BEGIN")
         try {
             exec("DELETE FROM chunks"); exec("DELETE FROM chunks_fts"); exec("UPDATE docs SET chunks=-1 WHERE chunks>0")
+            exec(IndexVersion.BUMP_SQL)
             exec("COMMIT")
         } catch (t: Throwable) {
             runCatching { exec("ROLLBACK") }
