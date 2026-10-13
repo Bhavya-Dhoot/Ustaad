@@ -1,5 +1,6 @@
 package com.swarmos.app.assist
 
+import com.swarmos.app.hands.AskKind
 import com.swarmos.app.hands.ConfirmPrompt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +17,8 @@ data class PendingPrompt(
     val app: String,
     val action: String,
     val why: String,
+    /** Why the guard asked, as a kind; the window words the reason by it ([PromptWording]). */
+    val kind: AskKind = AskKind.OTHER,
 )
 
 /**
@@ -60,6 +63,7 @@ class PromptBoard(
                 PendingPrompt(
                     id, prompt.runId, false,
                     AssistIntents.clean(prompt.app, MAX_APP), AssistIntents.clean(prompt.action, MAX_SHOWN), AssistIntents.clean(prompt.why, MAX_SHOWN),
+                    prompt.kind,
                 )
             },
             onOpen, onClose,

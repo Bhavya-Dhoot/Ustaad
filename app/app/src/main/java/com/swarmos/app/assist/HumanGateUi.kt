@@ -24,8 +24,8 @@ import kotlinx.coroutines.launch
  * "Do it" button of [AssistActivity] alone, and [PromptBoard] refuses it for 700 ms after the prompt became visible and resumed.
  * The window ignores touches while another window covers it. A timeout after 120 s, a dismissal, back and "Do not" are all no.
  *
- * Open risk for the guard and the drivers (not solvable in this file): an accessibility gesture or a root `input tap` by Ustaad itself
- * is not "a covered touch". The core must never act in Ustaad's own package; [isPending] lets a driver check it too.
+ * Open risk for the guard and the drivers (not solvable in this file): a click that Ustaad's own service makes on a node of
+ * Ustaad's own window is not "a covered touch". The core must never act in Ustaad's own package; [isPending] lets a driver check it too.
  */
 object HumanGateUi : HumanGate {
     private val board = PromptBoard()
