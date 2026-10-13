@@ -79,7 +79,9 @@ class ProfileSchedulingTest {
     }
 
     @Test fun aSlowPhonesProfileSpeedLengthensTheAttemptBudgetSoItsLongAnswerIsNotCutOff() = runBlocking {
-        fun slow() = FakePhone("slow", TestLlm(delayMs = 400), scope, tokPerSec = 99.0)
+        // this phone is the local one: a remote phone that times out is asked once more for the same job, which races with the
+        // clean-up of the job it just abandoned and made this test fail under load
+        fun slow() = FakePhone("slow", TestLlm(delayMs = 400), scope, isLocal = true, tokPerSec = 99.0)
         fun other() = FakePhone("other", TestLlm(), scope, tokPerSec = 1.0)
         fun swarm(vararg phones: PhoneEndpoint) =
             SwarmLlm({ phones.toList() }, scope, attemptTimeoutMs = 100, msPerToken = 0, capsMaxAgeMs = 50, busyBackoffMs = 20, probeEveryMs = 100)
