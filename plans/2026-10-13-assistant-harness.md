@@ -100,6 +100,14 @@ Research: docs/research/09-assistant-tool-kit.md. The kit exists: Android App Fu
 
 ## Status
 
+2026-10-14 00:45:
+- Master 66fb2a5: fix round 4 (the third review) is merged; 2730 unit tests, 0 failures, 1 skipped; debug APK built and installed on the Redmi at 00:39. docs/HANDS.md has the App Functions section with the adb commands.
+- After that install the phone's screen was in landscape and showed a toast "Termux was granted Superuser rights": someone or something else was using the phone. No further input was sent to it. The last build has therefore not been exercised on the phone beyond installing and starting. To continue there: the test brain now obeys the sharing switch, so turn on "Let my other devices read the screen during a task" on the Hands tab and type the port (8099) into the debug field "Test brain port"; the `handsBrainPort` intent extra is gone.
+- The PC model server (port 8099) was stopped at 00:45 to free memory. Start it again with the command in docs/benchmarks/2026-10-13-redmi-hands.md section 4 before a phone run or an evaluation.
+- Not done: the evaluation in both modes on the final code; the prompt work; a run to a committing button on the phone; the App Functions shell test. A fourth adversarial read was not run; the third found 10 high after the second found 13, so more are to be expected.
+
+Earlier status:
+
 2026-10-14 00:05:
 - Master 21ff19d. Unit suite on b80f613: 2691 tests, 0 failures, 1 skipped (the opt-in evaluation). The session was restarted at about 22:20 (the Claude data folders moved to H:\ClaudeData); background jobs of that moment were lost and re-run where needed.
 - H10 is merged (b80f613): the Hands tools as Android App Functions in `appfn/` (startTask, taskStatus, stopTask, askExpert, listExperts, searchMyData), two owner switches, both off by default, 41 policy tests; compileSdk 37 (platform 37.0 installed by the build, 145 MB), KSP 2.3.10. Function ids: `com.swarmos.app.appfn.UstaadFunctions#startTask` and so on; the adb commands are in the builder's report as copied into docs/HANDS.md.
