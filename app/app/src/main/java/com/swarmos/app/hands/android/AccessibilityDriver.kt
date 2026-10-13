@@ -18,6 +18,8 @@ import com.swarmos.app.hands.RawNode
 import com.swarmos.app.hands.RawScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -27,15 +29,17 @@ import kotlin.coroutines.resume
 
 /**
  * PhoneDriver over the accessibility service. One call at a time (a mutex), all of them off the main thread.
- * It keeps the nodes of the last read() by handle and acts on those; a node the system no longer has gives false,
- * the core reads again. It carries no policy and logs no screen content, only the class of an exception.
+ * It keeps the nodes of the last read() by handle, with their class, text and description as read, and acts on exactly
+ * those nodes; a node the system no longer has, or that now differs in any of the three, gives false and the core
+ * reads again. It carries no policy and logs no screen content, only the class of an exception.
  */
 class AccessibilityDriver(ctx: Context) : PhoneDriver {
     private val app = ctx.applicationContext
     private val lock = Mutex()
 
-    // handle -> node of the last read, in reading order (parent before children). Guarded by lock.
+    // handle -> node of the last read, and what that node was at read(). Both guarded by lock; empty when the last read gave no app window.
     private var nodes: Map<String, AccessibilityNodeInfo> = emptyMap()
+    private var facts: Map<String, NodeFacts> = emptyMap()
 
     override val name: String = "accessibility"
 
@@ -44,7 +48,11 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     override suspend fun read(): RawScreen {
         val (w, h) = screenSize()
         val none = RawScreen(pkg = "", activity = "", widthPx = w, heightPx = h, root = null, unreadable = true)
-        return step(none) { svc -> readNow(svc, w, h) ?: none }
+        return step(none) { svc ->
+            val job = currentCoroutineContext()
+            // Stop cancels the call; the walk notices between two child lookups
+            readNow(svc, w, h, checkCancelled = { job.ensureActive() }) ?: none
+        }
     }
 
     // tap, setText, scroll and enter check again, at call time, that none of our own windows is in front
@@ -52,11 +60,12 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     override suspend fun tap(handle: String, cx: Int, cy: Int): Boolean = step(false) { svc ->
         if (ownInFront(svc)) return@step false
         val node = live(handle) ?: return@step false
-        val target = (listOf(handle) + ScreenMapping.ancestorsOf(handle).take(MAX_CLICK_CLIMB))
-            .firstNotNullOfOrNull { h -> nodes[h]?.takeIf { it.isClickable } }
-        if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return@step true
-        // no clickable node near it, or it refused: touch the spot, but only where the person could see it
-        node.isVisibleToUser && gestureTap(svc, cx, cy)
+        // the exact node, never a parent: a clickable node is clicked and its answer is the answer
+        if (node.isClickable) return@step node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        // not clickable: touch where a finger would, if the node is still visible and still there
+        val b = Rect()
+        node.getBoundsInScreen(b)
+        node.isVisibleToUser && b.contains(cx, cy) && gestureTap(svc, cx, cy)
     }
 
     override suspend fun setText(handle: String, cx: Int, cy: Int, text: String): Boolean = step(false) { svc ->
@@ -87,15 +96,16 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         if (ownInFront(svc)) return@step false
         val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
         val area = Rect()
-        val target = if (handle != null) {
-            live(handle)?.getBoundsInScreen(area) ?: return@step false
-            (listOf(handle) + ScreenMapping.ancestorsOf(handle)).firstNotNullOfOrNull { h -> nodes[h]?.takeIf { it.isScrollable } }
+        if (handle != null) {
+            val node = live(handle) ?: return@step false
+            // the exact node only; one that refuses (already at the end) answers false
+            if (node.isScrollable) return@step node.performAction(action)
+            node.getBoundsInScreen(area)
         } else {
-            nodes.values.firstOrNull { it.isScrollable && it.isVisibleToUser }
+            // a swipe across the middle of the screen, only if the last read got an app window that is not ours
+            if (nodes.isEmpty()) return@step false
+            screenSize().let { (w, h) -> area.set(0, 0, w, h) }
         }
-        // a scrollable node that refuses (already at the end) answers false; a swipe is only for screens with none
-        if (target != null) return@step target.performAction(action)
-        if (handle == null) screenSize().let { (w, h) -> area.set(0, 0, w, h) }
         if (area.isEmpty) return@step false
         val (y1, y2) = ScreenMapping.swipeSpan(area.top, area.bottom, forward)
         val path = Path().apply { moveTo(area.centerX().toFloat(), y1.toFloat()); lineTo(area.centerX().toFloat(), y2.toFloat()) }
@@ -112,9 +122,21 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         true
     }
 
-    override suspend fun openLink(uri: String): Boolean = step(false) { svc ->
-        if (uri.isBlank()) return@step false
-        svc.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    /** Asks the package manager who would open the link; nothing is started. */
+    override suspend fun linkTarget(uri: String): String = withContext(Dispatchers.IO) {
+        try {
+            if (uri.isBlank()) "" else AppCatalog.handlerOf(app, Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "link target failed: ${e.javaClass.simpleName}")
+            ""
+        }
+    }
+
+    override suspend fun openLink(uri: String, pkg: String): Boolean = step(false) { svc ->
+        if (uri.isBlank() || pkg.isBlank()) return@step false
+        svc.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         true
     }
 
@@ -147,8 +169,21 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
 
     private fun screenSize(): Pair<Int, Int> = app.resources.displayMetrics.let { it.widthPixels to it.heightPixels }
 
-    /** The node of the last read, brought up to date; null when the handle is unknown or the system dropped the node. */
-    private fun live(handle: String): AccessibilityNodeInfo? = nodes[handle]?.takeIf { it.refresh() }
+    /**
+     * The node of the last read, brought up to date; null when the handle is unknown, the system dropped the node, or
+     * the node now has another class, text or description than at read(): the screen changed under the tap, the core reads again.
+     */
+    private fun live(handle: String): AccessibilityNodeInfo? {
+        val node = nodes[handle] ?: return null
+        val atRead = facts[handle] ?: return null
+        if (!node.refresh()) return null
+        return node.takeIf { ScreenMapping.sameTarget(atRead, factsOf(it)) }
+    }
+
+    private fun factsOf(n: AccessibilityNodeInfo): NodeFacts {
+        val password = n.isPassword
+        return ScreenMapping.factsOf(n.className, if (password) null else n.text, n.contentDescription, password)
+    }
 
     /** What is in front: nothing readable, one of our own application windows, or another app (its root is the caller's to release). */
     private sealed interface Look {
@@ -190,10 +225,11 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     private fun clearNodes() {
         val old = nodes
         nodes = emptyMap()
+        facts = emptyMap()
         old.values.forEach { release(it) }
     }
 
-    private fun readNow(svc: AccessibilityService, w: Int, h: Int): RawScreen? {
+    private fun readNow(svc: AccessibilityService, w: Int, h: Int, checkCancelled: () -> Unit): RawScreen? {
         val picked = when (val l = look(svc)) {
             is Look.Open -> l
             // our own window in front is a screen to report, not one to read; no handle stays valid
@@ -203,14 +239,16 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
             }
             is Look.None -> { clearNodes(); return null }
         }
-        val taken = LinkedHashMap<String, AccessibilityNodeInfo>()
+        val taken = HashMap<String, AccessibilityNodeInfo>()
+        val takenFacts = HashMap<String, NodeFacts>()
         val root: RawNode = try {
             ScreenMapping.buildTree(
                 root = picked.root,
                 childCount = { it.childCount },
                 childAt = { n, i -> n.getChild(i) },
                 visit = { n, handle -> taken[handle] = n },
-                make = { n, handle, kids -> toRaw(n, handle, kids) },
+                make = { n, handle, kids -> takenFacts[handle] = factsOf(n); toRaw(n, handle, kids) },
+                checkCancelled = checkCancelled,
             )
         } catch (e: Exception) {
             taken.values.forEach { release(it) }
@@ -220,6 +258,7 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         }
         clearNodes()
         nodes = taken
+        facts = takenFacts
         val front = HandsAccessibilityService.front
         val activity = if (front.pkg == picked.pkg) front.cls else ""
         return RawScreen(pkg = picked.pkg, activity = activity, widthPx = w, heightPx = h, root = root, unreadable = false)
@@ -267,7 +306,6 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
 
     private companion object {
         const val TAG = "HandsDriver"
-        const val MAX_CLICK_CLIMB = 4
         const val TAP_MS = 50L
         const val SWIPE_MS = 300L
         const val GESTURE_TIMEOUT_MS = 5_000L

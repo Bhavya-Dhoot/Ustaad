@@ -9,45 +9,66 @@ import android.util.Log
 import com.swarmos.app.hands.AppInfo
 
 /**
- * The apps a person can open from the launcher (label and package), and the home apps.
- * Read through PackageManager (the manifest `queries` entries make them visible on Android 11+), kept in memory
- * until refresh is asked for. A failed query returns the last list.
+ * The apps a person can open from the launcher (label and package), the current home app, and who would open an intent.
+ * Read through PackageManager (the manifest `queries` entries make them visible on Android 11+). The launcher list is
+ * kept in memory until refresh is asked for; the home app and link handlers are asked every time. A failed query
+ * returns the last list, or nothing.
  */
 object AppCatalog {
     private const val TAG = "AppCatalog"
 
     @Volatile private var launchable: List<AppInfo>? = null
-    @Volatile private var homes: Set<String>? = null
 
     fun apps(ctx: Context, refresh: Boolean = false): List<AppInfo> {
         if (!refresh) launchable?.let { return it }
         val pm = ctx.applicationContext.packageManager
-        val found = query(pm, Intent.CATEGORY_LAUNCHER) ?: return launchable.orEmpty()
+        val found = query(pm, Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0) ?: return launchable.orEmpty()
         val list = ScreenMapping.dedupeApps(found.map { AppInfo(it.activityInfo.packageName, it.loadLabel(pm).toString()) })
         launchable = list
         return list
     }
 
-    /** Packages of the home screen apps (CATEGORY_HOME). The core's guard treats them as "no app in front". */
-    fun launcherPackages(ctx: Context, refresh: Boolean = false): Set<String> {
-        if (!refresh) homes?.let { return it }
+    /**
+     * The person's current home app and no other: an app that merely declares a home activity is not in the set.
+     * Empty when no default home app is set (the system would ask). The core's guard treats it as "no app in front".
+     */
+    fun launcherPackages(ctx: Context): Set<String> {
+        val home = handlerOf(ctx, Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME))
+        return if (home.isEmpty()) emptySet() else setOf(home)
+    }
+
+    /**
+     * The package that would open the intent: its single handler or the person's default for it. "" when there is none,
+     * when the system would show a chooser, or when the query failed. Nothing is started.
+     */
+    fun handlerOf(ctx: Context, intent: Intent): String {
         val pm = ctx.applicationContext.packageManager
-        val found = query(pm, Intent.CATEGORY_HOME) ?: return homes.orEmpty()
-        val set = found.map { it.activityInfo.packageName }.toSet()
-        homes = set
-        return set
+        val handlers = query(pm, intent, PackageManager.MATCH_DEFAULT_ONLY) ?: return ""
+        val best = resolve(pm, intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
+        return ScreenMapping.realHandler(best?.packageName, best?.name, handlers.map { it.activityInfo.packageName to it.activityInfo.name })
     }
 
     @Suppress("DEPRECATION")
-    private fun query(pm: PackageManager, category: String): List<ResolveInfo>? = try {
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(category)
+    private fun query(pm: PackageManager, intent: Intent, flags: Int): List<ResolveInfo>? = try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0))
+            pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(flags.toLong()))
         } else {
-            pm.queryIntentActivities(intent, 0)
+            pm.queryIntentActivities(intent, flags)
         }
     } catch (e: Exception) {
         Log.w(TAG, "query failed: ${e.javaClass.simpleName}")
+        null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun resolve(pm: PackageManager, intent: Intent, flags: Int): ResolveInfo? = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(flags.toLong()))
+        } else {
+            pm.resolveActivity(intent, flags)
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "resolve failed: ${e.javaClass.simpleName}")
         null
     }
 }

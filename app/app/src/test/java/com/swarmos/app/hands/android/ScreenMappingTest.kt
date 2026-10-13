@@ -4,7 +4,6 @@ import com.swarmos.app.hands.AppInfo
 import com.swarmos.app.hands.RawNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,12 +45,92 @@ class ScreenMappingTest {
         assertEquals("0.12.0", ScreenMapping.childHandle(ScreenMapping.childHandle("0", 12), 0))
     }
 
-    @Test fun parent_and_ancestors_of_a_handle() {
-        assertEquals("0.3", ScreenMapping.parentOf("0.3.1"))
-        assertEquals("0", ScreenMapping.parentOf("0.3"))
-        assertNull(ScreenMapping.parentOf("0"))
-        assertEquals(listOf("0.3", "0"), ScreenMapping.ancestorsOf("0.3.1"))
-        assertEquals(emptyList<String>(), ScreenMapping.ancestorsOf("0"))
+    @Test fun a_node_that_changed_its_label_class_or_description_is_not_the_node_that_was_read() {
+        val read = ScreenMapping.factsOf("android.widget.Button", "Add", "add item", password = false)
+        assertTrue(ScreenMapping.sameTarget(read, ScreenMapping.factsOf("android.widget.Button", "Add", "add item", password = false)))
+        assertFalse(ScreenMapping.sameTarget(read, ScreenMapping.factsOf("android.widget.Button", "Pay", "add item", password = false)))
+        assertFalse(ScreenMapping.sameTarget(read, ScreenMapping.factsOf("android.widget.Button", "Add", "pay now", password = false)))
+        assertFalse(ScreenMapping.sameTarget(read, ScreenMapping.factsOf("android.widget.TextView", "Add", "add item", password = false)))
+    }
+
+    @Test fun facts_treat_missing_values_as_empty_and_ignore_the_text_of_a_password_node() {
+        assertEquals(NodeFacts("", "", ""), ScreenMapping.factsOf(null, null, null, password = false))
+        val a = ScreenMapping.factsOf("android.widget.EditText", "hunter2", null, password = true)
+        val b = ScreenMapping.factsOf("android.widget.EditText", "hunter3", null, password = true)
+        assertEquals("", a.text)
+        assertTrue(ScreenMapping.sameTarget(a, b))
+    }
+
+    @Test fun link_handler_is_the_package_resolveActivity_names_when_it_is_a_listed_handler() {
+        val handlers = listOf("com.zomato" to "com.zomato.Link", "com.android.chrome" to "com.google.Chrome")
+        assertEquals("com.zomato", ScreenMapping.realHandler("com.zomato", "com.zomato.Link", handlers))
+        assertEquals("", ScreenMapping.realHandler("com.zomato", "com.zomato.Other", handlers))
+    }
+
+    @Test fun link_handler_is_empty_for_nothing_and_for_the_system_chooser() {
+        val handlers = listOf("com.zomato" to "com.zomato.Link", "com.android.chrome" to "com.google.Chrome")
+        assertEquals("", ScreenMapping.realHandler(null, null, handlers))
+        assertEquals("", ScreenMapping.realHandler("", "", handlers))
+        assertEquals("", ScreenMapping.realHandler("android", "com.android.internal.app.ResolverActivity", handlers))
+        assertEquals("", ScreenMapping.realHandler("com.android.intentresolver", "com.android.intentresolver.ChooserActivity", handlers))
+        // even if a chooser were listed, its name gives it away
+        val listed = handlers + ("android" to "com.android.internal.app.ResolverActivity")
+        assertEquals("", ScreenMapping.realHandler("android", "com.android.internal.app.ResolverActivity", listed))
+        assertEquals("", ScreenMapping.realHandler("com.vendor", "com.vendor.app.ResolverActivity", listOf("com.vendor" to "com.vendor.app.ResolverActivity")))
+    }
+
+    @Test fun default_home_app_with_no_default_set_gives_the_resolver_and_so_nothing() {
+        val homes = listOf("com.vivo.launcher" to "com.vivo.launcher.Main", "com.evil.home" to "com.evil.home.Main")
+        assertEquals("com.vivo.launcher", ScreenMapping.realHandler("com.vivo.launcher", "com.vivo.launcher.Main", homes))
+        assertEquals("", ScreenMapping.realHandler("android", "com.android.internal.app.ResolverActivity", homes))
+    }
+
+    @Test fun failed_child_lookups_count_against_the_lookup_cap() {
+        var asked = 0
+        val tree = N("root", List(100_000) { N("c$it") })
+        val raw = ScreenMapping.buildTree(
+            root = tree,
+            childCount = { it.kids.size },
+            childAt = { _, _ -> asked++; null },
+            visit = { _, _ -> },
+            make = { n, h, kids -> node(text = n.name, handle = h).copy(children = kids) },
+        )
+        assertEquals(ScreenMapping.MAX_LOOKUPS, asked)
+        assertEquals(1, count(raw))
+    }
+
+    @Test fun lookups_that_return_nodes_also_stop_at_the_node_cap_first() {
+        var asked = 0
+        val wide = N("root", List(5000) { N("c$it") })
+        val raw = ScreenMapping.buildTree(
+            root = wide,
+            childCount = { it.kids.size },
+            childAt = { n, i -> asked++; n.kids[i] },
+            visit = { _, _ -> },
+            make = { n, h, kids -> node(text = n.name, handle = h).copy(children = kids) },
+        )
+        assertEquals(ScreenMapping.MAX_NODES, count(raw))
+        assertEquals(ScreenMapping.MAX_NODES - 1, asked)
+    }
+
+    @Test fun the_walk_ends_when_the_cancellation_check_throws() {
+        var checks = 0
+        var asked = 0
+        val tree = N("root", List(1000) { N("c$it") })
+        try {
+            ScreenMapping.buildTree(
+                root = tree,
+                childCount = { it.kids.size },
+                childAt = { n, i -> asked++; n.kids[i] },
+                visit = { _, _ -> },
+                make = { n, h, kids -> node(text = n.name, handle = h).copy(children = kids) },
+                checkCancelled = { if (++checks > 10) throw IllegalStateException("stopped") },
+            )
+            org.junit.Assert.fail("the walk should have ended")
+        } catch (e: IllegalStateException) {
+            assertEquals("stopped", e.message)
+        }
+        assertEquals(10, asked)
     }
 
     @Test fun password_node_gives_empty_text_and_keeps_the_flag() {
