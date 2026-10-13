@@ -108,6 +108,13 @@ data class ProfilePlan(
     val msPerToken: Long,
     /** What the smallest chat model of the catalog needs under the load rule, in MB: how far a client is from running one. */
     val smallestChatNeedMb: Long,
+    /**
+     * The embedding (search) model file to load automatically, decided on its own by the same load rule: a client for chat still
+     * searches its files when this is set. Null only when even the embedder does not fit; that device loads no model at all.
+     */
+    val embedModel: String?,
+    /** What the smallest embedding model of the catalog needs under the load rule, in MB. */
+    val embedNeedMb: Long,
 ) {
     val chatModel: String? get() = chatModels.firstOrNull()
     val isClient: Boolean get() = deviceClass == DeviceClass.CLIENT
@@ -151,6 +158,9 @@ data class ProfilePlan(
             // send JSON-schema calls to the chat model) and whose size is pinned.
             val candidates = catalog.filter { it.role == Role.CHAT && it.structuredOutput && it.bytes > 0 }
             val models = candidates.filter { LoadPreflight.neededBytes(it.bytes) <= shareBytes }.sortedByDescending { it.bytes }
+            // the embedder is decided apart from the chat model (a client still searches): the default one if it fits, else the largest that does
+            val embedders = catalog.filter { it.role == Role.EMBED && it.bytes > 0 }
+            val embed = embedders.filter { LoadPreflight.neededBytes(it.bytes) <= shareBytes }.maxWithOrNull(compareBy({ it.default }, { it.bytes }))
             val deviceClass = when {
                 models.isEmpty() -> DeviceClass.CLIENT
                 p.totalRamMb < SMALL_BELOW_MB -> DeviceClass.SMALL
@@ -182,6 +192,8 @@ data class ProfilePlan(
                 storageOfferMb = storageOfferMb(p.freeStorageMb),
                 msPerToken = GenBudget.msPerToken(p.chatTokPerSec),
                 smallestChatNeedMb = candidates.minOfOrNull { LoadPreflight.neededBytes(it.bytes) / MIB } ?: 0L,
+                embedModel = embed?.file,
+                embedNeedMb = embedders.minOfOrNull { LoadPreflight.neededBytes(it.bytes) / MIB } ?: 0L,
             )
         }
 

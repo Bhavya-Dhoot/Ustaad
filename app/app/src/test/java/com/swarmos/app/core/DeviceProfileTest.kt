@@ -1,5 +1,6 @@
 package com.swarmos.app.core
 
+import com.swarmos.app.core.DeviceFixtures.EMBED
 import com.swarmos.app.core.DeviceFixtures.GEMMA
 import com.swarmos.app.core.DeviceFixtures.QWEN_30B
 import com.swarmos.app.core.DeviceFixtures.QWEN_4B
@@ -35,6 +36,7 @@ class DeviceProfileTest {
         assertEquals("context", 8192, plan.contextSize)
         assertEquals("slots", 2, plan.slots)
         assertEquals("scheduler capacity", 1, plan.schedCapacity)
+        assertEquals("embedding model", EMBED, plan.embedModel)
         assertEquals("ms per token", 200L, plan.msPerToken)
         assertEquals(DeviceClass.STANDARD, plan.deviceClass)
     }
@@ -82,18 +84,30 @@ class DeviceProfileTest {
         assertEquals(200L, p.msPerToken)
     }
 
-    @Test fun aFourGigabytePhoneWithoutTheGpuBuildIsAClientThatLoadsNothing() {
+    @Test fun aFourGigabytePhoneWithoutTheGpuBuildIsAClientThatStillLoadsTheEmbedder() {
         val p = plan(DeviceFixtures.phone4gb)
         assertEquals(DeviceClass.CLIENT, p.deviceClass)
         assertTrue(p.isClient)
         assertEquals(emptyList<String>(), p.chatModels)
         assertNull(p.chatModel)
+        assertEquals("it still searches: the embedder fits (1,917 MB under the load rule, 2,340 MB usable)", EMBED, p.embedModel)
+        assertEquals(1_917L, p.embedNeedMb)
         assertFalse(p.useGpu)
-        assertEquals("no model, no capacity", 0, p.schedCapacity)
+        assertEquals("no chat model, no capacity", 0, p.schedCapacity)
         assertFalse(p.mayLend)
         assertEquals("804 MB over the reserve is below the 2 GB a lender must have", 0L, p.lendMaxMb)
         assertEquals("10 % of 8,000 MB is under the 1 GB minimum", 1_024L, p.storageOfferMb)
         assertEquals("what the smallest chat model needs, so the status can say it", 4_672L, p.smallestChatNeedMb)
+    }
+
+    @Test fun aDeviceWhereEvenTheEmbedderDoesNotFitLoadsNoModelAtAll() {
+        val p = plan(DeviceFixtures.phone2gb)
+        assertTrue(p.isClient)
+        assertNull(p.embedModel)
+        assertEquals(0, p.schedCapacity)
+        // the embedder (333,590,944 bytes) needs 2,010,921,868 bytes under the load rule, i.e. 1,918 MB: 65 % of 2,951 MB is 1,918, of 2,950 MB is 1,917
+        assertEquals(EMBED, plan(DeviceFixtures.phone4gb.copy(totalRamMb = 2_951)).embedModel)
+        assertNull(plan(DeviceFixtures.phone4gb.copy(totalRamMb = 2_950)).embedModel)
     }
 
     @Test fun aThirtyTwoGigabyteDesktopRunsTheDefaultModelOnTheCpuWithMoreThreadsAndLends() {
@@ -178,6 +192,7 @@ class DeviceProfileTest {
         val p = ProfilePlan.plan(DeviceFixtures.desktop64, listOf(chatOnly, unpinned, embed))
         assertTrue(p.isClient)
         assertEquals(0L, p.smallestChatNeedMb)
+        assertEquals("the embedder is judged on its own", "e.gguf", p.embedModel)
     }
 
     @Test fun nominalMemoryIsTheSizeThePhoneIsSoldAs() {

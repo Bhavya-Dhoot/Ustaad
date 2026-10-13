@@ -31,11 +31,15 @@ class DeviceCheckLineTest {
         assertEquals("32 GB memory, no GPU: runs the Qwen3.5-4B model and can lend memory.", line(DeviceFixtures.desktop32))
     }
 
-    @Test fun aPhoneWithTooLittleMemoryTellsWhatItWillDoInstead() {
+    @Test fun aPhoneWithTooLittleMemoryForChatTellsWhatItWillDoInstead() {
         assertEquals(
-            "4 GB memory: too little to run a model here, so this phone asks the other phones to compute and still stores and searches files.",
+            "4 GB memory: too little for a chat model, so this phone asks the other phones to compute and still stores and searches files.",
             line(DeviceFixtures.phone4gb),
         )
+    }
+
+    @Test fun aPhoneTooSmallEvenForTheSearchModelSaysSo() {
+        assertEquals("3 GB memory: too little to run any model here, so this phone uses the other phones and stores files.", line(DeviceFixtures.phone2gb))
     }
 
     @Test fun beforeTheCheckHasAnswered() {

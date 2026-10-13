@@ -268,7 +268,8 @@ object LlamaRuntime {
 
     /**
      * Starts the chat and embedding models the device plan picks (the catalog defaults, Qwen3.5-4B and EmbeddingGemma-300M, on the
-     * phones measured so far) when they are present; a phone where no model fits starts none and says why in the servers' notice.
+     * phones measured so far) when they are present; a role whose model does not fit this phone starts none and says why in that server's
+     * notice (a phone too small for chat still loads the embedder).
      * Returns one handle per role that was started; roles whose file is missing are skipped. With [onlyMissing] a role that is
      * already READY or loading is left alone (the Models tab uses it so "Load models" never restarts a running server).
      */
@@ -276,7 +277,7 @@ object LlamaRuntime {
         (if (onlyMissing) rolesToLoad(statusOf(Role.CHAT).state, statusOf(Role.EMBED).state) else listOf(Role.CHAT, Role.EMBED)).mapNotNull { role ->
             val file = ModelStore.autoLoadFile(role)
             if (file == null) {
-                ModelStore.noModelNote()?.let { note -> if (statusOf(role).state == ServerState.STOPPED) board.set(role) { it.copy(notice = note) } }
+                ModelStore.noModelNote(role)?.let { note -> if (statusOf(role).state == ServerState.STOPPED) board.set(role) { it.copy(notice = note) } }
             }
             file?.let { startAsync(role, it.absolutePath, automatic = automatic) }
         }

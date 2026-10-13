@@ -9,6 +9,7 @@ internal object DeviceFixtures {
     const val QWEN_4B = "Qwen3.5-4B-Q4_K_M.gguf"
     const val QWEN_30B = "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
     const val GEMMA = "gemma-4-E4B_q4_0-it.gguf"
+    const val EMBED = "embeddinggemma-300M-Q8_0.gguf"
 
     val gpuListed = GpuProbe(ProbeVerdict.GPU_LISTED, "GPUOpenCL: Adreno (fixture)")
 
@@ -35,6 +36,9 @@ internal object DeviceFixtures {
         chip = "MT6769", abi = "arm64-v8a", osLevel = 33, freeStorageMb = 8_000,
         gpuBinaryPresent = false, openClPresent = false,
     )
+
+    /** A 2.5 GB device: not even the embedding model fits. */
+    val phone2gb = phone4gb.copy(totalRamMb = 2_500)
 
     /** A 32 GB desktop: 16 equal cores, no GPU build, a big disk. */
     val desktop32 = DeviceProfile(

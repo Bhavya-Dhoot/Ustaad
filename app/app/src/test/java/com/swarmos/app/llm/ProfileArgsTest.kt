@@ -68,15 +68,35 @@ class ProfileArgsTest {
         assertEquals(embedFile, ModelStore.autoLoadChoice(Role.EMBED, present(embedFile), big))
     }
 
-    @Test fun aClientLoadsNothingAutomaticallyAndSaysWhy() {
+    @Test fun aClientLoadsNoChatModelButStillTheEmbedderAndSaysWhy() {
         val client = planOf(DeviceFixtures.phone4gb)
+        val state = DeviceState(DeviceFixtures.phone4gb, client)
         assertNull(ModelStore.autoLoadChoice(Role.CHAT, present(QWEN_4B, embedFile), client))
-        assertNull(ModelStore.autoLoadChoice(Role.EMBED, present(QWEN_4B, embedFile), client))
-        val note = ModelStore.noModelNote(DeviceState(DeviceFixtures.phone4gb, client))!!
+        assertEquals("it still searches its files", embedFile, ModelStore.autoLoadChoice(Role.EMBED, present(QWEN_4B, embedFile), client))
+        assertNull("but only when the file is there", ModelStore.autoLoadChoice(Role.EMBED, present(QWEN_4B), client))
+        val note = ModelStore.noModelNote(Role.CHAT, state)!!
         assertTrue(note, note.contains("4 GB of memory"))
+        assertTrue(note, note.contains("too little for the smallest chat model"))
         assertTrue(note, note.contains("4.6 GB free"))
-        assertTrue(note, note.contains("loads no model here"))
-        assertNull("a phone that has a model needs no note", ModelStore.noModelNote(DeviceState(DeviceFixtures.iqoo15, planOf(DeviceFixtures.iqoo15))))
-        assertNull("before the first check there is nothing to say", ModelStore.noModelNote(null))
+        assertTrue(note, note.endsWith("It can still search its files and use the other devices."))
+        assertNull("the embedder is loaded, so nothing to explain for it", ModelStore.noModelNote(Role.EMBED, state))
+    }
+
+    @Test fun aDeviceTooSmallEvenForTheEmbedderLoadsNothingAndSaysWhyForBoth() {
+        val plan = planOf(DeviceFixtures.phone2gb)
+        val state = DeviceState(DeviceFixtures.phone2gb, plan)
+        assertNull(ModelStore.autoLoadChoice(Role.CHAT, present(QWEN_4B, embedFile), plan))
+        assertNull(ModelStore.autoLoadChoice(Role.EMBED, present(QWEN_4B, embedFile), plan))
+        val chat = ModelStore.noModelNote(Role.CHAT, state)!!
+        assertTrue(chat, chat.contains("too small for the search model too"))
+        val embed = ModelStore.noModelNote(Role.EMBED, state)!!
+        assertTrue(embed, embed.contains("too little for the search model (it needs about 1.9 GB free)"))
+    }
+
+    @Test fun aPhoneThatHasModelsNeedsNoNoteAndBeforeTheFirstCheckThereIsNothingToSay() {
+        val iqoo = DeviceState(DeviceFixtures.iqoo15, planOf(DeviceFixtures.iqoo15))
+        assertNull(ModelStore.noModelNote(Role.CHAT, iqoo))
+        assertNull(ModelStore.noModelNote(Role.EMBED, iqoo))
+        assertNull(ModelStore.noModelNote(Role.CHAT, null))
     }
 }
