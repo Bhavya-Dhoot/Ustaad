@@ -43,6 +43,7 @@ import com.swarmos.app.hands.HandsStatus
 import com.swarmos.app.hands.Origin
 import com.swarmos.app.hands.Phase
 import com.swarmos.app.hands.RunState
+import com.swarmos.app.hands.android.HandsRuntime
 import com.swarmos.app.hands.android.HandsSettings
 import com.swarmos.app.ui.InkSwitch
 import com.swarmos.app.ui.MetricRow
@@ -120,7 +121,8 @@ fun HandsScreen() {
                         onClick = {
                             val h = hands ?: return@PrimaryButton
                             if (dictation.listening) dictation.toggle()
-                            openId = h.start(task.trim(), Origin.OWN_SHEET) // typed or spoken here: the person's own task
+                            // typed or spoken here: the person's own task; the foreground service is started first (this screen is in front)
+                            openId = HandsRuntime.startFromUi(context, h, task.trim(), Origin.OWN_SHEET)
                             task = ""
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -212,6 +214,7 @@ private fun openSettings(context: Context, vararg actions: String) {
 
 @Composable
 private fun RunItem(run: RunState, row: RunRow, open: Boolean, busy: Boolean, hands: Hands?, onToggle: () -> Unit) {
+    val appContext = LocalContext.current
     SwarmCard(Modifier.clickable(role = Role.Button, onClick = onToggle)) {
         Text(row.title, style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp), maxLines = if (open) 6 else 2, overflow = TextOverflow.Ellipsis)
         Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -225,7 +228,7 @@ private fun RunItem(run: RunState, row: RunRow, open: Boolean, busy: Boolean, ha
                 when (run.phase) {
                     Phase.WAITING_FOR_GO -> {
                         // a task that came from another app or another agent: the person reads it above, then taps
-                        SecondaryButton("Run this task", { hands?.go(run.id) }, Modifier.fillMaxWidth(), enabled = hands != null && !busy)
+                        SecondaryButton("Run this task", { hands?.let { HandsRuntime.goFromUi(appContext, it, run.id) } }, Modifier.fillMaxWidth(), enabled = hands != null && !busy)
                         SecondaryButton("Discard", { hands?.stop(run.id) }, Modifier.fillMaxWidth(), enabled = hands != null)
                     }
                     Phase.PLANNING, Phase.RUNNING, Phase.WAITING_FOR_PERSON ->

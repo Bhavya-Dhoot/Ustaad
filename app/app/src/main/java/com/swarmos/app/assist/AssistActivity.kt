@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.hands.Hands
 import com.swarmos.app.hands.HandsHub
+import com.swarmos.app.hands.android.HandsRuntime
 import com.swarmos.app.hands.RunState
 import com.swarmos.app.hands.ui.RunDetail
 import com.swarmos.app.hands.ui.actingRun
@@ -275,8 +276,9 @@ class AssistActivity : ComponentActivity() {
                 val h = hands ?: return@PrimaryButton
                 if (dictation.listening) dictation.toggle()
                 val origin = SheetRules.runOrigin(sheet.seeded, sheet.fromSession)
-                val id = h.start(sheet.task.trim(), origin)
-                if (SheetRules.needsGo(origin)) h.go(id) // this tap is the person's go
+                // the sheet is in front: the foreground service is started first, then the run
+                val id = HandsRuntime.startFromUi(this@AssistActivity, h, sheet.task.trim(), origin)
+                if (SheetRules.needsGo(origin)) HandsRuntime.goFromUi(this@AssistActivity, h, id) // this tap is the person's go
                 sheet.runId = id
             },
             modifier = Modifier.fillMaxWidth(),
