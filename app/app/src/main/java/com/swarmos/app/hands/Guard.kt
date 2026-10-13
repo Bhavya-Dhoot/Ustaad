@@ -26,6 +26,9 @@ sealed interface Decision {
  */
 class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
 
+    /** True for a package of Ustaad itself: the window of a question, the task sheet. */
+    fun isOwn(pkg: String): Boolean = ownPackages.any { it.equals(pkg, ignoreCase = true) }
+
     /** What the guard needs besides the call. */
     class Context(
         /** The installed apps: a package is protected when its package name or its label is. */
