@@ -132,6 +132,12 @@ interface ExpertDesk {
     fun domains(): List<String>
     /** null: no expert for the domain, or it could not answer. */
     suspend fun ask(domain: String, question: String): String?
+
+    /**
+     * The same with the route stated: onPhoneOnly true when the question may hold screen text (every question the
+     * step model writes itself, and a planned question that comes after a phone subtask). Rule S5 applies to it.
+     */
+    suspend fun ask(domain: String, question: String, onPhoneOnly: Boolean): String? = ask(domain, question)
     suspend fun searchMyData(query: String): String?
 }
 
@@ -146,6 +152,29 @@ interface SkillBook {
 
 // ---------------------------------------------------------------- the person
 
+/** Why the person is asked. The UI words the prompt by it; a test gate can answer by it. */
+enum class AskKind {
+    /** The control's text names a committing action (pay, order, send, delete ...). */
+    COMMIT,
+    /** The screen has payment context: everything on it is asked about. */
+    CHECKOUT_SCREEN,
+    /** The control is not on the short list of controls known to be harmless (careful mode only). */
+    UNKNOWN_CONTROL,
+    /** The action is in, or opens, an app the plan did not name. */
+    APP_SCOPE,
+    LINK,
+    ENTER,
+    SCROLL,
+    OTHER,
+}
+
+/**
+ * How much Hands asks. CAREFUL (the default): a tap is free only on a control established as harmless, everything
+ * else is asked about. FEWER_QUESTIONS: a tap is asked about only when it is recognised as committing; the
+ * recognition is a word list and can miss a button, which the switch in the UI says in plain words.
+ */
+enum class Caution { CAREFUL, FEWER_QUESTIONS }
+
 data class ConfirmPrompt(
     val runId: String,
     /** Label of the app the action is in. */
@@ -154,6 +183,7 @@ data class ConfirmPrompt(
     val action: String,
     /** Why the guard stopped here, for example: this places an order. */
     val why: String,
+    val kind: AskKind = AskKind.OTHER,
 )
 
 /** Implemented by the UI only. Nothing but a tap of the person answers these; a timeout or a dismissal is a no. */
