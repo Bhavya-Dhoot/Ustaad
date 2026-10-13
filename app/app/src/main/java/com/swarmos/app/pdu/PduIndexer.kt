@@ -1,7 +1,9 @@
 package com.swarmos.app.pdu
 
+import android.Manifest
 import android.content.ContentUris
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
@@ -73,8 +75,12 @@ object PduIndexer {
 
     // ---- listing ------------------------------------------------------------------------------------------
 
-    /** MediaStore images, optionally only those whose RELATIVE_PATH starts with [relPrefix] (e.g. "Pictures/UstaadDemo"). */
-    fun listPhotos(ctx: Context, relPrefix: String?, limit: Int?): List<DocRef> {
+    /**
+     * MediaStore images, optionally only those whose RELATIVE_PATH starts with [relPrefix] (e.g. "Pictures/UstaadDemo"). The listing
+     * succeeded when a cursor came back and the photo permission is still held: without it MediaStore answers with the app's own
+     * images only, which looks like a library that lost its pictures.
+     */
+    fun listPhotos(ctx: Context, relPrefix: String?, limit: Int?): Listing {
         val proj = arrayOf(
             MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_TAKEN,
             MediaStore.Images.Media.DATE_MODIFIED, MediaStore.Images.Media.RELATIVE_PATH,
@@ -82,9 +88,11 @@ object PduIndexer {
         val sel = relPrefix?.let { "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?" }
         val args = relPrefix?.let { arrayOf(it.trimEnd('/') + "%") }
         val out = ArrayList<DocRef>()
+        var opened = false
         ctx.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI, proj, sel, args, "${MediaStore.Images.Media.DATE_MODIFIED} DESC",
         )?.use { c ->
+            opened = true
             while (c.moveToNext() && (limit == null || out.size < limit)) {
                 val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(0)).toString()
                 val modified = c.getLong(3) * 1000
@@ -95,11 +103,15 @@ object PduIndexer {
                 )
             }
         }
-        return out
+        return Listing(out, opened && ctx.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED)
     }
 
-    /** Every supported file under a SAF tree. `folder` is the root's display name plus the sub-folder path. */
-    fun listTree(ctx: Context, tree: Uri): List<DocRef> {
+    /**
+     * Every supported file under a SAF tree. `folder` is the root's display name plus the sub-folder path. A folder with no files in it
+     * is a success (an empty listing that may remove what was stored under it); a folder that cannot be listed throws, and so does a
+     * tree whose permission is no longer held, so neither is ever taken for an empty one.
+     */
+    fun listTree(ctx: Context, tree: Uri): Listing {
         val rootId = DocumentsContract.getTreeDocumentId(tree)
         val rootName = displayName(ctx, DocumentsContract.buildDocumentUriUsingTree(tree, rootId)) ?: rootId.substringAfterLast('/')
         val out = ArrayList<DocRef>()
@@ -126,20 +138,20 @@ object PduIndexer {
             }
         }
         walk(rootId, rootName)
-        return out
+        return Listing(out, ctx.contentResolver.persistedUriPermissions.any { it.uri == tree && it.isReadPermission })
     }
 
-    /** All-files-access path (`appops ... MANAGE_EXTERNAL_STORAGE allow`): walk a plain directory. */
-    fun listDir(dir: File): List<DocRef> {
+    /** All-files-access path (`appops ... MANAGE_EXTERNAL_STORAGE allow`): walk a plain directory. A path that is not a readable directory is a failed listing. */
+    fun listDir(dir: File): Listing {
         // /sdcard is a symlink; canonical paths keep one identity (and one folder name) per file
         val root = Environment.getExternalStorageDirectory().canonicalPath
-        return dir.canonicalFile.walkTopDown().filter { it.isFile }.mapNotNull { f ->
+        return Listing(dir.canonicalFile.walkTopDown().filter { it.isFile }.mapNotNull { f ->
             val kind = kindOf(f.name) ?: return@mapNotNull null
             DocRef(
                 Uri.fromFile(f).toString(), f.name, kind,
                 f.parentFile!!.path.removePrefix(root).trim('/'), f.lastModified(), f.lastModified(),
             )
-        }.toList()
+        }.toList(), dir.isDirectory && dir.canRead())
     }
 
     private fun displayName(ctx: Context, docUri: Uri): String? =

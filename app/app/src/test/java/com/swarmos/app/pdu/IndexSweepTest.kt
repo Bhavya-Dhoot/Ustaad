@@ -23,12 +23,6 @@ class IndexSweepTest {
         assertTrue(IndexSweep.stale(listOf(doc("a"), doc("b")), setOf("a", "b")).isEmpty())
     }
 
-    @Test fun anEmptyListingNeverWipesWhatIsStored() {
-        assertFalse(IndexSweep.mayRemove(listed = 0, stored = 12))
-        assertTrue(IndexSweep.mayRemove(listed = 0, stored = 0))
-        assertTrue(IndexSweep.mayRemove(listed = 3, stored = 12))
-    }
-
     @Test fun aFileThatMovedToAnotherPathIsStaleAtItsOldPlace() {
         // a file moved on the file system has a new uri: the old row (in the shared folder) is not in the new listing and goes
         val stored = listOf(doc("file:///Documents/bill.pdf", "Documents"))

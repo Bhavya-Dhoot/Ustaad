@@ -24,15 +24,26 @@ class FileTimedOut(val ms: Long) : RuntimeException("timed out after ${ms / 1000
  */
 data class IndexRoot(val uriPrefix: String, val kinds: Set<String>? = null, val folderPrefix: String? = null)
 
+/**
+ * What a listing found, and whether it positively succeeded. An empty [refs] with [succeeded] is an empty folder: the last file was
+ * deleted. An empty [refs] without it is nothing known: no cursor, an error, or a permission that was taken back.
+ */
+class Listing(val refs: List<DocRef>, val succeeded: Boolean = true)
+
 object IndexSweep {
     /** Stored files that the finished run did not see: deleted, moved elsewhere or no longer in the listed folder. */
     internal fun stale(stored: List<StoredDoc>, seenUris: Set<String>): List<StoredDoc> = stored.filter { it.uri !in seenUris }
 
     /**
-     * An empty listing proves nothing (a permission taken away and a storage that is not mounted look the same as an empty
-     * folder), so it never wipes what is stored.
+     * The stored files of one root that a finished run removes, or null when its listing did not succeed and nothing may be removed
+     * (a listing that failed looks the same as an empty folder, and must not wipe the index). A listing that succeeded and found
+     * nothing removes everything stored under the root: that is how the last file of a shared folder stops being searchable.
      */
-    fun mayRemove(listed: Int, stored: Int): Boolean = listed > 0 || stored == 0
+    fun toRemove(stored: List<StoredDoc>, seenUris: Set<String>, listingSucceeded: Boolean): List<StoredDoc>? = when {
+        stored.isEmpty() -> emptyList()
+        !listingSucceeded -> null
+        else -> stale(stored, seenUris)
+    }
 }
 
 /** The Stop control of the index run in progress: [stop] ends it after the file in hand, and cancels that file's work. */

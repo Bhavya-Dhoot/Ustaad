@@ -92,6 +92,7 @@ private fun LibraryPage(go: (String) -> Unit) {
     val emb by PduEngine.embedder.collectAsStateWithLifecycle()
     val reindexNeeded by PduEngine.reindexNeeded.collectAsStateWithLifecycle()
     val engineNote by PduEngine.engineNote.collectAsStateWithLifecycle()
+    val auto by PduAutoIndex.last.collectAsStateWithLifecycle()
     // nothing is indexed, scanned or wiped without a real, loaded embedder, and a stale index waits for the owner
     val canIndex = emb.ready && !reindexNeeded && !progress.running
     var note by remember { mutableStateOf<String?>(null) }
@@ -135,6 +136,7 @@ private fun LibraryPage(go: (String) -> Unit) {
                 "last indexed",
                 if (counts.lastRunMs > 0) DateUtils.getRelativeTimeSpanString(counts.lastRunMs, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS).toString() else "never",
             )
+            MetricRow("last automatic run", auto?.let { "${it.reason}, " + DateUtils.getRelativeTimeSpanString(it.atMs, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS) } ?: "waiting")
             if (!emb.ready) {
                 Spacer(Modifier.height(6.dp))
                 Text("Load the embedding model in Models, then index. Nothing is indexed or removed until then.", style = SwarmType.body.copy(fontSize = 14.sp, lineHeight = 20.sp))

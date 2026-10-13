@@ -25,7 +25,17 @@ data class PduResponse(
     val indexedChunks: Int,
     val tookMs: Long,
     val withheldPrivate: Int,
+    /** The sender's shared index version ([IndexVersion], [VersionCounters.forPeers]); null from a build that does not send it. */
+    val indexVersion: Long? = null,
 )
+
+/** Answer of GET /v1/pdu/version: the shared counter only. */
+@Serializable
+data class PduVersion(val indexVersion: Long) {
+    companion object {
+        fun of(c: VersionCounters) = PduVersion(c.forPeers)
+    }
+}
 
 /**
  * A phone is not trusted for the size of what it sends back. A response is cut to what a phone may send: at most [MAX_HITS] hits
