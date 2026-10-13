@@ -57,6 +57,12 @@ Phones talk HTTP and JSON. Each request carries a time stamp and an HMAC-SHA256 
 
 The scheduler gives a job to the free phone with the best score: its last measured decode speed, divided by one plus the jobs waiting there, lowered at Thermal Status 2. A phone at Thermal Status 4 or more gets nothing. While a job runs on another phone, that phone is pinged every second, and two missed pings send the job elsewhere. More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Hands (added after the hackathon, 2026-10-13)
+
+Ustaad can take a typed or spoken task and carry it out on the phone: it plans the task, asks an expert prompt where knowledge is needed, and acts in other apps through its own accessibility service, one checked step at a time. It asks the owner before anything that pays, orders, sends or deletes, and in its default careful mode before every tap that is not on a short list of harmless controls. A task can come from the Hands tab, from Ustaad as the phone's digital assistant, from shared or selected text, or from the link `ustaad://do?q=...`; nothing that comes from another app starts without the owner's tap.
+
+State: built and unit-tested; the ways in and two tasks that need no other app ran on one Android 15 test phone with the model on a PC; no task that acts in another app has run on a phone yet. What it promises, what it relies on and what is not built (custom Google Assistant or Gemini commands, Bixby, Siri, a wake word): [docs/HANDS.md](docs/HANDS.md). Readings: [docs/benchmarks/2026-10-13-redmi-hands.md](docs/benchmarks/2026-10-13-redmi-hands.md).
+
 ## Keep busy and Hammer
 
 An owner can switch on Keep busy, and an idle phone then runs short filler jobs on its own model. Real work always goes first. It runs at full duty while the phone is cool, at half duty when warm, and pauses when hot, when the battery is low, or when Ustaad is not on screen (unless the phone is charging and has the battery exemption, which no phone has yet). Hammer is a second button that holds full duty on a warm phone. It is off at every start and, when stopped, the phone rests for 90 seconds. In one 25-minute run it raised the time generating from 46 % to 78 %, with real work decoding at 10.8 to 11.1 tok/s against 13.3 before and the skin up to 45.0 C. A warm phone answers slower whatever the mode. The rules, the measurements and what is not measured are in [docs/KEEP-BUSY.md](docs/KEEP-BUSY.md).

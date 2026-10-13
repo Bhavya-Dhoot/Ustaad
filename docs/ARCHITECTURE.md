@@ -211,6 +211,10 @@ ExpertMesh is an explanation screen over the same split applied to a mixture-of-
 - Every route asks for the key first. Other source addresses and unexpected Host headers are refused. The audit log keeps counts and never text.
 - It was measured on one phone with a script and the unmodified OpenAI Python client. No third-party Android app has called it. Full reference: docs/AGENT-API.md.
 
+## 6a. Hands (2026-10-13)
+
+`hands/` is a harness that carries out a task on the phone. `hands/Contract.kt` holds the types. The core has no Android in it: `ScreenReader` turns the accessibility tree into at most 60 numbered elements, each with a guard text (its own text, its children, the clickable parent a touch would reach, the words of its resource id); `Planner` makes subtasks (phone, knowledge, data, reply); `StepLoop` asks the step model for one tool call as JSON under a schema; `Guard` decides Allow, Confirm or Refuse without the model; `ToolRunner` finds the target again in a fresh read, asks the owner through `HumanGate` where the guard says so, and calls the driver; `HandsEngine` runs one task at a time. `hands/android/` holds the accessibility service and its driver (no gestures: a click on the exact node after a second check of its subtree), the brain with its route rule (`BrainRoute`: screen text never leaves the phone while sharing is off), the expert desk, and the runtime that is built at process start. `assist/` holds the ways in (assistant services, the task sheet, the prompt whose yes needs a tap after 0.7 s of visibility). Details, limits and the trust assumption: docs/HANDS.md.
+
 ## 7. Failure handling
 
 "Measured" means run on a phone. "Unit-tested only" means no phone run is recorded. Sources: docs/CLAIMS.md, docs/review/2026-10-11-final-audit.md, docs/benchmarks/.
