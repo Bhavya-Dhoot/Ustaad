@@ -286,7 +286,7 @@ class HandsEngineTest {
         val r = rig()
         r.brain.replyWith(hang.reply)
         val id = r.engine.start("hang", Origin.OWN_SHEET)
-        runBlocking { hang.started.await() }
+        awaitOrFail(hang.started)
         r.engine.stop(id)
         val run = r.run(id)
         assertEquals(Phase.STOPPED, run.phase)
@@ -306,7 +306,7 @@ class HandsEngineTest {
         r.brain.reply(planJson(subJson("PHONE", "g", app = "FakeFood")))
         r.brain.replyWith({ step("scroll", direction = "down") }, hang.reply)
         val id = r.engine.start("t", Origin.OWN_SHEET)
-        runBlocking { hang.started.await() }
+        awaitOrFail(hang.started)
         r.engine.stop(id)
         waitUntil { hang.cancelled }
         val run = r.run(id)
@@ -448,7 +448,7 @@ class HandsEngineTest {
         r.brain.reply(phonePlan())
         r.brain.replyWith(payNow())
         val id = r.engine.start("order", Origin.OWN_SHEET)
-        runBlocking { asked.await() }
+        awaitOrFail(asked)
         assertEquals(Phase.WAITING_FOR_PERSON, r.await(id) { it.phase == Phase.WAITING_FOR_PERSON }.phase)
         assertTrue(r.driver.taps.none { it == "paynow" })
         answer.complete(false)
@@ -470,7 +470,7 @@ class HandsEngineTest {
         r.brain.reply(phonePlan())
         r.brain.replyWith(payNow())
         val id = r.engine.start("order", Origin.OWN_SHEET)
-        runBlocking { asked.await() }
+        awaitOrFail(asked)
         r.engine.stop(id)
         assertEquals(Phase.STOPPED, r.run(id).phase)
         waitUntil { gate.cancelled }
@@ -601,7 +601,7 @@ class HandsEngineTest {
         val r = rig(gate = FakeGate(answer = { true }))
         r.brain.replyWith(hang.reply)
         val id = r.engine.start("hold the phone", Origin.OWN_SHEET)
-        runBlocking { hang.started.await() }
+        awaitOrFail(hang.started)
         assertTrue(runBlocking { r.engine.call(call("read_screen"), Origin.MCP) }.ok)
         val act = runBlocking { r.engine.call(call("home"), Origin.MCP) }
         assertFalse(act.ok)

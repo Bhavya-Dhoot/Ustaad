@@ -356,7 +356,7 @@ class Rig(
 
     fun terminal(r: RunState) = r.phase == Phase.DONE || r.phase == Phase.FAILED || r.phase == Phase.STOPPED
 
-    fun await(id: String, timeoutMs: Long = 15_000, pred: (RunState) -> Boolean = { terminal(it) }): RunState = runBlocking {
+    fun await(id: String, timeoutMs: Long = 8_000, pred: (RunState) -> Boolean = { terminal(it) }): RunState = runBlocking {
         withTimeout(timeoutMs) {
             engine.runs.first { list -> list.firstOrNull { it.id == id }?.let(pred) == true }.first { it.id == id }
         }
@@ -364,3 +364,6 @@ class Rig(
 
     fun close() = scope.cancel()
 }
+
+/** Waits for a signal from the code under test, but fails the test instead of hanging when it never comes. */
+fun <T> awaitOrFail(d: kotlinx.coroutines.CompletableDeferred<T>, ms: Long = 10_000): T = runBlocking { withTimeout(ms) { d.await() } }
