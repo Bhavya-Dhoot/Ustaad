@@ -23,7 +23,7 @@ Public key `pub`: 65 bytes `0x04 || X || Y`, a P-256 point, checked to lie on th
 
 ### 1.3 Labels (domain separation)
 
-`ustaad/v1/` followed by: `entry`, `entry/sig`, `cloud`, `key`, `token`, `loghash`, `join/c2a`, `join/a2c`, `join/pop`, `session`, `session/sig/i`, `session/sig/r`, `session/mac`, `session/seal/i2r`, `session/seal/r2i`, `session/id`, `req`, `frame`, `frame/stream`, `tag`, `relay/route`, `relay/open`.
+`ustaad/v1/` followed by: `entry`, `entry/sig`, `cloud`, `key`, `token`, `loghash`, `join/c2a`, `join/a2c`, `join/pop`, `session`, `session/sig/i`, `session/sig/r`, `session/mac`, `session/seal/i2r`, `session/seal/r2i`, `session/id`, `req`, `frame`, `frame/stream`, `tag`, `relay/route`, `relay/open`, `chan`.
 
 ## 2. Identity
 
