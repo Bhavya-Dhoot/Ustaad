@@ -144,6 +144,25 @@ class RunTrackerTest {
     }
 
     @Test
+    fun aServiceThatReconnectsDuringARunGetsItsChipBack() {
+        val t = RunTracker()
+        t.onChange(run(phase = Phase.RUNNING))
+        assertEquals(listOf(RunEffect.ShowStop("r1")), t.onServiceConnected())
+        assertEquals("every reconnect puts it back", listOf(RunEffect.ShowStop("r1")), t.onServiceConnected())
+    }
+
+    @Test
+    fun aReconnectOutsideARunShowsNothing() {
+        val t = RunTracker()
+        assertTrue(t.onServiceConnected().isEmpty())
+        t.onChange(run(phase = Phase.PLANNING))
+        t.onChange(run(phase = Phase.DONE, ended = 2_000))
+        assertTrue("the run ended, its chip is gone for good", t.onServiceConnected().isEmpty())
+        t.onChange(run(id = "w", phase = Phase.WAITING_FOR_GO, origin = Origin.EXTERNAL_INTENT))
+        assertTrue(t.onServiceConnected().isEmpty())
+    }
+
+    @Test
     fun theNoticeLineNamesThePhaseNeverTheTask() {
         for (p in Phase.values()) assertFalse(p.name, RunTracker.noticeLine(p).contains("biryani"))
         assertEquals("Planning the task", RunTracker.noticeLine(Phase.PLANNING))

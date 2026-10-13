@@ -15,6 +15,8 @@ class HandsAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        // a service that comes back while a run is active lost its Stop chip with the old connection: the wiring puts it back
+        try { onConnected?.invoke() } catch (e: Exception) { android.util.Log.w("HandsA11y", "reconnect hook failed: ${e.javaClass.simpleName}") }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -56,6 +58,10 @@ class HandsAccessibilityService : AccessibilityService() {
         @Volatile
         var front: Front = Front("", "")
             private set
+
+        /** Called on the main thread each time the service connects. Set by [HandsRuntime]. */
+        @Volatile
+        var onConnected: (() -> Unit)? = null
 
         /** The class name of the last window-state-changed event (an activity, or a dialog or popup in it). */
         val currentActivity: String get() = front.cls

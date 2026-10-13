@@ -43,10 +43,18 @@ object HandsNotice {
             .addAction(0, "Stop", stop)
             .build()
         nm.notify(NOTIFICATION_ID, n)
-        return nm.areNotificationsEnabled() && nm.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
+        val shown = nm.areNotificationsEnabled() && nm.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
+        visible = shown
+        return shown
     }
 
+    /** True while the last [show] reached the person's notification shade (notifications on for Ustaad and for this channel). */
+    @Volatile
+    var visible: Boolean = false
+        private set
+
     fun clear(ctx: Context) {
+        visible = false
         ctx.applicationContext.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
 

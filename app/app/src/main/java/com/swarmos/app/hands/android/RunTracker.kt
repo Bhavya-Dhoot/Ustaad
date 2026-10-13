@@ -96,6 +96,10 @@ class RunTracker {
         return out
     }
 
+    /** The accessibility service connected (again): a run that is acting needs its Stop chip put back, the old connection took it away. */
+    @Synchronized
+    fun onServiceConnected(): List<RunEffect> = shown?.let { listOf(RunEffect.ShowStop(it)) } ?: emptyList()
+
     companion object {
         private const val KEEP_IDS = 200
 

@@ -81,8 +81,10 @@ object HandsRuntime {
             val tracker = RunTracker()
             val guard = Guard(Guard.OWN_PACKAGES + app.packageName)
 
+            // a driver acts only while the person can stop the run: the Stop chip or the notification is showing
+            val gated = HandsDrivers.list(app).map { StopGatedDriver(it, ::stopSurface) }
             val built = HandsEngine(
-                drivers = { HandsDrivers.list(app) },
+                drivers = { gated },
                 brain = brain,
                 desk = desk,
                 skills = skills,
@@ -92,6 +94,7 @@ object HandsRuntime {
                 scope = scope,
                 clock = System::currentTimeMillis,
                 delayMs = { delay(it) },
+                caution = HandsSettings::caution,
                 statusOf = {
                     HandsStatus(
                         driver = HandsDrivers.list(app).firstOrNull { it.ready() }?.name.orEmpty(),
@@ -108,9 +111,13 @@ object HandsRuntime {
             HandsNotice.onStop = {
                 built.runs.value.firstOrNull { RunTracker.acting(it.phase) }?.let { built.stop(it.id) }
             }
+            // the service connecting again while a run acts: the chip went with the old connection, put it back
+            HandsAccessibilityService.onConnected = { tracker.onServiceConnected().forEach { perform(app, it) } }
             HandsHub.hands = built
         }
     }
+
+    private fun stopSurface(): Boolean = StopOverlay.isShown || HandsNotice.visible
 
     private fun perform(app: Context, effect: RunEffect) {
         runCatching {
