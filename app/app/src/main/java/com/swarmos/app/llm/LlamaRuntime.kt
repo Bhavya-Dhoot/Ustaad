@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Process as AndroidProcess
 import android.util.Log
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.DeviceProbe
+import com.swarmos.app.core.DeviceProfiles
 import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.core.ServicePolicy
 import com.swarmos.app.core.ThermalGate
@@ -238,8 +240,9 @@ object LlamaRuntime {
                 syncClient(Role.EMBED, embed, AppGraph.embedder, droppedEmbed ?: FakeLlmClient()) { AppGraph.embedder = it }
                 if (chat.isRealReady()) _realChatReady.value = true
                 if (embed.isRealReady() || droppedEmbed != null) _realEmbedderReady.value = true
-                // one scheduler job at a time while the chat server is READY (parallel slots add no throughput), none otherwise
-                val cap = if (chat.state == ServerState.READY) LlamaArgs.SCHED_CAPACITY else 0
+                // one scheduler job at a time while the chat server is READY (parallel slots add no throughput), none otherwise; a model
+                // loaded by hand on a phone whose plan is a client (capacity 0, no automatic load) still serves, so READY is at least 1
+                val cap = if (chat.state == ServerState.READY) maxOf(DeviceProfiles.current?.plan?.schedCapacity ?: LlamaArgs.SCHED_CAPACITY, 1) else 0
                 if (cap != schedCapacity) {
                     schedCapacity = cap
                     Sched.setCapacity(cap)
@@ -248,6 +251,8 @@ object LlamaRuntime {
         }
         val load = scope.launch {
             awaitGone(killOrphans(), ORPHAN_WAIT_MS)
+            // the plan picks the model: the first start and the first start after an update measure the phone before anything loads
+            runCatching { DeviceProbe.ensure() }.onFailure { Log.w(TAG, "device check failed, the defaults stay: $it") }
             if (ModelStore.autoload.value) loadDefaults(automatic = true) else Log.i(TAG, "autoload is off: no model is loaded at start")
         }
         serviceJobs = listOf(wire, load)
@@ -256,13 +261,18 @@ object LlamaRuntime {
     @Volatile private var schedCapacity = -1
 
     /**
-     * Starts the catalog default chat and embedding models (Qwen3.5-4B, EmbeddingGemma-300M) when they are present.
+     * Starts the chat and embedding models the device plan picks (the catalog defaults, Qwen3.5-4B and EmbeddingGemma-300M, on the
+     * phones measured so far) when they are present; a phone where no model fits starts none and says why in the servers' notice.
      * Returns one handle per role that was started; roles whose file is missing are skipped. With [onlyMissing] a role that is
      * already READY or loading is left alone (the Models tab uses it so "Load models" never restarts a running server).
      */
     fun loadDefaults(onlyMissing: Boolean = false, automatic: Boolean = false): List<Deferred<ServerStatus>> =
         (if (onlyMissing) rolesToLoad(statusOf(Role.CHAT).state, statusOf(Role.EMBED).state) else listOf(Role.CHAT, Role.EMBED)).mapNotNull { role ->
-            ModelStore.autoLoadFile(role)?.let { startAsync(role, it.absolutePath, automatic = automatic) }
+            val file = ModelStore.autoLoadFile(role)
+            if (file == null) {
+                ModelStore.noModelNote()?.let { note -> if (statusOf(role).state == ServerState.STOPPED) board.set(role) { it.copy(notice = note) } }
+            }
+            file?.let { startAsync(role, it.absolutePath, automatic = automatic) }
         }
 
     // ---- memory pressure ----
@@ -467,11 +477,11 @@ object LlamaRuntime {
             }
         }
         val libDir = File(ctx.applicationInfo.nativeLibraryDir)
-        var plan = BackendPlan.choose(role, cfg.extraArgs, ModelStore.useGpu.value, File(libDir, LlamaArgs.GPU_BINARY).exists(), cfg.cpuOnly)
+        var plan = BackendPlan.choose(role, cfg.extraArgs, ModelStore.gpuWanted(), File(libDir, LlamaArgs.GPU_BINARY).exists(), cfg.cpuOnly)
         // set when this start is itself a fallback from a GPU server that died twice
         var fallbackNote: String? = cfg.fallbackNote
         var gpuFailed = cfg.fallbackNote != null
-        val gpuWanted = Backend.GPU in BackendPlan.choose(role, cfg.extraArgs, ModelStore.useGpu.value, File(libDir, LlamaArgs.GPU_BINARY).exists(), cpuOnly = false)
+        val gpuWanted = Backend.GPU in BackendPlan.choose(role, cfg.extraArgs, ModelStore.gpuWanted(), File(libDir, LlamaArgs.GPU_BINARY).exists(), cpuOnly = false)
         if (!cfg.gpuRetry && Backend.GPU in plan && GpuFailureMemory.skipGpu(ModelStore.gpuFailedStamp(), ModelStore.appStamp())) {
             // the GPU build failed on this install before: do not pay its start timeout again (cleared by the GPU switch or an app update)
             plan = listOf(Backend.CPU)
@@ -547,7 +557,7 @@ object LlamaRuntime {
         }
         if (!board.isCurrent(role, epoch)) return Attempt(statusOf(role), false)
         // the child inherits the cores this process may use now (fewer when the app is in the background), so size the CPU chat build from them
-        val cmd = listOf(bin.absolutePath) + LlamaArgs.build(role, modelPath, port, cfg.extraArgs, backend, allowedCores = CpuSet.allowed())
+        val cmd = listOf(bin.absolutePath) + LlamaArgs.build(role, modelPath, port, cfg.extraArgs, backend, allowedCores = CpuSet.allowed(), plan = DeviceProfiles.current?.plan)
         val args = LlamaArgs.redacted(cmd.drop(1)) // what the status and the log show: never the API key
         val logFile = File(File(ctx.filesDir, "logs").apply { mkdirs() }, "${role.tag}.log")
         val ring = LogRing()
