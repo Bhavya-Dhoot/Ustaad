@@ -59,8 +59,9 @@ class BatteryHeatTest {
     @Test fun anUnreportedTemperatureIsNeverCool() {
         assertEquals(BatteryHeat.UNKNOWN_STATUS, BatteryHeat.statusFor(null))
         assertNotEquals("missing data must not read as cool", 0, BatteryHeat.UNKNOWN_STATUS)
-        assertEquals("Warm", HealthMonitor.thermalWord(BatteryHeat.UNKNOWN_STATUS))
-        assertFalse("and no rule starts there", ThermalLevel.isDegraded(BatteryHeat.UNKNOWN_STATUS))
+        assertEquals(2, BatteryHeat.UNKNOWN_STATUS)
+        assertTrue("a phone blind to its heat runs at half duty", ThermalLevel.isDegraded(BatteryHeat.UNKNOWN_STATUS))
+        assertFalse("but it is not paused for heat it cannot show", ThermalLevel.isTooHot(BatteryHeat.UNKNOWN_STATUS))
     }
 
     @Test fun aTemperatureOfZeroOrLessCountsAsNotReported() {

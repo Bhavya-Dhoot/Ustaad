@@ -40,11 +40,12 @@ object BatteryHeat {
     const val CRITICAL_FROM = 450
 
     /**
-     * The status when no battery temperature is reported: LIGHT (1). It is never NONE, because "cool" would be a claim made from
-     * missing data; it is not higher because no rule starts below 2 and the system's own protection still applies. A phone with no
-     * battery thermistor shows Warm and is marked derived.
+     * The status when no battery temperature is reported: MODERATE (2). It is never NONE, because "cool" would be a claim made from
+     * missing data, and not LIGHT either: a phone that gives neither a thermal status nor a battery temperature is blind to its own
+     * heat, so Keep busy runs at half duty on it and the scheduler prefers other phones (the rules that start at 2). A phone with no
+     * battery thermistor is marked derived.
      */
-    const val UNKNOWN_STATUS = 1
+    const val UNKNOWN_STATUS = 2
 
     /** The temperature in tenths of a degree from the battery broadcast's extra, or null when it is not reported (missing or 0 or less). */
     fun tenthsOrNull(extra: Int?): Int? = extra?.takeIf { it > 0 }
