@@ -55,9 +55,9 @@ object ExpertCards {
 }
 
 /**
- * Knowledge experts and the person's own data for Hands. An expert answers with one STRONG completion that is not marked
- * on-phone-only (the question is the model's own wording of what it needs to know, never a screen). [data] is the Data Union's
- * answer to a question, or null when it has none or is not ready.
+ * Knowledge experts and the person's own data for Hands. An expert answers with one STRONG completion; the caller says whether
+ * the question may hold screen text (a planned question before any phone work does not, a question the step model wrote does).
+ * [data] is the Data Union's answer to a question, or null when it has none or is not ready.
  */
 class HandsDesk(
     cards: List<ExpertCard>,
@@ -69,11 +69,15 @@ class HandsDesk(
 
     override fun domains(): List<String> = names
 
-    override suspend fun ask(domain: String, question: String): String? {
+    /** A question whose route is not stated is treated as screen-bound: it stays on this phone unless sharing is on. */
+    override suspend fun ask(domain: String, question: String): String? = ask(domain, question, onPhoneOnly = true)
+
+    /** [onPhoneOnly] is passed to the brain as it is: a question the step model wrote itself may hold screen text (rule S5). */
+    override suspend fun ask(domain: String, question: String, onPhoneOnly: Boolean): String? {
         val card = byDomain[ExpertCards.key(domain)] ?: return null
         if (!brain.has(Tier.STRONG)) return null
         return try {
-            answerOf(brain.complete(Tier.STRONG, card.prompt, question.take(QUESTION_MAX), ANSWER_SCHEMA, ANSWER_TOKENS, onPhoneOnly = false))
+            answerOf(brain.complete(Tier.STRONG, card.prompt, question.take(QUESTION_MAX), ANSWER_SCHEMA, ANSWER_TOKENS, onPhoneOnly = onPhoneOnly))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

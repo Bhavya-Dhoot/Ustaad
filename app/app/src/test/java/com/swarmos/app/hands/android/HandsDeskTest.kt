@@ -103,8 +103,60 @@ class HandsDeskTest {
         assertEquals("You are a cooking expert.\nLimits: none.", c.system)
         assertEquals("How do I fix a salty dal?", c.user)
         assertEquals(300, c.maxTokens)
-        assertFalse("an expert question is never marked as holding screen text", c.onPhoneOnly)
+        assertTrue("a question with no route stated is treated as screen-bound", c.onPhoneOnly)
         assertEquals(HandsDesk.ANSWER_SCHEMA, c.schema)
+    }
+
+    @Test
+    fun theThreeArgumentFormPassesTheRouteToTheBrainAsItIs() {
+        for (flag in listOf(true, false)) {
+            val brain = ScriptedBrain().reply("""{"answer":"ok"}""")
+            runBlocking { desk(brain).ask("cooking", "q", onPhoneOnly = flag) }
+            assertEquals(flag, brain.calls.single().onPhoneOnly)
+        }
+    }
+
+    // a real HandsBrain under the desk: the route rule of rule S5 reaches the expert question
+    private fun realBrainDesk(swarm: FakeSwarm, local: FakeLlm, localReady: Boolean, share: Boolean) = HandsDesk(
+        ExpertCards.parse(mapOf("cooking" to cooking)),
+        HandsBrain(
+            local = { local }, localReady = { localReady }, localModel = { local.modelName }, swarm = swarm,
+            shareScreens = { share }, testClient = { null }, modelBytes = { if (it == "big") 9_000L else 2_000L },
+        ),
+        data = { null },
+    )
+
+    @Test
+    fun aScreenBoundExpertQuestionNeverTakesTheSwarmRouteWhileSharingIsOff() {
+        val answer = """{"answer":"Add a little sugar."}"""
+        // a stronger peer exists, this phone has a model: planning would go to the peer, a screen-bound question stays here
+        val swarm = FakeSwarm(listOf("big"), answer = answer)
+        val local = FakeLlm("small", { answer })
+        val d = realBrainDesk(swarm, local, localReady = true, share = false)
+        assertEquals("Add a little sugar.", runBlocking { d.ask("cooking", "salty dal?", onPhoneOnly = true) })
+        assertTrue(swarm.chats.isEmpty())
+        assertEquals(1, local.requests.size)
+        // the same question marked as not screen-bound does use the stronger peer
+        assertEquals("Add a little sugar.", runBlocking { d.ask("cooking", "salty dal?", onPhoneOnly = false) })
+        assertEquals(1, swarm.chats.size)
+        assertEquals(1, local.requests.size)
+    }
+
+    @Test
+    fun withNoModelHereAScreenBoundExpertQuestionGivesNullAndSendsNothingWhileSharingIsOff() {
+        val swarm = FakeSwarm(listOf("big"), answer = """{"answer":"x"}""")
+        val d = realBrainDesk(swarm, FakeLlm("small"), localReady = false, share = false)
+        assertNull(runBlocking { d.ask("cooking", "q", onPhoneOnly = true) })
+        assertNull("the form without a route is screen-bound too", runBlocking { d.ask("cooking", "q") })
+        assertTrue(swarm.chats.isEmpty())
+    }
+
+    @Test
+    fun withSharingOnAScreenBoundExpertQuestionMayUseThePeer() {
+        val swarm = FakeSwarm(listOf("big"), answer = """{"answer":"From the peer."}""")
+        val d = realBrainDesk(swarm, FakeLlm("small"), localReady = false, share = true)
+        assertEquals("From the peer.", runBlocking { d.ask("cooking", "q", onPhoneOnly = true) })
+        assertEquals(1, swarm.chats.size)
     }
 
     @Test

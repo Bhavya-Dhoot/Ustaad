@@ -26,7 +26,7 @@ import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
-private class FakeLlm(override val modelName: String = "fake", var reply: suspend (ChatRequest) -> String = { "{}" }) : LlmClient {
+internal class FakeLlm(override val modelName: String = "fake", var reply: suspend (ChatRequest) -> String = { "{}" }) : LlmClient {
     val requests = CopyOnWriteArrayList<ChatRequest>()
     override suspend fun ready() = true
     override fun chatStream(req: ChatRequest): Flow<ChatChunk> = throw UnsupportedOperationException()
@@ -38,7 +38,7 @@ private class FakeLlm(override val modelName: String = "fake", var reply: suspen
     override suspend fun embed(texts: List<String>): List<FloatArray> = throw UnsupportedOperationException()
 }
 
-private class FakeSwarm(var models: List<String> = emptyList(), var answer: String = "swarm says hi") : SwarmSide {
+internal class FakeSwarm(var models: List<String> = emptyList(), var answer: String = "swarm says hi") : SwarmSide {
     val chats = CopyOnWriteArrayList<Pair<ChatRequest, String?>>()
     val refreshes = AtomicInteger()
     var refreshFails = false
