@@ -140,3 +140,15 @@ Run B, task "open youtube, search for lofi girl and subscribe to the channel" (Y
 | 23:01:58 | `tap 5 "lofi girl"`, "you said no" (the tester ended the run) |
 
 What this shows: on a real phone Hands opens an app, taps a control on the harmless list without asking, types into the search field, asks before an unknown control and before Enter, and after the owner's yes the action is now carried out and logged. What it does not show: the Subscribe button was never reached, so no committing question was seen in a real app. Open fault: in run B the same suggestion was tapped twice and asked for a third time; the click was reported as done each time, so either the click on that row does not start the search in YouTube or the model repeats itself. Not diagnosed.
+
+## 12. The build with App Functions on the Redmi (23:51)
+
+Build: debug APK of master b80f613 (2691 unit tests, 0 failures, 1 skipped; compileSdk 37, targetSdk 36, minSdk 26; KSP 2.3.10; androidx.appfunctions 1.0.0-alpha13), `adb install -r -g`.
+
+- Installs and starts on Android 15 (pid 6944, no FATAL EXCEPTION). The accessibility switch survived the update (`enabled_accessibility_services` still names the service).
+- In the APK: `assets/ustaad_app_function_service.xml` (7122 bytes, the six functions with their descriptions) and `assets/app_functions_schema.xsd`.
+- `cmd app_function help` on this phone: "Can't find service: app_function". Android 15 has no App Functions service, so nothing can call the functions here; the app's function service is switched off below API 36 by a resource (`values-v36`).
+- `cmd package query-services -a android.app.appfunctions.AppFunctionService` on this phone lists one service, of the Google app itself (`...robinkit.appfunctions.RobinKitAppFunctionService`): the assistant side ships the kit's code even here.
+- Hands tab, block "The phone's assistant" (screenshot docs/benchmarks/raw/hands-phone/2026-10-13-assistant-switches.png): "The phone's assistant may start tasks", off, "Off means a task your phone's assistant sends waits here, with a notice, until you read it and tap Run."; "The phone's assistant may search my data", off, "Off means your phone's assistant gets nothing from your files and notes."; "These functions exist only on Android 16 and later ...".
+
+Not done, because no device here can do it: listing and executing the functions with `adb shell cmd app_function` (needs Android 16 QPR2 or later: an emulator image that is not installed, or an iQOO phone on a new enough build), and a call from Gemini (a private preview on Google's side).
