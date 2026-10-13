@@ -100,13 +100,22 @@ internal object ScreenMapping {
         return walk(root, ROOT_HANDLE, 0)
     }
 
+    const val PICK_NONE = -1
+
+    /** Our own application window is the one in front (active, else focused): no screen is read and nothing is acted on. */
+    const val PICK_OWN_FRONT = -2
+
     /**
-     * The window to read: among application windows that are not ours, the active one, else the focused one,
-     * else the topmost. Returns its index, or -1 when there is none. A window without a root can win; the caller
-     * then reports the screen as unreadable instead of reading a window behind it.
+     * The window to read, among application windows (the caller leaves out overlays, input methods and system
+     * windows, so the Stop chip never counts). If the active window, else the focused one, is ours, the answer is
+     * PICK_OWN_FRONT. Otherwise: of the windows that are not ours, the active one, else the focused one, else the
+     * topmost; its index, or PICK_NONE when there is none. Our window behind another app does not matter. A window
+     * without a root can win; the caller then reports the screen as unreadable instead of reading a window behind it.
      */
-    fun pickWindow(cands: List<WindowCand>, ownPkg: String): Int =
-        cands.withIndex()
+    fun pickWindow(cands: List<WindowCand>, ownPkg: String): Int {
+        val front = cands.firstOrNull { it.active } ?: cands.firstOrNull { it.focused }
+        if (front != null && front.pkg == ownPkg) return PICK_OWN_FRONT
+        return cands.withIndex()
             .filter { it.value.pkg != ownPkg }
             .sortedWith(
                 compareByDescending<IndexedValue<WindowCand>> { it.value.active }
@@ -114,7 +123,8 @@ internal object ScreenMapping {
                     .thenByDescending { it.value.layer }
                     .thenBy { it.index },
             )
-            .firstOrNull()?.index ?: -1
+            .firstOrNull()?.index ?: PICK_NONE
+    }
 
     /** Vertical swipe inside [top, bottom] that moves the content forward (finger up) or backward (finger down): from, to. */
     fun swipeSpan(top: Int, bottom: Int, forward: Boolean): Pair<Int, Int> {

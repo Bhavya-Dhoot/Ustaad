@@ -47,7 +47,10 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         return step(none) { svc -> readNow(svc, w, h) ?: none }
     }
 
+    // tap, setText, scroll and enter check again, at call time, that none of our own windows is in front
+
     override suspend fun tap(handle: String, cx: Int, cy: Int): Boolean = step(false) { svc ->
+        if (ownInFront(svc)) return@step false
         val node = live(handle) ?: return@step false
         val target = (listOf(handle) + ScreenMapping.ancestorsOf(handle).take(MAX_CLICK_CLIMB))
             .firstNotNullOfOrNull { h -> nodes[h]?.takeIf { it.isClickable } }
@@ -56,7 +59,8 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         node.isVisibleToUser && gestureTap(svc, cx, cy)
     }
 
-    override suspend fun setText(handle: String, cx: Int, cy: Int, text: String): Boolean = step(false) { _ ->
+    override suspend fun setText(handle: String, cx: Int, cy: Int, text: String): Boolean = step(false) { svc ->
+        if (ownInFront(svc)) return@step false
         val node = live(handle) ?: return@step false
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
@@ -65,7 +69,7 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
 
     override suspend fun enter(): Boolean = step(false) { svc ->
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@step false
-        val picked = pickRoot(svc) ?: return@step false
+        val picked = look(svc) as? Look.Open ?: return@step false
         try {
             val field = picked.root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return@step false
             try {
@@ -79,6 +83,8 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     }
 
     override suspend fun scroll(handle: String?, forward: Boolean): Boolean = step(false) { svc ->
+        // with or without a handle: a swipe or a scroll action must not land on our own prompt
+        if (ownInFront(svc)) return@step false
         val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
         val area = Rect()
         val target = if (handle != null) {
@@ -144,19 +150,25 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     /** The node of the last read, brought up to date; null when the handle is unknown or the system dropped the node. */
     private fun live(handle: String): AccessibilityNodeInfo? = nodes[handle]?.takeIf { it.refresh() }
 
-    private class Picked(val root: AccessibilityNodeInfo, val pkg: String)
+    /** What is in front: nothing readable, one of our own application windows, or another app (its root is the caller's to release). */
+    private sealed interface Look {
+        object None : Look
+        object Own : Look
+        class Open(val root: AccessibilityNodeInfo, val pkg: String) : Look
+    }
 
     /**
-     * The root of the window in front that is not ours. null: no application window, or the one in front gave no
-     * root (the caller then says unreadable). Every other node and window object taken here is released.
+     * Looks at the windows now. Only application windows count (the Stop chip is an accessibility overlay, the keyboard
+     * and system bars are other types); the choice is ScreenMapping.pickWindow. Every other node and window object
+     * taken here is released.
      */
-    private fun pickRoot(svc: AccessibilityService): Picked? {
+    private fun look(svc: AccessibilityService): Look {
         val windows = svc.windows.orEmpty()
         if (windows.isEmpty()) {
-            val root = svc.rootInActiveWindow ?: return null
+            val root = svc.rootInActiveWindow ?: return Look.None
             val pkg = root.packageName?.toString().orEmpty()
-            if (pkg == svc.packageName) { release(root); return null }
-            return Picked(root, pkg)
+            if (pkg == svc.packageName) { release(root); return Look.Own }
+            return Look.Open(root, pkg)
         }
         val apps = windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
         val roots = apps.map { it.root }
@@ -164,11 +176,33 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         val best = ScreenMapping.pickWindow(cands, svc.packageName)
         roots.forEachIndexed { i, r -> if (i != best && r != null) release(r) }
         windows.forEach { release(it) }
-        return roots.getOrNull(best)?.let { Picked(it, cands[best].pkg.orEmpty()) }
+        if (best == ScreenMapping.PICK_OWN_FRONT) return Look.Own
+        return roots.getOrNull(best)?.let { Look.Open(it, cands[best].pkg.orEmpty()) } ?: Look.None
+    }
+
+    /** True when one of our own application windows (a prompt, a sheet) is in front: nothing is acted on then. Checked on every acting call. */
+    private fun ownInFront(svc: AccessibilityService): Boolean = when (val l = look(svc)) {
+        is Look.Own -> true
+        is Look.Open -> { release(l.root); false }
+        is Look.None -> false
+    }
+
+    private fun clearNodes() {
+        val old = nodes
+        nodes = emptyMap()
+        old.values.forEach { release(it) }
     }
 
     private fun readNow(svc: AccessibilityService, w: Int, h: Int): RawScreen? {
-        val picked = pickRoot(svc) ?: return null
+        val picked = when (val l = look(svc)) {
+            is Look.Open -> l
+            // our own window in front is a screen to report, not one to read; no handle stays valid
+            is Look.Own -> {
+                clearNodes()
+                return RawScreen(pkg = svc.packageName, activity = "", widthPx = w, heightPx = h, root = null, unreadable = true)
+            }
+            is Look.None -> { clearNodes(); return null }
+        }
         val taken = LinkedHashMap<String, AccessibilityNodeInfo>()
         val root: RawNode = try {
             ScreenMapping.buildTree(
@@ -181,11 +215,11 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         } catch (e: Exception) {
             taken.values.forEach { release(it) }
             if (taken.isEmpty()) release(picked.root)
+            clearNodes()
             throw e
         }
-        val old = nodes
+        clearNodes()
         nodes = taken
-        old.values.forEach { release(it) }
         val front = HandsAccessibilityService.front
         val activity = if (front.pkg == picked.pkg) front.cls else ""
         return RawScreen(pkg = picked.pkg, activity = activity, widthPx = w, heightPx = h, root = root, unreadable = false)

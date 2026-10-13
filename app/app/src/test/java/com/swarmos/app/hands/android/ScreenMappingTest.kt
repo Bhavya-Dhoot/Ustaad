@@ -137,14 +137,41 @@ class ScreenMappingTest {
         assertEquals(1, ScreenMapping.pickWindow(listOf(a, b, c), "own"))
         assertEquals(1, ScreenMapping.pickWindow(listOf(a, c), "own"))
         assertEquals(0, ScreenMapping.pickWindow(listOf(a, a.copy(layer = 2)), "own"))
-        assertEquals(-1, ScreenMapping.pickWindow(emptyList(), "own"))
+        assertEquals(ScreenMapping.PICK_NONE, ScreenMapping.pickWindow(emptyList(), "own"))
     }
 
-    @Test fun windows_of_our_own_package_are_never_picked() {
-        val own = WindowCand(active = true, focused = true, layer = 9, pkg = "own")
-        val other = WindowCand(active = false, focused = false, layer = 1, pkg = "p.x")
+    @Test fun our_active_window_means_own_in_front_whatever_is_behind() {
+        val own = WindowCand(active = true, focused = true, layer = 1, pkg = "own")
+        val other = WindowCand(active = false, focused = false, layer = 9, pkg = "p.x")
+        assertEquals(ScreenMapping.PICK_OWN_FRONT, ScreenMapping.pickWindow(listOf(other, own), "own"))
+        assertEquals(ScreenMapping.PICK_OWN_FRONT, ScreenMapping.pickWindow(listOf(own), "own"))
+    }
+
+    @Test fun our_focused_window_means_own_in_front_when_no_window_is_active() {
+        val own = WindowCand(active = false, focused = true, layer = 1, pkg = "own")
+        val other = WindowCand(active = false, focused = false, layer = 9, pkg = "p.x")
+        assertEquals(ScreenMapping.PICK_OWN_FRONT, ScreenMapping.pickWindow(listOf(other, own), "own"))
+    }
+
+    @Test fun the_active_window_decides_over_a_focused_window_of_ours() {
+        val own = WindowCand(active = false, focused = true, layer = 9, pkg = "own")
+        val other = WindowCand(active = true, focused = false, layer = 1, pkg = "p.x")
         assertEquals(1, ScreenMapping.pickWindow(listOf(own, other), "own"))
-        assertEquals(-1, ScreenMapping.pickWindow(listOf(own), "own"))
+    }
+
+    @Test fun our_window_behind_another_app_is_ignored_and_the_other_app_is_read() {
+        val own = WindowCand(active = false, focused = false, layer = 9, pkg = "own")
+        val other = WindowCand(active = true, focused = true, layer = 1, pkg = "p.x")
+        assertEquals(1, ScreenMapping.pickWindow(listOf(own, other), "own"))
+        val idle = other.copy(active = false, focused = false)
+        assertEquals(1, ScreenMapping.pickWindow(listOf(own, idle), "own"))
+        assertEquals(ScreenMapping.PICK_NONE, ScreenMapping.pickWindow(listOf(own), "own"))
+    }
+
+    @Test fun only_an_overlay_of_ours_on_top_still_reads_the_app() {
+        // the Stop chip is an accessibility overlay: the driver does not list it as an application window
+        val app = WindowCand(active = true, focused = true, layer = 1, pkg = "p.x")
+        assertEquals(0, ScreenMapping.pickWindow(listOf(app), "own"))
     }
 
     @Test fun a_window_without_root_can_win_so_the_screen_is_reported_unreadable() {
