@@ -5,6 +5,8 @@ import com.swarmos.app.AppGraph
 import com.swarmos.app.BuildConfig
 import com.swarmos.app.SwarmModule
 import com.swarmos.app.core.NodeInfo
+import com.swarmos.app.core.PeerPolicy
+import com.swarmos.app.core.watchGone
 import com.swarmos.app.core.Ports
 import com.swarmos.app.link.ConnectResult
 import com.swarmos.app.link.PeerLinks
@@ -15,6 +17,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
 /** Wiring of the scheduler to [AppGraph]. Everything is lazy so nothing runs before AppGraph.init. */
@@ -55,12 +58,24 @@ object Sched {
             if (old != null && old.peer.ip == peer.ip) old else RemoteLlmClient(peer, AppGraph.nodeClient, streams, ::addressOf)
         }!!
 
-    /** This phone first, then every peer the registry has not marked away (the link module keeps that flag from its heartbeats). */
-    private fun allEndpoints(): List<PhoneEndpoint> =
-        listOf<PhoneEndpoint>(local) + AppGraph.registry.peers.value.filter { !it.away }.map { remoteFor(it.info) }
+    /**
+     * This phone first, then every peer the registry has not marked away (the link module keeps that flag from its heartbeats).
+     * A device that has been away for [PeerPolicy.GONE_AFTER_MS] is gone, which implies away: it is left out here by that rule as
+     * well, and the client kept for it is dropped.
+     */
+    private fun allEndpoints(): List<PhoneEndpoint> {
+        val registry = AppGraph.registry
+        registry.sweepGone()
+        val gone = registry.gone.value
+        gone.forEach { remotes.remove(it) }
+        return listOf<PhoneEndpoint>(local) + registry.peers.value.filter { !it.away && it.info.nodeId !in gone }.map { remoteFor(it.info) }
+    }
 
     /** Every phone as one client. */
-    val swarm: SwarmLlm by lazy { SwarmLlm(::allEndpoints, scope) }
+    val swarm: SwarmLlm by lazy {
+        scope.launch { AppGraph.registry.watchGone() }   // devices become gone with time, not with an event: look every 30 s
+        SwarmLlm(::allEndpoints, scope)
+    }
 
     /** The same scheduler restricted to this phone, for the "this phone only" baseline. */
     val localOnly: SwarmLlm by lazy { SwarmLlm({ listOf(local) }, scope) }

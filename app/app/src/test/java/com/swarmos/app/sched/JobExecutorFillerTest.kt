@@ -48,6 +48,47 @@ class JobExecutorFillerTest {
         assertNotNull("released: the next filler may take it", exec.tryAcquireFiller { })
     }
 
+    @Test fun onlyTheNewestResultsAreKeptAndTheLeastRecentlyUsedGoesFirst() = runBlocking {
+        val exec = JobExecutor(scope, maxResults = 3)
+        val runs = AtomicInteger()
+        suspend fun job(id: String) = exec.submit(id) { runs.incrementAndGet(); id }
+        job("a"); job("b"); job("c")
+        assertEquals(3, exec.remembered)
+        job("a")                         // a repeat: the stored result, and "a" is now the most recently used
+        assertEquals("no run for the repeat", 3, runs.get())
+        job("d")                         // a fourth result: "b", the least recently used, goes
+        assertEquals(3, exec.remembered)
+        job("a"); job("c"); job("d")
+        assertEquals("a, c and d are still stored", 4, runs.get())
+        job("b")                         // forgotten: it runs again
+        assertEquals(5, runs.get())
+    }
+
+    @Test fun aLongBatchOfJobsCannotGrowTheResultMapPast512() = runBlocking {
+        val exec = JobExecutor(scope)
+        val runs = AtomicInteger()
+        for (n in 0 until 600) exec.submit("job-$n") { runs.incrementAndGet() }
+        assertEquals(512, exec.remembered)
+        exec.submit("job-599") { runs.incrementAndGet() }
+        assertEquals("the newest result is still stored: no run for the repeat", 600, runs.get())
+        exec.submit("job-0") { runs.incrementAndGet() }
+        assertEquals("the oldest was dropped: it runs again", 601, runs.get())
+    }
+
+    @Test fun aRunningJobIsNeverDroppedWhateverTheLimit() = runBlocking {
+        val exec = JobExecutor(scope, maxResults = 2).also { it.capacity = 4 }
+        val gate = CompletableDeferred<Unit>()
+        val runs = AtomicInteger()
+        val long = async { exec.submit("long") { runs.incrementAndGet(); gate.await(); "long" } }
+        until("long running") { exec.running == 1 }
+        for (id in listOf("x", "y", "z", "w")) exec.submit(id) { id }
+        assertEquals("two results and the running job", 3, exec.remembered)
+        assertEquals("a repeat of the running job shares it", "long", async { exec.submit("long") { "other" } }.also { delay(50) }.let { gate.complete(Unit); it.await() })
+        assertEquals("long", long.await())
+        assertEquals("the job ran once", 1, runs.get())
+        until("long finished") { exec.remembered <= 2 }
+    }
+
     @Test fun anIdleCapacityZeroExecutorLendsNoFiller() {
         val exec = JobExecutor(scope).also { it.capacity = 0 }
         assertNull("no model server, no filler", exec.tryAcquireFiller { })
