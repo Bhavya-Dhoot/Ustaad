@@ -331,7 +331,11 @@ class HandsEngine(
         notify(next)
     }
 
-    private fun finish(id: String, phase: Phase, result: String) = live(id) { ended(it, phase, result) }
+    /** Ends the run and frees the phone in the same step, so a task started the moment this one shows as done is not turned away. */
+    private fun finish(id: String, phase: Phase, result: String) = live(id) {
+        if (active == id) active = null
+        ended(it, phase, result)
+    }
 
     private fun setSub(id: String, idx: Int, status: SubStatus, outcome: String) = live(id) { r ->
         r.copy(plan = r.plan.mapIndexed { i, s -> if (i == idx) s.copy(status = status, outcome = outcome) else s })

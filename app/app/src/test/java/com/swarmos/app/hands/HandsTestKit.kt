@@ -330,7 +330,7 @@ class FakeFoodDriver(
 class Rig(
     val brain: ScriptedBrain = ScriptedBrain(),
     val driver: FakeFoodDriver = FakeFoodDriver(),
-    val gate: FakeGate = FakeGate(),
+    gate: HumanGate = FakeGate(),
     val desk: FakeDesk = FakeDesk(),
     private val drivers: List<PhoneDriver>? = null,
     val clock: AtomicLong = AtomicLong(1_000),
