@@ -427,8 +427,20 @@ object PduEngine {
         kinds = setOf("photo"), folderPrefix = relPrefix?.trim('/')?.takeIf { it.isNotEmpty() },
     )
 
-    suspend fun indexPhotos(relPrefix: String? = null): IndexReport =
-        runIndex("photos", false, listOf(photosRoot(relPrefix))) { PduIndexer.listPhotos(AppGraph.appContext, relPrefix, null) }
+    suspend fun indexPhotos(relPrefix: String? = null): IndexReport {
+        PduAutoIndex.followPhotos()
+        return runIndex("photos", false, listOf(photosRoot(relPrefix))) { PduIndexer.listPhotos(AppGraph.appContext, relPrefix, null) }
+    }
+
+    /**
+     * Asks for an incremental run of everything this phone follows (photos once indexed, picked folders), for another part of the app to
+     * call (the shared storage after a file arrives). It does not start at once: the automatic runner takes it up at its next check, when
+     * the gate ([AutoIndexGate]) allows, and a request made while the service is stopped waits for the service.
+     */
+    fun requestIndex(reason: String) = PduAutoIndex.request(reason)
+
+    /** True while a question is being searched or answered; an automatic index run does not start then. */
+    val asking: Boolean get() = askSlot.running
 
     suspend fun indexTree(tree: android.net.Uri): IndexReport {
         val rootDoc = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, android.provider.DocumentsContract.getTreeDocumentId(tree)).toString()
