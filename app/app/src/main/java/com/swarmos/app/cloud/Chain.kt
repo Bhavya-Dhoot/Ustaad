@@ -591,19 +591,42 @@ class Chain private constructor(
          */
         fun fromEntries(entries: List<ChainEntry>, expectedCloudId: ByteArray? = null): Chain {
             if (entries.isEmpty() || entries.size > ChainEntry.MAX_ENTRIES) throw ProtocolError(CloudError.BAD_ENTRY, "empty or too long")
-            val first = entries[0]
-            if (first.op != ChainEntry.GENESIS) throw ProtocolError(CloudError.BAD_ENTRY, "a chain starts at its genesis")
-            val s0 = ChainRules.genesisState(first)
-            if (expectedCloudId != null && !s0.cloudId.contentEquals(expectedCloudId)) throw ProtocolError(CloudError.BAD_ENTRY, "the genesis is not the invitation's cloud")
-            val chain = Chain(s0.cloudId, arrayListOf(first), s0)
-            var st = s0
-            for (e in entries.drop(1)) {
-                val next = ChainRules.apply(st, e)
-                chain.append(e, next)
-                st = next
-            }
-            return chain
+            return Builder(expectedCloudId).also { it.add(entries) }.build()
         }
+    }
+
+    /**
+     * A chain built from entries as they arrive, each checked against the state before it (the join answer comes in pages, docs 4.2,
+     * Codex Join.kt:561): the genesis first (it must hash to [expectedCloudId] when that is given), then every entry in order. A
+     * failure throws and leaves the builder unusable; nothing it held is shared before [build].
+     */
+    class Builder(private val expectedCloudId: ByteArray?) {
+        private var chain: Chain? = null
+        private var state: ChainState? = null
+
+        var count = 0
+            private set
+
+        fun add(entries: List<ChainEntry>) {
+            for (e in entries) {
+                if (count >= ChainEntry.MAX_ENTRIES) throw ProtocolError(CloudError.BAD_ENTRY, "empty or too long")
+                val c = chain
+                if (c == null) {
+                    if (e.op != ChainEntry.GENESIS) throw ProtocolError(CloudError.BAD_ENTRY, "a chain starts at its genesis")
+                    val s0 = ChainRules.genesisState(e)
+                    if (expectedCloudId != null && !s0.cloudId.contentEquals(expectedCloudId)) throw ProtocolError(CloudError.BAD_ENTRY, "the genesis is not the invitation's cloud")
+                    chain = Chain(s0.cloudId, arrayListOf(e), s0)
+                    state = s0
+                } else {
+                    val next = ChainRules.apply(state!!, e)
+                    c.append(e, next)
+                    state = next
+                }
+                count++
+            }
+        }
+
+        fun build(): Chain = chain ?: throw ProtocolError(CloudError.BAD_ENTRY, "empty or too long")
     }
 }
 

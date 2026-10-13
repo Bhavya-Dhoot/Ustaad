@@ -649,6 +649,24 @@ class ChainTest {
         assertEquals(a.heartbeat(), dev.heartbeat())
     }
 
+    @Test fun aChainBuiltInPagesIsCheckedEntryByEntryAndAFailureStopsItThere() { // Codex Join.kt:561
+        val c = cloudWith(0).first
+        repeat(20) { c.admit(Peer.bare()) }
+        val all = c.chain.entries()
+        val b = Chain.Builder(c.chain.cloudId)
+        b.add(all.subList(0, 7)); b.add(all.subList(7, 14)); b.add(all.subList(14, 16))
+        assertEquals(16, b.count)
+        val forged = ChainEntry.sign(SoftwareIdentity.generate(), ChainEntry.addBody(Chain.fromEntries(all.take(16)).state(), T0, Peer.newNodeId(), "x", MemberKind.NODE, newKey(), null, null))
+        assertError(CloudError.BAD_ENTRY) { b.add(listOf(forged)) }
+        assertEquals(16, b.count)
+        b.add(all.subList(16, all.size)) // the right entries go on from where the good ones stopped
+        assertEquals(c.chain.heartbeat(), b.build().heartbeat())
+        // the genesis must hash to the cloud id that was asked for, and nothing else may come first
+        assertError(CloudError.BAD_ENTRY) { Chain.Builder(Crypto.random(16)).add(all) }
+        assertError(CloudError.BAD_ENTRY) { Chain.Builder(null).add(all.drop(1)) }
+        assertError(CloudError.BAD_ENTRY) { Chain.Builder(null).build() }
+    }
+
     // ---- the pre-membership path (docs 3.8, Codex section 5.2) ------------------------------------------------------------
 
     /** Honest devices hold the thief's chain (it removed a member and rotated); the recovery holder has built its chain elsewhere. */
