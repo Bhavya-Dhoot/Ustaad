@@ -203,6 +203,33 @@
         </service>
         <!-- end of Hands ways in -->
 
+        <!-- Hands app functions -->
+        <!-- Android App Functions: the tools of Hands for the phone's own assistant (appfn/UstaadFunctions.kt). The class is written by the
+             library's compiler from that file; the function description it writes is assets/ustaad_app_function_service.xml. Only the system can
+             bind it (BIND_APP_FUNCTION_SERVICE) and the system lets only an assistant it allows call a function. The service is switched on
+             by a boolean resource that is true only in values-v36: below Android 16 the class it extends does not exist, and the system never
+             creates the service. -->
+        <service
+            android:name=".appfn.UstaadAppFunctionService"
+            android:enabled="@bool/ustaad_app_functions_enabled"
+            android:exported="true"
+            android:permission="android.permission.BIND_APP_FUNCTION_SERVICE"
+            tools:targetApi="36">
+            <property
+                android:name="android.app.appfunctions.schema"
+                android:value="app_functions_schema.xsd" />
+            <property
+                android:name="android.app.appfunctions.v2"
+                android:value="ustaad_app_function_service.xml" />
+            <intent-filter>
+                <action android:name="android.app.appfunctions.AppFunctionService" />
+            </intent-filter>
+        </service>
+        <property
+            android:name="android.app.appfunctions.app_metadata"
+            android:resource="@xml/app_metadata" />
+        <!-- end of Hands app functions -->
+
         <!-- ML Kit ships Google's usage-log uploader (datatransport). The app makes no cloud calls, so its backend and schedulers are removed. -->
         <service
             android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"

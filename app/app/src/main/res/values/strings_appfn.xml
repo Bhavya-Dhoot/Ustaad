@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hands app functions: the line the system shows the user about what Ustaad offers an assistant. -->
+    <string name="app_function_app_display_description">Ustaad can do tasks on this phone for your assistant, and asks you before anything that cannot be undone.</string>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hands app functions: the service is switched on only on Android 16 and later (values-v36/bools.xml); the library's service class does not exist below that. -->
+    <bool name="ustaad_app_functions_enabled">false</bool>
+</resources>

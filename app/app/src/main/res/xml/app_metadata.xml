@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hands app functions: what the system tells an assistant about Ustaad as a whole. The element name, the namespace and the two attributes
+     are the library's; description is plain text for the assistant, displayDescription is the string shown to the user. -->
+<AppFunctionAppMetadata xmlns:appfn="http://schemas.android.com/apk/androidx.appfunctions"
+    appfn:description="Runs tasks on the user's own phone: start a task, follow it, stop it, ask a knowledge expert, search the user's own files and notes."
+    appfn:displayDescription="@string/app_function_app_display_description" />
