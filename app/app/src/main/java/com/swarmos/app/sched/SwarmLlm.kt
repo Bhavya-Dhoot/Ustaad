@@ -218,7 +218,13 @@ class SwarmLlm(
      * it again. [timing], when given, learns how long the job waited before a phone was picked for it.
      */
     suspend fun chatJob(jobId: String, req: ChatRequest, pinModel: String? = pinnedModel, timing: JobTiming? = null): ChatJobResult {
-        val r = dispatch(pinModel, GenBudget.forTokens(req.maxTokens, attemptTimeoutMs, msPerToken), timing) { ep -> ep.runChat(jobId, req, pinModel) }
+        // one budget serves every attempt of the job, so it is the one of the slowest phone that could take it (its profile speed; floor msPerToken);
+        // the very first job waits for the reports it is read from, as dispatch would
+        if (synchronized(lock) { states.values.none { it.caps != null } }) refreshCaps()
+        val perToken = synchronized(lock) {
+            GenBudget.slowestMsPerToken(states.values.filter { !it.down }.mapNotNull { st -> st.caps?.takeIf { Scheduler.eligible(it, pinModel, st.thermal.level) } }, msPerToken)
+        }
+        val r = dispatch(pinModel, GenBudget.forTokens(req.maxTokens, attemptTimeoutMs, perToken), timing) { ep -> ep.runChat(jobId, req, pinModel) }
         synchronized(lock) {
             val st = states[r.nodeId]
             if (st != null) {

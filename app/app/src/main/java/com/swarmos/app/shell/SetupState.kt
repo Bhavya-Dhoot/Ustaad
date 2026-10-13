@@ -1,6 +1,11 @@
 package com.swarmos.app.shell
 
 import android.Manifest
+import com.swarmos.app.core.DeviceState
+import com.swarmos.app.core.ProbeVerdict
+import com.swarmos.app.core.nominalRamGb
+import com.swarmos.app.llm.CatalogEntry
+import com.swarmos.app.llm.ModelCatalog
 
 /**
  * Which of the three required first-run rows are done, and which the user has already been asked about (the system
@@ -48,3 +53,24 @@ const val HAMMER_HELPER_LINE =
 /** The "Allow background start" row is only shown on vivo and iQOO phones, whose OriginOS stops background apps. */
 fun isVivoFamily(manufacturer: String, brand: String): Boolean =
     listOf(manufacturer, brand).any { it.trim().lowercase() in setOf("vivo", "iqoo") }
+
+/**
+ * The reason line of the "What this phone can do" setup row: what the device check found and what this phone will do, in plain
+ * words, e.g. "16 GB memory, GPU ready: runs the Qwen3.5-4B model and can lend memory." [state] null: not measured yet.
+ */
+fun deviceCheckLine(state: DeviceState?, checking: Boolean, catalog: List<CatalogEntry> = ModelCatalog.entries): String {
+    if (state == null) return if (checking) "Checking this phone: memory, processor and GPU." else "Not checked yet."
+    val p = state.profile
+    val plan = state.plan
+    val memory = "${nominalRamGb(p.totalRamMb)} GB memory"
+    val model = plan.chatModel?.let { file -> catalog.firstOrNull { it.file == file }?.label?.substringBefore(" Q") ?: file }
+        ?: return if (plan.embedModel != null) "$memory: too little for a chat model, so this phone asks the other phones to compute and still stores and searches files."
+        else "$memory: too little to run any model here, so this phone uses the other phones and stores files."
+    val gpu = when {
+        plan.useGpu && p.gpuProbe?.verdict == ProbeVerdict.NO_GPU -> "GPU not confirmed, will be tried"
+        plan.useGpu -> "GPU ready"
+        p.gpuProbe?.verdict == ProbeVerdict.NO_GPU -> "GPU not usable"
+        else -> "no GPU"
+    }
+    return "$memory, $gpu: runs the $model model" + if (plan.mayLend) " and can lend memory." else "."
+}
