@@ -25,7 +25,8 @@ class ModelMismatchException(val model: String) : RuntimeException("phone runs $
  * - At most [capacity] jobs run at once. When all slots are taken and fewer than [maxQueue] callers wait,
  *   a new jobId is refused with [BusyException].
  * - A jobId is run once. A repeat while it runs shares the running job; a repeat after it finished (within
- *   [ttlMs], 10 minutes) gets the stored result. A job that failed or was cancelled is forgotten so a retry runs it.
+ *   [ttlMs], 10 minutes) gets the stored result. A job that failed or was cancelled is forgotten so a retry runs it. At most
+ *   [maxResults] (512) finished results are kept, the least recently used going first; a running job is never dropped.
  * - Jobs run in [scope], not in the caller, so one caller going away does not leave a half-done job
  *   behind: when the last interested caller is cancelled the job is cancelled and its slot freed.
  * - Filler (the "Keep busy" mode) may borrow a free slot with [tryAcquireFiller] while no real work runs or waits. Real work
@@ -39,6 +40,7 @@ class JobExecutor(
     private val clock: () -> Long = System::currentTimeMillis,
     private val ttlMs: Long = RESULT_TTL_MS,
     private val fillerGraceMs: Long = FILLER_GRACE_MS,
+    private val maxResults: Int = MAX_RESULTS,
 ) {
     /**
      * Somebody waiting for a slot. `counted` says whether the slot that woke it was counted as running for it.
@@ -88,7 +90,7 @@ class JobExecutor(
     }
 
     private val lock = Any()
-    private val entries = HashMap<String, Entry>()
+    private val entries = LinkedHashMap<String, Entry>(16, 0.75f, true)   // access order: the least recently used entry is first
     private val waiting = ArrayDeque<Waiter>()
     private var runningCount = 0
     private var filler: FillerSlot? = null
@@ -151,6 +153,7 @@ class JobExecutor(
                 // runJob always gets to give the slot (or the place in line) back; a LAZY one cancelled before its first line never would
                 it.job = scope.launch(start = CoroutineStart.ATOMIC) { runJob(jobId, it, block) }
                 entries[jobId] = it
+                evictLocked()
             }
         }
         if (created) lendingFiller?.preempt()   // real work is here: filler stops, whatever the free slots
@@ -317,7 +320,10 @@ class JobExecutor(
             val value = block()
             owned = false
             release()                       // free the slot before the caller can see the result
-            synchronized(lock) { entry.doneAt = clock() }
+            synchronized(lock) {
+                entry.doneAt = clock()
+                evictLocked()
+            }
             entry.result.complete(value)
         } catch (t: Throwable) {
             synchronized(lock) {
@@ -331,6 +337,19 @@ class JobExecutor(
         }
     }
 
+    /** Drops the least recently used finished results beyond [maxResults]; an entry whose job still runs is skipped. */
+    private fun evictLocked() {
+        if (entries.size <= maxResults) return
+        var finished = entries.values.count { it.doneAt != 0L }
+        val oldestFirst = entries.values.iterator()
+        while (finished > maxResults && oldestFirst.hasNext()) {
+            if (oldestFirst.next().doneAt != 0L) {
+                oldestFirst.remove()
+                finished--
+            }
+        }
+    }
+
     private fun purgeLocked() {
         val now = clock()
         entries.values.removeAll { it.doneAt != 0L && now - it.doneAt > ttlMs }
@@ -338,6 +357,9 @@ class JobExecutor(
 
     companion object {
         const val RESULT_TTL_MS = 10 * 60 * 1000L
+
+        /** Finished results kept for repeats; a long batch must not grow the map without bound. */
+        const val MAX_RESULTS = 512
 
         /** How long a job that waits only for filler to give up its slot is held before it is refused as usual. */
         const val FILLER_GRACE_MS = 3_000L
