@@ -246,10 +246,11 @@ object PduEngine {
     /**
      * One run at a time. [list] runs on the IO dispatcher; each file is committed as soon as it is embedded, so a killed run resumes.
      * [roots] say which stored files this run is responsible for: when the run finishes, stored files of those roots that the listing
-     * did not contain are removed (a deleted file, or one moved out of the listed folder, stops being searchable and served).
+     * did not contain are removed (a deleted file, or one moved out of the listed folder, stops being searchable and served), including
+     * every file of a folder that was listed fine and is empty now. A listing that did not succeed removes nothing ([Listing]).
      * [stopIndex] ends the run after the file in hand.
      */
-    suspend fun runIndex(label: String, ownerForce: Boolean, roots: List<IndexRoot> = emptyList(), list: () -> List<DocRef>): IndexReport {
+    suspend fun runIndex(label: String, ownerForce: Boolean, roots: List<IndexRoot> = emptyList(), list: () -> Listing): IndexReport {
         if (!indexLock.tryLock()) return IndexReport(label, error = "an index run is already in progress")
         val control = IndexControl()
         indexControl = control
@@ -268,7 +269,8 @@ object PduEngine {
                 val t0 = now()
                 _progress.value = IndexProgress(true, label, current = "listing files")
                 PduActivity.set(PduActivity.listing())
-                val refs = list()
+                val listing = list()
+                val refs = listing.refs
                 val ctx = AppGraph.appContext
                 val res = IndexLoop.run(
                     refs, control, IndexLoop.FILE_TIMEOUT_MS,
@@ -284,7 +286,7 @@ object PduEngine {
                     // embedding is slower for a long text, so the budget of the embedding step grows with the number of chunks
                     commitBudgetMs = { p -> IndexLoop.FILE_TIMEOUT_MS + (p as? PduIndexer.Ready)?.bodies?.size.let { (it ?: 0) * 250L } },
                 )
-                if (res.end == LoopEnd.COMPLETE && roots.isNotEmpty()) stats.removed += sweep(roots, refs, stats)
+                if (res.end == LoopEnd.COMPLETE && roots.isNotEmpty()) stats.removed += sweep(roots, listing, stats)
                 stats.totalMs = now() - t0
                 store.setMeta("lastRunMs", System.currentTimeMillis().toString())
                 refresh()
@@ -326,16 +328,17 @@ object PduEngine {
     fun stopIndex(): Boolean = indexControl?.let { it.stop(); true } ?: false
 
     /** Removes the stored files of [roots] that a finished run did not see. Returns how many files went. */
-    private fun sweep(roots: List<IndexRoot>, refs: List<DocRef>, stats: IndexStats): Int {
-        val seen = refs.mapTo(HashSet(refs.size * 2)) { it.uri }
+    private fun sweep(roots: List<IndexRoot>, listing: Listing, stats: IndexStats): Int {
+        val seen = listing.refs.mapTo(HashSet(listing.refs.size * 2)) { it.uri }
         var n = 0
         for (root in roots) {
             val stored = store.docsUnder(root)
-            if (!IndexSweep.mayRemove(refs.size, stored.size)) {
-                stats.errors += "nothing was listed, so ${stored.size} stored files were left alone"
+            val stale = IndexSweep.toRemove(stored, seen, listing.succeeded)
+            if (stale == null) {
+                stats.errors += "the listing did not succeed, so ${stored.size} stored files were left alone"
                 continue
             }
-            n += store.removeDocs(IndexSweep.stale(stored, seen).map { it.docId })
+            n += store.removeDocs(stale.map { it.docId })
         }
         return n
     }
@@ -376,7 +379,7 @@ object PduEngine {
     /** The owner's explicit "Re-index everything": read every known file again with the current embedder. */
     suspend fun reindexAll(): IndexReport {
         val refs = store.allDocRefs()
-        return runIndex("re-index", true) { refs }
+        return runIndex("re-index", true) { Listing(refs) }
     }
 
     /** True when the stored vectors were made under a different embedder or document prefix than the current ones. */
@@ -413,12 +416,13 @@ object PduEngine {
         return runIndex(label, req.force, roots) {
             val ctx = AppGraph.appContext
             val out = ArrayList<DocRef>()
-            if (req.photos) out += PduIndexer.listPhotos(ctx, req.relPrefix, req.limit)
+            var ok = true
+            if (req.photos) PduIndexer.listPhotos(ctx, req.relPrefix, req.limit).let { out += it.refs; ok = ok && it.succeeded }
             req.dir?.let { d ->
                 check(Environment.isExternalStorageManager()) { "all-files access is not granted to this app" }
-                out += PduIndexer.listDir(File(d))
+                PduIndexer.listDir(File(d)).let { out += it.refs; ok = ok && it.succeeded }
             }
-            out
+            Listing(out, ok)
         }
     }
 
