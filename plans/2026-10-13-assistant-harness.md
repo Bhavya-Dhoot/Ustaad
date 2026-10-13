@@ -67,6 +67,16 @@ Ledger:
 - H6 delegated to Haiku: short text files, checked by reading.
 - Merges, safety rules, the phone decisions and anything that could spend money stay with the orchestrator and the founder.
 
+## Decisions after the research (docs/research/08-phone-assistant-integration.md)
+
+- Google Assistant and Gemini: App Actions capabilities are registered only through a Play Console upload, so they do nothing for a sideloaded build. A static shortcut "Ask Ustaad" is kept; no capability claims are made. What works without a store: Ustaad as the digital assistant, and the intents (share, selected text, link).
+- App Functions: not built. They need Android 16, compileSdk 37 (the app is on 36), an alpha library, and the caller permission is privileged on most builds; Gemini's use of them was a private preview. A later door, behind a build flag, once a target phone has the service (`adb shell cmd app_function help`).
+- No wake word: the hotword permission is for bundled apps only. The assistant gesture, the long-press and the app's own button are the ways to call Ustaad.
+- Bixby: no public way found for a third-party app to receive a task. On Samsung phones the path is the same as elsewhere: choose Ustaad as the device assistance app, or a Routine that opens the link.
+- Siri: a Shortcut that posts the dictated task to a device of the cluster and speaks the reply. Needs the web gateway of the closed-cloud plan (a token over an authenticated link); plain HTTP from an iPhone to a LAN address is not confirmed to work. Not built.
+- Distribution: Google Play forbids an app that uses the accessibility API to plan and act by itself. Hands is for sideloaded builds only, and the service is never declared an accessibility tool.
+- Limits to expect and to state: on Android 16 apps can hide marked views from the service (some screens will read as empty); sideloaded apps may need "Allow restricted settings" before the switch can be turned on; no published result shows a model under 4 GB driving a phone from the screen text, so the step loop is constrained by a schema, checks typed text, and detects cycles.
+
 ## Status
 
 2026-10-13 18:13:
