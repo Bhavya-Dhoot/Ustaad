@@ -67,6 +67,13 @@ In one sentence: a cloud is a named, closed group of devices with one identity e
 - Kinds of member: `node` (phone or desktop: may compute, lend memory when local, store), `client` (the away phone: may send tasks, read and write files, ask questions; never computes for others, never lends), `browser` (a session of the device that serves it, see 6).
 - The test scripts on the PC become clients with their own key, admitted through a debug-only path, so the regression checks keep working.
 
+Revised on 2026-10-13 after the first protocol stage was read by the orchestrator and by Codex (docs/review/2026-10-13-cloud-protocol-codex-1.txt: 3 blockers, 12 high, 9 medium). The leaderless member log above does not hold: when removers can themselves be removed, a removal is not final (a removed device with a stale copy of the list can take its remover with it, and two concurrent removals can bring a removed device back), and the caps that bound the log become ways to block a removal. Replaced by:
+- One writer. The cloud has one owner key, the creator's. The member list is a single hash-chained sequence of entries signed by the owner: add, remove (final), rotate (new shared secrets), transfer (a new owner key), checkpoint. A member accepts only an extension of the chain it holds. A device that is not the owner cannot write at all.
+- Any node can still show the QR code: it passes the newcomer's request to the owner, and only the owner's signature makes a member. For the user it stays a scan and a tap, with the tap on the owner's device.
+- A recovery key made at creation, shown once as a code to keep off the phone, may sign one thing: a transfer of ownership. A lost or stolen owner phone is replaced with it and then removed.
+- The cost: membership cannot change while the owner's device cannot be reached. Members go on working with the list they hold.
+- The join exchange uses a key exchange of its own and the admitter's signature, so a QR code learned later opens nothing. The discovery key and the storage key belong to an epoch that the owner changes on every removal. Token clients (scripts, browsers) are sealed too; unsealed only over loopback.
+
 ### 2. Isolation
 
 - Discovery carries a short tag of the cloud id; a device ignores other tags and no longer probes them. The unsigned hello answers with the tag and the protocol version only; name, serial, address and model names move behind the signature.
@@ -158,7 +165,7 @@ Ledger: surveys and research delegated (bounded, checkable by reading); P1 to P9
 
 - The transport for the away phone: sealed frames over either a relay the owner hosts or a directly reachable address (an overlay). The relay's code is built; none is deployed. Deploying one, and for whom, is the founder's decision.
 - How many copies of a stored chunk: 2.
-- Who may add or remove devices: every `node` member (a household, not an organisation). An owner-only rule can be added later.
+- Who may add or remove devices: the owner (the creator's device) signs every change; any node can show the QR code and pass the request on. Changed from "every node" after the protocol review showed that rule cannot make a removal final.
 - A device's default storage offer: 10 % of its free space at the time of the profile, at least 1 GB, never more than half.
 - Away for how long before a device is taken out of routing and its chunks are re-copied: 10 minutes.
 - Phones: none is connected (2026-10-13 14:31). Unit tests and a desktop run come first; phone runs need a window from the founder.
