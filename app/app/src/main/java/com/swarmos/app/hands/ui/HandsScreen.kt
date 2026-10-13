@@ -3,7 +3,9 @@ package com.swarmos.app.hands.ui
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
+import androidx.appfunctions.AppFunctionManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +36,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.swarmos.app.appfn.AppFnPolicy
 import com.swarmos.app.assist.DictationButton
 import com.swarmos.app.assist.SheetRules
 import com.swarmos.app.assist.UstaadVoiceService
@@ -132,6 +135,7 @@ fun HandsScreen() {
             }
             item(key = "status") { StatusBlock(context, hands != null, status, assistantChosen) }
             item(key = "sharing") { SharingBlock() }
+            item(key = "assistant") { AssistantBlock() }
             item(key = "runs-title") { SectionTitle("Tasks") }
             if (rows.isEmpty()) {
                 item(key = "runs-empty") { Text("No tasks yet. Type one above and tap Run.", style = SwarmType.label.copy(color = SwarmColors.graphite)) }
@@ -159,6 +163,7 @@ private fun StatusBlock(context: Context, handsReady: Boolean, status: HandsStat
             MetricRow("Planning model", if (status.strong) "ready" else "not loaded")
         }
         MetricRow("Digital assistant", if (assistantChosen) "Ustaad" else "not Ustaad")
+        MetricRow("Assistant functions", if (functionsAvailable(context)) "available" else "not on this phone (needs Android 16 or later)")
         Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SecondaryButton(
                 "Open accessibility settings",
@@ -208,6 +213,56 @@ private fun SharingBlock() {
         )
         // a debug build only: HandsSettings keeps this at 0 everywhere else
         if (testPort > 0) Note("Test brain on port $testPort (debug build)", rotation = -1f)
+    }
+}
+
+/** Whether the phone's own assistant can call Ustaad's app functions here: Android 16 or later and the library found the system's manager. */
+@Composable
+private fun functionsAvailable(context: Context): Boolean = remember {
+    val manager = runCatching { AppFunctionManager.getInstance(context) }.getOrNull()
+    AppFnPolicy.available(Build.VERSION.SDK_INT, manager != null)
+}
+
+/**
+ * The two switches for the phone's own assistant (Android App Functions). Start: a task it sends starts at once instead of waiting for
+ * the owner's tap on Run. Data: it may ask Ustaad to search the owner's files and notes, and the answer leaves Ustaad. Both off by default.
+ */
+@Composable
+private fun AssistantBlock() {
+    val start by HandsSettings.assistantMayStart.collectAsStateWithLifecycle()
+    val data by HandsSettings.assistantMaySearchData.collectAsStateWithLifecycle()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SectionTitle("The phone's assistant")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                AppFnPolicy.START_SWITCH,
+                Modifier.weight(1f),
+                style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            )
+            InkSwitch(checked = start, onCheckedChange = { HandsSettings.setAssistantMayStart(it) })
+        }
+        Note(
+            if (start) "On means a task your phone's assistant sends starts at once, without your tap on Run. Ustaad still asks you before anything that cannot be undone."
+            else "Off means a task your phone's assistant sends waits here, with a notice, until you read it and tap Run.",
+            rotation = 1f,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                AppFnPolicy.DATA_SWITCH,
+                Modifier.weight(1f),
+                style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            )
+            InkSwitch(checked = data, onCheckedChange = { HandsSettings.setAssistantMaySearchData(it) })
+        }
+        Note(
+            if (data) "On means your phone's assistant can ask Ustaad to search your files and notes on this phone, and what Ustaad finds goes to that assistant, which is another app."
+            else "Off means your phone's assistant gets nothing from your files and notes.",
+            rotation = -1f,
+        )
+        MonoText(
+            "These functions exist only on Android 16 and later, and only an assistant the system allows can call them.",
+            style = SwarmType.body,
+        )
     }
 }
 
