@@ -601,6 +601,18 @@ class HandsEngineTest {
         assertEquals(listOf(BROWSER), b.driver.linkPackages.toList())
     }
 
+    @Test fun c6_aLinkTheyWroteInTheirTaskIsOpenedWithoutAQuestionInsideARun() {
+        val d = FakeFoodDriver().also { it.linkTargetOf = { FOOD } }
+        val gate = FakeGate()
+        val r = rig(driver = d, gate = gate)
+        r.brain.reply(planJson(subJson("PHONE", "open the menu link", app = FOOD)))
+        r.brain.replyWith({ step("open_link", text = "https://food.example/menu") }, { step("done", text = "ok") })
+        val run = r.await(r.engine.start("please open https://food.example/menu", Origin.OWN_SHEET))
+        assertEquals(run.result, Phase.DONE, run.phase)
+        assertEquals(listOf("https://food.example/menu"), d.links.toList())
+        assertTrue(gate.prompts.isEmpty())
+    }
+
     @Test fun c6_aLinkNoSingleAppOpensIsRefusedFromOutsideToo() {
         val d = FakeFoodDriver().also { it.linkTargetOf = { "" } }
         val r = rig(driver = d, gate = FakeGate(answer = { true }))
