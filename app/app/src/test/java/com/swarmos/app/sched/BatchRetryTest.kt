@@ -1,5 +1,6 @@
 package com.swarmos.app.sched
 
+import com.swarmos.app.core.SwarmJson
 import com.swarmos.app.link.NodeHttpException
 import com.swarmos.app.llm.ChatRequest
 import kotlinx.coroutines.CoroutineScope
@@ -10,6 +11,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -52,7 +55,18 @@ class BatchRetryTest {
         assertEquals(0, report.failed)
         assertEquals("T:x", report.items[0].text)
         assertEquals("it was run again once", 1, retries.get())
+        assertEquals("the report counts it", 1, report.retried)
         assertTrue("after the pause (${report.wallMs} ms)", report.wallMs >= 550)
+    }
+
+    @Test fun theReportCountsRetriedItemsOnceEachAndAnOlderReportReadsAsZero() = runBlocking {
+        val p = FailingPhone("p") { PhoneTimeoutException("p", 100) }
+        val report = BatchRunner(swarm(p), retryPauseMs = 20).run("t", "swarm", listOf(req("x"), req("y")))
+        assertEquals("two items, each run again twice: two items", 2, report.retried)
+        val older = SwarmJson.parseToJsonElement(SwarmJson.encodeToString(report)).jsonObject.filterKeys { it != "retried" }
+        assertEquals("a report written before the field existed", 0, SwarmJson.decodeFromString<BatchReport>(JsonObject(older).toString()).retried)
+        val ok = BatchRunner(swarm(FakePhone("a", TestLlm(delayMs = 5), scope)), retryPauseMs = 20).run("t", "swarm", listOf(req("x")))
+        assertEquals("nothing was retried", 0, ok.retried)
     }
 
     @Test fun twoRetriesAreAllAnItemGetsThenItIsAnErrorRow() = runBlocking {

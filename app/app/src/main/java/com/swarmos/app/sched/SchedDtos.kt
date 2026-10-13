@@ -156,4 +156,6 @@ data class BatchReport(
     val models: List<String>,
     val perPhone: List<PhoneShare>,
     val items: List<BatchItem>,   // finished items, in input order
+    /** Items that were run again after no phone could take them; a report from an older build reads as 0. */
+    val retried: Int = 0,
 )
