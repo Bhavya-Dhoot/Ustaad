@@ -1,0 +1,26 @@
+You are doing a second adversarial, read-only security review of a protocol and its core implementation, after a redesign. Do not modify any file. Do not run builds, tests or network calls. You may run read-only git commands. Read source only.
+
+Context. "Ustaad" is an Android app in which a few devices form a private, closed group ("cloud"). Your first review is docs/review/2026-10-13-cloud-protocol-codex-1.txt (3 blockers, 12 high, 9 medium). In answer, the member list was redesigned: it is now one hash-chained sequence of entries signed by a single owner key (operations: genesis, add, remove, rotate, transfer, checkpoint), with a recovery key that may sign only a transfer of ownership; a newcomer joins through any node, which forwards the request to the owner ("admit-through"), and only the owner's signature makes a member; the join exchange uses ephemeral ECDH and the admitting host's signature; the cloud's shared secrets (the discovery key, later a storage key) belong to epochs that the owner changes on every removal; token clients (scripts, browsers) get sealed token sessions and are accepted unsealed only from loopback. Nothing is wired into the running app yet: only the document and the platform-free core exist.
+
+Read: docs/CLOUD-PROTOCOL.md in full (it is the specification; section 15 is the threat table, section 16 the open points), every file under app/app/src/main/java/com/swarmos/app/cloud/, and the tests under app/app/src/test/java/com/swarmos/app/cloud/.
+
+Do three things.
+
+1. For each finding of your first review, decide whether the change closes the attack you described, by reading the new code path end to end. Report only the ones that are NOT closed, with the sequence that still works.
+
+2. Attack the new design. In particular:
+   - The chain: can a member that is not the owner get an entry accepted, make an honest member accept a shorter or forked chain, or roll a member back; what an owner key and a recovery key can each do and whether the stated precedence (a recovery transfer against an owner entry at the same number) can be abused by someone who holds only one of them, or by someone who held the recovery code once (the document says a used code is retired: check that it is); checkpoints and compaction (a checkpoint that lies, a checkpoint used to hide an earlier removal, the 24-hour rule); equivocation handling as a denial of service; what a newcomer or a long-absent member can be told by a malicious host.
+   - Admit-through and join: can the host that forwards a request get a different key admitted than the one the person confirmed; is the approval bound to exactly what was shown; replay of a forward, a decision or an answer; the six-digit comparison (what it protects and what it does not); what someone who photographs the QR code can do before and after it is used; refusals that look different for different causes.
+   - Epochs: can a removed member obtain the secrets of a later epoch; can a member be made to accept wrong secrets; what happens to a member that was offline across two rotations.
+   - Sessions, requests, token sessions, frames: nonce or key reuse (across streams, directions, restarts, rekeys, token sessions); anything the request MAC or the sealed envelope still does not cover; replay across an issuer restart; the loopback rule for unsealed token requests (what "loopback" is taken from, and whether a header or a proxy can fake it).
+   - Resource exhaustion that any party below the owner can cause.
+
+3. Section 16 of the document lists the open points. Say which of them must be closed before the core is wired into the app's network layer, and which are acceptable as written for a household product if they are stated to the user.
+
+Output format, plain text, nothing else:
+- First line: the model you are and how many repository files you read.
+- Then findings, most severe first, one per paragraph: SEVERITY (BLOCKER, HIGH, MEDIUM, LOW) file:line (or document section) - the attack or failing sequence in two or three sentences, concrete enough to reproduce - the smallest fix.
+- Then "First-review findings closed:" as one line of the ones you verified closed, and "Not closed:" if any.
+- Then "Open points that must close before wiring:" and "Open points acceptable if stated:".
+- Then "Not examined:".
+Report only what you confirmed by reading the code path or the document end to end. At most 20 findings. No praise, no summary, no style remarks.

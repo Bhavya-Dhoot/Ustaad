@@ -1,0 +1,21 @@
+You are doing an adversarial, read-only security review of a new protocol and its core implementation. Do not modify any file. Do not run builds, tests or network calls. You may run read-only git commands. Read source only.
+
+Context. "Ustaad" is an Android app in which a few devices form a private, closed group ("cloud"): each runs a small HTTP node server; they share model jobs, files and questions over files. Until now every device shared one secret and requests were HMAC-signed over plain HTTP. This change introduces device identities and a member list. In this stage only the platform-free core exists; nothing is wired into the running app yet.
+
+Read first: docs/CLOUD-PROTOCOL.md (the wire protocol: member log, join, sessions, requests, permissions, sealed frames, discovery, relay, local channel and bulk path, threat table, open points). Then every file under app/app/src/main/java/com/swarmos/app/cloud/ (Codec, Crypto, Identity, MemberLog, Join, Session, Negotiation, Request, Permissions, Frames, Discovery, Relay) and its tests under app/app/src/test/java/com/swarmos/app/cloud/.
+
+Design in brief: each device has an EC P-256 key that only signs. The member list is a set of signed add and remove entries with remove-wins semantics, merged by union. A newcomer joins with a one-time invite code shown as a QR code. Two members run a three-flight exchange with ephemeral ECDH and identity signatures to get session keys (HKDF-SHA256): an HMAC key for requests and AES-256-GCM keys for sealed frames. Token clients (scripts, browsers) hold a symmetric key issued by one member. A relay may carry sealed frames between a home device and an away device and must learn nothing.
+
+Find real weaknesses. In particular:
+1. Protocol flaws: identity misbinding or unknown-key-share in the session exchange; reflection or replay of a flight; downgrade of the negotiated capabilities; a way for a non-member, a removed member or the relay to obtain or influence session keys; key separation (the same key or nonce used in two roles or two directions); nonce or counter reuse across restarts, streams, rekeys or parallel connections; what the request signature does not cover; replay or reordering of requests and frames; truncation of a stream; anything the join exchange leaks or lets an attacker who saw the QR code late, or who guesses, do.
+2. The member log: an entry accepted that should not be (signature over an ambiguous encoding, two byte strings that decode to the same entry or one byte string read two ways, an add by a member that was already removed, a remove that takes out its remover, the creator being removed, cycles); a fold that depends on the order entries arrive in; a log that can be made to grow without bound or to make verification slow; anything a single malicious member can do to the others.
+3. Implementation against the document: any place where the code does something else than the document says; elliptic-curve handling (points not checked to be on the curve, DER signatures with trailing bytes or non-canonical form accepted, the ECDH result used without a KDF anywhere); HKDF misuse; comparisons of secrets that are not constant-time; randomness not from SecureRandom; integer overflow or unbounded allocation when decoding lengths from the wire; exceptions that distinguish failure reasons to an attacker where the document says refusals look the same.
+4. The tests: an attack the document claims is stopped for which no test would fail if the check were removed.
+5. The open points listed in section 16 of the document: say which of them are serious enough that the wiring into the app must not start before they are closed, and which mitigation is the smallest.
+
+Output format, plain text, nothing else:
+- First line: the model you are and how many repository files you read.
+- Then findings, most severe first, one per paragraph: SEVERITY (BLOCKER, HIGH, MEDIUM, LOW) file:line (or document section) - the attack or failing sequence in two or three sentences, concrete enough to reproduce - the smallest fix.
+- Then one line "Checks that hold:" listing the properties you verified end to end.
+- Then "Not examined:".
+Report only what you confirmed by reading the code path or the document end to end. At most 25 findings. No praise, no summary, no style remarks.

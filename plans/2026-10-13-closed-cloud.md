@@ -169,3 +169,28 @@ Ledger: surveys and research delegated (bounded, checkable by reading); P1 to P9
 - A device's default storage offer: 10 % of its free space at the time of the profile, at least 1 GB, never more than half.
 - Away for how long before a device is taken out of routing and its chunks are re-copied: 10 minutes.
 - Phones: none is connected (2026-10-13 14:31). Unit tests and a desktop run come first; phone runs need a window from the founder.
+
+## Status (2026-10-13, about 17:45; written as a stopping point because the session may be ended for a disk move)
+
+Master is 41a5549, 16 commits ahead of the remote (the remote is at b9f510c). The last full run on it: 1910 unit tests, 0 failures, debug APK built. Nothing of this plan has run on a phone; none is connected.
+
+Merged on master:
+- P1 capability profile (core/DeviceProfile.kt, core/DeviceProbe.kt; used by the model runtime, the scheduler and the capacity report). Two corrections made before the merge: an unproven GPU probe cannot switch off a GPU whose library is present, and a client device still loads the embedder.
+- P3 index updates and graph (pdu/AutoIndex.kt, pdu/Graph*.kt; the last-file rule C21 fixed; a shared index counter that does not move on private changes; graph retrieval for answers is built and OFF until measured).
+- P4 local-only lending by its own rule, automatic re-plan of a degraded split, core/LruBudget.kt and the lending cache budget; plus the follow-up that feeds the device plan into lending and the cache budget.
+- P5a Choir lanes and the judge move to another device (on in the app; off by default in ChoirConfig for the old tests).
+- P5b batch items tried again, devices gone after 10 minutes (NodeRegistry.onGoneChanged is the signal the storage package will use), job results capped at 512; plus the follow-up: per-device time budget, a resend never gets the cancellation of an abandoned run, BatchReport.retried.
+- P11 minSdk 26 (Android 8.0), lint clean of NewApi; heat derived from battery temperature below API 29 (core/BatteryHeat.kt); a phone blind to its heat counts as status 2.
+
+In flight, NOT merged:
+- P2 stage 1 (the protocol document and the platform-free core, package cloud/, on branch `worktree-agent-a4bc244ba3ebc2510`, worktree .claude/worktrees/agent-a4bc244ba3ebc2510). Stage 1 and 1b are committed there (head ae36a99 at the time of writing); stage 1c was sent at about 17:15 and may be partly done or uncommitted in that worktree. Two Codex reads exist: docs/review/2026-10-13-cloud-protocol-codex-1.txt and -2.txt. The brief of stage 1c in short: remove checkpoints and compaction (everybody holds the whole chain from the genesis, which is tied to the cloud id in the QR code); a recovery transfer is a boundary below which no fork is accepted, and a replaced recovery key signs nothing; the six digits become a committed short authentication string; token sessions complete once; bounded tables everywhere; a resync path for a member that missed two rotations; the browser page off by default with a 12 hour idle expiry; a numbered list of what the wiring stage must do.
+- After stage 1c: a third Codex read limited to the changes (the prompts used are in scripts/review/; the command is in the 2026-10-11 audit plan), then merge, then stage 2.
+
+Not started:
+- P2 stage 2 (wiring): the Android keystore identity, persistence of chain, keys and secrets, NodeServer and NodeClient on session keys with sealed bodies, dedup keyed by the verified member, the invite and the owner's confirmation screen, the Devices list with Remove, the recovery code shown once, discovery tags, the test scripts as token clients over loopback (`adb forward`). Known from P11: link/Ble.kt `hasPermissions()` returns true below API 31 without checking location.
+- P6 shared storage, P7 the web gateway and page, P8 the away link and the relay module, P10 the persistent channel and bulk path, P9 the desktop node.
+- Phone runs of everything above, the lists of "what a phone run must show" are in each worker's report as summarised in the merge commits and in this plan; an Android 8 or 9 device is needed for P11.
+
+Decisions taken by the orchestrator after reviews, to tell the founder if not yet acknowledged: one owner signs the member list, with a recovery code (replaces "every node may add or remove"); the web page is off by default; an unknown heat reading counts as status 2.
+
+Push: the founder asked for a push once all packages are merged. A push at 41a5549 was refused by the session's permission layer as premature. Push when P2 stage 1 is merged, or when the founder says so.
