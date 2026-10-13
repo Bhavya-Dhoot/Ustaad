@@ -1,0 +1,63 @@
+GPT-6 (Codex); 59 repository files read.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:127 - In a planned app without recognized checkout context, a paying button labeled “payonline”, “payermaintenant” or “P\u0332ay” misses both whole-word and compound matching; “₹250” with resource ID btn_primary also misses price-only detection because the ID words enter the same string. The fresh reads preserve these labels and the driver clicks without confirmation, so first-review finding 1 remains open. Smallest fix: require confirmation for taps whose noncommitting purpose is not independently established.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:133 - Put recognized checkout text elsewhere on the screen and expose a clickable payment control whose entire guard text is “Close” or “Cancel”, with no additional description, descendants or resource ID. WAY_OUT exempts it, neither word is a commit word, and ToolRunner reaches ACTION_CLICK without a prompt. Smallest fix: remove the label-only way-out exception.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:117 - Successfully type into an unflagged field labeled “Search” on a noncheckout screen, then return press_enter while that field’s IME action sends a message. lastTyped stores only guard text, and AccessibilityDriver.enter executes ACTION_IME_ENTER on the currently focused field without checking its identity or IME purpose; changing focus to another submitting field also works. Smallest fix: require confirmation for enter.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/AccessibilityDriver.kt:176 - Read a clickable parent with empty own text and description whose child says “Add”, then change only the child to “Pay” after ToolRunner’s final fresh read. live compares only the parent’s class, own text and description, so the comparison passes and ACTION_CLICK executes the payment without confirmation. Smallest fix: revalidate all guard-relevant text, flags and context at execution, refusing changes.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/AccessibilityDriver.kt:65 - Expose a visible nonclickable “Help” node whose bounds overlap a separate clickable “Pay” node, with neither node being the other’s ancestor and no checkout-context phrase. Guard allows tapping Help, but the driver dispatches a coordinate gesture that can hit Pay or an intervening overlay instead of the checked node. Smallest fix: remove coordinate fallback and refuse taps on nonclickable nodes.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ToolRunner.kt:201 - Keep two buttons with identical guard text “Continue”, role and flags within 24 pixels, with one navigating and the other deleting; move the deleting twin closer to the selected button’s old center between reads. refind chooses the nearest match rather than requiring unique identity, and the driver validates and clicks that freshly selected twin without confirmation. Smallest fix: reject ambiguous matches in both reads and bind actions to a stable node and window identity.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ToolRunner.kt:175 - Obtain a scope-only confirmation for tapping an unchanged “Continue” button in an unplanned app, then introduce checkout context before the post-yes read. The second judgment returns Confirm for the payment screen, but execute checks only Refuse and proceeds using the earlier scope approval. Smallest fix: cancel or ask again when the fresh judgment introduces an unapproved confirmation reason.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:109 - On a planned noncheckout screen, expose a scrollable “Delete” control and no plain scrollable element, then return scroll without an ID. Guard allows it because checkout is false, pickScroll returns null because Delete commits, and the driver performs a screen-wide swipe that the control can handle as deletion without confirmation. Smallest fix: refuse scrolling when no checked noncommitting scroll target exists.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/HandsDesk.kt:76 - With sharing off and a stronger eligible peer available, copy screen text into an ask_expert call for the installed writing_messages domain. ToolRunner passes the question through scrub, HandsDesk marks it onPhoneOnly=false, and HandsBrain routes it through SwarmLlm and RemoteLlmClient’s HTTP POST to the peer without asking. Smallest fix: mark tool-supplied expert questions onPhoneOnly=true.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:80 - Another app supplies an ACTION_SEND task containing an allowed URI; after the owner taps Run, the attacker-chosen planner names its handler package and the step model opens that URI. The original external text becomes ctx.task without provenance, so contains treats the URI as owner-authored and the package-constrained ACTION_VIEW can reach a hostile handler that sends, orders or deletes immediately, including handlers for tel:, sms: or market:. Smallest fix: require confirmation for every open_link unless both owner provenance and noncommitting effects are established.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ScreenReader.kt:47 - Supply an unflagged editable “Value” containing an OTP, more than 60 higher-ranked controls, and a separate static “Verification code” caption; compaction drops the caption before shield examines the screen, leaving the OTP in the step prompt. A standalone ordinary-text “123456” likewise survives without any code caption, and done copies it into the run log and outcome because no masked code was remembered, so first-review finding 9 remains open. Smallest fix: inspect the complete raw tree before truncation and redact code-shaped and secret-bearing values before prompts or logging.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:94 - In a planned nonprotected app, expose a password or PIN input as an unflagged “Search” field with no recognized secret wording. A type call containing “hunter2” or “1234” passes Guard, reaches ACTION_SET_TEXT and records the supplied value in argsText, so first-review finding 10 remains open. Smallest fix: refuse typing outside a trusted per-app nonsecret field allowlist and redact sensitive arguments before recording refusals or results.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/GuardText.kt:83 - Type “4111\n1111\n1111\n1111” into a misleading nonsecret field whose app removes whitespace before accepting the card number. DIGIT_GROUPS permits spaces, dots and hyphens but not newlines, so it sees four separate short groups and allows ACTION_SET_TEXT; even the canonical number, when refused, remains in argsText for a nonsecret-looking field. Smallest fix: check card digits across supported separators and redact card-shaped arguments before logging.
+
+MEDIUM app/app/src/main/java/com/swarmos/app/hands/android/RunTracker.kt:75 - Start a run with notifications disabled, then disconnect and reconnect the accessibility service while the process and run remain alive. release removes the Stop overlay, onServiceConnected does not restore it, and RunTracker remembers that it already showed the chip; the ready driver can resume actions while HandsNotice’s false visibility result is ignored. Smallest fix: restore Stop on reconnection and require an available Stop surface before resuming actions.
+
+LOW app/app/src/main/java/com/swarmos/app/hands/ScreenReader.kt:124 - Put an invisible descendant saying “Checkout” inside a visible scrollable container. fullText includes invisible descendants, making the retained container trigger payment context and ask before unrelated taps, typing and enter; an ordinary Close button with ID btn_close also loses the way-out exception because its whole guard is no longer “close”. Smallest fix: exclude invisible descendant text from screen-context classification and assess exit labels separately from resource-ID words.
+
+First-review findings closed:
+2, 3, 4, 5, 6, 7, 8, 11, 12, 13 — numbering the original finding paragraphs in order; these are dispositions of those specific sequences.
+
+Not closed:
+1 — disguised or compound labels and price buttons with resource-ID words.
+9 — ordinary OTP text and secret-screen detection after compaction.
+10 — unflagged secret fields presented as Search.
+
+Checks that hold:
+External intent text cannot start a Hands run until the owner taps Run; assistant-session tokens do not bypass that tap.
+HandsRuntime constructs the engine at process start without launching a task, reading a screen or requesting a completion.
+An external MainActivity launch separately starts SwarmService, its servers and model startup; an AssistActivity cold start does not itself start those service paths.
+Step prompts, earlier outcomes in subsequent steps, reply prompts with outcomes and fallback knowledge prompts with outcomes use onPhoneOnly=true.
+With sharing off, those marked prompts route locally or fail; the data lookup uses this phone’s index and embedder.
+Non-debug builds keep the effective test-brain port at zero and reject the intent setting; debug test routing overrides the sharing switch.
+Recognized protected packages and catalogued blocked labels yield element-free shielded screens; package, activity and a derived hash remain in the Screen object.
+Flagged password-node text is not fetched, although descriptions and hints are still read.
+The old Pay/Delete handle swap uses a freshly resolved handle now; changes to a node’s own class, text or description fail the driver comparison.
+Link launches remain pinned to the resolved package even if another package becomes the default; the activity within that package is resolved at launch.
+Only the resolved default home package receives launcher scope.
+Tree traversal caps successful nodes and attempted child lookups and checks cancellation between lookups.
+Confirmation yes requires the current prompt ID and 700 milliseconds of visibility; timeout, dismissal and cancellation produce no.
+The Hands notification Stop cancels the acting run; notification intents do not answer confirmation prompts.
+The hands.run audit payload contains counts, duration and fixed enum names, with no task, screen, argument or outcome text; Hands and prompt notifications use fixed status text.
+Run history, approvals, pending prompts and detailed step text are process memory; a fresh process has no Hands run to replay, and a killed run produces no terminal hands.run record.
+
+Not examined:
+The requested git diff could not be obtained because process creation was denied; findings and dispositions were traced against current source.
+No builds, tests, network calls or device execution were performed.
+Named ordinary apps, stock tel:/sms:/market: handler effects, merged manifests and device-specific overlay or crash behavior were not exercised.
+Ordinary-app incidence cannot be quantified from source: listed commit labels ask, but generic final “OK”, “Continue” or “Erase” controls and price buttons with ordinary resource IDs make unconfirmed payment, order, message or deletion paths plausible without hostile labels.
