@@ -170,7 +170,7 @@ Ledger: surveys and research delegated (bounded, checkable by reading); P1 to P9
 - Away for how long before a device is taken out of routing and its chunks are re-copied: 10 minutes.
 - Phones: none is connected (2026-10-13 14:31). Unit tests and a desktop run come first; phone runs need a window from the founder.
 
-## Status (2026-10-13, about 17:45; written as a stopping point because the session may be ended for a disk move)
+## Status (2026-10-13, 17:12; written as a stopping point because the session may be ended for a disk move)
 
 Master is 41a5549, 16 commits ahead of the remote (the remote is at b9f510c). The last full run on it: 1910 unit tests, 0 failures, debug APK built. Nothing of this plan has run on a phone; none is connected.
 
@@ -195,4 +195,4 @@ Decisions taken by the orchestrator after reviews, to tell the founder if not ye
 
 Push: the founder asked for a push once all packages are merged. A push at 41a5549 was refused by the session's permission layer as premature. Push when P2 stage 1 is merged, or when the founder says so.
 
-Update 18:10: stage 1c is committed on the branch (head 304417c or later; 2075 unit tests there, 191 in cloud/). The third Codex read was started at 18:10 with scripts/review/codex-prompt-cloud-3.txt, run from that worktree, output to the session scratchpad as codex-audit-cloud3.txt and to be copied to docs/review/2026-10-13-cloud-protocol-codex-3.txt. If this session ended before it finished, run it again; then merge the branch if it says ready to wire, else send its findings back to the builder.
+Update 17:40: stage 1c is committed on the branch (head 304417c or later; 2075 unit tests there, 191 in cloud/). The third Codex read was started at 18:10 with scripts/review/codex-prompt-cloud-3.txt, run from that worktree, output to the session scratchpad as codex-audit-cloud3.txt and to be copied to docs/review/2026-10-13-cloud-protocol-codex-3.txt. If this session ended before it finished, run it again; then merge the branch if it says ready to wire, else send its findings back to the builder.

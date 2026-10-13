@@ -69,7 +69,7 @@ Ledger:
 
 ## Status
 
-2026-10-13 about 19:40:
+2026-10-13 18:13:
 - H0: the two code surveys are back (facts folded into the briefs); the research report is still being written.
 - H1 contract is on master (hands/Contract.kt, commits 1417a3c and 9c206e1).
 - Running in worktrees: H2 core, H3 accessibility driver, H4 ways in and UI, H6 skill cards (Haiku, writes assets in the main checkout).
@@ -81,4 +81,4 @@ Ledger:
 
 Earlier:
 
-2026-10-13 about 19:00: H0 running; plan and contract being written. Nothing built yet.
+2026-10-13 18:05: H0 running; plan and contract being written. Nothing built yet.
