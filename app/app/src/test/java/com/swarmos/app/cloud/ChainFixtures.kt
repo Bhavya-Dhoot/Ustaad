@@ -27,10 +27,10 @@ internal class Cloud private constructor(val owner: Peer, val recovery: Software
         chain.addDevice(owner.identity, p.nodeId, "dev-${p.nodeId}", kind, p.identity.publicKey, now)
 
     /** [p] holds a copy of the owner's chain as it is now. */
-    fun copyTo(p: Peer) { p.chain = Chain.fromEntries(chain.entries(), T0) }
+    fun copyTo(p: Peer) { p.chain = Chain.fromEntries(chain.entries()) }
 
     /** A copy of the owner's chain for a device that is not the owner (what any member holds). */
-    fun copy(): Chain = Chain.fromEntries(chain.entries(), T0)
+    fun copy(): Chain = Chain.fromEntries(chain.entries())
 
     fun remove(memberId: String, now: Long = T0 + 1): ChainEntry = chain.remove(owner.identity, memberId, now)
 

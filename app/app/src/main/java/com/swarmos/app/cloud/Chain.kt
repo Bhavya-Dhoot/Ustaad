@@ -51,7 +51,7 @@ internal sealed class Payload {
     class Remove(val target: String) : Payload()
     class Rotate(val epoch: Int, val commitment: ByteArray) : Payload()
     class Transfer(val newOwner: ByteArray, val nodeId: String, val name: String, val newRecovery: ByteArray?) : Payload()
-    class Checkpoint(val state: ByteArray) : Payload()
+    class ReplaceRecovery(val newRecovery: ByteArray) : Payload()
 }
 
 /**
@@ -81,12 +81,15 @@ class ChainEntry private constructor(
         const val REMOVE = 3
         const val ROTATE = 4
         const val TRANSFER = 5
-        const val CHECKPOINT = 6
+        const val REPLACE_RECOVERY = 6
 
-        /** One limit for creating and parsing (stage 1 enforced it only when parsing). A normal entry is under 400 bytes. */
-        const val MAX_BODY = 262_144
+        /** One limit for creating and parsing. An entry is 230 to 350 bytes; there are no checkpoints any more (docs 3.4). */
+        const val MAX_BODY = 1024
         const val MAX_MEMBERS = 512
         const val MAX_REMOVED = 4096
+
+        /** The chain cap: a number only the owner could reach (one owner signature per entry). */
+        const val MAX_ENTRIES = 65_536
         private const val LABEL = "ustaad/v1/chain"
 
         internal fun signedMessage(body: ByteArray): ByteArray = concat(lbl("chain/sig"), body)
@@ -115,8 +118,8 @@ class ChainEntry private constructor(
             return (if (newRecovery == null) w.u8(0) else w.u8(1).fixed(newRecovery, Crypto.PUB_BYTES)).bytes()
         }
 
-        internal fun checkpointBody(s: ChainState, time: Long): ByteArray =
-            header(CHECKPOINT, 1, s.cloudId, s.nextSeq, s.headId, time).raw(StateCodec.encode(s)).bytes()
+        internal fun replaceRecoveryBody(s: ChainState, time: Long, newRecovery: ByteArray): ByteArray =
+            header(REPLACE_RECOVERY, 2, s.cloudId, s.nextSeq, s.headId, time).fixed(newRecovery, Crypto.PUB_BYTES).bytes()
 
         internal fun sign(identity: DeviceIdentity, body: ByteArray): ChainEntry = of(body, identity.sign(signedMessage(body)))
 
@@ -141,7 +144,7 @@ class ChainEntry private constructor(
             val prev = r.fixed(32)
             val time = r.u64()
             if (seq < 0) malformed("seq")
-            if (role != 1 && !(role == 2 && op == TRANSFER)) malformed("role")
+            if (role != 1 && !(role == 2 && (op == TRANSFER || op == REPLACE_RECOVERY))) malformed("role")
             val p: Payload = when (op) {
                 GENESIS -> Payload.Genesis(
                     r.fixed(16), pubKey(r), pubKey(r), Shape.requireNodeId(r.str(8)), Shape.requireName(r.str(Shape.MAX_NAME_BYTES)), r.fixed(32),
@@ -166,68 +169,14 @@ class ChainEntry private constructor(
                     if (has > 1) malformed("recovery flag")
                     Payload.Transfer(newOwner, nodeId, name, if (has == 1) pubKey(r) else null)
                 }
-                CHECKPOINT -> Payload.Checkpoint(r.rest())
+                REPLACE_RECOVERY -> Payload.ReplaceRecovery(pubKey(r)).also { if (role != 2) malformed("role") }
                 else -> malformed("entry type")
             }
-            if (op != CHECKPOINT) r.end()
+            r.end()
             return ChainEntry(body, sig, op, role, cloudId, seq, prev, time, p)
         }
 
         private fun pubKey(r: Reader): ByteArray = r.fixed(Crypto.PUB_BYTES).also { if (!Crypto.isValidPoint(it)) malformed("public key") }
-    }
-}
-
-/** Encoding of the full state inside a checkpoint (3.4): canonical, members and removed ids sorted by id. */
-internal object StateCodec {
-    fun encode(s: ChainState): ByteArray {
-        val w = Writer().fixed(s.ownerKey, Crypto.PUB_BYTES).fixed(s.recoveryKey, Crypto.PUB_BYTES).u32(s.epoch).u8(s.commitments.size)
-        for ((e, c) in s.commitments) w.u32(e).fixed(c, 32)
-        w.u8(if (s.needsRotation) 1 else 0)
-        val members = s.members.sortedBy { it.id }
-        w.u32(members.size)
-        for (m in members) {
-            w.fixed(Hex.parse(m.id), 32).str(m.nodeId).str(m.name).u8(m.kind.code)
-            if (m.publicKey != null) w.u8(1).fixed(m.publicKey, Crypto.PUB_BYTES) else w.u8(2).fixed(Hex.parse(m.issuer!!), 32).fixed(m.keyId!!, 16)
-            w.u64(m.addedSeq)
-        }
-        val removed = s.removed.sorted()
-        w.u32(removed.size)
-        for (id in removed) w.fixed(Hex.parse(id), 32)
-        return w.bytes()
-    }
-
-    /** The state a checkpoint at [seq] describes. Everything is range-checked; the owner's signature is checked by the caller. */
-    fun decode(bytes: ByteArray, cloudId: ByteArray, seq: Long, headId: ByteArray): ChainState {
-        val r = Reader(bytes)
-        val owner = r.fixed(Crypto.PUB_BYTES)
-        val recovery = r.fixed(Crypto.PUB_BYTES)
-        if (!Crypto.isValidPoint(owner) || !Crypto.isValidPoint(recovery)) malformed("checkpoint key")
-        val epoch = r.u32()
-        val n = r.u8()
-        if (n !in 1..2) malformed("checkpoint epochs")
-        val commits = List(n) { r.u32() to r.fixed(32) }
-        val needs = r.u8().also { if (it > 1) malformed("flag") } == 1
-        val count = r.u32()
-        if (count > ChainEntry.MAX_MEMBERS) malformed("too many members")
-        val members = LinkedHashMap<String, ChainMember>()
-        repeat(count) {
-            val id = Hex.of(r.fixed(32))
-            val nodeId = Shape.requireNodeId(r.str(8))
-            val name = Shape.requireName(r.str(Shape.MAX_NAME_BYTES))
-            val kind = MemberKind.of(r.u8()) ?: malformed("kind")
-            val m = when (r.u8()) {
-                1 -> ChainMember(id, nodeId, name, kind, r.fixed(Crypto.PUB_BYTES).also { if (!Crypto.isValidPoint(it)) malformed("key") }, null, null, 0)
-                2 -> ChainMember(id, nodeId, name, kind, null, Hex.of(r.fixed(32)), r.fixed(16), 0)
-                else -> malformed("key type")
-            }
-            members[id] = ChainMember(m.id, m.nodeId, m.name, m.kind, m.publicKey, m.issuer, m.keyId, r.u64())
-        }
-        val rc = r.u32()
-        if (rc > ChainEntry.MAX_REMOVED) malformed("too many removed")
-        val removed = LinkedHashSet<String>()
-        repeat(rc) { removed.add(Hex.of(r.fixed(32))) }
-        r.end()
-        return ChainState(cloudId, owner, recovery, epoch, commits, needs, members, removed, seq + 1, headId)
     }
 }
 
@@ -251,6 +200,7 @@ internal object ChainRules {
     /** The state after [e], or [ProtocolError] `bad_entry` if [e] does not follow from [s]. */
     fun apply(s: ChainState, e: ChainEntry): ChainState {
         if (e.seq != s.nextSeq) bad("wrong number")
+        if (e.seq >= ChainEntry.MAX_ENTRIES) bad("the chain is full")
         if (!e.prev.contentEquals(s.headId)) bad("wrong predecessor")
         if (!e.cloudId.contentEquals(s.cloudId)) bad("another cloud")
         val signer = if (e.role == 1) s.ownerKey else s.recoveryKey
@@ -316,10 +266,13 @@ internal object ChainRules {
                     needsRotation = s.needsRotation || e.role == 2, nextSeq = next, headId = e.idBytes,
                 )
             }
-            is Payload.Checkpoint -> {
-                if (e.role != 1) bad("role")
-                if (!StateCodec.encode(s).contentEquals(p.state)) bad("the checkpoint does not describe the state")
-                s.copy(nextSeq = next, headId = e.idBytes)
+            is Payload.ReplaceRecovery -> {
+                val nr = p.newRecovery
+                if (e.role != 2) bad("only the recovery key replaces the recovery key")
+                if (nr.contentEquals(s.recoveryKey) || nr.contentEquals(s.ownerKey)) bad("the new recovery key must be new")
+                val nrId = Hex.of(Crypto.fingerprint(nr))
+                if (s.member(nrId) != null || s.isRemoved(nrId)) bad("the recovery key is not a device key")
+                s.copy(recoveryKey = nr, nextSeq = next, headId = e.idBytes)
             }
         }
     }
@@ -330,147 +283,166 @@ sealed interface Offer {
     class Adopted(val count: Int) : Offer
     object Unchanged : Offer
     class RolledBack(val fromSeq: Long, val dropped: Int) : Offer
-    /** Two different entries at one number: the device kept its own and refused the other. */
+    /** Two different valid entries at one number: the device kept its own and refused the other. */
     class Equivocation(val seq: Long) : Offer
     class Refused(val reason: String) : Offer
 }
 
-/** A fork the device refused to follow, for the Devices screen. */
-class Flag(val seq: Long, val heldId: String, val otherId: String)
+/** Evidence of a fork the device refused to follow, for the Devices screen: one per number and signer (3.5). */
+class Flag(val seq: Long, val heldId: String, val otherId: String, val signer: String)
 
 /**
- * A cloud's member list (docs/CLOUD-PROTOCOL.md 3): one chain written by one owner key. Everything else is a reader:
- * [offer] takes entries from anyone and adopts only what extends the chain, or a recovery-signed transfer that forks it.
- * There is no merge, no fold and no shared capacity a member can exhaust. One lock; state is cached at the tip.
+ * A cloud's member list (docs/CLOUD-PROTOCOL.md 3): one chain written by one owner key, held whole from the genesis. Everything
+ * else is a reader: [offer] takes entries from anyone and adopts only what extends the chain, or a recovery-signed entry that forks
+ * it above the recovery boundary. There is no merge, no fold, no checkpoint and no shared capacity a member can exhaust.
+ *
+ * Verification results for the part already held are kept: the keys in force at every number, and a state snapshot every
+ * [SNAP] entries. An offered entry is authenticated against the keys in force (one signature check) before anything is replayed,
+ * and a replay never covers more than [SNAP] - 1 entries. One lock.
  */
 class Chain private constructor(
     val cloudId: ByteArray,
     private val held: MutableList<ChainEntry>,
-    private var baseState: ChainState,
     private var tip: ChainState,
-    private val firstSeen: MutableMap<Long, Long>,
 ) {
-    private val flagList = ArrayList<Flag>()
-    private var droppedList: List<ChainEntry> = emptyList()
+    /** The owner and recovery keys that sign entries numbered [fromSeq] and above, until the next change. */
+    private class Auth(val fromSeq: Long, val owner: ByteArray, val recovery: ByteArray)
 
-    private val baseSeq: Long get() = held[0].seq
+    private val auths = ArrayList<Auth>()
+    private val snaps = ArrayList<ChainState>() // snaps[k] is the state after entry SNAP * k
+    private val flagMap = LinkedHashMap<String, Flag>()
+    private var droppedList: List<ChainEntry> = emptyList()
+    private var floor = 0L // the highest number of a recovery-signed entry held: the recovery boundary
+
+    /** Test instruments: how many times history was replayed, and how many entries that replay applied. */
+    internal var replays = 0
+    internal var replayedEntries = 0L
+
+    init {
+        snaps.add(tip)
+        auths.add(Auth(1, tip.ownerKey, tip.recoveryKey))
+    }
 
     @Synchronized fun state(): ChainState = tip
     @Synchronized fun entries(): List<ChainEntry> = held.toList()
-    @Synchronized fun flags(): List<Flag> = flagList.toList()
+    @Synchronized fun flags(): List<Flag> = flagMap.values.toList()
 
     /** Entries the last rollback dropped, so the new owner can re-apply removals that were among them. */
     @Synchronized fun dropped(): List<ChainEntry> = droppedList
 
+    /** The recovery boundary: no fork below this number is accepted (3.5). */
+    @Synchronized fun recoveryBoundary(): Long = floor
+
     /** `<head number>:<8 bytes of the head id in hex>`, carried in the heartbeat (3.6). */
     @Synchronized fun heartbeat(): String = "${tip.headSeq}:${Hex.of(tip.headId.copyOf(8))}"
 
-    @Synchronized private fun heldAt(seq: Long): ChainEntry = held[(seq - baseSeq).toInt()]
+    private fun authorityFor(seq: Long): Auth = auths.last { it.fromSeq <= seq }
 
-    /** The state right after entry [seq] (replayed from the base). */
+    /** The state right after entry [seq]: from the nearest snapshot, at most [SNAP] - 1 entries of replay. */
     private fun stateAt(seq: Long): ChainState {
-        var s = baseState
-        for (i in 1 until held.size) {
-            if (held[i].seq > seq) break
-            s = ChainRules.apply(s, held[i])
+        replays++
+        val k = (seq / SNAP).toInt().coerceAtMost(snaps.size - 1)
+        var s = snaps[k]
+        for (i in s.headSeq + 1..seq) {
+            s = ChainRules.apply(s, held[i.toInt()])
+            replayedEntries++
         }
         return s
     }
 
-    private fun noteCheckpoints(from: List<ChainEntry>, now: Long) {
-        for (e in from) if (e.op == ChainEntry.CHECKPOINT) firstSeen.putIfAbsent(e.seq, now)
+    /** Records what [after] means for the bookkeeping, once [e] has been applied to [before] and added to the chain. */
+    private fun noted(before: ChainState, e: ChainEntry, after: ChainState) {
+        if (e.seq % SNAP == 0L) snaps.add(after)
+        if (!after.ownerKey.contentEquals(before.ownerKey) || !after.recoveryKey.contentEquals(before.recoveryKey)) {
+            auths.add(Auth(e.seq + 1, after.ownerKey, after.recoveryKey))
+        }
+        if (e.role == 2) floor = maxOf(floor, e.seq)
+    }
+
+    private fun append(e: ChainEntry, after: ChainState) {
+        val before = tip
+        held.add(e)
+        tip = after
+        noted(before, e, after)
+    }
+
+    /** Drops every entry numbered [f] and above, the bookkeeping about them, and puts the tip back to the state before [f]. */
+    private fun truncateTo(f: Long) {
+        droppedList = held.filter { it.seq >= f }
+        while (held.last().seq >= f) held.removeAt(held.size - 1)
+        snaps.removeAll { it.headSeq >= f }
+        auths.removeAll { it.fromSeq > f }
+        floor = held.filter { it.role == 2 }.maxOfOrNull { it.seq } ?: 0L
+        tip = stateAt(f - 1)
     }
 
     // ---- reading: what other devices send us -----------------------------------------------------------------------
 
     /**
-     * Decide on a contiguous run of entries from anyone (3.5): extension, jump to a checkpoint, recovery rollback,
-     * equivocation or refusal. A run that contains an invalid entry is refused whole; nothing of it is taken.
+     * Decide on a contiguous run of entries from anyone (3.5): extension, recovery rollback, equivocation or refusal. A run that
+     * contains an invalid entry is refused whole; nothing of it is taken.
      */
-    @Synchronized fun offer(runIn: List<ChainEntry>, now: Long): Offer {
-        if (runIn.isEmpty()) return Offer.Unchanged
-        if (runIn.size > MAX_RUN) return Offer.Refused("run too long")
-        for (i in 1 until runIn.size) if (runIn[i].seq != runIn[i - 1].seq + 1) return Offer.Refused("not contiguous")
-        var run = runIn
+    @Synchronized fun offer(run: List<ChainEntry>): Offer {
+        if (run.isEmpty()) return Offer.Unchanged
+        if (run.size > MAX_RUN) return Offer.Refused("run too long")
+        for (i in 1 until run.size) if (run[i].seq != run[i - 1].seq + 1) return Offer.Refused("not contiguous")
         val headSeq = tip.headSeq
-        if (run[0].seq > headSeq + 1) return jump(run, now)
-        if (run[0].seq < baseSeq) { // the part below our base is history we dropped; take it as equal and look at the rest
-            val skip = (baseSeq - run[0].seq).toInt()
-            if (skip >= run.size) return Offer.Unchanged
-            run = run.drop(skip)
-        }
+        if (run[0].seq > headSeq + 1) return Offer.Refused("gap")
         var k = 0
-        while (k < run.size && run[k].seq <= headSeq && heldAt(run[k].seq).id == run[k].id) k++
+        while (k < run.size && run[k].seq <= headSeq && held[run[k].seq.toInt()].id == run[k].id) k++
         if (k == run.size) return Offer.Unchanged
-        if (run[k].seq > headSeq) return extend(run.drop(k), now)
-
-        val f = run[k].seq
-        val mine = heldAt(f)
-        val recoveryFork = run[k].op == ChainEntry.TRANSFER && run[k].role == 2 && !(mine.op == ChainEntry.TRANSFER && mine.role == 2)
-        if (!recoveryFork) {
-            // Only a VALID entry (signed by the key in force, following the rules) is evidence of a fork. Anything else is junk from
-            // whoever sent it, and must not be able to raise flags: a non-owner can write nothing here.
-            if (f <= baseSeq) return Offer.Refused("difference at the base")
-            val valid = try { ChainRules.apply(stateAt(f - 1), run[k]); true } catch (e: ProtocolError) { false }
-            if (!valid) return Offer.Refused("not a valid entry")
-            if (flagList.none { it.seq == f && it.otherId == run[k].id }) flagList.add(Flag(f, mine.id, run[k].id))
-            return Offer.Equivocation(f)
-        }
-        if (f <= baseSeq) return Offer.Refused("fork below the base")
-        return try {
-            var st = stateAt(f - 1)
-            for (e in run.drop(k)) st = ChainRules.apply(st, e)
-            droppedList = held.filter { it.seq >= f }
-            while (held.last().seq >= f) held.removeAt(held.size - 1)
-            held.addAll(run.drop(k))
-            tip = st
-            noteCheckpoints(run.drop(k), now)
-            Offer.RolledBack(f, droppedList.size)
-        } catch (e: ProtocolError) {
-            Offer.Refused(e.message ?: "invalid")
-        }
+        return if (run[k].seq > headSeq) extend(run.drop(k)) else fork(run, k)
     }
 
-    private fun extend(entries: List<ChainEntry>, now: Long): Offer = try {
+    private fun extend(entries: List<ChainEntry>): Offer = try {
         var st = tip
-        for (e in entries) st = ChainRules.apply(st, e)
-        held.addAll(entries)
-        tip = st
-        noteCheckpoints(entries, now)
+        val states = ArrayList<ChainState>(entries.size)
+        for (e in entries) {
+            st = ChainRules.apply(st, e)
+            states.add(st)
+        }
+        for ((i, e) in entries.withIndex()) append(e, states[i]) // only now, when the whole run is valid
         Offer.Adopted(entries.size)
     } catch (e: ProtocolError) {
         Offer.Refused(e.message ?: "invalid")
     }
 
-    /** A checkpoint beyond our head (3.5): taken only if the owner we hold vouches for it and it keeps our removals. */
-    private fun jump(run: List<ChainEntry>, now: Long): Offer {
-        val c = run[0]
-        val p = c.payload as? Payload.Checkpoint ?: return Offer.Refused("gap")
-        return try {
-            if (c.role != 1 || !c.cloudId.contentEquals(cloudId)) return Offer.Refused("not our checkpoint")
-            if (!Crypto.ecdsaVerify(tip.ownerKey, ChainEntry.signedMessage(c.body), c.signature)) return Offer.Refused("not signed by the owner we hold")
-            val s = StateCodec.decode(p.state, cloudId, c.seq, c.idBytes)
-            if (!s.ownerKey.contentEquals(tip.ownerKey) || !s.recoveryKey.contentEquals(tip.recoveryKey)) return Offer.Refused("ownership changed: the entries are needed")
-            if (!s.removed.containsAll(tip.removed) || s.epoch < tip.epoch) return Offer.Refused("checkpoint drops what we know")
-            var st = s
-            for (e in run.drop(1)) st = ChainRules.apply(st, e)
-            held.clear(); held.addAll(run)
-            baseState = s
-            tip = st
-            firstSeen.clear()
-            noteCheckpoints(run, now)
-            Offer.Adopted(run.size)
-        } catch (e: ProtocolError) {
-            Offer.Refused(e.message ?: "invalid")
+    private fun fork(run: List<ChainEntry>, k: Int): Offer {
+        val e = run[k]
+        val f = e.seq
+        if (f == 0L) return Offer.Refused("a different genesis: another cloud")
+        val mine = held[f.toInt()]
+        // 1. authenticate against the keys in force at f: one signature check, no replay of history (Codex Chain.kt:414)
+        val a = authorityFor(f)
+        val key = if (e.role == 1) a.owner else a.recovery
+        if (!Crypto.ecdsaVerify(key, ChainEntry.signedMessage(e.body), e.signature)) return Offer.Refused("not signed by a key in force there")
+        val recoveryFork = e.role == 2 && mine.role != 2
+        if (!recoveryFork) {
+            // 2. a valid entry is evidence of a fork: one record per number and signer, a capped list (Codex Chain.kt:416)
+            val id = "$f:${Hex.of(Crypto.fingerprint(key))}"
+            if (flagMap.containsKey(id) || flagMap.size >= MAX_FLAGS) return Offer.Equivocation(f)
+            val valid = try { ChainRules.apply(stateAt(f - 1), e); true } catch (x: ProtocolError) { false }
+            if (!valid) return Offer.Refused("not a valid entry")
+            flagMap[id] = Flag(f, mine.id, e.id, Hex.of(Crypto.fingerprint(key)))
+            return Offer.Equivocation(f)
         }
-    }
-
-    /** Drop the entries before the last checkpoint that this device first saw [holdMs] ago (3.5, compaction). */
-    @Synchronized fun compact(now: Long, holdMs: Long = HOLD_MS) {
-        val at = held.indices.lastOrNull { held[it].op == ChainEntry.CHECKPOINT && it > 0 && (firstSeen[held[it].seq] ?: now) + holdMs <= now } ?: return
-        val newBase = stateAt(held[at].seq)
-        repeat(at) { held.removeAt(0) }
-        baseState = newBase
+        // 3. a recovery-signed entry replaces the owner's entries from f on, but never below the recovery boundary
+        if (f < floor) return Offer.Refused("below a recovery boundary")
+        return try {
+            var st = stateAt(f - 1)
+            val states = ArrayList<ChainState>()
+            for (x in run.drop(k)) {
+                st = ChainRules.apply(st, x)
+                states.add(st)
+            }
+            truncateTo(f)
+            val kept = droppedList
+            for ((i, x) in run.drop(k).withIndex()) append(x, states[i])
+            droppedList = kept
+            Offer.RolledBack(f, kept.size)
+        } catch (x: ProtocolError) {
+            Offer.Refused(x.message ?: "invalid")
+        }
     }
 
     // ---- sync (3.6) ----------------------------------------------------------------------------------------------------
@@ -478,11 +450,11 @@ class Chain private constructor(
     /** `ChainPull` request: what this device holds (`fromSeq`, `prevId`). */
     @Synchronized fun pullRequest(): Pair<Long, ByteArray> = tip.nextSeq to tip.headId
 
-    /** The entries a peer needs given its `ChainPull`: those after it, or from our base if it is on another branch. */
+    /** The entries a peer needs given its `ChainPull`: those after it, or from the genesis if it is on another branch. */
     @Synchronized fun entriesAfter(fromSeq: Long, prevId: ByteArray): List<ChainEntry> {
         val prevSeq = fromSeq - 1
-        val matches = prevSeq >= baseSeq && prevSeq <= tip.headSeq && heldAt(prevSeq).idBytes.contentEquals(prevId)
-        val start = if (matches) (fromSeq - baseSeq).toInt() else 0
+        val matches = prevSeq in 0..tip.headSeq && held[prevSeq.toInt()].idBytes.contentEquals(prevId)
+        val start = if (matches) fromSeq.toInt() else 0
         return held.drop(start).take(MAX_RUN_OUT)
     }
 
@@ -491,8 +463,7 @@ class Chain private constructor(
     private fun write(identity: DeviceIdentity, build: (ChainState) -> ByteArray): ChainEntry {
         check(identity.publicKey.contentEquals(tip.ownerKey)) { "only the owner key writes the member list" }
         val e = ChainEntry.sign(identity, build(tip))
-        tip = ChainRules.apply(tip, e)
-        held.add(e)
+        append(e, ChainRules.apply(tip, e))
         return e
     }
 
@@ -517,37 +488,39 @@ class Chain private constructor(
     @Synchronized fun transfer(owner: DeviceIdentity, newOwner: ByteArray, nodeId: String, name: String, now: Long): ChainEntry =
         write(owner) { ChainEntry.transferBody(it, 1, now, newOwner, Shape.requireNodeId(nodeId), Shape.requireName(name), null) }
 
-    @Synchronized fun checkpoint(owner: DeviceIdentity, now: Long): ChainEntry {
-        val e = write(owner) { ChainEntry.checkpointBody(it, now) }
-        firstSeen.putIfAbsent(e.seq, now)
-        return e
-    }
-
     /**
-     * Ownership moves by the recovery key (3.1, 3.5). [forkAt] is the number of the transfer: the default is the next one
-     * (a plain extension); a lower number forks the chain there and drops what followed. The recovery key checked is the
-     * one in force just before [forkAt]. [newRecovery] is the key that replaces it (the old code is retired).
+     * Ownership moves by the recovery key (3.1, 3.5). [forkAt] is the number of the transfer: the default is the next one (a
+     * plain extension); a lower number forks the chain there and drops what followed, but never at or below the recovery boundary.
+     * The recovery key checked is the one in force just before [forkAt]. [newRecovery] replaces it (the old code is retired).
      */
     @Synchronized fun recover(
         recovery: DeviceIdentity, newOwner: ByteArray, nodeId: String, name: String, newRecovery: ByteArray, now: Long,
         forkAt: Long = tip.nextSeq,
     ): ChainEntry {
-        require(forkAt > baseSeq && forkAt <= tip.nextSeq) { "fork point outside the held chain" }
+        require(forkAt in 1..tip.nextSeq) { "fork point outside the held chain" }
+        require(forkAt == tip.nextSeq || forkAt > floor) { "below a recovery boundary" }
         val before = stateAt(forkAt - 1)
         check(recovery.publicKey.contentEquals(before.recoveryKey)) { "this is not the recovery key in force there" }
         val e = ChainEntry.sign(recovery, ChainEntry.transferBody(before, 2, now, newOwner, Shape.requireNodeId(nodeId), Shape.requireName(name), newRecovery))
-        val st = ChainRules.apply(before, e)
-        droppedList = held.filter { it.seq >= forkAt }
-        while (held.last().seq >= forkAt) held.removeAt(held.size - 1)
-        held.add(e)
-        tip = st
+        val after = ChainRules.apply(before, e)
+        truncateTo(forkAt)
+        append(e, after)
+        return e
+    }
+
+    /** Retires the recovery code in force and puts [newRecovery] in its place; signed by the current recovery key only (3.3). */
+    @Synchronized fun replaceRecovery(recovery: DeviceIdentity, newRecovery: ByteArray, now: Long): ChainEntry {
+        check(recovery.publicKey.contentEquals(tip.recoveryKey)) { "this is not the recovery key in force" }
+        val e = ChainEntry.sign(recovery, ChainEntry.replaceRecoveryBody(tip, now, newRecovery))
+        append(e, ChainRules.apply(tip, e))
         return e
     }
 
     companion object {
         const val MAX_RUN = 1024
         const val MAX_RUN_OUT = 256
-        const val HOLD_MS = 24L * 3600 * 1000
+        const val MAX_FLAGS = 64
+        const val SNAP = 64L
 
         /** A new cloud: the creator's key is the owner, [recoveryPublic] is the recovery key's public half, epoch 0 is [secrets0]. */
         fun create(owner: DeviceIdentity, recoveryPublic: ByteArray, nodeId: String, name: String, secrets0: EpochSecrets, now: Long): Chain {
@@ -555,32 +528,26 @@ class Chain private constructor(
             val body = ChainEntry.genesisBody(Crypto.random(16), now, owner.publicKey, recoveryPublic, Shape.requireNodeId(nodeId), Shape.requireName(name), secrets0.commitment())
             val g = ChainEntry.sign(owner, body)
             val s = ChainRules.genesisState(g)
-            return Chain(s.cloudId, arrayListOf(g), s, s, HashMap())
+            return Chain(s.cloudId, arrayListOf(g), s)
         }
 
         /**
-         * A chain from a received run (the join answer, a pull): it starts at the genesis, or at a checkpoint whose cloud id is
-         * [expectedCloudId] (the one in the invite). A checkpoint start trusts the host and the owner's signature on it.
+         * A chain from a received run (the join answer, a pull), always from the genesis. Every entry is checked in order; the
+         * genesis must hash to [expectedCloudId] (the one in the invite) when it is given (docs 3.4).
          */
-        fun fromEntries(entries: List<ChainEntry>, now: Long, expectedCloudId: ByteArray? = null): Chain {
-            if (entries.isEmpty() || entries.size > MAX_RUN * 16) throw ProtocolError(CloudError.BAD_ENTRY, "empty or too long")
+        fun fromEntries(entries: List<ChainEntry>, expectedCloudId: ByteArray? = null): Chain {
+            if (entries.isEmpty() || entries.size > ChainEntry.MAX_ENTRIES) throw ProtocolError(CloudError.BAD_ENTRY, "empty or too long")
             val first = entries[0]
-            val base: ChainState = when (first.op) {
-                ChainEntry.GENESIS -> ChainRules.genesisState(first)
-                ChainEntry.CHECKPOINT -> {
-                    val c = first.payload as Payload.Checkpoint
-                    if (expectedCloudId == null || !first.cloudId.contentEquals(expectedCloudId)) throw ProtocolError(CloudError.BAD_ENTRY, "checkpoint of another cloud")
-                    val s = StateCodec.decode(c.state, first.cloudId, first.seq, first.idBytes)
-                    if (!Crypto.ecdsaVerify(s.ownerKey, ChainEntry.signedMessage(first.body), first.signature)) throw ProtocolError(CloudError.BAD_ENTRY, "checkpoint signature")
-                    s
-                }
-                else -> throw ProtocolError(CloudError.BAD_ENTRY, "a chain starts at a genesis or a checkpoint")
+            if (first.op != ChainEntry.GENESIS) throw ProtocolError(CloudError.BAD_ENTRY, "a chain starts at its genesis")
+            val s0 = ChainRules.genesisState(first)
+            if (expectedCloudId != null && !s0.cloudId.contentEquals(expectedCloudId)) throw ProtocolError(CloudError.BAD_ENTRY, "the genesis is not the invitation's cloud")
+            val chain = Chain(s0.cloudId, arrayListOf(first), s0)
+            var st = s0
+            for (e in entries.drop(1)) {
+                val next = ChainRules.apply(st, e)
+                chain.append(e, next)
+                st = next
             }
-            if (expectedCloudId != null && !base.cloudId.contentEquals(expectedCloudId)) throw ProtocolError(CloudError.BAD_ENTRY, "another cloud")
-            var st = base
-            for (e in entries.drop(1)) st = ChainRules.apply(st, e)
-            val chain = Chain(base.cloudId, ArrayList(entries), base, st, HashMap())
-            chain.noteCheckpoints(entries, now)
             return chain
         }
     }
@@ -596,7 +563,7 @@ internal object EntryRun {
 
     fun decode(r: Reader): List<ChainEntry> {
         val n = r.u32()
-        if (n > Chain.MAX_RUN * 16) malformed("too many entries")
+        if (n > ChainEntry.MAX_ENTRIES) malformed("too many entries")
         return List(n) { ChainEntry.parse(r.lp(ChainEntry.MAX_BODY + 4 + Crypto.SIG_BYTES)) }
     }
 }

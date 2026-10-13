@@ -10,7 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChainTest {
-    private fun offer(c: Chain, vararg run: ChainEntry) = c.offer(run.toList(), T0)
+    private fun offer(c: Chain, vararg run: ChainEntry) = c.offer(run.toList())
     private fun ids(c: Chain) = c.state().members.map { it.id }.toSet()
     private fun refused(o: Offer) = o is Offer.Refused
 
@@ -46,11 +46,9 @@ class ChainTest {
         c.remove(p.id); assertTrue(c.state.needsRotation)
         c.chain.rotate(c.owner.identity, s1, T0 + 2)
         assertFalse(c.state.needsRotation); assertEquals(1, c.state.epoch)
-        c.chain.checkpoint(c.owner.identity, T0 + 3)
-        assertEquals(ChainEntry.CHECKPOINT, c.chain.entries().last().op)
-        assertEquals("5:" + Hex.of(c.state.headId.copyOf(8)), c.chain.heartbeat())
+        assertEquals("4:" + Hex.of(c.state.headId.copyOf(8)), c.chain.heartbeat())
         // a replayed copy of the whole chain at a member changes nothing
-        assertTrue(Chain.fromEntries(c.chain.entries(), T0).heartbeat() == c.chain.heartbeat())
+        assertTrue(Chain.fromEntries(c.chain.entries()).heartbeat() == c.chain.heartbeat())
     }
 
     @Test fun aRemovalIsFinalAndTheOwnerCannotAddTheKeyAgain() {
@@ -127,7 +125,7 @@ class ChainTest {
         val byOther = ChainEntry.sign(other.identity, ChainEntry.removeBody(s, T0, c.owner.id))
         val member = c.copy()
         assertTrue(refused(offer(member, counter))); assertTrue(refused(offer(member, byOther)))
-        assertTrue(refused(stale.offer(listOf(counter), T0))) // even on its own chain it is not the owner
+        assertTrue(refused(stale.offer(listOf(counter)))) // even on its own chain it is not the owner
         assertEquals(setOf(c.owner.id, other.id), ids(member)) // both removals stand
         assertTrue(member.state().isRemoved(thief.id) && member.state().isRemoved(bad.id))
     }
@@ -141,7 +139,7 @@ class ChainTest {
         val o = offer(member, e1, e2)
         assertEquals(2, (o as Offer.Adopted).count)
         assertTrue(offer(member, e1) is Offer.Unchanged)
-        assertTrue(member.offer(c.chain.entries().take(2), T0) is Offer.Unchanged)
+        assertTrue(member.offer(c.chain.entries().take(2)) is Offer.Unchanged)
         assertEquals(c.chain.heartbeat(), member.heartbeat())
         assertNotNull(peers)
     }
@@ -195,7 +193,7 @@ class ChainTest {
     // ---- the recovery key -----------------------------------------------------------------------------------------------------
 
     private fun recoveryRun(base: Chain, c: Cloud, forkAt: Long = base.state().nextSeq, newOwner: Peer = Peer.bare(), newRecovery: SoftwareIdentity = SoftwareIdentity.generate()): Triple<Chain, ChainEntry, Peer> {
-        val copy = Chain.fromEntries(base.entries(), T0)
+        val copy = Chain.fromEntries(base.entries())
         val e = copy.recover(c.recovery, newOwner.identity.publicKey, newOwner.nodeId, "recovered", newRecovery.publicKey, T0 + 50, forkAt)
         return Triple(copy, e, newOwner)
     }
@@ -261,7 +259,7 @@ class ChainTest {
         // a plain owner transfer keeps the recovery key, so the recovery code still works afterwards
         val t = member.transfer(c.owner.identity, n.identity.publicKey, n.nodeId, "n", T0 + 1)
         assertArrayEquals(c.state.recoveryKey, member.state().recoveryKey)
-        val chain2 = Chain.fromEntries(member.entries(), T0)
+        val chain2 = Chain.fromEntries(member.entries())
         chain2.recover(c.recovery, SoftwareIdentity.generate().publicKey, Peer.newNodeId(), "back", SoftwareIdentity.generate().publicKey, T0 + 2)
         assertNotNull(t)
         // role 2 on any other operation does not even parse
@@ -274,116 +272,7 @@ class ChainTest {
         assertTrue(refused(offer(c.copy(), none)))
     }
 
-    @Test fun aUsedRecoveryCodeIsRetiredForTheTipButStillForksTheHistoryBeforeIt() {
-        val (c, peers) = cloudWith(1)
-        val member = peers[0].chain
-        val beforeX = c.copy() // head 2
-        val x = c.admit(Peer.bare()) // an owner entry at 3
-        val (_, r, p2) = recoveryRun(c.chain, c) // the recovery code is used at 4 and retired
-        assertEquals(x.seq + 1, r.seq)
-        assertTrue(offer(member, x, r) is Offer.Adopted)
-        assertEquals(p2.id, member.state().ownerId)
-        // at the tip the old code is no longer the key in force
-        val s = member.state()
-        val again = ChainEntry.sign(c.recovery, ChainEntry.transferBody(s, 2, T0, SoftwareIdentity.generate().publicKey, Peer.newNodeId(), "x", SoftwareIdentity.generate().publicKey))
-        assertTrue(refused(offer(member, again)))
-        var refusedUse = false
-        try { member.recover(c.recovery, SoftwareIdentity.generate().publicKey, Peer.newNodeId(), "x", SoftwareIdentity.generate().publicKey, T0) } catch (e: IllegalStateException) { refusedUse = true }
-        assertTrue(refusedUse)
-        // documented cost: where it was still in force (before 4) the old code can fork, and that undoes the later recovery too
-        val undo = beforeX.recover(c.recovery, SoftwareIdentity.generate().publicKey, Peer.newNodeId(), "undo", SoftwareIdentity.generate().publicKey, T0 + 70)
-        assertEquals(x.seq, undo.seq)
-        val o = offer(member, undo)
-        assertTrue(o is Offer.RolledBack)
-        assertEquals(2, (o as Offer.RolledBack).dropped) // x and r
-        assertNotEquals(p2.id, member.state().ownerId)
-    }
-
     // ---- checkpoints --------------------------------------------------------------------------------------------------------
-
-    @Test fun aCheckpointThatLiesAboutTheStateIsRefused() {
-        val (c, peers) = cloudWith(2)
-        c.remove(peers[0].id)
-        val member = c.copy()
-        val s = member.state()
-        fun cp(state: ChainState) = ChainEntry.sign(
-            c.owner.identity,
-            ChainEntry.header(ChainEntry.CHECKPOINT, 1, s.cloudId, s.nextSeq, s.headId, T0).raw(StateCodec.encode(state)).bytes(),
-        )
-        val dropsRemoval = cp(s.copy(removed = emptySet()))
-        val extraMember = cp(s.copy(members = s.members.associateBy { it.id } + (Hex.of(Crypto.random(32)) to ChainMember(Hex.of(Crypto.random(32)), Peer.newNodeId(), "ghost", MemberKind.NODE, SoftwareIdentity.generate().publicKey, null, null, 1))))
-        val otherOwner = cp(s.copy(ownerKey = SoftwareIdentity.generate().publicKey))
-        for (lie in listOf(dropsRemoval, extraMember, otherOwner)) assertTrue(refused(offer(member, lie)))
-        assertEquals(c.chain.heartbeat(), member.heartbeat())
-        // the honest one is taken, and a node cannot write one
-        val honest = c.chain.checkpoint(c.owner.identity, T0 + 9)
-        assertTrue(offer(member, honest) is Offer.Adopted)
-        assertTrue(refused(offer(c.copy(), ChainEntry.sign(peers[1].identity, ChainEntry.checkpointBody(c.copy().state(), T0)))))
-    }
-
-    @Test fun aNewcomerStartsFromTheLastCheckpointAndWhatFollows() {
-        val (c, _) = cloudWith(2)
-        val cp = c.chain.checkpoint(c.owner.identity, T0 + 5)
-        val tail = c.admit(Peer.bare(), now = T0 + 6)
-        val fresh = Chain.fromEntries(listOf(cp, tail), T0, expectedCloudId = c.chain.cloudId)
-        assertEquals(c.chain.heartbeat(), fresh.heartbeat())
-        assertEquals(c.state.members.map { it.id }.toSet(), fresh.state().members.map { it.id }.toSet())
-        assertEquals(2, fresh.entries().size)
-        assertError(CloudError.BAD_ENTRY) { Chain.fromEntries(listOf(cp, tail), T0, expectedCloudId = ByteArray(16)) }
-        assertError(CloudError.BAD_ENTRY) { Chain.fromEntries(listOf(cp, tail), T0) } // a checkpoint start needs the invite's cloud id
-        assertError(CloudError.BAD_ENTRY) { Chain.fromEntries(listOf(tail), T0) }
-        // and it can carry on: a removal reaches it as an extension
-        val rem = c.remove(c.state.members.first { it.id != c.owner.id }.id, now = T0 + 8)
-        assertTrue(offer(fresh, rem) is Offer.Adopted)
-    }
-
-    @Test fun aLongAbsentMemberJumpsToACheckpointOnlyIfTheOwnerItHoldsVouchesForIt() {
-        val (c, peers) = cloudWith(1)
-        val member = peers[0].chain
-        val alt = c.copy() // an owner-key fork made before the member's next news
-        val removed = Peer.bare(); c.admit(removed); c.remove(removed.id)
-        member.offer(c.chain.entries().drop(member.entries().size), T0) // the member hears of the removal
-        repeat(3) { c.admit(Peer.bare()) }
-        val cp = c.chain.checkpoint(c.owner.identity, T0 + 5)
-        val after = c.admit(Peer.bare(), now = T0 + 6)
-        val jump = listOf(cp, after)
-        // a checkpoint of a branch that does not contain the removal we know: refused
-        repeat(5) { alt.addDevice(c.owner.identity, Peer.newNodeId(), "alt", MemberKind.NODE, SoftwareIdentity.generate().publicKey, T0) }
-        val altCp = alt.checkpoint(c.owner.identity, T0 + 5)
-        assertTrue(refused(offer(member, altCp)))
-        // the honest one is taken: the member's chain now starts at the checkpoint
-        assertTrue(offer(member, *jump.toTypedArray()) is Offer.Adopted)
-        assertEquals(c.chain.heartbeat(), member.heartbeat())
-        assertEquals(ChainEntry.CHECKPOINT, member.entries()[0].op)
-        // a checkpoint written by a new owner cannot be taken by a device that holds the old one: it needs the entries
-        val member2 = Peer.bare().also { it.chain = Chain.fromEntries(c.chain.entries().take(3), T0) }.chain
-        val n = Peer.bare(); c.admit(n)
-        val t = c.chain.transfer(c.owner.identity, n.identity.publicKey, n.nodeId, "n", T0 + 20)
-        val cp2 = c.chain.checkpoint(n.identity, T0 + 21)
-        assertNotNull(t)
-        assertTrue(refused(offer(member2, cp2, c.admit2(n))))
-    }
-
-    private fun Cloud.admit2(n: Peer): ChainEntry = chain.addDevice(n.identity, Peer.newNodeId(), "z", MemberKind.NODE, SoftwareIdentity.generate().publicKey, T0 + 22)
-
-    @Test fun compactionWaitsOneDayAfterACheckpointWasFirstSeen() {
-        val (c, _) = cloudWith(1)
-        c.admit(Peer.bare())
-        val cp = c.chain.checkpoint(c.owner.identity, T0)
-        c.admit(Peer.bare())
-        val before = c.chain.entries().size
-        val membersBefore = c.state.members.map { it.id }.toSet()
-        c.chain.compact(T0 + Chain.HOLD_MS - 1)
-        assertEquals(before, c.chain.entries().size) // too early: the owner still has a day to fork
-        c.chain.compact(T0 + Chain.HOLD_MS)
-        assertEquals(cp.id, c.chain.entries()[0].id)
-        assertEquals(2, c.chain.entries().size)
-        // the state is the same, and a fork below the base is no longer possible
-        assertEquals(membersBefore, c.state.members.map { it.id }.toSet())
-        var refusedFork = false
-        try { c.chain.recover(c.recovery, SoftwareIdentity.generate().publicKey, Peer.newNodeId(), "x", SoftwareIdentity.generate().publicKey, T0, forkAt = cp.seq) } catch (e: IllegalArgumentException) { refusedFork = true }
-        assertTrue(refusedFork)
-    }
 
     // ---- rotate, tokens, limits, sync --------------------------------------------------------------------------------------
 
@@ -423,16 +312,6 @@ class ChainTest {
         assertError(CloudError.MALFORMED) { ChainEntry.of(bad2, ByteArray(64)) }
     }
 
-    @Test fun oneBodyLimitHoldsWhenCreatingAndWhenParsing() {
-        val (c, _) = cloudWith(0)
-        val over = ByteArray(ChainEntry.MAX_BODY + 1)
-        assertError(CloudError.MALFORMED) { ChainEntry.of(over, ByteArray(64)) }
-        assertError(CloudError.MALFORMED) { ChainEntry.parse(Writer().lp(over).fixed(ByteArray(64), 64).bytes()) }
-        // a real checkpoint of a full-sized state fits (512 members): the limit was chosen for it
-        assertTrue(ChainEntry.MAX_BODY > 512 * 200 + 4096 * 32)
-        assertEquals(1, c.chain.entries().size)
-    }
-
     @Test fun syncPullsTheTailOrTheWholeChainWhenBranchesDiffer() {
         val (c, _) = cloudWith(1)
         val member = c.copy()
@@ -453,7 +332,182 @@ class ChainTest {
         val member = c.copy()
         val a = c.admit(Peer.bare()); val b = c.admit(Peer.bare())
         assertTrue(refused(offer(member, b, a)))
-        assertTrue(refused(member.offer(List(Chain.MAX_RUN + 1) { a }, T0)))
+        assertTrue(refused(member.offer(List(Chain.MAX_RUN + 1) { a })))
         assertTrue(offer(member) is Offer.Unchanged)
+    }
+
+    // ---- stage 1c: no checkpoints, the recovery boundary, bounded evidence and bounded work -----------------------------------
+
+    private fun newKey() = SoftwareIdentity.generate().publicKey
+
+    @Test fun aNewcomerChecksTheWholeChainFromTheGenesisWhoseHashIsTheCloudId() { // Codex Chain.kt:572 (blocker)
+        val (c, _) = cloudWith(2)
+        val ok = Chain.fromEntries(c.chain.entries(), c.chain.cloudId)
+        assertEquals(c.chain.heartbeat(), ok.heartbeat())
+        // a host builds a chain of its own: its own genesis, itself as owner, the newcomer as a member
+        val host = Peer.bare(); val newcomer = Peer.bare()
+        host.chain.addDevice(host.identity, newcomer.nodeId, "n", MemberKind.NODE, newcomer.identity.publicKey, T0)
+        assertError(CloudError.BAD_ENTRY) { Chain.fromEntries(host.chain.entries(), c.chain.cloudId) } // its genesis does not hash to the invitation's cloud id
+        // the real genesis followed by an entry the owner never signed
+        val forged = ChainEntry.sign(host.identity, ChainEntry.addBody(c.state, T0, newcomer.nodeId, "n", MemberKind.NODE, newcomer.identity.publicKey, null, null))
+        assertError(CloudError.BAD_ENTRY) { Chain.fromEntries(c.chain.entries() + forged, c.chain.cloudId) }
+        // nothing but a genesis can start a chain, there is no checkpoint, and the cap is enforced
+        assertError(CloudError.BAD_ENTRY) { Chain.fromEntries(c.chain.entries().drop(1), c.chain.cloudId) }
+        val g = c.chain.entries()[0]
+        assertError(CloudError.MALFORMED) { ChainEntry.of(g.body.copyOf().also { it[19] = 7 }, ByteArray(64)) } // operation 7 does not exist
+        assertError(CloudError.BAD_ENTRY) { Chain.fromEntries(List(ChainEntry.MAX_ENTRIES + 1) { g }) }
+    }
+
+    @Test fun aRunThatSkipsAheadIsRefusedSoNoHistoryIsDiscardedAndAFormerlyRemovedMemberStaysRemoved() { // Codex Chain.kt:452 and :457
+        val (c, peers) = cloudWith(2)
+        val member = peers[0].chain
+        val thief = c.copy() // the owner key in a thief's hands
+        val run = List(5) { thief.addDevice(c.owner.identity, Peer.newNodeId(), "t$it", MemberKind.NODE, newKey(), T0 + it) }
+        assertTrue(refused(offer(member, run.last()))) // only the last entry, far beyond the head: a gap, nothing is dropped
+        assertEquals(c.chain.heartbeat(), member.heartbeat())
+        // the real owner can still undo the thief's entries afterwards, because the member kept its history
+        val (_, r, p2) = recoveryRun(c.chain, c)
+        assertTrue(offer(member, *run.toTypedArray()) is Offer.Adopted)
+        assertTrue(offer(member, r) is Offer.RolledBack)
+        assertEquals(p2.id, member.state().ownerId)
+        // a removed member cannot be put back by any run: the only way in is an add, and an add of a removed key is refused
+        val (c2, ps2) = cloudWith(1)
+        val m2 = ps2[0].chain
+        c2.removeAndRotate(ps2[0].id); m2.offer(c2.chain.entries())
+        val back = ChainEntry.sign(c2.owner.identity, ChainEntry.addBody(m2.state(), T0, ps2[0].nodeId, "back", MemberKind.NODE, ps2[0].identity.publicKey, null, null))
+        assertTrue(refused(offer(m2, back)))
+        assertTrue(m2.state().isRemoved(ps2[0].id)); assertNull(m2.state().member(ps2[0].id))
+    }
+
+    @Test fun aRetiredRecoveryCodeCannotForkBelowTheBoundaryAndOnlyEquivocatesAtIt() { // Codex Chain.kt:421
+        val (c, peers) = cloudWith(1)
+        val member = peers[0].chain
+        val beforeX = c.copy()
+        val beforeX2 = c.copy()
+        val x = c.admit(Peer.bare()) // an owner entry
+        val (_, r, p2) = recoveryRun(c.chain, c) // the code R is used on the next number and replaced
+        assertEquals(x.seq + 1, r.seq)
+        assertTrue(offer(member, x, r) is Offer.Adopted)
+        assertEquals(r.seq, member.recoveryBoundary())
+        // someone who kept R signs a transfer at 3, where R was still in force: refused, ownership does not move
+        val undo = beforeX.recover(c.recovery, newKey(), Peer.newNodeId(), "undo", newKey(), T0 + 70)
+        assertEquals(x.seq, undo.seq)
+        assertTrue(refused(offer(member, undo)))
+        assertEquals(p2.id, member.state().ownerId); assertEquals(r.id, member.entries().last().id)
+        // at the tip R is not in force; at 4 itself it is a second recovery entry: equivocation, the first stays
+        val atTip = ChainEntry.sign(c.recovery, ChainEntry.transferBody(member.state(), 2, T0, newKey(), Peer.newNodeId(), "x", newKey()))
+        assertTrue(refused(offer(member, atTip)))
+        val (_, r2, _) = recoveryRun(c.chain, c)
+        assertTrue(offer(member, r2) is Offer.Equivocation)
+        assertEquals(r.id, member.entries()[r.seq.toInt()].id)
+        // an owner-key entry below the boundary is a fork between owners at most, never a rollback
+        val alt = beforeX2.addDevice(c.owner.identity, Peer.newNodeId(), "alt", MemberKind.NODE, newKey(), T0 + 80)
+        assertTrue(offer(member, alt) is Offer.Equivocation)
+        assertEquals(r.id, member.entries()[r.seq.toInt()].id)
+    }
+
+    @Test fun theRecoveryCodeCanBeReplacedByItselfAndOnlyByItself() {
+        val (c, peers) = cloudWith(1)
+        val member = c.copy()
+        val newCode = SoftwareIdentity.generate()
+        val e = c.chain.replaceRecovery(c.recovery, newCode.publicKey, T0 + 5)
+        assertEquals(ChainEntry.REPLACE_RECOVERY, e.op); assertEquals(2, e.role)
+        assertTrue(offer(member, e) is Offer.Adopted)
+        assertArrayEquals(newCode.publicKey, member.state().recoveryKey)
+        assertEquals(e.seq, member.recoveryBoundary())
+        assertFalse(member.state().needsRotation) // the owner keeps its secrets
+        // the retired code signs nothing a member accepts now
+        var refusedUse = false
+        try { c.chain.replaceRecovery(c.recovery, newKey(), T0) } catch (x: IllegalStateException) { refusedUse = true }
+        assertTrue(refusedUse)
+        val old = ChainEntry.sign(c.recovery, ChainEntry.replaceRecoveryBody(member.state(), T0, newKey()))
+        assertTrue(refused(offer(member, old)))
+        // the new code works
+        Chain.fromEntries(member.entries()).recover(newCode, newKey(), Peer.newNodeId(), "back", newKey(), T0 + 9)
+        // the owner key, a node and a stranger cannot replace it: role 1 does not even parse; a signature by anyone else is refused
+        val owner = ChainEntry.replaceRecoveryBody(member.state(), T0, newKey()).also { it[20] = 1 }
+        assertError(CloudError.MALFORMED) { ChainEntry.of(owner, ByteArray(64)) }
+        assertTrue(refused(offer(member, ChainEntry.sign(peers[0].identity, ChainEntry.replaceRecoveryBody(member.state(), T0, newKey())))))
+        // the new key must be new, not the owner key, not a device key of a member
+        assertError(CloudError.BAD_ENTRY) { c.chain.replaceRecovery(newCode, newCode.publicKey, T0) }
+        assertError(CloudError.BAD_ENTRY) { c.chain.replaceRecovery(newCode, c.owner.identity.publicKey, T0) }
+        assertError(CloudError.BAD_ENTRY) { c.chain.replaceRecovery(newCode, peers[0].identity.publicKey, T0) }
+    }
+
+    @Test fun aLeakedCodeThatNobodyUsedIsTheRootTwoReplacementsAtOneNumberFork() {
+        val (c, _) = cloudWith(1)
+        val member = c.copy(); val alt = c.copy()
+        val owners = c.chain.replaceRecovery(c.recovery, newKey(), T0 + 1) // the real owner replaces the code it fears was seen
+        val holder = alt.replaceRecovery(c.recovery, newKey(), T0 + 1) // so does whoever saw it, at the same number
+        assertTrue(offer(member, owners) is Offer.Adopted)
+        assertTrue(offer(member, holder) is Offer.Equivocation) // the first seen stays: the documented residue of open point 2
+        assertEquals(owners.id, member.entries().last().id)
+    }
+
+    @Test fun evidenceOfForksIsOnePerNumberAndSignerAndTheListIsCapped() { // Codex Chain.kt:416
+        val (c, peers) = cloudWith(1)
+        val old = c.owner.identity
+        val stateAfter = HashMap<Long, ChainState>()
+        stateAfter[c.state.headSeq] = c.state
+        repeat(70) { i ->
+            c.chain.addDevice(old, Peer.newNodeId(), "d", MemberKind.NODE, newKey(), T0 + i)
+            stateAfter[c.state.headSeq] = c.state
+        }
+        c.chain.transfer(old, peers[0].identity.publicKey, peers[0].nodeId, "new owner", T0 + 99) // the old key keeps authority for every earlier number
+        val member = c.copy()
+        fun altAt(f: Long) = ChainEntry.sign(old, ChainEntry.addBody(stateAfter.getValue(f - 1), T0 + 500, Peer.newNodeId(), "alt", MemberKind.NODE, newKey(), null, null))
+        // 200 different alternatives at one number: one record, and after the first no replay at all
+        assertTrue(offer(member, altAt(10)) is Offer.Equivocation)
+        val replaysAfterFirst = member.replays
+        repeat(200) { assertTrue(offer(member, altAt(10)) is Offer.Equivocation) }
+        assertEquals(1, member.flags().size)
+        assertEquals(replaysAfterFirst, member.replays)
+        // alternatives at many numbers: the list stops at 64
+        for (f in 3L..72L) offer(member, altAt(f))
+        assertEquals(Chain.MAX_FLAGS, member.flags().size)
+        assertTrue(offer(member, altAt(2)) is Offer.Equivocation) // still answered, no longer recorded
+        assertEquals(Chain.MAX_FLAGS, member.flags().size)
+        assertNotNull(peers)
+    }
+
+    @Test fun anOfferedEntryIsAuthenticatedBeforeAnyHistoryIsReplayed() { // Codex Chain.kt:414
+        val (c, peers) = cloudWith(1)
+        val stateBeforeLast = HashMap<Long, ChainState>()
+        repeat(150) { c.chain.addDevice(c.owner.identity, Peer.newNodeId(), "d", MemberKind.NODE, newKey(), T0 + it); stateBeforeLast[c.state.headSeq] = c.state }
+        val member = c.copy()
+        val head = member.state().headSeq
+        // junk that differs near the tip: signed by a member, not the owner
+        repeat(300) {
+            val junk = ChainEntry.sign(peers[0].identity, ChainEntry.addBody(stateBeforeLast.getValue(head - 1), T0, Peer.newNodeId(), "j", MemberKind.NODE, newKey(), null, null))
+            assertTrue(refused(offer(member, junk)))
+        }
+        assertEquals(0, member.replays); assertEquals(0L, member.replayedEntries)
+        assertTrue(member.flags().isEmpty())
+    }
+
+    @Test fun aValidForkIsCheckedAgainstAtMost63EntriesOfReplay() {
+        val (c, _) = cloudWith(1)
+        val states = HashMap<Long, ChainState>()
+        repeat(200) { c.chain.addDevice(c.owner.identity, Peer.newNodeId(), "d", MemberKind.NODE, newKey(), T0 + it); states[c.state.headSeq] = c.state }
+        val member = c.copy()
+        val alt = ChainEntry.sign(c.owner.identity, ChainEntry.addBody(states.getValue(189), T0 + 900, Peer.newNodeId(), "alt", MemberKind.NODE, newKey(), null, null))
+        assertEquals(190L, alt.seq)
+        assertTrue(offer(member, alt) is Offer.Equivocation)
+        assertEquals(1, member.replays)
+        assertTrue("replayed ${member.replayedEntries}", member.replayedEntries in 1..63)
+    }
+
+    @Test fun theChainCapAndTheBodyLimitAreEnforcedByOneRuleEachWhenCreatingAndParsing() {
+        val (c, _) = cloudWith(0)
+        val full = c.state.copy(nextSeq = ChainEntry.MAX_ENTRIES.toLong())
+        val e = ChainEntry.sign(c.owner.identity, ChainEntry.addBody(full, T0, Peer.newNodeId(), "x", MemberKind.NODE, newKey(), null, null))
+        assertError(CloudError.BAD_ENTRY) { ChainRules.apply(full, e) } // the cap is a number only the owner could reach
+        val over = ByteArray(ChainEntry.MAX_BODY + 1)
+        assertError(CloudError.MALFORMED) { ChainEntry.of(over, ByteArray(64)) }
+        assertError(CloudError.MALFORMED) { ChainEntry.parse(Writer().lp(over).fixed(ByteArray(64), 64).bytes()) }
+        // the largest legitimate entry (a 64-byte name) is far below the limit
+        val big = ChainEntry.addBody(c.state, T0, Peer.newNodeId(), "x".repeat(64), MemberKind.NODE, newKey(), null, null)
+        assertTrue(big.size in 200..400)
+        assertTrue(ChainEntry.MAX_BODY >= 4 * big.size)
     }
 }
