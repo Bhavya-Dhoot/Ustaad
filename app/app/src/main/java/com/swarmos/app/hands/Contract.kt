@@ -243,3 +243,9 @@ interface Hands {
     /** One tool call from outside a run. The guard and the person's prompts apply exactly as inside a run. */
     suspend fun call(call: ToolCall, origin: Origin): ToolResult
 }
+
+/** Set once by the wiring at app start; null until then (the UI shows that Hands is starting). */
+object HandsHub {
+    @Volatile
+    var hands: Hands? = null
+}
