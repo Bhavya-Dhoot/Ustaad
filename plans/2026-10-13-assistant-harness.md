@@ -77,6 +77,16 @@ Ledger:
 - Distribution: Google Play forbids an app that uses the accessibility API to plan and act by itself. Hands is for sideloaded builds only, and the service is never declared an accessibility tool.
 - Limits to expect and to state: on Android 16 apps can hide marked views from the service (some screens will read as empty); sideloaded apps may need "Allow restricted settings" before the switch can be turned on; no published result shows a model under 4 GB driving a phone from the screen text, so the step loop is constrained by a schema, checks typed text, and detects cycles.
 
+## Policy after the second review (2026-10-13 20:40)
+
+The second adversarial read (docs/review/2026-10-13-hands-codex-2.txt) closed 10 of the first 13 findings and made one point that changes the design: a list of committing words cannot establish that a tap is harmless. Decisions:
+
+- Trust assumption, to be stated in the docs: Hands trusts the apps a task names to label their own controls honestly; it does not trust the content shown inside them (names, messages, pages) or anything the model says.
+- Two modes. **Careful** is the default: a tap is free only on a control whose own visible text is on a short list of harmless controls (add, add to cart, plus, minus, search, view cart, cart, see all, show more, filter, sort, skip, not now, close, back, navigate up, a tab or an edit field) and whose full guard text has no committing word; every other tap is asked about. Enter is always asked about. **Fewer questions** is a switch, off by default, worded plainly: taps are asked about only when recognised as committing, and the recognition can miss a button.
+- In both modes: no exception on a checkout screen (the back action remains); every link is asked about with the link and the opening app shown; a scroll needs a checked scroll target and there are no blind swipes; a question to an expert that the step model wrote stays on the phone unless sharing is on; a yes covers one reason and one target, a new reason asks again; a target that is not unique in the fresh read is refused; the secret-screen check looks at the whole screen before it is cut down; card numbers are found across any separators and masked in the log.
+- The driver uses no gestures at all: a tap is a click on the exact node, or on its nearest clickable ancestor (the one the guard text already covers); the node's whole subtree text is compared again at the moment of the click. The service no longer asks for the gesture capability.
+- Residual, stated: a password field that is neither flagged nor labelled cannot be recognised; a code shown as a bare number on a screen with no word for it cannot be recognised; an app that mislabels its own controls can still commit in Fewer questions mode and, with a harmless-list word, in Careful mode.
+
 ## Status
 
 2026-10-13 19:40:
