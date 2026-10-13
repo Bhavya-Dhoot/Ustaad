@@ -9,23 +9,38 @@ import com.swarmos.app.hands.RawNode
 /** One application window as the driver sees it. pkg null: the window gave no root (secure window or gone). */
 internal data class WindowCand(val active: Boolean, val focused: Boolean, val layer: Int, val pkg: String?)
 
+/** What the driver compares about a node between read() and an action: its class, its own text and its description. */
+internal data class NodeFacts(val cls: String, val text: String, val desc: String)
+
 internal object ScreenMapping {
     const val MAX_NODES = 1500
     const val MAX_DEPTH = 40
+
+    /** Child lookups tried, found or not. A tree that answers null for most children cannot keep the walk busy longer than this. */
+    const val MAX_LOOKUPS = 3000
 
     /** The root of every read. A child is its parent's handle plus the child index: "0.3.1". */
     const val ROOT_HANDLE = "0"
 
     fun childHandle(parent: String, index: Int): String = "$parent.$index"
 
-    /** null for the root. */
-    fun parentOf(handle: String): String? {
-        val i = handle.lastIndexOf('.')
-        return if (i < 0) null else handle.substring(0, i)
-    }
+    /** The password rule again: a password node's text is empty here whatever the caller passes. */
+    fun factsOf(cls: CharSequence?, text: CharSequence?, desc: CharSequence?, password: Boolean): NodeFacts =
+        NodeFacts(cls?.toString().orEmpty(), if (password) "" else text?.toString().orEmpty(), desc?.toString().orEmpty())
 
-    /** Nearest first, root last; empty for the root. */
-    fun ancestorsOf(handle: String): List<String> = generateSequence(parentOf(handle)) { parentOf(it) }.toList()
+    /** The node the system returns now is the node that was read: the same class, own text and description. */
+    fun sameTarget(atRead: NodeFacts, now: NodeFacts): Boolean = atRead == now
+
+    /**
+     * The package that handles a link or the home screen, from what resolveActivity answered (pkg, cls) and the
+     * handlers queryIntentActivities lists. "" when nothing resolved, or when the answer is the system's chooser or
+     * resolver (it is not among the handlers, and it is named Resolver or Chooser).
+     */
+    fun realHandler(pkg: String?, cls: String?, handlers: List<Pair<String, String>>): String {
+        if (pkg.isNullOrEmpty() || cls.isNullOrEmpty() || pkg == "android") return ""
+        if (cls.endsWith("ResolverActivity") || cls.endsWith("ChooserActivity")) return ""
+        return if (handlers.any { it.first == pkg && it.second == cls }) pkg else ""
+    }
 
     /**
      * The password rule lives here: the text of a password node is never copied, whatever the caller passes.
@@ -71,8 +86,9 @@ internal object ScreenMapping {
 
     /**
      * Builds the tree depth first, parent before children, at most maxNodes nodes and nodes down to maxDepth
-     * (the root is depth 0). visit runs when a node is entered (so a caller's map is in reading order), make runs
-     * once its children are built. A child that cannot be fetched (null) is skipped and keeps its index.
+     * (the root is depth 0), after at most maxLookups child lookups (found or not). visit runs when a node is
+     * entered, make runs once its children are built. A child that cannot be fetched (null) is skipped and keeps
+     * its index. checkCancelled runs before every lookup; whatever it throws ends the walk.
      */
     fun <T : Any> buildTree(
         root: T,
@@ -82,15 +98,20 @@ internal object ScreenMapping {
         make: (T, String, List<RawNode>) -> RawNode,
         maxNodes: Int = MAX_NODES,
         maxDepth: Int = MAX_DEPTH,
+        maxLookups: Int = MAX_LOOKUPS,
+        checkCancelled: () -> Unit = {},
     ): RawNode {
         var seen = 0
+        var lookups = 0
         fun walk(node: T, handle: String, depth: Int): RawNode {
             seen++
             visit(node, handle)
             val kids = ArrayList<RawNode>()
             if (depth < maxDepth) {
                 for (i in 0 until childCount(node)) {
-                    if (seen >= maxNodes) break
+                    if (seen >= maxNodes || lookups >= maxLookups) break
+                    checkCancelled()
+                    lookups++
                     val child = childAt(node, i) ?: continue
                     kids += walk(child, childHandle(handle, i), depth + 1)
                 }
