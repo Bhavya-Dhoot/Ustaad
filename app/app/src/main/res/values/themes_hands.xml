@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The task sheet: the app theme made translucent, so the app underneath shows around the sheet. The scrim is drawn by the sheet itself. -->
+    <style name="Theme.Ustaad.Sheet" parent="Theme.SwarmOS">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+</resources>

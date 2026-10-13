@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ustaad as the digital assistant: the assist gesture opens a session that opens the task sheet.
+     Not offered from the lock screen. The session reads no screen structure and takes no screenshot (assist/UstaadSessionService.kt). -->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.swarmos.app.assist.UstaadSessionService"
+    android:recognitionService="com.swarmos.app.assist.UstaadRecognitionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="false" />

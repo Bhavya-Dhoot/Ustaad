@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One static shortcut on the launcher icon (long press): opens the task sheet. targetPackage must equal the applicationId, so the demo
+     build (com.ustaad.app) has its own copy in src/demo/res/xml/shortcuts.xml; a side-by-side debug copy (-PidSuffix) has no shortcut.
+     No App Actions capability is declared: it would work only through the Google app and Play Services, and a mistake in it can make
+     the system drop the whole file. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="ask_ustaad"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_ask_short"
+        android:shortcutLongLabel="@string/shortcut_ask_long">
+        <intent
+            android:action="android.intent.action.ASSIST"
+            android:targetPackage="com.swarmos.app"
+            android:targetClass="com.swarmos.app.assist.AssistActivity" />
+    </shortcut>
+</shortcuts>
