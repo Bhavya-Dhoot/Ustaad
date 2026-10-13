@@ -101,7 +101,7 @@ object AppGraph {
 
     val nodeClient: NodeClient by lazy { NodeClient({ secret }, { registry.self.value.nodeId }) }
 
-    val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, KbModule, MemCloudModule, SchedModule)
+    val modules: List<SwarmModule> = listOf(LinkModule, ModelsModule, ChoirModule, PduModule, KbModule, MemCloudModule, SchedModule, com.swarmos.app.hands.ui.HandsModule)
 
     /** Starts loading everything that needs disk off the main thread; nothing here blocks Application.onCreate. */
     fun init(app: Application) {

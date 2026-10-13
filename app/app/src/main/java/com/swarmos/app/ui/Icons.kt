@@ -32,6 +32,7 @@ fun iconForModule(id: String): SwarmIcon = when (id) {
     "choir" -> SwarmIcon.Choir
     "pdu" -> SwarmIcon.Data
     "memcloud" -> SwarmIcon.Memory
+    "hands" -> SwarmIcon.Play
     else -> SwarmIcon.Swarm
 }
 

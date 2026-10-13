@@ -42,6 +42,7 @@ fun destinationLabel(moduleId: String): String? = when (moduleId) {
     "choir" -> "Choir"
     "pdu" -> "Data"
     "memcloud" -> "Memory"
+    "hands" -> "Hands"
     else -> null
 }
 
