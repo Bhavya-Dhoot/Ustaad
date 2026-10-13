@@ -58,6 +58,12 @@ data class UiElement(
     val handle: String,
     val cx: Int,
     val cy: Int,
+    /**
+     * Everything the guard judges this element by, never shown to the model and never cut: its own text and
+     * description, the texts of its descendants, the texts of every clickable ancestor (a touch on a child
+     * reaches the parent), and the words of its resource id. Normalised by the reader.
+     */
+    val guard: String = "",
 )
 
 data class Screen(
@@ -92,8 +98,14 @@ interface PhoneDriver {
     suspend fun back(): Boolean
     suspend fun home(): Boolean
     suspend fun openApp(pkg: String): Boolean
-    /** A VIEW intent for the URI. The core has already checked the scheme. */
-    suspend fun openLink(uri: String): Boolean
+    /**
+     * The package that would open the URI: the single handler, or the person's default for it.
+     * Empty when there is none or when the system would show a chooser. Nothing is started.
+     */
+    suspend fun linkTarget(uri: String): String
+
+    /** A VIEW intent for the URI, sent to exactly that package. The core has checked the scheme and the package. */
+    suspend fun openLink(uri: String, pkg: String): Boolean
     suspend fun apps(): List<AppInfo>
 }
 
