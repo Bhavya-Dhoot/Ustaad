@@ -1,5 +1,7 @@
 package com.swarmos.app.sched
 
+import com.swarmos.app.core.DeviceProfiles
+import com.swarmos.app.core.DeviceState
 import com.swarmos.app.core.NodeHealth
 import com.swarmos.app.core.ThermalGate as CoreThermalGate
 import com.swarmos.app.core.WorkKind
@@ -47,6 +49,12 @@ class SchedNode(
     private val embedder: () -> LlmClient,
     private val health: () -> NodeHealth?,
     clock: () -> Long = System::currentTimeMillis,
+    /** This phone's device profile and plan (core/DeviceProfile.kt); null until the first device check has run. */
+    private val device: () -> DeviceState? = { DeviceProfiles.current },
+    /** Free storage right now in MB; null when unknown (the profile's figure from the last check is reported). */
+    private val freeStorageMb: () -> Long? = { DeviceProfiles.freeStorageMb?.invoke() },
+    /** Receives a decode speed worth keeping across restarts: the model it was measured on and tokens/s. */
+    private val rememberSpeed: (model: String, tokPerSec: Double) -> Unit = { m, t -> DeviceProfiles.noteSpeed(m, t) },
 ) {
     val chatExec = JobExecutor(scope, clock)
     val embedExec = JobExecutor(scope, clock)
@@ -65,14 +73,18 @@ class SchedNode(
     fun noteStats(stats: ChatStats) {
         val tps = stats.decodeTokPerSec
         if (tps > 0.0) lastTokPerSec = tps
+        // a short reply says little about speed, and the placeholder client's figures are not the phone's
+        if (tps > 0.0 && stats.completionTokens >= MIN_SPEED_TOKENS) llm().modelName.takeIf { it != "FAKE" }?.let { rememberSpeed(it, tps) }
     }
 
     /** What other phones see. Filler work ("Keep busy") is not in `running` or `queued`: the executor leaves it out. */
     fun caps(): Caps {
         val h = health()
+        val model = llm().modelName
+        val d = device()
         return Caps(
             nodeId = selfId(),
-            modelName = llm().modelName,
+            modelName = model,
             capacity = chatExec.capacity,
             running = chatExec.running,
             queued = chatExec.queued,
@@ -81,7 +93,19 @@ class SchedNode(
             batteryPct = h?.batteryPct ?: -1,
             charging = h?.charging ?: true,
             ramAvailMb = h?.ramAvailMb ?: 0,
+            deviceClass = d?.plan?.deviceClass?.name,
+            totalRamMb = d?.profile?.totalRamMb ?: 0,
+            backend = d?.plan?.let { if (it.useGpu) "GPU" else "CPU" },
+            // a speed belongs to the model it was measured on
+            profileTokPerSec = d?.profile?.takeIf { it.chatTokPerSecModel == model }?.chatTokPerSec,
+            storageOfferMb = d?.plan?.storageOfferMb ?: 0,
+            freeStorageMb = freeStorageMb() ?: d?.profile?.freeStorageMb ?: 0,
         )
+    }
+
+    private companion object {
+        /** Replies shorter than this are not used for the speed kept across restarts. */
+        const val MIN_SPEED_TOKENS = 16
     }
 
     /**
