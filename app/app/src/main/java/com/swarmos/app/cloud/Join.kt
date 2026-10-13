@@ -151,6 +151,15 @@ internal object JoinWire {
     /** Entries in one frame of the chain part of an answer: far below the frame limit (1024 entries of at most 1.1 KB each is 1.1 MB). */
     const val PAGE = 1024
 
+    /** `u8 1 || na || pub eH || pub hostKey || sig`: what comes before the frames of an answer. */
+    const val HEAD_BYTES = 1 + 32 + Crypto.PUB_BYTES + Crypto.PUB_BYTES + Crypto.SIG_BYTES
+
+    /** The hard caps of reception (docs 4.2, Codex Join.kt:770): the first frame, a page frame, all frames together, and the time. */
+    const val MANIFEST_FRAME_MAX = 1024
+    val PAGE_FRAME_MAX = FrameCodec.HEADER + FrameCodec.TAG + 4 + PAGE * EntryRun.MAX_ENTRY_BYTES
+    val ANSWER_BYTES_MAX = HEAD_BYTES.toLong() + ChainEntry.MAX_ENTRIES.toLong() * EntryRun.MAX_ENTRY_BYTES + 1_048_576L
+    const val ANSWER_LIMIT_MS = 120_000L
+
     /** What the host signs: both nonces, both ephemeral keys, the status, a digest of the secrets and the number and digest of the chain entries. */
     fun answerSig(cloudId: ByteArray, nc: ByteArray, na: ByteArray, eN: ByteArray, eH: ByteArray, status: Int, extra: ByteArray, chainCount: Int, chainDigest: ByteArray): ByteArray =
         concat(lbl("join/answer"), cloudId, nc, na, eN, eH, Writer().u8(status).bytes(), Crypto.sha256(extra), Writer().u32(chainCount).bytes(), chainDigest)
@@ -400,7 +409,10 @@ class Owner(
      */
     @Synchronized fun opened(request: AdmitRequest, opening: SasOpen, now: Long): AdmitDecision? {
         sweep(now)
-        if (open[request.id] !== request) return AdmitDecision(request.forward.ticket, false, emptyList(), "not an open request", failed = false)
+        if (open[request.id] !== request) {
+            // already closed: a device request that never was opened was closed as a failure, and the host is told the same again
+            return AdmitDecision(request.forward.ticket, false, emptyList(), "not an open request", failed = request.key != null && request.digits == null)
+        }
         val ok = request.key != null && request.nO != null && opening.ticket.contentEquals(request.forward.ticket) &&
             Crypto.equal(JoinWire.commit(request.cloudId, request.key, request.nodeId, request.name, opening.nN), request.forward.commit!!)
         if (!ok) {
@@ -421,7 +433,9 @@ class Owner(
 
     /**
      * Closes requests nobody answered within the time limit; each counts as refused. A device request whose opening never came is a
-     * spent trial like a wrong opening (Codex Join.kt:357). Returns the failures to pass to the hosts, so that their invites burn.
+     * spent trial like a wrong opening (Codex Join.kt:357). Returns the decisions to pass to the hosts: a failure (code 2) burns the
+     * invite; a request that was opened or was a token request but got no tap is a code-0 denial, so that the host answers DECLINED
+     * and releases the invite (Codex Join.kt:432).
      */
     @Synchronized fun expire(now: Long): List<AdmitDecision> {
         sweep(now)
@@ -436,16 +450,27 @@ class Owner(
             if (r.key != null && r.digits == null) {
                 fail(r, now, "no opening arrived")
                 outbox.add(AdmitDecision(r.forward.ticket, false, emptyList(), "no opening arrived", failed = true))
+            } else {
+                outbox.add(AdmitDecision(r.forward.ticket, false, emptyList(), "no tap in time"))
             }
         }
     }
 
-    /** Signs the add entry if, and only if, [approval] is this request's prompt's, in time and unused. A null approval is a refusal. */
+    /**
+     * Signs the add entry if, and only if, [approval] is this request's prompt's, in time and unused. A null approval is a refusal.
+     * **Closing a device request whose opening has not been checked, by whatever route (a timeout handler, a cancel, a made-up
+     * approval), is a spent trial** and not a silent removal (Codex Join.kt:444): there is no prompt to cancel before the digits exist,
+     * so this can only be the host's trial being thrown away.
+     */
     @Synchronized fun decide(request: AdmitRequest, approval: Approval?, now: Long): AdmitDecision {
         val ticket = request.forward.ticket
         val still = open.remove(request.id)
         fun no(why: String) = AdmitDecision(ticket, false, emptyList(), why)
         if (still == null || still !== request) return no("not an open request")
+        if (request.key != null && request.digits == null) {
+            fail(request, now, "closed before its opening arrived")
+            return AdmitDecision(ticket, false, emptyList(), "closed before its opening arrived", failed = true)
+        }
         if (approval == null) return no("cancelled")
         val prompt = request.prompt ?: return no("nothing was shown to a person")
         if (approval.prompt !== prompt) return no("approval belongs to another prompt")
@@ -483,6 +508,8 @@ class JoinHost(
     /** Entries per frame of the chain part of an answer (a test makes it small). */
     private val joinPage: Int = JoinWire.PAGE,
 ) {
+    init { require(joinPage in 1..JoinWire.PAGE) { "page size" } }
+
     private val cloudId = chain.cloudId
 
     fun invite(kind: MemberKind, addresses: List<String>, port: Int, now: Long): Invite =
@@ -630,17 +657,17 @@ class JoinHost(
         val rcode = rec.code
         val key = JoinWire.a2cKey(ecdh, rcode, cloudId, c.nc, na)
         Crypto.wipe(ecdh)
-        val sig = identity.sign(JoinWire.answerSig(cloudId, c.nc, na, c.eN, eHPub, status, extra, entries.size, JoinWire.chainDigest(entries)))
+        val digest = JoinWire.chainDigest(entries)
+        val sig = identity.sign(JoinWire.answerSig(cloudId, c.nc, na, c.eN, eHPub, status, extra, entries.size, digest))
         val sealer = FrameSealer(key, 0, cloudId, FrameType.JOIN)
         val head = concat(Writer().u8(status).bytes(), extra)
         val frames: List<ByteArray> = if (!material) {
-            listOf(sealer.seal(head, final = true))
+            listOf(sealer.seal(head, final = true)) // an answer without a chain is ONE final frame
         } else {
+            // the manifest first (status, secrets, entry count, page size, digest of the entries: the host signed exactly these), then pages
             val pages = entries.chunked(joinPage)
-            pages.mapIndexed { i, page ->
-                val body = JoinWire.pageBytes(page)
-                sealer.seal(if (i == 0) concat(head, Writer().u32(entries.size).bytes(), body) else body, final = i == pages.lastIndex)
-            }
+            listOf(sealer.seal(concat(head, Writer().u32(entries.size).u32(joinPage).bytes(), digest), final = false)) +
+                pages.mapIndexed { i, page -> sealer.seal(JoinWire.pageBytes(page), final = i == pages.lastIndex) }
         }
         Crypto.wipe(key)
         val w = Writer().u8(1).fixed(na, 32).fixed(eHPub, Crypto.PUB_BYTES).fixed(identity.publicKey, Crypto.PUB_BYTES).fixed(sig, Crypto.SIG_BYTES)
@@ -733,104 +760,188 @@ class JoinClient(
     private fun refuse(): Nothing { eph = null; throw ProtocolError(CloudError.JOIN_REFUSED) }
 
     /**
-     * Checks the answer completely before anything is kept: it is signed by the host key pinned in the QR code over both nonces,
-     * both ephemeral keys, the status and the number and digest of what it carries; every frame opens under the ECDH-and-code key
-     * and in order, the last one final; the chain verifies entry by entry from its genesis, which hashes to the cloud id of the
-     * invitation; the host is a current node with the pinned fingerprint; this key is a member; the secrets match the chain's
-     * commitment for the current epoch.
+     * Reads a whole answer that is already in memory: the same checks, in the same order, as reading it frame by frame. A wiring stage
+     * that reads from a socket uses [beginAnswer] instead, so that nothing is held that has not been checked.
      */
     @Synchronized fun finish(answer: ByteArray, now: Long): JoinOutcome {
-        val mine = eph ?: throw ProtocolError(CloudError.JOIN_REFUSED)
+        if (answer.size < JoinWire.HEAD_BYTES || answer.size > JoinWire.ANSWER_BYTES_MAX) junk()
+        val rd = beginAnswer(now)
         val r = Reader(answer)
-        if (r.u8() != 1) junk()
-        val na = r.fixed(32)
-        val eH = r.fixed(Crypto.PUB_BYTES)
-        val hostKey = r.fixed(Crypto.PUB_BYTES)
-        val sig = r.fixed(Crypto.SIG_BYTES)
-        if (!Crypto.isValidPoint(eH) || !Crypto.isValidPoint(hostKey) || !Crypto.equal(Crypto.fingerprint(hostKey), invite.fingerprint)) junk()
-        val ecdh = Crypto.ecdh(mine.private, eH)
-        val key = JoinWire.a2cKey(ecdh, invite.code, invite.cloudId, nc, na)
-        Crypto.wipe(ecdh)
-        // The answer is a stream of frames (docs 4.2): the first holds the status and what it needs, the chain part follows in pages.
-        // Entries are checked as they arrive; the host's signature covers their number and digest and is checked when the last frame is
-        // in. Until then nothing is trusted: a failure of the chain rules is remembered and counts only if the host signed this answer.
-        val opener = FrameOpener(key, 0, invite.cloudId, FrameType.JOIN)
-        var status = -1
-        var secrets: EpochSecrets? = null
-        var extra = ByteArray(0)
-        var ownerNonce: ByteArray? = null
-        var declared = 0
-        var received = 0
-        var broken: ProtocolError? = null
-        val builder = Chain.Builder(invite.cloudId)
-        val digest = JoinWire.ChainDigest()
-        try {
-            if (r.remaining() == 0) junk()
-            var first = true
-            while (r.remaining() > 0) {
-                val p = Reader(opener.open(r.lp(FrameCodec.HEADER + FrameCodec.MAX_PLAIN + FrameCodec.TAG)))
-                if (first) {
-                    first = false
-                    status = p.u8()
-                    when (status) {
-                        JoinStatus.OK, JoinStatus.ALREADY_MEMBER -> {
-                            secrets = EpochSecrets(p.u32(), p.fixed(32), p.fixed(32))
-                            extra = JoinWire.secretsBytes(secrets)
-                            declared = p.u32()
-                            if (declared < 1 || declared > ChainEntry.MAX_ENTRIES) junk()
-                        }
-                        JoinStatus.PENDING -> {
-                            val has = p.u8()
-                            if (has > 1) junk()
-                            if (has == 1) { ownerNonce = p.fixed(16); extra = byteArrayOf(1) + ownerNonce } else extra = byteArrayOf(0)
-                            p.end()
-                        }
-                        JoinStatus.REMOVED, JoinStatus.NODE_ID_TAKEN, JoinStatus.DECLINED -> p.end()
-                        else -> junk()
-                    }
-                }
-                if (status == JoinStatus.OK || status == JoinStatus.ALREADY_MEMBER) {
-                    val n = p.u32()
-                    if (n < 1 || n > JoinWire.PAGE || received + n > declared) junk()
-                    repeat(n) {
-                        val e = ChainEntry.parse(p.lp(ChainEntry.MAX_BODY + 4 + Crypto.SIG_BYTES))
-                        digest.update(e)
-                        received++
-                        if (broken == null) try { builder.add(listOf(e)) } catch (x: ProtocolError) { broken = x }
-                    }
+        rd.head(r.fixed(JoinWire.HEAD_BYTES))
+        while (r.remaining() > 0) rd.frame(r.lp(JoinWire.PAGE_FRAME_MAX), now)
+        return rd.end(now)
+    }
+
+    /** Starts reading one answer, a piece at a time: [AnswerReader.head] (227 bytes), then each `lp(frame)` body, then [AnswerReader.end]. */
+    @Synchronized fun beginAnswer(now: Long): AnswerReader {
+        if (eph == null) throw ProtocolError(CloudError.JOIN_REFUSED)
+        return AnswerReader(now)
+    }
+
+    /**
+     * One answer being received (docs 4.2, Codex Join.kt:770). **Nothing beyond the first frame is accepted until the host's
+     * signature has been checked**: an answer without a chain is one final frame; a chain answer starts with a manifest (status,
+     * secrets, entry count, page size, digest of the entries) that the host signed with the key pinned in the QR code. Frames are
+     * sealed under a key that someone on the path with the code can compute, so the signature is what counts, and it is checked
+     * on the first frame. After it the reception is incremental and bounded: at most `1 + ceil(count / pageSize)` frames, each of
+     * its position's size at most, [JoinWire.ANSWER_BYTES_MAX] bytes all told and [JoinWire.ANSWER_LIMIT_MS] of time; every page holds
+     * exactly the entries the manifest says; each entry is checked against the chain so far as it arrives. A failure before the
+     * signature holds is junk (the exchange goes on); one after it ends the exchange. A reader that has failed is dead.
+     */
+    inner class AnswerReader internal constructor(private val startedAt: Long) {
+        private var opener: FrameOpener? = null
+        private var key: ByteArray? = null
+        private var na = ByteArray(0)
+        private var eH = ByteArray(0)
+        private var hostKey = ByteArray(0)
+        private var sig = ByteArray(0)
+        private var status = -1
+        private var secrets: EpochSecrets? = null
+        private var extra = ByteArray(0)
+        private var ownerNonce: ByteArray? = null
+        private var total = 0
+        private var pageSize = 0
+        private var wantDigest = ByteArray(0)
+        private var received = 0
+        private var frames = 0
+        private var bytes = 0L
+        private var pagesExpected = 0
+        private var verified = false
+        private var dead = false
+        private val builder = Chain.Builder(invite.cloudId)
+        private val digest = JoinWire.ChainDigest()
+
+        private fun chainStatus() = status == JoinStatus.OK || status == JoinStatus.ALREADY_MEMBER
+
+        private fun die() { dead = true; key?.let { Crypto.wipe(it) }; key = null }
+
+        private inline fun <T> guarded(block: () -> T): T = synchronized(this@JoinClient) {
+            if (dead) throw ProtocolError(CloudError.JOIN_REFUSED)
+            try {
+                block()
+            } catch (e: ProtocolError) {
+                die()
+                throw e
+            }
+        }
+
+        fun head(bytes: ByteArray) = guarded {
+            val mine = eph ?: junk()
+            if (opener != null || bytes.size != JoinWire.HEAD_BYTES) junk()
+            val r = Reader(bytes)
+            if (r.u8() != 1) junk()
+            na = r.fixed(32)
+            eH = r.fixed(Crypto.PUB_BYTES)
+            hostKey = r.fixed(Crypto.PUB_BYTES)
+            sig = r.fixed(Crypto.SIG_BYTES)
+            if (!Crypto.isValidPoint(eH) || !Crypto.isValidPoint(hostKey) || !Crypto.equal(Crypto.fingerprint(hostKey), invite.fingerprint)) junk()
+            val ecdh = Crypto.ecdh(mine.private, eH)
+            key = JoinWire.a2cKey(ecdh, invite.code, invite.cloudId, nc, na)
+            Crypto.wipe(ecdh)
+            opener = FrameOpener(key!!, 0, invite.cloudId, FrameType.JOIN)
+        }
+
+        /** One frame, as received (the bytes after its length). [now] is the clock, for the time limit. */
+        fun frame(frame: ByteArray, now: Long) = guarded {
+            val op = opener ?: junk()
+            if (now - startedAt > JoinWire.ANSWER_LIMIT_MS) junk()
+            frames++
+            bytes += frame.size
+            if (bytes > JoinWire.ANSWER_BYTES_MAX) junk()
+            if (frame.size > (if (frames == 1) JoinWire.MANIFEST_FRAME_MAX else JoinWire.PAGE_FRAME_MAX)) junk()
+            if (verified && frames > 1 + pagesExpected) junk() // more frames than the signed manifest allows
+            if (frames > 1 && !verified) junk() // nothing is read past the first frame until the signature held
+            val plain = op.open(frame)
+            if (frames == 1) first(plain, op) else page(plain)
+        }
+
+        private fun first(plain: ByteArray, op: FrameOpener) {
+            val p = Reader(plain)
+            status = p.u8()
+            when (status) {
+                JoinStatus.OK, JoinStatus.ALREADY_MEMBER -> {
+                    secrets = EpochSecrets(p.u32(), p.fixed(32), p.fixed(32))
+                    extra = JoinWire.secretsBytes(secrets!!)
+                    total = p.u32()
+                    pageSize = p.u32()
+                    wantDigest = p.fixed(32)
                     p.end()
+                    if (total < 1 || total > ChainEntry.MAX_ENTRIES || pageSize < 1 || pageSize > JoinWire.PAGE) junk()
+                    if (op.finished) junk() // a manifest is followed by its pages
+                    pagesExpected = (total + pageSize - 1) / pageSize
                 }
-            }
-            opener.end() // the last frame must have been the final one: a cut answer is not an answer
-            if (received != declared) junk()
-        } finally {
-            Crypto.wipe(key)
-        }
-        if (!Crypto.ecdsaVerify(hostKey, JoinWire.answerSig(invite.cloudId, nc, na, ephPub, eH, status, extra, received, digest.done()), sig)) junk()
-        when (status) {
-            JoinStatus.PENDING -> {
-                if (ownerNonce != null && nO == null) { // the first owner nonce is the one; the digits are fixed from here
-                    nO = ownerNonce
-                    confirmationCode = ConfirmationCode.of(invite.cloudId, identity.publicKey, nodeId, name, nN, ownerNonce)
-                    val ok = JoinWire.c2a2Key(invite.code, invite.cloudId, nc, ownerNonce)
-                    val openFrame = Frames.sealOnce(ok, 0, invite.cloudId, FrameType.JOIN, Writer().u8(1).fixed(nN, 16).bytes())
-                    Crypto.wipe(ok)
-                    opening = Writer().u8(2).fixed(nc, 32).fixed(ownerNonce, 16).raw(openFrame).bytes()
+                JoinStatus.PENDING -> {
+                    val has = p.u8()
+                    if (has > 1) junk()
+                    if (has == 1) { ownerNonce = p.fixed(16); extra = byteArrayOf(1) + ownerNonce!! } else extra = byteArrayOf(0)
+                    p.end()
+                    if (!op.finished) junk() // an answer without a chain is one final frame
                 }
-                return JoinOutcome.Pending(confirmationCode)
+                JoinStatus.REMOVED, JoinStatus.NODE_ID_TAKEN, JoinStatus.DECLINED -> {
+                    p.end()
+                    if (!op.finished) junk()
+                }
+                else -> junk()
             }
-            JoinStatus.REMOVED, JoinStatus.NODE_ID_TAKEN, JoinStatus.DECLINED -> { eph = null; return JoinOutcome.Rejected(status) }
+            // the host's signature, now: over the status, the secrets or the owner's nonce, and the count and digest of the entries
+            val count = if (chainStatus()) total else 0
+            val dg = if (chainStatus()) wantDigest else JoinWire.chainDigest(emptyList())
+            if (!Crypto.ecdsaVerify(hostKey, JoinWire.answerSig(invite.cloudId, nc, na, ephPub, eH, status, extra, count, dg), sig)) junk()
+            verified = true
         }
-        if (broken != null) refuse() // the host signed a chain that breaks the rules
-        val chain = try { builder.build() } catch (e: ProtocolError) { refuse() }
-        val st = chain.state()
-        val host = st.member(Hex.of(invite.fingerprint))
-        if (!chain.cloudId.contentEquals(invite.cloudId) || host == null || host.nodeId != invite.nodeId || host.kind != MemberKind.NODE) refuse()
-        if (st.member(identity.memberId()) == null) refuse()
-        val s = secrets!!
-        val want = st.commitment(s.epoch)
-        if (s.epoch != st.epoch || want == null || !Crypto.equal(want, s.commitment())) refuse()
-        eph = null
-        return JoinOutcome.Joined(chain, s)
+
+        private fun page(plain: ByteArray) {
+            if (!chainStatus()) junk()
+            // from here on the frames come from the host that signed the manifest: what is wrong with them ends the exchange
+            try {
+                val p = Reader(plain)
+                val n = p.u32()
+                if (n != minOf(pageSize, total - received)) refuse()
+                repeat(n) {
+                    val e = ChainEntry.parse(p.lp(ChainEntry.MAX_BODY + 4 + Crypto.SIG_BYTES))
+                    digest.update(e)
+                    received++
+                    builder.add(listOf(e))
+                }
+                p.end()
+            } catch (x: ProtocolError) {
+                refuse()
+            }
+        }
+
+        /** The carrier closed. The last frame must have been the final one; then the outcome, as before. */
+        fun end(now: Long): JoinOutcome = guarded {
+            val op = opener ?: junk()
+            if (now - startedAt > JoinWire.ANSWER_LIMIT_MS) junk()
+            op.end() // a cut answer is not an answer (truncated)
+            die()
+            if (!verified) junk()
+            when (status) {
+                JoinStatus.PENDING -> {
+                    val on = ownerNonce
+                    if (on != null && nO == null) { // the first owner nonce is the one; the digits are fixed from here
+                        nO = on
+                        confirmationCode = ConfirmationCode.of(invite.cloudId, identity.publicKey, nodeId, name, nN, on)
+                        val ok = JoinWire.c2a2Key(invite.code, invite.cloudId, nc, on)
+                        val openFrame = Frames.sealOnce(ok, 0, invite.cloudId, FrameType.JOIN, Writer().u8(1).fixed(nN, 16).bytes())
+                        Crypto.wipe(ok)
+                        opening = Writer().u8(2).fixed(nc, 32).fixed(on, 16).raw(openFrame).bytes()
+                    }
+                    return@guarded JoinOutcome.Pending(confirmationCode)
+                }
+                JoinStatus.REMOVED, JoinStatus.NODE_ID_TAKEN, JoinStatus.DECLINED -> { eph = null; return@guarded JoinOutcome.Rejected(status) }
+            }
+            if (received != total || !Crypto.equal(digest.done(), wantDigest)) refuse() // the host signed a manifest its pages do not fit
+            val chain = try { builder.build() } catch (e: ProtocolError) { refuse() }
+            val st = chain.state()
+            val host = st.member(Hex.of(invite.fingerprint))
+            if (!chain.cloudId.contentEquals(invite.cloudId) || host == null || host.nodeId != invite.nodeId || host.kind != MemberKind.NODE) refuse()
+            if (st.member(identity.memberId()) == null) refuse()
+            val s = secrets!!
+            val want = st.commitment(s.epoch)
+            if (s.epoch != st.epoch || want == null || !Crypto.equal(want, s.commitment())) refuse()
+            eph = null
+            JoinOutcome.Joined(chain, s)
+        }
     }
 }

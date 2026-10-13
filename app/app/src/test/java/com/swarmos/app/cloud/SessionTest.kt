@@ -335,8 +335,8 @@ class SessionTest {
     private fun captured(real: ByteArray, nonce: ByteArray = Crypto.random(32), fp: ByteArray? = null): ByteArray {
         val r = Reader(real)
         r.u8(); r.u8()
-        val node = r.str(8); val fpI = r.fixed(32); val eph = r.fixed(65); r.fixed(32); val tag = r.fixed(8); val ext = r.lp(256)
-        return Writer().u8(1).u8(1).str(node).fixed(fp ?: fpI, 32).fixed(eph, 65).fixed(nonce, 32).fixed(tag, 8).lp(ext).fixed(Crypto.random(64), 64).bytes()
+        val node = r.str(8); val fpI = r.fixed(32); val eph = r.fixed(65); r.fixed(32); val tag = r.fixed(8); val ts = r.u64(); val ext = r.lp(256)
+        return Writer().u8(1).u8(1).str(node).fixed(fp ?: fpI, 32).fixed(eph, 65).fixed(nonce, 32).fixed(tag, 8).u64(ts).lp(ext).fixed(Crypto.random(64), 64).bytes()
     }
 
     @Test fun outsidersAndCapturedIdentitiesNeverTouchTheResyncBudgetAndLearnNothingAboutMembership() { // Codex Session.kt:247
@@ -572,9 +572,9 @@ class SessionTest {
 
         val ini2 = hs(a, modern).initiate(b.nodeId, b.id, T0)
         val ri = Reader(ini2.init)
-        ri.u8(); ri.u8(); val n2 = ri.str(8); val f2 = ri.fixed(32); val e2 = ri.fixed(65); val no2 = ri.fixed(32); val tag = ri.fixed(8); ri.lp(256)
+        ri.u8(); ri.u8(); val n2 = ri.str(8); val f2 = ri.fixed(32); val e2 = ri.fixed(65); val no2 = ri.fixed(32); val tag = ri.fixed(8); val ts2 = ri.u64(); ri.lp(256)
         val proof = ri.fixed(64)
-        val initStripped = Writer().u8(1).u8(1).str(n2).fixed(f2, 32).fixed(e2, 65).fixed(no2, 32).fixed(tag, 8).lp(ByteArray(0)).fixed(proof, 64).bytes()
+        val initStripped = Writer().u8(1).u8(1).str(n2).fixed(f2, 32).fixed(e2, 65).fixed(no2, 32).fixed(tag, 8).u64(ts2).lp(ByteArray(0)).fixed(proof, 64).bytes()
         assertError(CloudError.NOT_MEMBER) { hs(b, modern).respond(initStripped, T0) } // the Init is signed over its offer: caught at the responder now
     }
 
@@ -593,5 +593,31 @@ class SessionTest {
         assertError(CloudError.MALFORMED) { Caps.decodeExt(noAes) }
         val smallFrame = Writer().u8(1).lp(Writer().u8(1).u8(2).u8(1).u8(0).u8(0).u8(0).u32(100).bytes()).bytes()
         assertError(CloudError.MALFORMED) { Caps.decodeExt(smallFrame) }
+    }
+
+    @Test fun aCapturedSignedInitIsNotGoodAfterItsWindowEvenWhenItsNonceRecordIsGone() { // Codex Session.kt:266
+        val (_, ps) = cloudWith(4)
+        val (b, m1, m2, m3) = ps
+        // one resync a minute for each member: a replay that got through would show at once
+        val h = SessionHandshake(b.chain.cloudId, b.identity, b.nodeId, { b.chain.state() }, { listOf(dk) }, maxResyncPerMinute = 6, maxResyncPerMinutePerMember = 1)
+        val old = Crypto.random(32)
+        val captured = listOf(m1, m2, m3).map { stale(it, old, b, T0).init } // signed Inits whose tag no epoch of b knows: the resync path
+        captured.forEachIndexed { i, init -> h.respond(init, T0 + i, "10.0.0.$i") } // each answered once, inside its window
+        // inside the window a copy is a replay (the nonce record), a little after it the window refuses it
+        assertError(CloudError.NOT_MEMBER) { h.respond(captured[0], T0 + 5, "10.0.0.7") }
+        assertError(CloudError.SKEW) { h.respond(captured[0], T0 + SessionHandshake.INIT_SKEW_MS + 1, "10.0.0.7") }
+        // after the ten minutes the nonce records are gone; the copies are cycled, six every 61 seconds, from two addresses
+        var t = T0 + SessionHandshake.SEEN_INIT_MS + 1_000
+        repeat(60) { i ->
+            t += 61_000
+            assertError(CloudError.SKEW) { h.respond(captured[i % 3], t, "10.0.0.${8 + i % 2}") }
+        }
+        assertEquals(3, h.seenCount) // no nonce was recorded for any of them
+        // and none of that was charged: member m1's own one resync of this minute is still free
+        val fresh = stale(m1, old, b, t + 1)
+        assertTrue(h.respond(fresh.init, t + 1, "10.0.0.20").reply.isNotEmpty())
+        // an Init from the future beyond the window is refused too, one inside the window is not
+        assertError(CloudError.SKEW) { h.respond(stale(m2, old, b, t + 40_000).init, t + 1, "10.0.0.21") }
+        assertTrue(h.respond(stale(m2, old, b, t + 25_000).init, t + 1, "10.0.0.21").reply.isNotEmpty())
     }
 }

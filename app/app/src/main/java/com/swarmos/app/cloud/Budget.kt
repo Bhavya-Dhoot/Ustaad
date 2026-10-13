@@ -8,23 +8,31 @@ package com.swarmos.app.cloud
 internal class WindowBudget(private val limit: Int, private val windowMs: Long = 60_000L, private val maxKeys: Int = 4096) {
     init { require(limit >= 1 && maxKeys >= 1) { "budget" } }
 
-    private val times = HashMap<String, ArrayDeque<Long>>()
+    private class Rec { val times = ArrayDeque<Long>(); val costs = ArrayDeque<Int>(); var sum = 0L }
+
+    private val recs = HashMap<String, Rec>()
 
     val size: Int
-        @Synchronized get() = times.size
+        @Synchronized get() = recs.size
 
-    /** True and counted, or false and nothing changed except that expired records may have been removed. */
-    @Synchronized fun allow(key: String, now: Long): Boolean {
-        if (times.size >= maxKeys / 2) times.entries.removeAll { it.value.isEmpty() || now - it.value.last() >= windowMs }
-        val q = times[key]
-        if (q == null) {
-            if (times.size >= maxKeys) return false
-            times[key] = ArrayDeque<Long>().also { it.addLast(now) }
+    private fun trim(r: Rec, now: Long) {
+        while (r.times.isNotEmpty() && now - r.times.first() >= windowMs) { r.times.removeFirst(); r.sum -= r.costs.removeFirst() }
+    }
+
+    /** True and counted ([cost] units of the limit), or false and nothing changed except that expired records may have been removed. */
+    @Synchronized fun allow(key: String, now: Long, cost: Int = 1): Boolean {
+        require(cost >= 1)
+        if (cost > limit) return false
+        if (recs.size >= maxKeys / 2) recs.entries.removeAll { trim(it.value, now); it.value.times.isEmpty() }
+        val r = recs[key]
+        if (r == null) {
+            if (recs.size >= maxKeys) return false
+            recs[key] = Rec().also { it.times.addLast(now); it.costs.addLast(cost); it.sum = cost.toLong() }
             return true
         }
-        while (q.isNotEmpty() && now - q.first() >= windowMs) q.removeFirst()
-        if (q.size >= limit) return false
-        q.addLast(now)
+        trim(r, now)
+        if (r.sum + cost > limit) return false
+        r.times.addLast(now); r.costs.addLast(cost); r.sum += cost
         return true
     }
 }

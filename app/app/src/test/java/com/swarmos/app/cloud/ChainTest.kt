@@ -604,7 +604,8 @@ class ChainTest {
         c.chain.recover(rec1, n2.identity.publicKey, n2.nodeId, "n2", rec2.publicKey, T0 + 2)
         assertEquals(ChainEntry.MAX_MEMBERS, c.state.members.size)
         assertEquals(n2.id, c.state.ownerId)
-        assertNull(c.state.member(n1.id)); assertTrue(c.state.isRemoved(n1.id)) // the old owner cannot come back
+        assertNull(c.state.member(n1.id))
+        assertFalse(c.state.isRemoved(n1.id)); assertTrue(c.state.removed.isEmpty()) // the removed set keeps its bound: the chain remembers the eviction (Codex Chain.kt:267)
         // a member who verifies the chain from the genesis agrees
         assertEquals(c.chain.heartbeat(), Chain.fromEntries(c.chain.entries()).heartbeat())
     }
@@ -687,13 +688,13 @@ class ChainTest {
         val t = Takeover()
         assertNull(t.device.state().member(t.victim.id)) // the thief removed it
         val intake = RecoveryIntake(t.device)
-        assertTrue(intake.receive(listOf(t.repair), "10.0.0.7", T0))
+        assertTrue(intake.receive(EntryRun.encode(listOf(t.repair)), "10.0.0.7", T0))
         assertEquals(t.newOwner.id, t.device.state().ownerId)
         assertNotNull(t.device.state().member(t.victim.id)) // the removal is undone
         assertEquals(2, t.device.dropped().size)
         assertEquals(t.repair.seq, t.device.recoveryBoundary())
         // asking again changes nothing and says no
-        assertFalse(intake.receive(listOf(t.repair), "10.0.0.7", T0 + 1))
+        assertFalse(intake.receive(EntryRun.encode(listOf(t.repair)), "10.0.0.7", T0 + 1))
     }
 
     @Test fun theUnauthenticatedPathTakesNothingButRecoverySignedProofsAndReleasesNothing() {
@@ -702,16 +703,16 @@ class ChainTest {
         val intake = RecoveryIntake(t.device)
         // the thief's own owner-signed entries: not a recovery proof
         val more = t.thief.addDevice(t.c.owner.identity, Peer.newNodeId(), "more", MemberKind.NODE, newKey(), T0 + 30)
-        assertFalse(intake.receive(listOf(more), "10.0.0.1", T0))
+        assertFalse(intake.receive(EntryRun.encode(listOf(more)), "10.0.0.1", T0))
         // an owner-key holder's fork with owner entries only
         val alt = ChainEntry.sign(t.c.owner.identity, ChainEntry.addBody(t.c.copy().state(), T0, Peer.newNodeId(), "alt", MemberKind.NODE, newKey(), null, null))
-        assertFalse(intake.receive(listOf(alt), "10.0.0.2", T0))
+        assertFalse(intake.receive(EntryRun.encode(listOf(alt)), "10.0.0.2", T0))
         // a "recovery" entry signed by somebody else
         val forged = ChainEntry.sign(SoftwareIdentity.generate(), ChainEntry.transferBody(t.c.copy().state(), 2, T0, newKey(), Peer.newNodeId(), "x", newKey()))
-        assertFalse(intake.receive(listOf(forged), "10.0.0.3", T0))
+        assertFalse(intake.receive(EntryRun.encode(listOf(forged)), "10.0.0.3", T0))
         // a gap, a run that is not contiguous, an empty run
-        assertFalse(intake.receive(emptyList(), "10.0.0.4", T0))
-        assertFalse(intake.receive(listOf(t.repair, t.repair), "10.0.0.4", T0))
+        assertFalse(intake.receive(EntryRun.encode(emptyList()), "10.0.0.4", T0))
+        assertFalse(intake.receive(EntryRun.encode(listOf(t.repair, t.repair)), "10.0.0.4", T0))
         assertEquals(before, t.device.heartbeat())
         assertTrue(t.device.flags().isEmpty())
     }
@@ -719,11 +720,11 @@ class ChainTest {
     @Test fun aRetiredRecoveryCodeCannotUseTheUnauthenticatedPathBelowTheBoundary() {
         val t = Takeover()
         val intake = RecoveryIntake(t.device)
-        assertTrue(intake.receive(listOf(t.repair), "10.0.0.7", T0))
+        assertTrue(intake.receive(EntryRun.encode(listOf(t.repair)), "10.0.0.7", T0))
         // someone who kept the old code signs another repair at the same number: both carry recovery entries, nothing moves
         val again = t.c.copy().recover(t.c.recovery, newKey(), Peer.newNodeId(), "second", newKey(), T0 + 60, forkAt = 3L)
         val head = t.device.heartbeat()
-        assertFalse(intake.receive(listOf(again), "10.0.0.8", T0 + 1))
+        assertFalse(intake.receive(EntryRun.encode(listOf(again)), "10.0.0.8", T0 + 1))
         assertEquals(head, t.device.heartbeat())
     }
 
@@ -732,23 +733,129 @@ class ChainTest {
         val junk = ChainEntry.sign(SoftwareIdentity.generate(), ChainEntry.transferBody(t.c.copy().state(), 2, T0, newKey(), Peer.newNodeId(), "x", newKey()))
         val intake = RecoveryIntake(t.device, maxPerMinute = 100, maxPerMinutePerSource = 2, maxSources = 4, maxRun = 3)
         // two tries a minute from one address, then it is refused before anything is verified, even with the right proof
-        assertFalse(intake.receive(listOf(junk), "10.0.0.1", T0)); assertFalse(intake.receive(listOf(junk), "10.0.0.1", T0 + 1))
-        assertFalse(intake.receive(listOf(t.repair), "10.0.0.1", T0 + 2))
+        assertFalse(intake.receive(EntryRun.encode(listOf(junk)), "10.0.0.1", T0)); assertFalse(intake.receive(EntryRun.encode(listOf(junk)), "10.0.0.1", T0 + 1))
+        assertFalse(intake.receive(EntryRun.encode(listOf(t.repair)), "10.0.0.1", T0 + 2))
         // four addresses fill the table; a fifth is refused and leaves no record, the right proof from an old address is still counted
-        for (i in 2..4) assertFalse(intake.receive(listOf(junk), "10.0.0.$i", T0 + 3))
-        assertFalse(intake.receive(listOf(t.repair), "10.0.0.9", T0 + 4))
+        for (i in 2..4) assertFalse(intake.receive(EntryRun.encode(listOf(junk)), "10.0.0.$i", T0 + 3))
+        assertFalse(intake.receive(EntryRun.encode(listOf(t.repair)), "10.0.0.9", T0 + 4))
         // a minute later the table is empty again and the proof goes through
-        assertTrue(intake.receive(listOf(t.repair), "10.0.0.9", T0 + 61_000))
+        assertTrue(intake.receive(EntryRun.encode(listOf(t.repair)), "10.0.0.9", T0 + 61_000))
         // a run over the cap is refused unread
         val c2 = Takeover()
         val capped = RecoveryIntake(c2.device, maxRun = 3)
-        assertFalse(capped.receive(List(4) { c2.repair }, "10.0.0.1", T0))
-        assertTrue(capped.receive(listOf(c2.repair), "10.0.0.1", T0 + 1))
+        assertFalse(capped.receive(EntryRun.encode(List(4) { c2.repair }), "10.0.0.1", T0))
+        assertTrue(capped.receive(EntryRun.encode(listOf(c2.repair)), "10.0.0.1", T0 + 1))
         // and the whole device has a budget too: the right proof from a fresh address is refused once three tries were made
         val c3 = Takeover()
         val global = RecoveryIntake(c3.device, maxPerMinute = 3, maxPerMinutePerSource = 10)
-        repeat(3) { assertFalse(global.receive(listOf(junk), "10.0.1.$it", T0)) }
-        assertFalse(global.receive(listOf(c3.repair), "10.0.1.9", T0 + 1))
-        assertTrue(global.receive(listOf(c3.repair), "10.0.1.9", T0 + 61_000))
+        repeat(3) { assertFalse(global.receive(EntryRun.encode(listOf(junk)), "10.0.1.$it", T0)) }
+        assertFalse(global.receive(EntryRun.encode(listOf(c3.repair)), "10.0.1.9", T0 + 1))
+        assertTrue(global.receive(EntryRun.encode(listOf(c3.repair)), "10.0.1.9", T0 + 61_000))
+    }
+
+    // ---- stage 1e ----------------------------------------------------------------------------------------------------------------------
+
+    @Test fun aRecoveryTransferToAFullListNeverGrowsTheRemovedSetAndTheEvictedKeyStillCannotComeBack() { // Codex Chain.kt:267
+        // rules alone: 512 members and a removed set already at its bound of 4096
+        val c = Cloud.create()
+        val full = HashMap<String, ChainMember>()
+        full.putAll(c.state.members.associateBy { it.id })
+        repeat(ChainEntry.MAX_MEMBERS - 1) {
+            val id = Hex.of(Crypto.random(32))
+            full[id] = ChainMember(id, Peer.newNodeId(), "m", MemberKind.NODE, null, null, null, 1)
+        }
+        val tombstones = HashSet<String>().apply { repeat(ChainEntry.MAX_REMOVED) { add(Hex.of(Crypto.random(32))) } }
+        val st = c.state.copy(members = full, removed = tombstones)
+        assertEquals(ChainEntry.MAX_MEMBERS, st.members.size); assertEquals(ChainEntry.MAX_REMOVED, st.removed.size)
+        val n1 = Peer.bare()
+        val e = ChainEntry.sign(c.recovery, ChainEntry.transferBody(st, 2, T0, n1.identity.publicKey, n1.nodeId, "n1", newKey()))
+        val next = ChainRules.apply(st, e) // recovery must not fail at capacity
+        assertEquals(ChainEntry.MAX_MEMBERS, next.members.size)
+        assertEquals(ChainEntry.MAX_REMOVED, next.removed.size) // not 4097
+        assertNull(next.member(c.owner.id)); assertEquals(n1.id, next.ownerId)
+        // on a chain: the evicted old owner is looked up in the chain, so it can neither be added nor made owner again
+        val ch = Cloud.create()
+        while (ch.state.members.size < ChainEntry.MAX_MEMBERS - 1) ch.chain.addDevice(ch.owner.identity, Peer.newNodeId(), "m", MemberKind.NODE, newKey(), T0)
+        val a1 = Peer.bare(); val r1 = SoftwareIdentity.generate()
+        ch.chain.recover(ch.recovery, a1.identity.publicKey, a1.nodeId, "a1", r1.publicKey, T0 + 1)
+        val a2 = Peer.bare()
+        ch.chain.recover(r1, a2.identity.publicKey, a2.nodeId, "a2", newKey(), T0 + 2) // full: a1 is pushed out
+        assertNull(ch.state.member(a1.id)); assertTrue(ch.state.removed.isEmpty())
+        ch.chain.remove(a2.identity, ch.state.members.first { it.id != a2.id && it.id != ch.owner.id }.id, T0 + 3) // a place is free again
+        assertError(CloudError.BAD_ENTRY) { ch.chain.addDevice(a2.identity, Peer.newNodeId(), "back", MemberKind.NODE, a1.identity.publicKey, T0 + 4) }
+        assertError(CloudError.BAD_ENTRY) { ch.chain.transfer(a2.identity, a1.identity.publicKey, Peer.newNodeId(), "back", T0 + 4) }
+        // the same on a chain rebuilt from its entries (a newcomer, a restart)
+        val rebuilt = Chain.fromEntries(ch.chain.entries())
+        assertEquals(ch.chain.heartbeat(), rebuilt.heartbeat())
+        assertError(CloudError.BAD_ENTRY) { rebuilt.addDevice(a2.identity, Peer.newNodeId(), "back", MemberKind.NODE, a1.identity.publicKey, T0 + 5) }
+    }
+
+    /** A branch with [owners] owner entries after the shared part, a recovery entry, and one more entry with a signature that is not valid. */
+    private inner class PaddedFork(owners: Int) {
+        val c = cloudWith(1).first
+        val a = c.copy()
+        val b = c.copy()
+        val bad: ChainEntry
+        val run: List<ChainEntry>
+
+        init {
+            a.addDevice(c.owner.identity, Peer.newNodeId(), "on A", MemberKind.NODE, newKey(), T0 + 5)
+            repeat(owners) { b.addDevice(c.owner.identity, Peer.newNodeId(), "b$it", MemberKind.NODE, newKey(), T0 + 10 + it) }
+            b.recover(c.recovery, newKey(), Peer.newNodeId(), "recovered", newKey(), T0 + 5_000)
+            bad = ChainEntry.sign(SoftwareIdentity.generate(), ChainEntry.addBody(b.state(), T0, Peer.newNodeId(), "tail", MemberKind.NODE, newKey(), null, null))
+            run = b.entries().drop(2) + bad
+        }
+    }
+
+    @Test fun theWorkOfVerifyingIsPaidByEntriesAndAnAuthenticatedPrefixIsNeverVerifiedTwice() { // Codex Chain.kt:452
+        val f = PaddedFork(60)
+        val dev = Chain.fromEntries(f.a.entries())
+        val intake = RecoveryIntake(dev, maxPerMinute = 100, maxPerMinutePerSource = 100, maxEntriesPerMinute = 200, maxEntriesPerMinutePerSource = 200)
+        val body = EntryRun.encode(f.run) // 62 entries: 60 owner entries, the recovery entry and a tail that is not signed by anyone who counts
+        // the first time the valid prefix is really verified; the whole run is refused because of its tail, the device keeps its branch
+        val v0 = dev.verifies
+        assertFalse(intake.receive(body, "10.0.0.1", T0))
+        val first = dev.verifies - v0
+        assertTrue("first run verified $first", first >= 60)
+        assertEquals(f.a.heartbeat(), dev.heartbeat())
+        // the same run from other addresses costs the one signature that is wrong and nothing else
+        val v1 = dev.verifies
+        assertFalse(intake.receive(body, "10.0.0.2", T0 + 1))
+        assertTrue("second run verified ${dev.verifies - v1}", dev.verifies - v1 <= 3)
+        val v2 = dev.verifies
+        assertFalse(intake.receive(body, "10.0.0.3", T0 + 2))
+        assertTrue(dev.verifies - v2 <= 3)
+        // and the entries are charged: 3 x 62 is 186 of the 200 for the minute, the fourth run is refused before it is decoded or verified
+        val v3 = dev.verifies
+        assertFalse(intake.receive(body, "10.0.0.4", T0 + 3))
+        assertEquals(v3, dev.verifies)
+        // a minute later the budget is back and the genuine run (without the bad tail) is adopted at once: its signatures are known
+        val good = EntryRun.encode(f.run.dropLast(1))
+        assertTrue(intake.receive(good, "10.0.0.5", T0 + 61_000))
+        assertEquals(f.b.heartbeat(), dev.heartbeat())
+    }
+
+    @Test fun theIntakeChargesItsBudgetBeforeDecodingAndRefusesWhatIsTooBigBeforeAllocating() { // Codex Chain.kt:713
+        val t = Takeover()
+        val intake = RecoveryIntake(t.device, maxPerMinute = 100, maxPerMinutePerSource = 2)
+        // 65,536 entries announced (the cap of a whole chain): refused from the count alone, the bytes behind it are never parsed
+        val huge = Writer().u32(ChainEntry.MAX_ENTRIES).raw(ByteArray(2_000)).bytes()
+        assertFalse(intake.receive(huge, "10.0.0.1", T0))
+        assertFalse(intake.receive(huge, "10.0.0.1", T0 + 1))
+        // two refusals used the address's budget: the right proof from the same address is refused too, without being read
+        assertFalse(intake.receive(EntryRun.encode(listOf(t.repair)), "10.0.0.1", T0 + 2))
+        assertTrue(intake.receive(EntryRun.encode(listOf(t.repair)), "10.0.0.2", T0 + 3))
+        // a count of 1025, a body over the size cap, a body too short for its count, and no body at all
+        val t2 = Takeover()
+        val i2 = RecoveryIntake(t2.device)
+        assertFalse(i2.receive(Writer().u32(Chain.MAX_RUN + 1).raw(ByteArray(64)).bytes(), "10.0.1.1", T0))
+        assertFalse(i2.receive(ByteArray(i2.maxBytes + 1), "10.0.1.2", T0))
+        assertFalse(i2.receive(Writer().u32(1000).raw(ByteArray(100)).bytes(), "10.0.1.3", T0))
+        assertFalse(i2.receive(ByteArray(0), "10.0.1.4", T0))
+        assertEquals(4 + Chain.MAX_RUN * EntryRun.MAX_ENTRY_BYTES, i2.maxBytes)
+        // the decoder itself refuses a count over its maximum before allocating, and a count the bytes cannot hold
+        assertError(CloudError.MALFORMED) { EntryRun.decode(Reader(Writer().u32(65_536).bytes()), 1024) }
+        assertError(CloudError.MALFORMED) { EntryRun.decode(Reader(Writer().u32(1_000).raw(ByteArray(100)).bytes()), 1024) }
+        assertTrue(i2.receive(EntryRun.encode(listOf(t2.repair)), "10.0.1.5", T0))
     }
 }

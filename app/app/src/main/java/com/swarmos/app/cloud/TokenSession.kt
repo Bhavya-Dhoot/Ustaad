@@ -68,13 +68,16 @@ class TokenIssuer(
     private val pendingMs: Long = 60_000L,
     private val maxAddressRecords: Int = 4096,
     private val maxSeenHellos: Int = 4096,
+    private val maxSeenHellosPerClient: Int = 64,
 ) {
     private class Pending(val session: Session, val clientId: String, val expiresAt: Long)
 
     private val keys = HashMap<String, ByteArray>()
     private val hellos = HashMap<String, ArrayDeque<Long>>()
     private val pending = LinkedHashMap<String, Pending>() // by session id
-    private val seenHellos = HashMap<String, Long>() // hellos whose proof held, to the end of their memory: a copy is refused
+    private class SeenHello(val until: Long, val clientId: String)
+
+    private val seenHellos = HashMap<String, SeenHello>() // hellos whose proof held, to the end of their memory: a copy is refused
 
     val pendingCount: Int get() = synchronized(pending) { pending.size }
     val addressRecords: Int get() = synchronized(hellos) { hellos.size }
@@ -117,11 +120,12 @@ class TokenIssuer(
         val m = state.member(memberId(keyId)) ?: throw ProtocolError(CloudError.UNKNOWN_KEY)
         if (m.kind == MemberKind.NODE) throw ProtocolError(CloudError.UNKNOWN_KEY)
         synchronized(seenHellos) { // the same proven hello twice is a copy (an observer replaying it): refused, bounded
-            seenHellos.entries.removeAll { it.value <= now }
+            seenHellos.entries.removeAll { it.value.until <= now }
             val id = Hex.of(keyId) + "/" + Hex.of(cn)
             if (id in seenHellos) throw ProtocolError(CloudError.REPLAYED)
-            if (seenHellos.size >= maxSeenHellos) throw ProtocolError(CloudError.BUSY)
-            seenHellos[id] = now + 2 * RequestAuth.MAX_SKEW_MS
+            // one client (one stolen key) may hold only so many records, so it cannot fill the table for the others (Codex TokenSession.kt:119)
+            if (seenHellos.values.count { it.clientId == m.id } >= maxSeenHellosPerClient || seenHellos.size >= maxSeenHellos) throw ProtocolError(CloudError.BUSY)
+            seenHellos[id] = SeenHello(now + 2 * RequestAuth.MAX_SKEW_MS, m.id)
         }
         val sn = Crypto.random(32)
         val d = TokenProtocol.derive(key, cn, sn, bootNonce)
