@@ -145,7 +145,8 @@ class StepLoop(
             if (o.verdict != Verdict.REFUSED) {
                 next = when {
                     call.tool in CHANGES_SCREEN && o.ok -> settle(i.driver, screen.hash)
-                    call.tool in READS_AGAIN -> ScreenReader.compact(i.driver.read())
+                    // a failed action, a wait or a question may still have left the screen different from the one the model saw
+                    call.tool in CHANGES_SCREEN || call.tool in READS_AGAIN -> ScreenReader.compact(i.driver.read())
                     else -> screen
                 }
                 if (call.tool == "type" && o.ok) {
@@ -169,13 +170,14 @@ class StepLoop(
 
     /** Re-reads up to [settleTries] times, [settleMs] apart, until the screen differs from [before] or the tries end. */
     private suspend fun settle(driver: PhoneDriver, before: String): Screen {
-        var s = ScreenReader.compact(driver.read())
+        var s: Screen? = null
         repeat(settleTries) {
             delayMs(settleMs)
-            s = ScreenReader.compact(driver.read())
-            if (s.hash != before) return s
+            val now = ScreenReader.compact(driver.read())
+            if (now.hash != before) return now
+            s = now
         }
-        return s
+        return s ?: ScreenReader.compact(driver.read())
     }
 
     /** After a type: the field must show the text. Null when it does (or cannot be checked), else what the model is told. */

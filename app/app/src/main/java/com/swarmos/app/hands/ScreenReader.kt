@@ -168,7 +168,7 @@ object ScreenReader {
         val head = "app: ${s.pkg}"
         val lines = s.elements.map { line(it) }
         val dropped = BooleanArray(lines.size)
-        fun size(): Int = head.length + 1 + lines.indices.filter { !dropped[it] }.sumOf { lines[it].length + 1 } + 40
+        fun size(): Int = head.length + 1 + lines.indices.filter { !dropped[it] }.sumOf { lines[it].length + 1 } + 60
         while (size() > maxChars) {
             val live = lines.indices.filter { !dropped[it] }
             if (live.isEmpty()) break

@@ -303,7 +303,9 @@ class HandsEngine(
         list += r
         list += state.value
         while (list.size > MAX_RUNS) {
-            val i = list.indexOfLast { terminal(it.phase) }
+            // finished runs first, then outside tasks nobody pressed Run on; a run that is acting is never dropped
+            var i = list.indexOfLast { terminal(it.phase) }
+            if (i < 0) i = list.indexOfLast { it.phase == Phase.WAITING_FOR_GO }
             if (i < 0) break
             list.removeAt(i)
         }
