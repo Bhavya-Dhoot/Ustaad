@@ -7,6 +7,8 @@ This reopens the scope lock in CLAUDE.md, which was set for the hackathon of 202
 ## Decisions by the founder
 
 - 2026-10-13: "over the internet" means the owner reaching their own home cluster and its models from their phone while away. No hosted model anywhere. The model is not exposed. Memory pooling and distributed computing happen only on the local network. It must be robust.
+- 2026-10-13: the lowest Android version to support is 8.0 (API 26).
+- 2026-10-13: push to the remote once all the packages are merged.
 
 ## What exists today (surveys of 2026-10-13, read-only, file references in the survey returns)
 
@@ -159,5 +161,4 @@ Ledger: surveys and research delegated (bounded, checkable by reading); P1 to P9
 - Who may add or remove devices: every `node` member (a household, not an organisation). An owner-only rule can be added later.
 - A device's default storage offer: 10 % of its free space at the time of the profile, at least 1 GB, never more than half.
 - Away for how long before a device is taken out of routing and its chunks are re-copied: 10 minutes.
-- The lowest Android version to support: 8.0 (API 26), unless the lint check shows a dependency that cannot go that low.
 - Phones: none is connected (2026-10-13 14:31). Unit tests and a desktop run come first; phone runs need a window from the founder.
