@@ -176,21 +176,29 @@ class BulkSealer(
 }
 
 /**
- * Opens bulk chunks in any order and tracks which ranges are held, so a resume starts at [firstMissing]. A chunk already
- * held is returned as null (ignore it); one that overlaps a held chunk, or lies past the end a final chunk fixed, is an error.
+ * Opens bulk chunks in any order and tracks which ranges are held, so a resume starts at [firstMissing]. The opener is told the
+ * declared size of the transfer: a chunk past it is an error, the final chunk must end exactly there, adjacent ranges are joined, and
+ * at most [maxRanges] separate ranges are kept (Codex Frames.kt:229), so a peer cannot make it hold one record per tiny chunk. A chunk
+ * already inside a held range is returned as null (ignore it); one that overlaps a held range only in part is an error. Any error
+ * kills the stream.
  */
 class BulkOpener(
     directionKey: ByteArray,
     private val stream: Int,
     context: ByteArray,
+    private val declaredSize: Long,
     private val aead: Aead = Aead.AES_256_GCM,
     private val maxPlain: Int = FrameCodec.MAX_BULK_PLAIN,
+    private val maxRanges: Int = MAX_RANGES,
 ) {
     private val key = FrameCodec.streamKey(directionKey, aead, stream, context)
-    private val held = TreeMap<Long, Int>() // offset to length
-    private var total = -1L
-
+    private val ranges = TreeMap<Long, Long>() // start to end (exclusive): disjoint and never adjacent
     private var failed = false
+
+    init { require(declaredSize >= 0) { "declared size" } }
+
+    val rangeCount: Int
+        @Synchronized get() = ranges.size
 
     /** Any error kills the stream: nothing more is accepted from it (Codex Frames.kt:130). */
     @Synchronized fun open(frame: ByteArray): BulkChunk? {
@@ -203,45 +211,50 @@ class BulkOpener(
         }
     }
 
+    private fun bad(): Nothing = throw ProtocolError(CloudError.BAD_FRAME)
+
     private fun openChunk(frame: ByteArray): BulkChunk? {
-        if (frame.size > FrameCodec.HEADER + maxPlain + FrameCodec.TAG) throw ProtocolError(CloudError.BAD_FRAME)
+        if (frame.size > FrameCodec.HEADER + maxPlain + FrameCodec.TAG) bad()
         val h = FrameHeader.parse(frame)
-        if (h.type != FrameType.BULK || h.stream != stream || (h.flags and FrameCodec.FINAL.inv()) != 0) throw ProtocolError(CloudError.BAD_FRAME)
-        val plain = FrameCodec.open(key, aead, h, frame) ?: throw ProtocolError(CloudError.BAD_FRAME)
-        val end = h.position + plain.size
-        if (plain.isEmpty() || h.position < 0 || end < h.position) throw ProtocolError(CloudError.BAD_FRAME)
-        val same = held[h.position]
-        if (same != null) {
-            if (same != plain.size) throw ProtocolError(CloudError.BAD_FRAME)
-            return null // a chunk we already hold (authenticated, so harmless)
-        }
-        val before = held.floorEntry(h.position)
-        val after = held.ceilingEntry(h.position)
-        if ((before != null && before.key + before.value > h.position) || (after != null && after.key < end)) throw ProtocolError(CloudError.BAD_FRAME)
-        if (h.final) {
-            if (total >= 0 && total != end) throw ProtocolError(CloudError.BAD_FRAME)
-            val tail = held.lastEntry()
-            if (tail != null && tail.key + tail.value > end) throw ProtocolError(CloudError.BAD_FRAME) // a held chunk lies past the end
-            total = end
-        } else if (total in 0 until end) {
-            throw ProtocolError(CloudError.BAD_FRAME)
-        }
-        held[h.position] = plain.size
-        return BulkChunk(h.position, plain, h.final)
+        if (h.type != FrameType.BULK || h.stream != stream || (h.flags and FrameCodec.FINAL.inv()) != 0) bad()
+        val plain = FrameCodec.open(key, aead, h, frame) ?: bad()
+        val start = h.position
+        val end = start + plain.size
+        if (plain.isEmpty() || start < 0 || end < start || end > declaredSize) bad()
+        if (h.final && end != declaredSize) bad()
+        val before = ranges.floorEntry(start)
+        if (before != null && before.value >= end) return null // inside a range we already hold (authenticated, so harmless)
+        if (before != null && before.value > start) bad() // overlaps its end only in part
+        val after = ranges.ceilingEntry(start)
+        if (after != null && after.key < end) bad() // overlaps the start of a held range only in part
+        var from = start
+        var to = end
+        var merges = 0
+        if (before != null && before.value == start) { from = before.key; merges++ }
+        if (after != null && after.key == end) { to = after.value; merges++ }
+        if (merges == 0 && ranges.size >= maxRanges) bad() // one more separate range than we allow
+        if (before != null && before.value == start) ranges.remove(before.key)
+        if (after != null && after.key == end) ranges.remove(after.key)
+        ranges[from] = to
+        return BulkChunk(start, plain, h.final)
     }
 
     /** First byte offset not yet held: where a resume starts. */
     @Synchronized fun firstMissing(): Long {
-        var at = 0L
-        for ((offset, len) in held) {
-            if (offset > at) break
-            at = offset + len
-        }
-        return at
+        val first = ranges.firstEntry() ?: return 0L
+        return if (first.key == 0L) first.value else 0L
     }
 
-    /** True when the final chunk has arrived and nothing is missing before it. */
-    @Synchronized fun complete(): Boolean = total >= 0 && firstMissing() == total
+    /** True when every byte of the declared size is held. */
+    @Synchronized fun complete(): Boolean {
+        if (declaredSize == 0L) return true
+        val only = if (ranges.size == 1) ranges.firstEntry() else null
+        return only != null && only.key == 0L && only.value == declaredSize
+    }
+
+    companion object {
+        const val MAX_RANGES = 4096
+    }
 }
 
 /**

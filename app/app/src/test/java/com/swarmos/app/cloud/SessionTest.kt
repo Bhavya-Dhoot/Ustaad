@@ -81,7 +81,7 @@ class SessionTest {
     @Test fun aRemovedMemberCannotStartASessionEvenWithEverythingItKept() {
         val (c, ps) = cloudWith(2)
         val (b, m) = ps
-        val kept = Peer(m.identity, m.nodeId, Chain.fromEntries(c.chain.entries(), T0))
+        val kept = Peer(m.identity, m.nodeId, Chain.fromEntries(c.chain.entries()))
         c.removeAndRotate(m.id)
         c.copyTo(b)
         assertError(CloudError.NOT_MEMBER) { hs(b).respond(hs(kept).initiate(b.nodeId, b.id, T0).init, T0) }
@@ -254,6 +254,114 @@ class SessionTest {
         assertError(CloudError.NOT_MEMBER) { resp.finish(done.finish, T0) } // and once
     }
 
+    // ---- one atomic step (Codex Session.kt:228) ------------------------------------------------------------------------------------
+
+    private class Outcome(val ok: Int, val errors: List<CloudError>)
+
+    /** Runs [n] responds at the same moment: each waits inside the hook, after its tag check, until all have arrived. */
+    private fun raceRespond(h: SessionHandshake, inits: List<ByteArray>, sources: List<String>): Outcome {
+        val barrier = java.util.concurrent.CyclicBarrier(inits.size)
+        h.raceHook = { barrier.await(10, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(inits.size)
+        try {
+            val futures = inits.indices.map { i -> pool.submit<CloudError?> { try { h.respond(inits[i], T0, sources[i]); null } catch (e: ProtocolError) { e.error } } }
+            val results = futures.map { it.get(20, java.util.concurrent.TimeUnit.SECONDS) }
+            return Outcome(results.count { it == null }, results.filterNotNull())
+        } finally {
+            pool.shutdownNow()
+            h.raceHook = null
+        }
+    }
+
+    @Test fun twoCopiesOfOneInitThatMeetInsideTheCheckAreAnsweredOnce() { // Codex Session.kt:228
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val init = hs(a).initiate(b.nodeId, b.id, T0).init
+        // both copies pass the tag check, then wait for each other; only then do they reserve. The nonce check and the reservation
+        // are one step, so exactly one gets a Reply
+        val r = raceRespond(hs(b), listOf(init, init.copyOf()), listOf("10.0.0.1", "10.0.0.2"))
+        assertEquals(1, r.ok)
+        assertEquals(listOf(CloudError.NOT_MEMBER), r.errors)
+    }
+
+    @Test fun twoInitsThatMeetInsideTheCheckCannotBothSpendTheLastSlotOrTheLastResyncPlace() { // Codex Session.kt:228
+        val (c, ps) = cloudWith(3)
+        val (a, b, c3) = ps
+        // one pending place: of two different valid Inits at the same moment, one is answered and the other is told BUSY
+        val tight = b.handshake(dk, maxPending = 1)
+        val r1 = raceRespond(tight, listOf(hs(a).initiate(b.nodeId, b.id, T0).init, hs(c3).initiate(b.nodeId, b.id, T0).init), listOf("10.0.0.1", "10.0.0.2"))
+        assertEquals(1, r1.ok); assertEquals(listOf(CloudError.BUSY), r1.errors)
+        // one resync place: of two Inits with an unknown tag at the same moment, only one is let through to the chain check
+        val old = Crypto.random(32)
+        fun stale(p: Peer) = SessionHandshake(c.chain.cloudId, p.identity, p.nodeId, { p.chain.state() }, { listOf(old) }).initiate(b.nodeId, b.id, T0).init
+        val one = SessionHandshake(b.chain.cloudId, b.identity, b.nodeId, { b.chain.state() }, { listOf(dk) }, maxResyncPerMinute = 1, maxResyncPerMinutePerSource = 1)
+        val r2 = raceRespond(one, listOf(stale(a), stale(c3)), listOf("10.0.0.1", "10.0.0.2"))
+        assertEquals(1, r2.ok); assertEquals(listOf(CloudError.NOT_MEMBER), r2.errors)
+    }
+
+    // ---- members offline across two rotations: the small resync path (Codex Session.kt:230) --------------------------------------------
+
+    private fun stale(p: Peer, old: ByteArray, to: Peer, now: Long = T0) =
+        SessionHandshake(p.chain.cloudId, p.identity, p.nodeId, { p.chain.state() }, { listOf(old) }).initiate(to.nodeId, to.id, now)
+
+    @Test fun aMemberThatMissedTwoRotationsStillGetsASessionAndIsToldToPullTheChain() { // Codex Session.kt:230
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val old = Crypto.random(32) // the discovery key of an epoch b no longer recognises
+        val ini = stale(a, old, b)
+        val resp = hs(b).respond(ini.init, T0, "10.0.0.1")
+        val sb = resp.finish(ini.complete(resp.reply, T0).finish, T0)
+        assertTrue(sb.viaResync) // marked, so the caller makes it pull the chain and the secrets first
+        assertEquals(a.id, sb.peerId)
+        // a normal Init is not marked
+        assertFalse(pair(a, b).second.viaResync)
+    }
+
+    @Test fun theResyncPathIsJudgedByTheChainSoARemovedDeviceAndAStrangerStillFail() { // Codex Session.kt:230
+        val (c, ps) = cloudWith(2)
+        val (b, m) = ps
+        val old = Crypto.random(32)
+        val kept = Peer(m.identity, m.nodeId, Chain.fromEntries(c.chain.entries()))
+        c.removeAndRotate(m.id); c.copyTo(b)
+        assertError(CloudError.NOT_MEMBER) { hs(b).respond(stale(kept, old, b).init, T0, "10.0.0.1") } // removed
+        val outsider = Peer.bare().also { c.copyTo(it) }
+        assertError(CloudError.NOT_MEMBER) { hs(b).respond(stale(outsider, old, b).init, T0, "10.0.0.2") } // never a member
+    }
+
+    @Test fun strangersCannotUseUpTheNormalPathThroughTheResyncBudget() { // Codex Session.kt:230
+        val (c, ps) = cloudWith(2)
+        val (a, b) = ps
+        val h = hs(b)
+        val old = Crypto.random(32)
+        val outsider = Peer.bare().also { c.copyTo(it) }
+        // 6 a minute in all and 2 a minute from one address are let in to the chain check; then it is refused before anything else
+        for (i in 0 until 9) {
+            val ini = stale(outsider, old, b, T0 + i)
+            assertError(CloudError.NOT_MEMBER) { h.respond(ini.init, T0 + i, "10.0.0.${i / 2}") } // the same answer whatever the reason
+        }
+        // the normal path (a good tag) does not draw on that budget: a member's ordinary Init is still answered
+        val ini = hs(a).initiate(b.nodeId, b.id, T0 + 10)
+        val resp = h.respond(ini.init, T0 + 10, "10.0.0.99")
+        assertNotNull(resp.finish(ini.complete(resp.reply, T0 + 10).finish, T0 + 10))
+        // and a stale member whose turn comes while the budget is spent waits for the next minute
+        val staleMember = stale(a, old, b, T0 + 11)
+        assertError(CloudError.NOT_MEMBER) { h.respond(staleMember.init, T0 + 11, "10.0.0.98") }
+        val later = stale(a, old, b, T0 + 61_000)
+        assertTrue(h.respond(later.init, T0 + 61_000, "10.0.0.98").reply.isNotEmpty())
+    }
+
+    @Test fun aStrangerWhoIsRefusedAtTheResyncBudgetHoldsNoPendingSlot() { // Codex Session.kt:230
+        val (c, ps) = cloudWith(2)
+        val (a, b) = ps
+        val h = b.handshake(dk, maxPending = 1)
+        val outsider = Peer.bare().also { c.copyTo(it) }
+        val old = Crypto.random(32)
+        repeat(8) { i -> try { h.respond(stale(outsider, old, b, T0 + i).init, T0 + i, "10.0.0.5") } catch (e: ProtocolError) {} }
+        // every failed try gave its place back or never took one, so the single pending place is free for a member
+        val ini = hs(a).initiate(b.nodeId, b.id, T0 + 20)
+        assertNotNull(h.respond(ini.init, T0 + 20, "10.0.0.6"))
+    }
+
     // ---- the store and the life of a session ------------------------------------------------------------------------
 
     @Test fun aSessionEndsAfter24HoursAndWhenEitherMemberIsRemoved() {
@@ -329,7 +437,7 @@ class SessionTest {
         val f = sa.sealer(1, ctx, FrameType.REQUEST).seal("hi".toByteArray(), final = true)
         assertEquals("hi", String(sb.opener(1, ctx, FrameType.REQUEST).open(f)))
         val b1 = sb.bulkSealer(1, "t".toByteArray()).seal(0, byteArrayOf(1, 2, 3), final = true)
-        assertTrue(sa.bulkOpener(1, "t".toByteArray()).open(b1)!!.final)
+        assertTrue(sa.bulkOpener(1, "t".toByteArray(), 3).open(b1)!!.final)
     }
 
     @Test fun theNegotiatedLargestFrameIsEnforcedForBulkAndChannelStreams() { // Codex Session.kt:36
@@ -346,7 +454,7 @@ class SessionTest {
         // a peer that ignores the agreement and sends a valid 1 MiB frame is refused by the receiver
         val rogue = BulkSealer(Crypto.random(32), 1, ctx) // (a different key: stands for any oversize frame)
         val big = rogue.seal(0, ByteArray(1024 * 1024))
-        assertError(CloudError.BAD_FRAME) { sb.bulkOpener(1, ctx).open(big) }
+        assertError(CloudError.BAD_FRAME) { sb.bulkOpener(1, ctx, 1L shl 30).open(big) }
         val bigEvent = FrameSealer(Crypto.random(32), 2, ctx, FrameType.EVENT).seal(ByteArray(Caps.MIN_FRAME + 1))
         assertError(CloudError.BAD_FRAME) { sb.opener(2, ctx, FrameType.EVENT, channel = true).open(bigEvent) }
         // one-shot HTTP bodies keep the larger limit

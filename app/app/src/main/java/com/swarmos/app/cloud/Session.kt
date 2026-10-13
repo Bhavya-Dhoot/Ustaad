@@ -23,9 +23,13 @@ class Session internal constructor(
     val negotiated: Negotiated,
     /** A token session (section 8): the peer is a token client of this device. */
     val viaToken: Boolean = false,
+    /** The peer's tag was not from a recent epoch: it came in on the small resync path (5.2) and should pull the chain and the secrets. */
+    val viaResync: Boolean = false,
 ) {
     private val streams = AtomicLong(0)
-    @Volatile internal var used = false
+
+    /** When a request last used this session; a browser's session ends after 12 hours of silence (8.5). */
+    @Volatile internal var lastUsed = startedAt
 
     /** One number per stream this side opens over HTTP, never reused in this session (a stream number is a u32 with the top bit 0). */
     fun nextStreamNo(): Int {
@@ -49,12 +53,14 @@ class Session internal constructor(
     }
 
     fun bulkSealer(stream: Int, context: ByteArray) = BulkSealer(sendKey, stream, context, negotiated.aead, bulkLimit())
-    fun bulkOpener(stream: Int, context: ByteArray) = BulkOpener(recvKey, stream, context, negotiated.aead, bulkLimit())
+    /** [declaredSize] is the size the bulk open request declared; the opener refuses anything beyond it (Codex Frames.kt:229). */
+    fun bulkOpener(stream: Int, context: ByteArray, declaredSize: Long) = BulkOpener(recvKey, stream, context, declaredSize, negotiated.aead, bulkLimit())
 
     fun expired(now: Long): Boolean = now - startedAt >= LIFETIME_MS
 
     companion object {
         const val LIFETIME_MS = 24L * 3600 * 1000
+        const val BROWSER_IDLE_MS = 12L * 3600 * 1000
     }
 }
 
@@ -77,6 +83,8 @@ class SessionHandshake(
     private val maxPending: Int = 64,
     private val maxPendingPerSource: Int = 4,
     private val maxInitsPerMinutePerSource: Int = 30,
+    private val maxResyncPerMinute: Int = 6,
+    private val maxResyncPerMinutePerSource: Int = 2,
 ) {
     private val ownExt = caps.encodeExt()
     private val selfFp: ByteArray = Crypto.fingerprint(identity.publicKey)
@@ -88,6 +96,11 @@ class SessionHandshake(
     private val pending = ArrayList<Slot>()
     private val seenInits = LinkedHashMap<String, Long>() // nonce of an Init that passed the tag, to the end of its memory
     private val initTimes = HashMap<String, ArrayDeque<Long>>() // per source address, the last minute
+    private val resyncAll = ArrayDeque<Long>() // Inits with an unrecognised tag that were let through, the last minute
+    private val resyncTimes = HashMap<String, ArrayDeque<Long>>()
+
+    /** Test hook: runs after the tag check and before the atomic reservation, so a test can force two calls to interleave. */
+    @Volatile internal var raceHook: (() -> Unit)? = null
 
     private fun header(r: Reader, type: Int) {
         if (r.u8() != 1 || r.u8() != type) malformed("session message")
@@ -113,7 +126,7 @@ class SessionHandshake(
     /** Keys from the ECDH result, the nonces as salt, distinct labels, the transcript hash in `info` (section 5.3). */
     private fun derive(
         secret: ByteArray, nonceI: ByteArray, nonceR: ByteArray, transcript: ByteArray, initiator: Boolean, peer: ChainMember, now: Long,
-        negotiated: Negotiated,
+        negotiated: Negotiated, viaResync: Boolean = false,
     ): Session {
         val th = Crypto.sha256(transcript)
         val prk = Crypto.hkdfExtract(concat(nonceI, nonceR), secret)
@@ -123,7 +136,7 @@ class SessionHandshake(
         val session = Session(
             id = Hex.of(key("session/id", 8)), peerNodeId = peer.nodeId, peerId = peer.id, peerKind = peer.kind,
             macKey = key("session/mac", 32), sendKey = if (initiator) i2r else r2i, recvKey = if (initiator) r2i else i2r,
-            startedAt = now, initiator = initiator, negotiated = negotiated,
+            startedAt = now, initiator = initiator, negotiated = negotiated, viaResync = viaResync,
         )
         Crypto.wipe(secret, prk)
         return session
@@ -218,21 +231,24 @@ class SessionHandshake(
         val extI = r.lp(Caps.MAX_EXT)
         r.end()
         val nonceKey = Hex.of(nonceI)
-        synchronized(lock) {
+        synchronized(lock) { // the cheap per-address budget
             val times = initTimes.getOrPut(source) { ArrayDeque() }
             while (times.isNotEmpty() && now - times.first() >= 60_000L) times.removeFirst()
             if (times.size >= maxInitsPerMinutePerSource) throw ProtocolError(CloudError.BUSY)
             times.addLast(now)
             if (initTimes.size > 4096) initTimes.entries.removeAll { it.value.isEmpty() || now - it.value.last() >= 60_000L }
+        }
+        // the tag is only a cheap filter: a tag from no recent epoch leads to the small resync path, not to a refusal
+        val tagOk = discoveryKeys().any { Discovery.matches(it, nodeI, tag, now) }
+        raceHook?.invoke()
+        val slot = synchronized(lock) { // ONE atomic step: the replay check, the resync budget, the nonce and the slot (Codex Session.kt:228)
             seenInits.entries.removeAll { it.value <= now }
             if (nonceKey in seenInits) throw ProtocolError(CloudError.NOT_MEMBER) // a replayed Init
-        }
-        if (discoveryKeys().none { Discovery.matches(it, nodeI, tag, now) }) throw ProtocolError(CloudError.NOT_MEMBER)
-        val slot = synchronized(lock) {
+            if (!tagOk) spendResync(source, now)
             if (seenInits.size >= 4096) throw ProtocolError(CloudError.BUSY)
-            seenInits[nonceKey] = now + SEEN_INIT_MS
             pending.removeAll { it.used || now > it.expiresAt }
             if (pending.size >= maxPending || pending.count { it.source == source } >= maxPendingPerSource) throw ProtocolError(CloudError.BUSY)
+            seenInits[nonceKey] = now + SEEN_INIT_MS
             Slot(source, now + pendingMs).also { pending.add(it) }
         }
         try {
@@ -246,11 +262,22 @@ class SessionHandshake(
             val sigR = identity.sign(signedPart("r", t))
             val reply = Writer().u8(1).u8(2).str(selfNodeId).fixed(selfFp, 32).fixed(ephR, Crypto.PUB_BYTES).fixed(nonceR, 32).lp(ownExt)
                 .fixed(sigR, Crypto.SIG_BYTES).bytes()
-            return Responding(reply, m, eph, ephI, nonceI, nonceR, t, slot, Negotiated.of(caps, capsI))
+            return Responding(reply, m, eph, ephI, nonceI, nonceR, t, slot, Negotiated.of(caps, capsI), !tagOk)
         } catch (e: Throwable) {
             slot.used = true // give the slot back; a failed exchange holds nothing
             throw e
         }
+    }
+
+    /** The small, separate budget of the resync path: 6 a minute in all and 2 a minute per source address. Called with [lock] held. */
+    private fun spendResync(source: String, now: Long) {
+        while (resyncAll.isNotEmpty() && now - resyncAll.first() >= 60_000L) resyncAll.removeFirst()
+        val mine = resyncTimes.getOrPut(source) { ArrayDeque() }
+        while (mine.isNotEmpty() && now - mine.first() >= 60_000L) mine.removeFirst()
+        if (resyncAll.size >= maxResyncPerMinute || mine.size >= maxResyncPerMinutePerSource) throw ProtocolError(CloudError.NOT_MEMBER)
+        resyncAll.addLast(now)
+        mine.addLast(now)
+        if (resyncTimes.size > 1024) resyncTimes.entries.removeAll { it.value.isEmpty() || now - it.value.last() >= 60_000L }
     }
 
     inner class Responding internal constructor(
@@ -264,6 +291,7 @@ class SessionHandshake(
         private val transcript: ByteArray,
         private val slot: Slot,
         private val negotiated: Negotiated,
+        private val viaResync: Boolean,
     ) {
         private var eph: KeyPair? = eph
 
@@ -286,7 +314,7 @@ class SessionHandshake(
             // the member may have been removed during the exchange: look again
             val m = peer(peerMember.id, peerMember.nodeId)
             if (!Crypto.ecdsaVerify(m.publicKey!!, signedPart("i", transcript), sigI)) throw ProtocolError(CloudError.NOT_MEMBER)
-            return derive(Crypto.ecdh(key.private, ephI), nonceI, nonceR, transcript, false, m, now, negotiated)
+            return derive(Crypto.ecdh(key.private, ephI), nonceI, nonceR, transcript, false, m, now, negotiated, viaResync)
         }
     }
 
@@ -295,8 +323,8 @@ class SessionHandshake(
     }
 }
 
-/** The live sessions of this device (section 5.4). A lookup fails once the session is old or either member is gone. */
-class SessionStore(private val selfId: String, private val maxPerPeer: Int = 4, private val unusedTokenMs: Long = 60_000L) {
+/** The live sessions of this device (section 5.4). A lookup fails once the session is old or idle, or either member is gone. */
+class SessionStore(private val selfId: String, private val maxPerPeer: Int = 4) {
     private val sessions = LinkedHashMap<String, Session>()
 
     @Synchronized fun add(s: Session) {
@@ -305,31 +333,27 @@ class SessionStore(private val selfId: String, private val maxPerPeer: Int = 4, 
         if (same.size > maxPerPeer) same.sortedBy { it.startedAt }.take(same.size - maxPerPeer).forEach { sessions.remove(it.id) }
     }
 
-    /**
-     * The session, unless it is unknown, 24 hours old, a token session never used within a minute, or this device or its peer is
-     * not a current member (same key and node id).
-     */
+    private fun alive(s: Session, now: Long, state: ChainState): Boolean {
+        val peerOk = state.member(s.peerId)?.nodeId == s.peerNodeId
+        val idle = s.peerKind == MemberKind.BROWSER && now - s.lastUsed > Session.BROWSER_IDLE_MS
+        return !s.expired(now) && !idle && state.member(selfId) != null && peerOk
+    }
+
+    /** The session, unless it is unknown, 24 hours old, a browser's that was silent for 12 hours, or this device or its peer is not a current member. */
     @Synchronized fun get(id: String, now: Long, state: ChainState): Session? {
         val s = sessions[id] ?: return null
-        val peerOk = state.member(s.peerId)?.nodeId == s.peerNodeId
-        val stale = s.viaToken && !s.used && now - s.startedAt > unusedTokenMs
-        if (s.expired(now) || stale || state.member(selfId) == null || !peerOk) {
+        if (!alive(s, now, state)) {
             sessions.remove(id)
             return null
         }
-        s.used = true
+        s.lastUsed = now
         return s
     }
 
-    /** Drops every session that [get] would refuse; returns how many. */
+    /** Drops every session that [get] would refuse; returns how many. A sweep is not a use. */
     @Synchronized fun sweep(now: Long, state: ChainState): Int {
         val before = sessions.size
-        for (id in sessions.keys.toList()) {
-            val s = sessions[id] ?: continue
-            val wasUsed = s.used
-            get(id, now, state)
-            if (sessions.containsKey(id)) s.used = wasUsed // a sweep is not a use
-        }
+        sessions.entries.removeAll { !alive(it.value, now, state) }
         return before - sessions.size
     }
 

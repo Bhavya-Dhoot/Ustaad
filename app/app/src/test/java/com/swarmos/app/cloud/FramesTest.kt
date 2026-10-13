@@ -4,6 +4,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -189,11 +190,11 @@ class FramesTest {
 
     // ---- positional (bulk) streams ---------------------------------------------------------------------------------------
 
-    private fun bulkPair(stream: Int = 1, context: ByteArray = "bulk-1".toByteArray(), aead: Aead = Aead.AES_256_GCM) =
-        BulkSealer(dirKey, stream, context, aead) to BulkOpener(dirKey, stream, context, aead)
+    private fun bulkPair(stream: Int = 1, context: ByteArray = "bulk-1".toByteArray(), aead: Aead = Aead.AES_256_GCM, declared: Long = 1L shl 30) =
+        BulkSealer(dirKey, stream, context, aead) to BulkOpener(dirKey, stream, context, declared, aead)
 
     @Test fun bulkChunksArriveInAnyOrderAndTheResumePointIsTheFirstGap() {
-        val (s, o) = bulkPair()
+        val (s, o) = bulkPair(declared = 10)
         val data = Crypto.random(10)
         val c0 = s.seal(0, data.copyOfRange(0, 4))
         val c1 = s.seal(4, data.copyOfRange(4, 8))
@@ -222,8 +223,8 @@ class FramesTest {
         // moved to another offset: the header says 1001 but the tag was made for 1000
         assertError(CloudError.BAD_FRAME) { o.open(f.copyOf().also { it[13] = (it[13] + 1).toByte() }) }
         // moved to another stream or transfer
-        assertError(CloudError.BAD_FRAME) { BulkOpener(dirKey, 2, "bulk-1".toByteArray()).open(f) }
-        assertError(CloudError.BAD_FRAME) { BulkOpener(dirKey, 1, "bulk-2".toByteArray()).open(f) }
+        assertError(CloudError.BAD_FRAME) { BulkOpener(dirKey, 2, "bulk-1".toByteArray(), 1L shl 30).open(f) }
+        assertError(CloudError.BAD_FRAME) { BulkOpener(dirKey, 1, "bulk-2".toByteArray(), 1L shl 30).open(f) }
         // an ordered-stream frame is not a bulk chunk
         assertError(CloudError.BAD_FRAME) { o.open(sealer(stream = 1, context = "bulk-1".toByteArray()).seal(byteArrayOf(1))) }
         assertEquals(1000L, bulkPair().second.open(f)!!.offset)
@@ -234,7 +235,7 @@ class FramesTest {
         o.open(s.seal(0, ByteArray(10)))
         val overlap = BulkSealer(dirKey, 1, "bulk-1".toByteArray()).seal(5, ByteArray(10)) // starts inside the held chunk
         assertError(CloudError.BAD_FRAME) { o.open(overlap) }
-        val (s2, o2) = bulkPair()
+        val (s2, o2) = bulkPair(declared = 110)
         o2.open(s2.seal(100, ByteArray(10), final = true)) // the payload ends at 110
         assertError(CloudError.BAD_FRAME) { o2.open(s2.seal(105, ByteArray(10))) }
         assertError(CloudError.BAD_FRAME) { o2.open(s2.seal(200, ByteArray(10))) }
@@ -296,8 +297,34 @@ class FramesTest {
         assertError(CloudError.MALFORMED) { ResponseEnvelope.parse(byteArrayOf(1)) }
     }
 
+    @Test fun theBulkOpenerBoundsOffsetsByTheDeclaredSizeCapsItsRangeRecordsAndJoinsAdjacentOnes() { // Codex Frames.kt:229
+        // a chunk past the declared size, and a final chunk that does not end at it, kill the stream
+        val (s1, o1) = bulkPair(declared = 1000)
+        assertError(CloudError.BAD_FRAME) { o1.open(s1.seal(2000, byteArrayOf(1))) }
+        val (s2, o2) = bulkPair(declared = 1000)
+        assertError(CloudError.BAD_FRAME) { o2.open(s2.seal(0, ByteArray(10), final = true)) }
+        // one-byte chunks at every other offset: the records stop at the cap and the stream dies there
+        val sealer = BulkSealer(dirKey, 1, "bulk-1".toByteArray())
+        val capped = BulkOpener(dirKey, 1, "bulk-1".toByteArray(), 1_000_000, maxRanges = 50)
+        for (i in 0 until 50) capped.open(sealer.seal(2L * i, byteArrayOf(1)))
+        assertEquals(50, capped.rangeCount)
+        assertError(CloudError.BAD_FRAME) { capped.open(sealer.seal(2L * 50, byteArrayOf(1))) }
+        assertEquals(50, capped.rangeCount)
+        // adjacent ranges are joined, so memory follows the gaps and not the number of chunks
+        val s3 = BulkSealer(dirKey, 1, "bulk-1".toByteArray())
+        val joined = BulkOpener(dirKey, 1, "bulk-1".toByteArray(), 6)
+        joined.open(s3.seal(0, byteArrayOf(1))); joined.open(s3.seal(4, byteArrayOf(5))); joined.open(s3.seal(2, byteArrayOf(3)))
+        assertEquals(3, joined.rangeCount)
+        joined.open(s3.seal(1, byteArrayOf(2))); assertEquals(2, joined.rangeCount) // [0,3) and [4,5)
+        joined.open(s3.seal(3, byteArrayOf(4))); assertEquals(1, joined.rangeCount)
+        assertFalse(joined.complete()) // 5 of 6 bytes
+        assertEquals(5L, joined.firstMissing())
+        assertNotNull(joined.open(s3.seal(5, byteArrayOf(6), final = true)))
+        assertTrue(joined.complete()); assertEquals(1, joined.rangeCount)
+    }
+
     @Test fun bulkWorksWithChaChaAndMegabyteChunks() {
-        val (s, o) = bulkPair(aead = Aead.CHACHA20_POLY1305)
+        val (s, o) = bulkPair(aead = Aead.CHACHA20_POLY1305, declared = 1024L * 1024)
         val big = Crypto.random(1024 * 1024)
         assertArrayEquals(big, o.open(s.seal(0, big, final = true))!!.data)
         assertTrue(o.complete())

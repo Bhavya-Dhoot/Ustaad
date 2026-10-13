@@ -198,7 +198,7 @@ class RequestTest {
 
     @Test fun theReplayMemoryRefusesInsteadOfEvictingAndForgetsAfterItsTtl() {
         var now = 0L
-        val g = ReplayGuard(ttlMs = 1_000, maxEntries = 2, clock = { now })
+        val g = ReplayGuard(ttlMs = 1_000, maxEntries = 2, reserved = 0, clock = { now })
         val fp = ByteArray(32)
         val m1 = Crypto.random(32)
         g.admit("m1", "id1", m1, fp)
@@ -208,6 +208,65 @@ class RequestTest {
         now = 5_000
         g.admit("m1", "id3", Crypto.random(32), fp)
         assertEquals(1, g.size)
+    }
+
+    @Test fun oneMemberCannotFillTheReplayMemoryAndTheOwnerAndTheSyncRoutesKeepRoom() { // Codex Request.kt:91
+        var now = 0L
+        val g = ReplayGuard(ttlMs = 1_000, maxEntries = 10, maxPerMember = 4, reserved = 3, maxSyncPerMember = 2, clock = { now })
+        val fp = ByteArray(32)
+        fun ordinary(m: String, id: String) = g.admit(m, id, Crypto.random(32), fp)
+        repeat(4) { ordinary("m1", "a$it") }
+        assertError(CloudError.BUSY) { ordinary("m1", "a4") } // one member: at most 4 places
+        repeat(3) { ordinary("m2", "b$it") } // another member still has room ...
+        assertEquals(7, g.size)
+        assertError(CloudError.BUSY) { ordinary("m2", "b3") } // ... up to the last 3 places of the table, which ordinary requests never take
+        // the synchronisation routes use the reserve, but one member only 2 of it
+        g.admit("m3", "s0", Crypto.random(32), fp, Lane.SYNC); g.admit("m3", "s1", Crypto.random(32), fp, Lane.SYNC)
+        assertError(CloudError.BUSY) { g.admit("m3", "s2", Crypto.random(32), fp, Lane.SYNC) }
+        // the owner has the whole table
+        g.admit("owner", "o0", Crypto.random(32), fp, Lane.OWNER)
+        assertEquals(10, g.size)
+        assertError(CloudError.BUSY) { g.admit("owner", "o1", Crypto.random(32), fp, Lane.OWNER) } // full: refused, nothing evicted
+        // a place is given back with its entry, and so is the member's count
+        now = 5_000
+        ordinary("m1", "again")
+        assertEquals(1, g.size)
+    }
+
+    @Test fun aFloodOfOrdinaryRequestsDoesNotKeepOutTheOwnersOrAChainPullAtTheVerifier() { // Codex Request.kt:91
+        val r = Rig()
+        val owner = r.cloud.owner
+        val (so, sbo) = sessionBetween(owner, r.b, dk)
+        r.store.add(sbo)
+        val tiny = ReplayGuard(maxEntries = 3, reserved = 2, maxPerMember = 100)
+        val v = RequestVerifier(r.store, null, { r.b.chain.state() }, tiny, startedAtMs = T0 - 1_000)
+        v.verify(r.req(id = "o1"), T0) // the only ordinary place
+        assertError(CloudError.BUSY) { v.verify(r.req(id = "o2", ts = T0 + 1), T0 + 1) }
+        // the same member's pull of the chain goes to the synchronisation lane
+        v.verify(r.req(id = "pull-1", path = "/v1/cloud/chain?from=3"), T0 + 2)
+        // and the owner's request has the table, whatever the others did
+        val wire = RequestAuth.sealBody(so, "own-1", "{}".toByteArray())
+        val own = SignedRequest("POST", "/v1/chat", T0, "own-1", owner.nodeId, wire, RequestAuth.mac(so.macKey, "POST", "/v1/chat", T0, "own-1", owner.nodeId, wire), sessionId = so.id)
+        assertEquals(owner.id, v.verify(own, T0 + 3).memberId)
+        assertEquals(3, tiny.size)
+    }
+
+    // ---- an answer is returned only when its stream ended (Codex Request.kt:40) ---------------------------------------------------------
+
+    @Test fun anAnswerIsReturnedOnlyWhenItsStreamEndedProperly() { // Codex Request.kt:40
+        val r = Rig()
+        val ok = r.verifier.verify(r.req(id = "ask"), T0)
+        val sb = ok.session!!
+        val sealer = sb.sealer(sb.nextStreamNo(), "ask".toByteArray(), FrameType.RESPONSE, FrameType.EVENT)
+        val f1 = sealer.seal(ResponseEnvelope(200, "text/plain", "part1".toByteArray()).encode(), final = false)
+        val f2 = sealer.seal("part2".toByteArray(), final = true)
+        assertError(CloudError.TRUNCATED) { RequestAuth.openAnswer(r.sa, "ask", f1) } // a first frame without its end is not an answer
+        assertError(CloudError.TRUNCATED) { RequestAuth.openAnswerFrames(r.sa, "ask", listOf(f1)) }
+        assertError(CloudError.TRUNCATED) { RequestAuth.openAnswerFrames(r.sa, "ask", emptyList()) }
+        val whole = RequestAuth.openAnswerFrames(r.sa, "ask", listOf(f1, f2))
+        assertEquals(200, whole.status); assertEquals("part1part2", String(whole.body))
+        // a complete one-frame answer still opens
+        assertEquals("fine", String(RequestAuth.openAnswer(r.sa, "ask2", RequestAuth.sealAnswer(sb, "ask2", 200, "text/plain", "fine".toByteArray())).body))
     }
 
     // ---- the window and the life of the process ------------------------------------------------------------------------
