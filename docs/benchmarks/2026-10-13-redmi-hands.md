@@ -114,3 +114,29 @@ The founder had turned on "Ustaad Hands" in the accessibility settings (read at 
 What this shows: on a real phone the service opens an app, reads its screen, finds the search field and types into it; the question to the owner appears over the other app and a no ends the run. What failed: after a yes nothing was done, twice, for two causes that are in the core and not in the model: the fresh read was taken while Ustaad's own question window was still in front (reported as unreadable, as designed), and the other app's list had moved while the question was shown, so the target was no longer where it had been. Both are being fixed (wait for the other app to return; a unique target is accepted wherever it lies). The search itself was therefore never submitted. No FATAL EXCEPTION; the app process stayed alive (same pid since 21:35).
 
 A side note for testers: a swipe sent with `adb shell input swipe` while the keyboard is open is taken by the keyboard as glide typing.
+
+## 11. Real app again, after the fix (22:58 to 23:02)
+
+Build: debug APK of master d9ac530 (2649 unit tests, 0 failures, 1 skipped), installed 22:57. The fix: after a question the runner waits until the other app is in front again before it reads, and a target that is the only one of its kind is accepted wherever it now lies. Careful mode, test brain on the PC. The tester answered navigation questions with "Do it" and ended each run with "Do not". Screenshots of the step lists as shown on the phone: docs/benchmarks/raw/hands-phone/.
+
+Run A, task "search youtube for lofi music" (started 22:58:06; YouTube still had the earlier search text in its field):
+
+| Time | Step as logged on the phone |
+|---|---|
+| 22:58:10 | `open_app com.google.android.youtube`, allowed: opened YouTube |
+| 22:58:27 | `press_enter`, "you said yes: pressed enter" |
+| 22:58:41 | `tap 5 "lofi music"`, "you said yes: tapped 5 \"lofi music\"" |
+| 22:58:59 | `tap 5 "lofi music"`, "you said no" (the tester ended the run) |
+
+Run B, task "open youtube, search for lofi girl and subscribe to the channel" (YouTube's process stopped first; started 23:00:50):
+
+| Time | Step as logged on the phone |
+|---|---|
+| 23:00:53 | `open_app com.google.android.youtube`, allowed |
+| 23:00:57 | `tap 3 "Search"`, allowed without a question (on the harmless list): "tapped 4 \"Search\"" |
+| 23:01:00 | `type 3 "lofi girl"`, allowed: typed into 3 |
+| 23:01:16 | `tap 5 "lofi girl"`, "you said yes: tapped 5 \"lofi girl\"" |
+| 23:01:32 | `tap 5 "lofi girl"`, "you said yes: tapped 5 \"lofi girl\"" |
+| 23:01:58 | `tap 5 "lofi girl"`, "you said no" (the tester ended the run) |
+
+What this shows: on a real phone Hands opens an app, taps a control on the harmless list without asking, types into the search field, asks before an unknown control and before Enter, and after the owner's yes the action is now carried out and logged. What it does not show: the Subscribe button was never reached, so no committing question was seen in a real app. Open fault: in run B the same suggestion was tapped twice and asked for a third time; the click was reported as done each time, so either the click on that row does not start the search in YouTube or the model repeats itself. Not diagnosed.
