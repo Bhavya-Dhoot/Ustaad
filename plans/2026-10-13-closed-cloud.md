@@ -1,0 +1,150 @@
+# Plan: a shared closed cloud (2026-10-13)
+
+The founder's goal of 2026-10-13, in their words: on install check the capability of the device and do allocation and swarm actions accordingly; a shared closed cloud with easy device registration; storage allocated from device storage; security with mesh isolation, graph querying and index updating; each part by a specialised subagent; other platforms if that is easy, otherwise the easy ones; a web app served from a phone with access configuration as easy as possible; memory pooling only locally; a device that disconnects mid-way is removed and its tasks are reallocated automatically, with work able to continue over the internet; LRU for cache removal; all of it end to end.
+
+This reopens the scope lock in CLAUDE.md, which was set for the hackathon of 2026-10-09 to 2026-10-11. The founder reopened it by setting this goal.
+
+## Decisions by the founder
+
+- 2026-10-13: "over the internet" means the owner reaching their own home cluster and its models from their phone while away. No hosted model anywhere. The model is not exposed. Memory pooling and distributed computing happen only on the local network. It must be robust.
+
+## What exists today (surveys of 2026-10-13, read-only, file references in the survey returns)
+
+### Registration, isolation, storage, index, graph
+
+- Registration: hosting a swarm makes a new random 32-byte secret every time (link/LinkRuntime.kt:244) and shows a QR code; joining is a scan and one tap; the joining phone overwrites its own secret with the host's. The other members are not told. The peer list is in memory only; disk holds the secret (DataStore, not encrypted) and the Wi-Fi Direct credentials.
+- Removal: there is no way to remove one phone. "Reset" changes this phone's secret only; hosting again drops every phone that does not scan again. `PeerLinks.forget` and `NodeRegistry.remove` exist with no caller in the UI.
+- Isolation: one shared secret per group, no group id, no per-device key, no allow list of node ids. A phone is in one group. The signature covers method, path, time and body within 30 s; it does not cover the sender's node id (read unverified, NodeServer.kt:135) or the request id, so anyone who holds the secret can claim any node id, and a captured request could be replayed with a new request id inside 30 s (inferred by the survey). Transport is plain HTTP.
+- Without the secret, on the same Wi-Fi: `GET /v1/hello` answers with node id, name, serial, IP, app version and model names; NSD broadcasts name and node id; the BLE advert carries 4 bytes of node id; every response carries X-Swarm-Node. Two groups on one Wi-Fi find each other by NSD, fail the signed health check, list each other as rejected and keep probing every 60 s (inferred). All debug builds share one fixed development secret.
+- MemoryCloud loan: rpc-server has no authentication; it is bound to one Wi-Fi or Wi-Fi Direct address for a 10 s lease that the driver renews (memcloud/RpcLender.kt:71-85,141-146).
+- Storage between phones: none. No route moves a user file. The node API is JSON with a 1 MiB request cap. The 100 MB transfer of gate 1 is a throughput probe whose bytes are discarded. No free-space or quota field in NodeInfo or NodeHealth.
+- Index updates: manual only (buttons; a debug route). No run at app start, no timer, no file or content observer. A run is incremental (a file is skipped when its id and lastModified are stored; a changed file has its chunks replaced; files missing from a complete listing are removed, except that an empty listing never removes anything: the known rule C21). Peers are not told that an index changed; every question queries every peer live.
+- Store: one sqlite file `pdu.db` with chunks, an FTS5 table, docs, folders, meta, and the Knowledge Bank's cards and tombstones; vectors are 256 float32 held in memory, brute-force cosine, capped at 60,000 chunks.
+- Graph: none. The Knowledge Bank is saved answers (question, answer, up to 8 source titles), searched by word coverage plus cosine.
+- Federated question: the asker sends the query text to every peer (`POST /v1/pdu/query`, 1.5 s deadline); each peer searches its own index and returns at most 10 snippets of 400 characters with titles and scores; private folders are filtered on the serving phone (SharePolicy); no file bytes move. Sharing is per folder for all paired phones, with no per-peer rule.
+
+### Device capability and allocation
+
+- At first run the app asks for permissions and nothing else: no reading of total memory, free storage, cores, chip, GPU or OS version (shell/SetupScreen.kt:231-237). There is no stored device profile or tier.
+- Read continuously while the service runs (every 2 s): thermal status, battery, charging, free memory, Wi-Fi standard and speed. Decode speed is kept in memory only and is lost at a restart, so after every restart each phone is the scheduler's 5 tok/s guess again (sched/Scheduler.kt:10).
+- Read at each model load: free memory against 1.2 times the file plus 1.5 GB; the heat gate; the allowed cores. A download needs free storage plus 1 GB.
+- GPU or CPU: the GPU build is used when the switch is on and the binary is in the APK. There is no probe; a GPU that does not work is found by trying for up to 120 s and is then remembered for that install.
+- The default model is fixed by the catalog (Qwen3.5-4B, EmbeddingGemma-300M), not chosen by device. The catalog has no rule of model against memory, only the refusal at load.
+- What a phone tells the others (Caps): model name, capacity, running, queued, last tok/s, thermal, battery, charging, free memory. Not told: total memory, cores, chip, backend, context size, storage. The scheduler does not read the free memory it is sent.
+- Fixed for the iQOO 15 (16 GB, SM8850) and wrong on a weaker device: 6 chat threads and 2 embedding threads, 4 GPU threads and 99 GPU layers, context 8192 with 2 slots, capacity 1, the 1536 MB overhead of the split planner, the 1.2 x + 1.5 GB load rule, the budget of 200 ms per token (a phone under 5 tok/s would overrun it), arm64 only, minSdk 31.
+
+### Other platforms
+
+- One Gradle module, the Android app. No pure-JVM or multiplatform module. Unit tests (123 files) already run on the JVM.
+- 186 Kotlin files, 71 with an Android import. In the ten non-UI packages 97 of 159 files (61 %) use neither Android nor the app's Context singleton: the agent endpoint, scheduler, keep busy, Choir logic, MemoryCloud logic, most of llm/.
+- Tied to Android: starting llama-server from the app's native library folder (the flags are upstream llama.cpp flags), the foreground service and the Context root object, MediaStore and the folder picker for the Data Union, ML Kit for OCR and QR, discovery through NsdManager, Wi-Fi Direct and Bluetooth, thermal and battery readings, the Compose UI (43 files, about 9,000 lines).
+- Portable as used: Ktor 3.6 server and client on the CIO engine, javax.crypto for the signatures, androidx.sqlite with the bundled driver (it has JVM targets, inferred).
+- PC side today: scripts that sign and call a phone (scripts/swarm-call.sh, the Python checks). None is a node: nothing on a PC serves hello, health, caps or chat.
+- Easiest first, by the survey: other arm64 Android phones (no port, only the constants); a headless JVM node on Linux (the /proc code already fits, upstream llama-server takes the same flags); Windows and macOS on the same JVM node with per-OS replacements for /proc, process kill and thermal readings; iOS last (no JVM, no child processes).
+
+### A device that leaves, the internet, caches, a browser
+
+- A phone that stops answering is marked away after three missed beats (measured 2.1 to 2.2 s) and is never removed: the entry stays and is probed every 5 s. `NodeRegistry.remove` has no caller.
+- Moves on by itself today: a single chat job (pinged every second while it runs remotely; resent once to the same phone if it still answers, else to the next best phone, this one included), every item of a batch (each is such a job), and a stream that has not yet sent text.
+- Does not move on: a Choir lane (it ends as "away", nobody takes it over; a judge that fails has no second judge), a batch item that the scheduler gave up on (an error row, never tried again), a Data Union peer (its files are only there; the answer is marked incomplete), a MemoryCloud split (DEGRADED; the re-plan is a button; only the releases are automatic), a stream that already sent text, a batch whose coordinator died.
+- Internet: no path exists. Link types are LAN, DIRECT and BT. An address outside the private ranges is refused when a peer is added (link/LinkRoute.kt:73-85, PeerLinks.kt:192,220), not at send time. The node server listens on every interface and serves any correctly signed request whatever its source. The only internet use in the code is the model download.
+- Memory pooling is local only as a side effect of that pairing rule. MemoryCloud itself checks nothing: no same-subnet test, and the address a lender binds is never compared with the address the request came from. rpc-server has no authentication; its guards are the signed start, one driver at a time, the loan token and the 10 s lease.
+- Caches: the rpc tensor cache on a lender is unbounded (1.6 GB for the 4B model, 5.7 to 6.0 GB for the 30B) with one clear-everything route and no button; the OpenCL program cache, model files, Choir evaluation files and tput.jsonl are unbounded; batch reports keep the newest 16; audit keeps 5 files of 1 MB; request dedup keeps 256 entries or 32 MB; job results 10 minutes; query vectors are the one true LRU (64). The Data Union stops at 60,000 chunks and the Knowledge Bank at 500 cards, both by refusing, not evicting.
+- Browser: the node server serves JSON and server-sent events only. No HTML, no static files, no CORS, no cookie or token login; every route but `GET /v1/hello` needs the HMAC headers. The agent endpoint on 8790 is loopback only. Routes are added as a `SwarmModule`; a page that is not HMAC-signed needs a route group beside `/v1`.
+
+## Design
+
+In one sentence: a cloud is a named, closed group of devices with one identity each, a member list everybody holds, and four kinds of work on top of it (model jobs, files, questions over files, memory lending), of which only the first three may ever cross the internet.
+
+### 1. Identity and membership (the base for registration, removal, isolation, browsers and the away phone)
+
+- A cloud has an id (random) and a member list. Each device makes its own key pair on first start (EC P-256 from the platform's own crypto; the private key never leaves the device, on Android it sits in the hardware keystore). The member list is a log of signed entries: add (device id, public key, name, kind, added by) and remove.
+- Joining stays a scan and one tap. The QR code carries the cloud id, the admitting device's address and public key, and a one-time invite code. The newcomer proves the invite, sends its public key, and the admitting device writes the add entry and passes it to the others. Hosting no longer makes a new secret each time, and the member list is on disk.
+- Removing one device is an entry in the same log, made from a Devices list. The removed device holds nothing the others still accept. Nobody else has to scan again.
+- A request names its sender, and the signature covers that name and the request id. Two devices agree a session key by a signed key exchange when they connect; requests keep the fast HMAC they use today, with that session key instead of the one shared secret.
+- Kinds of member: `node` (phone or desktop: may compute, lend memory when local, store), `client` (the away phone: may send tasks, read and write files, ask questions; never computes for others, never lends), `browser` (a session of the device that serves it, see 6).
+- The test scripts on the PC become clients with their own key, admitted through a debug-only path, so the regression checks keep working.
+
+### 2. Isolation
+
+- Discovery carries a short tag of the cloud id; a device ignores other tags and no longer probes them. The unsigned hello answers with the tag and the protocol version only; name, serial, address and model names move behind the signature.
+- Bodies and streamed replies are sealed (authenticated encryption with the session key) on every link, the home Wi-Fi included, so another device on the same Wi-Fi reads nothing. Always on for anything that leaves the local network.
+- Memory lending: the lender and the driver must be on the same local subnet over Wi-Fi or Wi-Fi Direct, the bind address must be the one the request arrived on, and a `client` or a remote link is refused. rpc-server itself still has no authentication; that stays written down.
+- Sharing stays per folder; the private-folder rule is unchanged and applies to graph results too.
+
+### 3. Device capability profile
+
+- Measured at first run, after an app update and on request, and stored: total memory, cores and their top frequencies, chip, ABI, OS, free storage, whether the GPU build can start (a probe of seconds, not the 120 s trial), and, once a model is present, a short speed test.
+- One pure function turns the profile into settings: which model of the catalog (by memory), GPU or CPU, threads, context size, slots and capacity, whether and how much memory the device may lend, how much storage it offers by default, and the time budget per token (from its measured speed, not the fixed 200 ms). A device that cannot run any model becomes a client that still stores and searches.
+- The profile's class, total memory, backend, measured speed and storage figures are sent with the capacity report, kept across restarts, and used by the scheduler (no more 5 tok/s guess after a restart), the split planner and file placement.
+
+### 4. Shared storage
+
+- Each device offers a quota of its own storage (default from the profile, changed in Settings). Files put into the cloud are cut into chunks named by their hash; a manifest lists a file's chunks. Each chunk is kept on two devices (the count is a setting), chosen by free quota.
+- When a device is removed or gone for good, the chunks it held are copied again from the other holder. Extra copies beyond the wanted count are a cache and are evicted least recently used when the quota is short.
+- Chunks are encrypted at rest with a storage key of the cloud. Transfers are streamed, resumable and verified by hash.
+- A device that holds a file indexes it for questions like any shared folder (see 5).
+
+### 5. Index updates and graph
+
+- The index updates itself: at app start, after a file arrives in the cloud store, when the photo library reports a change, and on a timer for picked folders, all through the existing incremental run. The rule for a folder whose last file was deleted (C21) is fixed by telling an empty folder from a failed listing.
+- Each device publishes an index version, so the others know when to drop what they cached.
+- Graph: at indexing time each chunk yields entities (people, organisations, places, dates, amounts, ids, email addresses, phone numbers) and links (entity to document, entity to entity when they share a chunk). A graph question returns the neighbours and the documents that connect two things, across devices, through the same private-folder filter. Retrieval for answers uses it to pull in linked documents.
+
+### 6. A web app served by a device
+
+- A device serves a small page from its own app (no outside files). Access is one scan: Settings shows a QR code whose link carries a session key in the part of the address that is never sent over the network. The browser signs its requests with it. Sessions are listed under Devices and removed one by one.
+- First version: chat with streamed answers, questions over files, cloud files (list, upload, download), devices and status. On a desktop node this page is the whole interface.
+
+### 7. Away from home
+
+- The away phone is a `client`. It reaches a home node over the transport that research 07 recommends (to be filled in), always sealed, with nothing listening on a public address. Timeouts and the heartbeat are widened for that link. If the path drops in the middle of a task the home side finishes or reallocates as it does for a local device, and the client asks again for the same job id.
+
+### 8. A device that leaves
+
+- Away for longer than a set time, a device is taken out of routing and its stored chunks are re-copied; the owner can remove it for good. Until then it rejoins by itself.
+- Everything reallocates by itself: a Choir lane is run again on another device and a failed judge has a second judge; a batch item the scheduler gave up on is queued again while the batch runs; a degraded split re-plans by itself onto the local devices that remain if the model still fits, else gives the phones their own models back as today.
+
+### 9. Caches
+
+- One small budget keeper, least recently used first, for: the rpc tensor cache (by model, never the one in use), the cloud store's extra copies, Choir evaluation files and the transfer log, with budgets from the profile and a Clear button. Model files are evicted only if the owner allows it and never the default ones.
+
+### 10. Other platforms
+
+- A headless node for Linux, Windows and macOS on the JVM: the Android-free part of the code compiled as it is, with a start-up, discovery, system readings and the upstream llama-server for that OS. It is managed through the web page of section 6. Other Android phones need only the profile of section 3. iOS is not attempted.
+
+## Work packages, order and owners
+
+Phase 1, in parallel, files kept apart:
+- P1 capability profile and its use in runtime settings and scheduling: the inference engineer (new core/DeviceProfile, llm/LlamaArgs, ModelStore, LlamaRuntime's GPU probe, sched/Scheduler, GenBudget, the capacity report; one row in the setup screen).
+- P3 index triggers, the last-file rule, the index version, the graph: the Data Union engineer (pdu/, kb/).
+- P4 local-only memory lending, automatic re-plan, the cache budget keeper and the rpc cache: the builder that owns memcloud/ (resumed).
+- P5a Choir lanes and the judge: the Choir engineer (choir/).
+- P5b batch items queued again; devices taken out of routing after a time: the builder that owns sched/ (resumed; sched/BatchRunner, SwarmLlm).
+
+Phase 2, after research 07 and a design review by the orchestrator:
+- P2 identity, membership, isolation, sealed transport, the Devices list: the network engineer (link/, core/Signer, a new cloud/ package, discovery, pairing).
+
+Phase 3, on top of P2:
+- P6 shared storage: a storage builder (a new store/ package, routes, placement, repair, the Cloud screen).
+- P7 the web gateway and the page: the network engineer for the gateway, a front-end builder for the page.
+- P8 the away link: the network engineer.
+
+Phase 4:
+- P9 the desktop node: a builder for a new Gradle module that compiles the Android-free sources.
+- Documents, then phone runs when the founder gives a window.
+
+Constraint: correctness and security of a system that now holds people's files and keys, built by several workers at once. So: one owner per file in each phase, the security design fixed in this plan and in research 07 before its code is written, every package with unit tests that fail without it, every diff read by the orchestrator before a merge, an independent adversarial read (Codex) of P2 and P6 before they are called done, and nothing called working before it has run on devices.
+
+Failure modes: two workers editing one file (the file lists above; a worker that needs a file outside its list stops and says so); a worker inventing a protocol detail that another worker contradicts (wire formats live in one document, docs/CLOUD-PROTOCOL.md, written by the P2 owner and cited by P6 to P9); a security mistake that tests cannot see (the Codex read, and the reviewer agent on the diff); a package that grows beyond what was asked (each brief has a size limit and a stop-and-report rule); the old shared-secret protocol breaking the regression scripts (clients with their own key, and the old signing kept in debug builds until the scripts are moved); a change that is fine in unit tests and wrong on a phone (the regression scripts of 2026-10-11 run again on phones before any claim).
+
+Ledger: surveys and research delegated (bounded, checkable by reading); P1 to P9 delegated to specialists, one per area as the founder asked, Sonnet; the design in this file, the reviews, merges and documents direct; the adversarial read to Codex.
+
+## Open decisions, with the default this plan proceeds on
+
+- The transport for the away phone: the recommendation of research 07.
+- How many copies of a stored chunk: 2.
+- Who may add or remove devices: every `node` member (a household, not an organisation). An owner-only rule can be added later.
+- A device's default storage offer: 10 % of its free space at the time of the profile, at least 1 GB, never more than half.
+- Away for how long before a device is taken out of routing and its chunks are re-copied: 10 minutes.
+- Phones: none is connected (2026-10-13 14:31). Unit tests and a desktop run come first; phone runs need a window from the founder.

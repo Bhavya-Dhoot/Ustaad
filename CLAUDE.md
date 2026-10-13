@@ -4,6 +4,7 @@ Naming: the product and the app are called **Ustaad** (founder decision, 2026-10
 
 Hackathon: iQOO Hackathon 2026 Grand Finale, Bengaluru, 2026-10-09 to 2026-10-11 (48 h). Demo must run on the iQOO phones.
 Scope is locked to the diagram in docs/PRD.md: SwarmOS (coordination layer) + Agent Choir + MemoryCloud + Private Data Union + ExpertMesh, all on SwarmLink (local Wi-Fi). Nothing else. Blackout Cloud is a one-line "emergency node" footnote, not a feature. Do not reopen scope.
+After the hackathon the founder reopened the scope (goal of 2026-10-13): a shared closed cloud with device identities and removal, a capability profile at install, shared storage from device storage, index updates and graph queries, a web page served by a device, a desktop node, access to the home cluster from the owner's phone when away (no hosted model, nothing exposed; memory pooling and distributed computing stay local), automatic reallocation, LRU cache budgets. The plan is plans/2026-10-13-closed-cloud.md. The hackathon rules below (order of gates, the scope lock) describe the build up to 2026-10-11.
 
 Orchestrator: Opus. Opus plans, delegates, reviews, closes gates. Opus writes no feature code beyond glue; workers do.
 Workers: .claude/agents/swarm-*.md. Pass `model` explicitly on every Agent call (sonnet for build/research, haiku only for log parsing). Workers never spawn subagents.
