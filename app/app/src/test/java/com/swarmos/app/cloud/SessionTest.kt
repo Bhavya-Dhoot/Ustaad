@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,20 +19,14 @@ class SessionTest {
         Caps.FEATURE_CHANNEL or Caps.FEATURE_BULK, 4, Caps.MAX_FRAME,
     )
 
-    private fun hs(d: Dev, caps: Caps = Caps.BASELINE) =
-        SessionHandshake(d.log.cloudId, d.identity, d.nodeId, { d.log.state() }, { dk }, caps)
-
-    private fun pair(a: Dev, b: Dev, capsA: Caps = Caps.BASELINE, capsB: Caps = Caps.BASELINE, now: Long = T0): Pair<Session, Session> {
-        val ini = hs(a, capsA).initiate(b.nodeId, now)
-        val resp = hs(b, capsB).respond(ini.init, now)
-        val done = ini.complete(resp.reply, now)
-        return done.session to resp.finish(done.finish, now)
-    }
+    private fun hs(p: Peer, caps: Caps = Caps.BASELINE) = p.handshake(dk, caps)
+    private fun pair(a: Peer, b: Peer, capsA: Caps = Caps.BASELINE, capsB: Caps = Caps.BASELINE, now: Long = T0) = sessionBetween(a, b, dk, now, capsA, capsB)
 
     // ---- the exchange -------------------------------------------------------------------------------------------------
 
     @Test fun twoMembersAgreeOnKeysAndSeeEachOther() {
-        val (a, b) = cloudOf(1)
+        val (c, ps) = cloudWith(2)
+        val (a, b) = ps
         val (sa, sb) = pair(a, b)
         assertEquals(sa.id, sb.id)
         assertEquals(16, sa.id.length)
@@ -39,18 +34,26 @@ class SessionTest {
         assertEquals(b.nodeId, sa.peerNodeId); assertEquals(a.nodeId, sb.peerNodeId)
         assertEquals(b.id, sa.peerId); assertEquals(a.id, sb.peerId)
         assertTrue(sa.initiator); assertFalse(sb.initiator)
-        // one sealing key per direction
         val f = sa.sealer(0, ctx, FrameType.REQUEST).seal("ping".toByteArray(), final = true)
         assertEquals("ping", String(sb.opener(0, ctx, FrameType.REQUEST).open(f)))
         val g = sb.sealer(0, ctx, FrameType.RESPONSE).seal("pong".toByteArray(), final = true)
         assertEquals("pong", String(sa.opener(0, ctx, FrameType.RESPONSE).open(g)))
         assertError(CloudError.BAD_FRAME) { sa.opener(0, ctx, FrameType.REQUEST).open(f) } // reflected to its sender
+        assertNotNull(c)
+    }
+
+    @Test fun everySessionHasItsOwnKeys() {
+        val (_, ps) = cloudWith(2)
+        val (s1, _) = pair(ps[0], ps[1])
+        val (s2, _) = pair(ps[0], ps[1])
+        assertNotEquals(s1.id, s2.id)
+        assertFalse(s1.macKey.contentEquals(s2.macKey))
     }
 
     @Test fun countersRestartAtZeroAfterARekeyUnderNewKeysAndOldFramesDoNotOpen() {
-        val (a, b) = cloudOf(1)
-        val (a1, b1) = pair(a, b)
-        val (a2, b2) = pair(a, b) // a new exchange between the same two members: the rekey
+        val (_, ps) = cloudWith(2)
+        val (a1, b1) = pair(ps[0], ps[1])
+        val (a2, b2) = pair(ps[0], ps[1]) // a new exchange between the same two members: the rekey
         assertNotEquals(a1.id, a2.id)
         val f1 = a1.sealer(0, ctx, FrameType.REQUEST).seal("same".toByteArray(), final = true)
         val f2 = a2.sealer(0, ctx, FrameType.REQUEST).seal("same".toByteArray(), final = true)
@@ -62,112 +65,200 @@ class SessionTest {
         assertEquals(0, a1.nextStreamNo()); assertEquals(1, a1.nextStreamNo())
     }
 
-    @Test fun everySessionHasItsOwnKeys() {
-        val (a, b) = cloudOf(1)
-        val (s1, _) = pair(a, b)
-        val (s2, _) = pair(a, b)
-        assertNotEquals(s1.id, s2.id)
-        assertFalse(s1.macKey.contentEquals(s2.macKey))
-    }
-
     @Test fun aNonMemberCannotStartASession() {
-        val (a, b) = cloudOf(1)
-        val outsider = Dev.bare().also { it.log = a.copyLog() } // knows the cloud and the discovery key, is not in the list
-        assertError(CloudError.NOT_MEMBER) { hs(b).respond(hs(outsider).initiate(b.nodeId, T0).init, T0) }
+        val (c, ps) = cloudWith(2)
+        val b = ps[1]
+        val outsider = Peer.bare().also { c.copyTo(it) } // knows the cloud and the discovery key, is not in the chain
+        assertError(CloudError.NOT_MEMBER) { hs(b).respond(hs(outsider).initiate(b.nodeId, b.id, T0).init, T0) }
         // without the discovery key the tag is wrong and nothing else is even computed
-        val noKey = SessionHandshake(a.log.cloudId, outsider.identity, outsider.nodeId, { a.log.state() }, { Crypto.random(32) })
-        assertError(CloudError.NOT_MEMBER) { hs(b).respond(noKey.initiate(b.nodeId, T0).init, T0) }
+        val noKey = SessionHandshake(c.chain.cloudId, outsider.identity, outsider.nodeId, { c.chain.state() }, { listOf(Crypto.random(32)) })
+        assertError(CloudError.NOT_MEMBER) { hs(b).respond(noKey.initiate(b.nodeId, b.id, T0).init, T0) }
         // a member's key under a made-up node id
-        val liar = SessionHandshake(a.log.cloudId, a.identity, "deadbeef", { a.log.state() }, { dk })
-        assertError(CloudError.NOT_MEMBER) { hs(b).respond(liar.initiate(b.nodeId, T0).init, T0) }
+        val liar = SessionHandshake(c.chain.cloudId, ps[0].identity, "deadbeef", { c.chain.state() }, { listOf(dk) })
+        assertError(CloudError.NOT_MEMBER) { hs(b).respond(liar.initiate(b.nodeId, b.id, T0).init, T0) }
     }
 
     @Test fun aRemovedMemberCannotStartASessionEvenWithEverythingItKept() {
-        val (a, b, m) = cloudOf(2)
-        val kept = Dev(m.identity, m.nodeId, m.copyLog())
-        a.remove(m.id)
-        b.log.merge(a.log.entries())
-        assertError(CloudError.NOT_MEMBER) { hs(b).respond(hs(kept).initiate(b.nodeId, T0).init, T0) }
+        val (c, ps) = cloudWith(2)
+        val (b, m) = ps
+        val kept = Peer(m.identity, m.nodeId, Chain.fromEntries(c.chain.entries(), T0))
+        c.removeAndRotate(m.id)
+        c.copyTo(b)
+        assertError(CloudError.NOT_MEMBER) { hs(b).respond(hs(kept).initiate(b.nodeId, b.id, T0).init, T0) }
         // and a member does not accept the removed one as a responder either: m, still believing it is a member, answers with a
         // correct Reply signed by its own (valid, but removed) key
-        val ini = hs(b).initiate(m.nodeId, T0)
+        val ini = hs(b).initiate(m.nodeId, m.id, T0)
         val reply = hs(kept).respond(ini.init, T0).reply
         assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) }
     }
 
     @Test fun aMemberRemovedDuringTheExchangeIsRefusedAtTheEnd() {
-        val (a, b, c) = cloudOf(2)
-        val ini = hs(b).initiate(c.nodeId, T0)
-        val resp = hs(c).respond(ini.init, T0)
+        val (c, ps) = cloudWith(2)
+        val (b, d) = ps
+        val ini = hs(b).initiate(d.nodeId, d.id, T0)
+        val resp = hs(d).respond(ini.init, T0)
         val done = ini.complete(resp.reply, T0)
-        a.remove(b.id)
-        c.log.merge(a.log.entries()) // c hears of it before the last flight
+        c.removeAndRotate(b.id)
+        c.copyTo(d) // d hears of it before the last flight
         assertError(CloudError.NOT_MEMBER) { resp.finish(done.finish, T0) }
     }
 
     @Test fun aResponderWhoIsNotAMemberIsRefusedAndAForgedReplyFails() {
-        val (a, b) = cloudOf(1)
-        val attacker = Dev.bare()
-        attacker.log = a.copyLog()
+        val (c, ps) = cloudWith(2)
+        val (a, b) = ps
+        val attacker = Peer.bare()
+        c.copyTo(attacker)
         // the attacker believes it is a member (it can believe anything) and answers as "b" with its own key
-        val fake = MemberState(a.state.members + Member(b.nodeId, "b", MemberKind.NODE, attacker.id, attacker.identity.publicKey, null, a.id, T0), emptySet(), emptySet())
-        val ah = SessionHandshake(a.log.cloudId, attacker.identity, b.nodeId, { fake }, { dk })
-        val ini = hs(a).initiate(b.nodeId, T0)
+        val st = a.state
+        val fake = st.copy(members = st.members.associateBy { it.id } + (attacker.id to ChainMember(attacker.id, b.nodeId, "b", MemberKind.NODE, attacker.identity.publicKey, null, null, 1)))
+        val ah = SessionHandshake(c.chain.cloudId, attacker.identity, b.nodeId, { fake }, { listOf(dk) })
+        val ini = hs(a).initiate(b.nodeId, b.id, T0)
         val reply = ah.respond(ini.init, T0).reply
-        assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) } // its key is not in the list
+        assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) } // its key is not the one expected
 
         // a genuine reply altered on the way: any changed field breaks the signed transcript
-        val ini2 = hs(a).initiate(b.nodeId, T0)
+        val ini2 = hs(a).initiate(b.nodeId, b.id, T0)
         val good = hs(b).respond(ini2.init, T0).reply
-        val at = listOf(20, 60, 100, good.size - 5) // fingerprint, ephemeral key (twice), signature
-        for (i in at) assertError(CloudError.NOT_MEMBER) { ini2.complete(good.copyOf().also { it[i] = (it[i].toInt() xor 1).toByte() }, T0) }
+        for (i in listOf(20, 60, 100, good.size - 5)) { // fingerprint, ephemeral key (twice), signature
+            val i3 = hs(a).initiate(b.nodeId, b.id, T0)
+            val g3 = hs(b).respond(i3.init, T0).reply
+            assertError(CloudError.NOT_MEMBER) { i3.complete(g3.copyOf().also { it[i] = (it[i].toInt() xor 1).toByte() }, T0) }
+        }
         assertNotNull(ini2.complete(good, T0)) // the unaltered one still works
     }
 
-    @Test fun aWrongNodeIdOrVersionIsRefused() {
-        val (a, b) = cloudOf(1)
-        val ini = hs(a).initiate("deadbeef", T0) // dials a node id the answer will not match
-        val reply = hs(b).respond(hs(a).initiate(b.nodeId, T0).init, T0).reply
+    @Test fun theInitiatorPinsTheExpectedMembersKeyNotOnlyItsNodeId() { // Codex Session.kt:110
+        val (_, ps) = cloudWith(3)
+        val (a, b, c3) = ps
+        // b is a perfectly good member answering under its own name, but the caller expected c3's key at that address
+        val ini = hs(a).initiate(b.nodeId, c3.id, T0)
+        val reply = hs(b).respond(ini.init, T0).reply
         assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) }
-        assertError(CloudError.MALFORMED) { hs(b).respond(hs(a).initiate(b.nodeId, T0).init.also { it[0] = 2 }, T0) }
+        // pinned to the right key it works
+        val ini2 = hs(a).initiate(b.nodeId, b.id, T0)
+        assertNotNull(ini2.complete(hs(b).respond(ini2.init, T0).reply, T0))
+    }
+
+    @Test fun aWrongNodeIdOrVersionIsRefused() {
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val ini = hs(a).initiate("deadbeef", b.id, T0) // dials a node id the answer will not match
+        val reply = hs(b).respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0).reply
+        assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) }
+        assertError(CloudError.MALFORMED) { hs(b).respond(hs(a).initiate(b.nodeId, b.id, T0).init.also { it[0] = 2 }, T0) }
         assertError(CloudError.MALFORMED) { hs(b).respond(ByteArray(10), T0) }
     }
 
+    // ---- single use, replay and budgets (Codex Session.kt:132, :170, :190) ------------------------------------------------------
+
+    @Test fun completingAnExchangeIsSingleUseAndAReplayedReplyNeverMakesASecondSession() { // Codex Session.kt:132
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val ini = hs(a).initiate(b.nodeId, b.id, T0)
+        val reply = hs(b).respond(ini.init, T0).reply
+        val first = ini.complete(reply, T0)
+        first.session.nextStreamNo(); first.session.nextStreamNo()
+        val again = ini.complete(reply, T0 + 5)
+        assertSame(first, again) // the same object, so the stream counter does not start again at zero
+        assertEquals(2, again.session.nextStreamNo())
+        // a different Reply is refused
+        val other = hs(b).respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0).reply
+        assertError(CloudError.NOT_MEMBER) { ini.complete(other, T0) }
+        assertSame(first, ini.complete(reply, T0)) // and the first result is still the first result
+    }
+
+    @Test fun aFailedCompletionKillsTheExchange() {
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val ini = hs(a).initiate(b.nodeId, b.id, T0)
+        val reply = hs(b).respond(ini.init, T0).reply
+        assertError(CloudError.NOT_MEMBER) { ini.complete(reply.copyOf().also { it[reply.size - 3] = (it[reply.size - 3].toInt() xor 1).toByte() }, T0) }
+        assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) } // dead: the initiator starts again
+    }
+
+    @Test fun ephemeralPrivateKeysAreDroppedOnCompletionAndOnFailure() { // Codex Session.kt:190
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val ini = hs(a).initiate(b.nodeId, b.id, T0)
+        assertTrue(ini.holdsEphemeralKey())
+        val resp = hs(b).respond(ini.init, T0)
+        assertTrue(resp.holdsEphemeralKey())
+        val done = ini.complete(resp.reply, T0)
+        assertFalse(ini.holdsEphemeralKey())
+        resp.finish(done.finish, T0)
+        assertFalse(resp.holdsEphemeralKey())
+        // failures
+        val ini2 = hs(a).initiate(b.nodeId, b.id, T0)
+        val resp2 = hs(b).respond(ini2.init, T0)
+        assertError(CloudError.MALFORMED) { ini2.complete(ByteArray(40), T0) }
+        assertFalse(ini2.holdsEphemeralKey())
+        assertError(CloudError.MALFORMED) { resp2.finish(ByteArray(10).also { it[0] = 1; it[1] = 3 }, T0) }
+        assertFalse(resp2.holdsEphemeralKey())
+        // expiry
+        val resp3 = hs(b).respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0)
+        assertError(CloudError.NOT_MEMBER) { resp3.finish(done.finish, T0 + 20_000) }
+        assertFalse(resp3.holdsEphemeralKey())
+    }
+
+    @Test fun aReplayedInitIsRefusedBeforeAnyKeyWorkAndAFinishRecordedEarlierDoesNotFit() { // Codex Session.kt:170
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val h = hs(b)
+        val ini = hs(a).initiate(b.nodeId, b.id, T0)
+        val resp = h.respond(ini.init, T0)
+        val done = ini.complete(resp.reply, T0)
+        assertError(CloudError.NOT_MEMBER) { h.respond(ini.init, T0 + 1) } // the same Init again: no new Reply, no key work
+        assertNotNull(resp.finish(done.finish, T0))
+    }
+
+    @Test fun thePendingBudgetsAreCheckedBeforeAnyKeyIsGeneratedOrAnythingIsSigned() { // Codex Session.kt:170
+        val (_, ps) = cloudWith(3)
+        val (a, b, c3) = ps
+        // a global budget of one: a valid, fresh Init from a member is refused while the slot is taken, and no Reply exists
+        val tight = b.handshake(dk, maxPending = 1)
+        val iniA = hs(a).initiate(b.nodeId, b.id, T0)
+        val first = tight.respond(iniA.init, T0, source = "10.0.0.1")
+        assertError(CloudError.BUSY) { tight.respond(hs(c3).initiate(b.nodeId, b.id, T0).init, T0, source = "10.0.0.2") }
+        // a slot comes back when the exchange ends
+        first.finish(iniA.complete(first.reply, T0).finish, T0)
+        assertNotNull(tight.respond(hs(c3).initiate(b.nodeId, b.id, T0).init, T0, source = "10.0.0.2"))
+        // a budget per address: the fifth from one address is refused, another address is not
+        val perAddr = b.handshake(dk, maxPending = 64, maxPerSource = 4)
+        repeat(4) { perAddr.respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0, source = "10.0.0.9") }
+        assertError(CloudError.BUSY) { perAddr.respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0, source = "10.0.0.9") }
+        perAddr.respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0, source = "10.0.0.8")
+    }
+
+    @Test fun anAddressThatSendsTooManyInitsAMinuteIsRefused() {
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val h = SessionHandshake(b.chain.cloudId, b.identity, b.nodeId, { b.chain.state() }, { listOf(dk) }, Caps.BASELINE, 10_000L, 10_000, 10_000, 5)
+        repeat(5) { h.respond(hs(a).initiate(b.nodeId, b.id, T0 + it).init, T0 + it, "1.2.3.4") }
+        assertError(CloudError.BUSY) { h.respond(hs(a).initiate(b.nodeId, b.id, T0 + 6).init, T0 + 6, "1.2.3.4") }
+        h.respond(hs(a).initiate(b.nodeId, b.id, T0 + 61_000).init, T0 + 61_000, "1.2.3.4") // a minute later
+    }
+
     @Test fun theFinishFlightMustBeSignedByTheInitiatorAndWorksOnce() {
-        val (a, b) = cloudOf(1)
-        val ini = hs(a).initiate(b.nodeId, T0)
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val ini = hs(a).initiate(b.nodeId, b.id, T0)
         val resp = hs(b).respond(ini.init, T0)
         val done = ini.complete(resp.reply, T0)
         val forged = done.finish.copyOf().also { it[it.size - 3] = (it[it.size - 3].toInt() xor 1).toByte() }
-        val resp2 = hs(b).respond(ini.init, T0) // the same Init replayed gets a fresh Reply
-        assertFalse(resp.reply.contentEquals(resp2.reply))
+        val resp2 = hs(b).respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0)
         assertError(CloudError.NOT_MEMBER) { resp2.finish(forged, T0) }
         assertError(CloudError.NOT_MEMBER) { resp2.finish(done.finish, T0) } // a response is consumed by its first try
-        // a Finish recorded from the first exchange does not fit the second
-        val resp3 = hs(b).respond(ini.init, T0)
-        assertError(CloudError.NOT_MEMBER) { resp3.finish(done.finish, T0) }
+        val resp3 = hs(b).respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0)
+        assertError(CloudError.NOT_MEMBER) { resp3.finish(done.finish, T0) } // a Finish recorded from another exchange does not fit
         assertNotNull(resp.finish(done.finish, T0))
         assertError(CloudError.NOT_MEMBER) { resp.finish(done.finish, T0) } // and once
-    }
-
-    @Test fun aPendingExchangeExpiresAndThePendingTableIsBounded() {
-        val (a, b) = cloudOf(1)
-        fun handshake() = SessionHandshake(b.log.cloudId, b.identity, b.nodeId, { b.log.state() }, { dk }, Caps.BASELINE, pendingMs = 10_000, maxPending = 2)
-        val ini = hs(a).initiate(b.nodeId, T0)
-        val h1 = handshake()
-        val r1 = h1.respond(ini.init, T0)
-        val done = ini.complete(r1.reply, T0)
-        assertError(CloudError.NOT_MEMBER) { r1.finish(done.finish, T0 + 10_001) } // too late: the 10 seconds are over
-        val h2 = handshake()
-        h2.respond(ini.init, T0); h2.respond(ini.init, T0)
-        assertError(CloudError.BUSY) { h2.respond(ini.init, T0) } // at most two exchanges pending
-        h2.respond(ini.init, T0 + 20_000) // the old ones have expired and made room
     }
 
     // ---- the store and the life of a session ------------------------------------------------------------------------
 
     @Test fun aSessionEndsAfter24HoursAndWhenEitherMemberIsRemoved() {
-        val (a, b, c) = cloudOf(2)
+        val (c, ps) = cloudWith(2)
+        val (a, b) = ps
         val (sa, _) = pair(a, b)
         val store = SessionStore(a.id)
         store.add(sa)
@@ -176,46 +267,56 @@ class SessionTest {
         assertNull(store.get(sa.id, T0, a.state)) // the lookup above dropped it
 
         store.add(sa)
-        a.remove(b.id) // the peer is removed
+        c.removeAndRotate(b.id) // the peer is removed
+        c.copyTo(a)
         assertNull(store.get(sa.id, T0, a.state))
+    }
 
-        val (sc, _) = pair(a, c)
-        store.add(sc)
-        assertNotNull(store.get(sc.id, T0, a.state))
-        a.remove(a.id) // this device is itself removed (it can remove itself)
-        assertNull(store.get(sc.id, T0, a.state))
+    @Test fun aSessionEndsWhenThisDeviceIsRemoved() {
+        val (c, ps) = cloudWith(2)
+        val (a, b) = ps
+        val (sa, _) = pair(a, b)
+        val store = SessionStore(a.id)
+        store.add(sa)
+        c.removeAndRotate(a.id)
+        c.copyTo(a)
+        assertNull(store.get(sa.id, T0, a.state))
     }
 
     @Test fun theStoreKeepsFourSessionsPerPeerAndSweepsTheDead() {
-        val (a, b) = cloudOf(1)
+        val (c, ps) = cloudWith(2)
+        val (a, b) = ps
         val store = SessionStore(a.id)
         val all = List(6) { pair(a, b, now = T0 + it).first }
         all.forEach { store.add(it) }
         assertEquals(4, store.size)
         assertNull(store.get(all[0].id, T0, a.state)) // the oldest went
         assertNotNull(store.get(all[5].id, T0, a.state))
-        a.remove(b.id)
+        c.removeAndRotate(b.id); c.copyTo(a)
         assertEquals(4, store.sweep(T0, a.state)) // all four belong to the removed peer
         assertEquals(0, store.size)
     }
 
-    // ---- negotiation (11.1) -----------------------------------------------------------------------------------------------
+    // ---- negotiation (11.1) and the enforced frame size (Codex Session.kt:36) -----------------------------------------------
 
     @Test fun twoBaselineDevicesUseSignedAndSealedHttpOnly() {
-        val (a, b) = cloudOf(1)
-        val (sa, sb) = pair(a, b)
+        val (_, ps) = cloudWith(2)
+        val (sa, sb) = pair(ps[0], ps[1])
         for (s in listOf(sa, sb)) {
             assertEquals(1, s.negotiated.profile)
             assertEquals(Aead.AES_256_GCM, s.negotiated.aead)
             assertFalse(s.negotiated.channel)
             assertEquals(0, s.negotiated.bulkStreams)
         }
+        var refused = false
+        try { sa.bulkSealer(1, ctx) } catch (e: IllegalStateException) { refused = true } // the bulk path was not negotiated
+        assertTrue(refused)
     }
 
     @Test fun twoModernDevicesAgreeOnTheBestCommonSet() {
-        val (a, b) = cloudOf(1)
+        val (_, ps) = cloudWith(2)
         val weak = Caps(1, 2, Caps.CIPHER_AES or Caps.CIPHER_CHACHA or Caps.CIPHER_PREFER_CHACHA, Caps.LINK_DIRECT, Caps.FEATURE_CHANNEL or Caps.FEATURE_BULK, 2, 256 * 1024)
-        val (sa, sb) = pair(a, b, modern, weak)
+        val (sa, sb) = pair(ps[0], ps[1], modern, weak)
         for (s in listOf(sa, sb)) {
             val n = s.negotiated
             assertEquals(2, n.profile)
@@ -225,17 +326,38 @@ class SessionTest {
             assertEquals(256 * 1024, n.maxFrame)
             assertEquals(Caps.LINK_DIRECT, n.links)
         }
-        // and the frames really are ChaCha20-Poly1305 both ways
         val f = sa.sealer(1, ctx, FrameType.REQUEST).seal("hi".toByteArray(), final = true)
         assertEquals("hi", String(sb.opener(1, ctx, FrameType.REQUEST).open(f)))
         val b1 = sb.bulkSealer(1, "t".toByteArray()).seal(0, byteArrayOf(1, 2, 3), final = true)
         assertTrue(sa.bulkOpener(1, "t".toByteArray()).open(b1)!!.final)
     }
 
+    @Test fun theNegotiatedLargestFrameIsEnforcedForBulkAndChannelStreams() { // Codex Session.kt:36
+        val (_, ps) = cloudWith(2)
+        val small = Caps(1, 2, Caps.CIPHER_AES, Caps.LINK_AP, Caps.FEATURE_CHANNEL or Caps.FEATURE_BULK, 4, Caps.MIN_FRAME) // 16 KiB
+        val (sa, sb) = pair(ps[0], ps[1], small, small)
+        assertEquals(Caps.MIN_FRAME, sa.negotiated.maxFrame)
+        // the sender refuses to seal more than was agreed
+        var refused = 0
+        try { sa.bulkSealer(1, ctx).seal(0, ByteArray(Caps.MIN_FRAME + 1)) } catch (e: IllegalArgumentException) { refused++ }
+        try { sa.sealer(2, ctx, FrameType.EVENT, channel = true).seal(ByteArray(Caps.MIN_FRAME + 1)) } catch (e: IllegalArgumentException) { refused++ }
+        assertEquals(2, refused)
+        sa.bulkSealer(1, ctx).seal(0, ByteArray(Caps.MIN_FRAME)) // exactly the limit is fine
+        // a peer that ignores the agreement and sends a valid 1 MiB frame is refused by the receiver
+        val rogue = BulkSealer(Crypto.random(32), 1, ctx) // (a different key: stands for any oversize frame)
+        val big = rogue.seal(0, ByteArray(1024 * 1024))
+        assertError(CloudError.BAD_FRAME) { sb.bulkOpener(1, ctx).open(big) }
+        val bigEvent = FrameSealer(Crypto.random(32), 2, ctx, FrameType.EVENT).seal(ByteArray(Caps.MIN_FRAME + 1))
+        assertError(CloudError.BAD_FRAME) { sb.opener(2, ctx, FrameType.EVENT, channel = true).open(bigEvent) }
+        // one-shot HTTP bodies keep the larger limit
+        val body = sa.sealer(3, ctx, FrameType.REQUEST).seal(ByteArray(1_000_000), final = true)
+        assertEquals(1_000_000, sb.opener(3, ctx, FrameType.REQUEST).open(body).size)
+    }
+
     @Test fun anOlderDeviceNeverLocksANewerOneOut() {
-        val (a, b) = cloudOf(1)
+        val (_, ps) = cloudWith(2)
         for ((x, y) in listOf((modern to Caps.BASELINE), (Caps.BASELINE to modern))) {
-            val (sa, sb) = pair(a, b, x, y)
+            val (sa, sb) = pair(ps[0], ps[1], x, y)
             for (s in listOf(sa, sb)) {
                 assertEquals(1, s.negotiated.profile)
                 assertEquals(Aead.AES_256_GCM, s.negotiated.aead)
@@ -250,9 +372,9 @@ class SessionTest {
     @Test fun aCipherIsChosenOnlyWhenBothOfferItAndOneNeedsIt() {
         fun c(ciphers: Int) = Caps(1, 2, ciphers, 0, Caps.FEATURE_CHANNEL, 0, Caps.MIN_FRAME)
         val both = Caps.CIPHER_AES or Caps.CIPHER_CHACHA
-        assertEquals(Aead.AES_256_GCM, Negotiated.of(c(both), c(both)).aead) // nobody needs it
+        assertEquals(Aead.AES_256_GCM, Negotiated.of(c(both), c(both)).aead)
         assertEquals(Aead.CHACHA20_POLY1305, Negotiated.of(c(both or Caps.CIPHER_PREFER_CHACHA), c(both)).aead)
-        assertEquals(Aead.AES_256_GCM, Negotiated.of(c(both or Caps.CIPHER_PREFER_CHACHA), c(Caps.CIPHER_AES)).aead) // the other cannot
+        assertEquals(Aead.AES_256_GCM, Negotiated.of(c(both or Caps.CIPHER_PREFER_CHACHA), c(Caps.CIPHER_AES)).aead)
     }
 
     @Test fun theChoiceIsTheSameFromBothSides() {
@@ -266,18 +388,16 @@ class SessionTest {
     }
 
     @Test fun stripOrChangeAnOfferOnTheWayAndTheSignatureFails() {
-        val (a, b) = cloudOf(1)
-        // a device on the path removes the responder's offer from the Reply to push the pair down to plain HTTP
-        val ini = hs(a, modern).initiate(b.nodeId, T0)
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val ini = hs(a, modern).initiate(b.nodeId, b.id, T0)
         val reply = hs(b, modern).respond(ini.init, T0).reply
         val r = Reader(reply)
         r.u8(); r.u8(); val node = r.str(8); val fp = r.fixed(32); val eph = r.fixed(65); val nonce = r.fixed(32); r.lp(256); val sig = r.fixed(64)
         val stripped = Writer().u8(1).u8(2).str(node).fixed(fp, 32).fixed(eph, 65).fixed(nonce, 32).lp(ByteArray(0)).fixed(sig, 64).bytes()
         assertError(CloudError.NOT_MEMBER) { ini.complete(stripped, T0) }
-        assertNotNull(ini.complete(reply, T0))
 
-        // the same for the Init: the responder signs what it received, the initiator what it sent
-        val ini2 = hs(a, modern).initiate(b.nodeId, T0)
+        val ini2 = hs(a, modern).initiate(b.nodeId, b.id, T0)
         val ri = Reader(ini2.init)
         ri.u8(); ri.u8(); val n2 = ri.str(8); val f2 = ri.fixed(32); val e2 = ri.fixed(65); val no2 = ri.fixed(32); val tag = ri.fixed(8); ri.lp(256)
         val initStripped = Writer().u8(1).u8(1).str(n2).fixed(f2, 32).fixed(e2, 65).fixed(no2, 32).fixed(tag, 8).lp(ByteArray(0)).bytes()
@@ -291,14 +411,13 @@ class SessionTest {
         val d = Caps.decodeExt(modern.encodeExt())
         assertEquals(2, d.maxProfile); assertEquals(modern.ciphers, d.ciphers); assertEquals(modern.links, d.links)
         assertEquals(modern.features, d.features); assertEquals(4, d.bulkStreams); assertEquals(Caps.MAX_FRAME, d.maxFrame)
-        // a later version adds item 9: this build skips it and still reads item 1
         val withUnknown = modern.encodeExt() + Writer().u8(9).lp(byteArrayOf(1, 2, 3)).bytes()
         assertEquals(2, Caps.decodeExt(withUnknown).maxProfile)
-        assertError(CloudError.MALFORMED) { Caps.decodeExt(Writer().u8(9).lp(ByteArray(1)).raw(modern.encodeExt()).bytes()) } // ids must ascend
-        assertError(CloudError.MALFORMED) { Caps.decodeExt(modern.encodeExt() + byteArrayOf(5)) } // a cut item
-        assertError(CloudError.MALFORMED) { Caps.decodeExt(Writer().u8(1).lp(ByteArray(3)).bytes()) } // wrong size
+        assertError(CloudError.MALFORMED) { Caps.decodeExt(Writer().u8(9).lp(ByteArray(1)).raw(modern.encodeExt()).bytes()) }
+        assertError(CloudError.MALFORMED) { Caps.decodeExt(modern.encodeExt() + byteArrayOf(5)) }
+        assertError(CloudError.MALFORMED) { Caps.decodeExt(Writer().u8(1).lp(ByteArray(3)).bytes()) }
         val noAes = Writer().u8(1).lp(Writer().u8(1).u8(2).u8(2).u8(0).u8(0).u8(0).u32(65536).bytes()).bytes()
-        assertError(CloudError.MALFORMED) { Caps.decodeExt(noAes) } // AES-256-GCM is required
+        assertError(CloudError.MALFORMED) { Caps.decodeExt(noAes) }
         val smallFrame = Writer().u8(1).lp(Writer().u8(1).u8(2).u8(1).u8(0).u8(0).u8(0).u32(100).bytes()).bytes()
         assertError(CloudError.MALFORMED) { Caps.decodeExt(smallFrame) }
     }

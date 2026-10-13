@@ -16,9 +16,30 @@ object RequestAuth {
     fun mac(key: ByteArray, method: String, pathWithQuery: String, ts: Long, requestId: String, sender: String, body: ByteArray): ByteArray =
         Crypto.hmac(key, input(method, pathWithQuery, ts, requestId, sender, body))
 
-    /** What makes two requests "the same request" for the resend rule. */
-    fun fingerprint(method: String, pathWithQuery: String, body: ByteArray): ByteArray =
-        Crypto.sha256(Writer().str(method.uppercase()).str(pathWithQuery).lp(body).bytes())
+    /**
+     * What makes two requests "the same request" for the resend rule: method, target and a digest of the **opened** body, not the
+     * sealed bytes (a retry after a rekey or on another carrier has different sealed bytes; Codex Request.kt:161).
+     */
+    fun fingerprint(method: String, pathWithQuery: String, plainBody: ByteArray): ByteArray =
+        Crypto.sha256(Writer().str(method.uppercase()).str(pathWithQuery).lp(Crypto.sha256(plainBody)).bytes())
+
+    /** The sealed body of a request: one final frame on a fresh stream, bound to the request id. Empty stays empty. */
+    fun sealBody(session: Session, requestId: String, plain: ByteArray): ByteArray =
+        if (plain.isEmpty()) ByteArray(0)
+        else session.sealer(session.nextStreamNo(), requestId.toByteArray(), FrameType.REQUEST).seal(plain, final = true)
+
+    /** The sealed answer (6.4): the envelope in the first RESPONSE frame of a stream the responder chooses. */
+    fun sealAnswer(session: Session, requestId: String, status: Int, contentType: String, body: ByteArray): ByteArray =
+        session.sealer(session.nextStreamNo(), requestId.toByteArray(), FrameType.RESPONSE, FrameType.EVENT)
+            .seal(ResponseEnvelope(status, contentType, body).encode(), final = true)
+
+    /** Opens a one-frame answer; the status and content type are those inside, never the carrier's. */
+    fun openAnswer(session: Session, requestId: String, frame: ByteArray): ResponseEnvelope {
+        val h = FrameHeader.parse(frame)
+        val o = session.opener(h.stream, requestId.toByteArray(), FrameType.RESPONSE, FrameType.EVENT)
+        val plain = o.open(frame)
+        return ResponseEnvelope.parse(plain)
+    }
 }
 
 /** A request as received: the headers parsed, the MAC decoded. Exactly one of [sessionId] and [tokenKeyId] is set. */
@@ -35,10 +56,10 @@ class SignedRequest(
 )
 
 /**
- * Remembers requests seen inside the window so that an identical copy is refused (section 6.3). The key is the sender and
- * the request id. An entry keeps the MACs seen under that id: a copy has a MAC already in the set (`replayed`); the
- * sender's own retry is signed again with a new time and so has a new MAC, and is handed on to the existing dedup, which
- * returns the stored result. Only requests whose MAC was already verified may reach this, and a live entry is never evicted.
+ * Remembers requests seen inside the window so that an identical copy is refused (section 6.3). The key is the **verified
+ * member id** and the request id (Codex Request.kt:161). An entry keeps the MACs seen under that id: a copy has a MAC already in
+ * the set (`replayed`); the sender's own retry is signed again with a new time and so has a new MAC, and is handed on to the
+ * dedup, which returns the stored result. Only requests whose MAC was verified may reach this, and a live entry is never evicted.
  */
 class ReplayGuard(
     private val ttlMs: Long = 300_000L,
@@ -58,13 +79,13 @@ class ReplayGuard(
     val size: Int
         @Synchronized get() = seen.size
 
-    @Synchronized fun admit(sender: String, requestId: String, mac: ByteArray, fingerprint: ByteArray): Admit {
+    @Synchronized fun admit(memberId: String, requestId: String, mac: ByteArray, fingerprint: ByteArray): Admit {
         val now = clock()
         if (now - lastPurge >= 1_000L) {
             seen.values.removeAll { now - it.last > ttlMs }
             lastPurge = now
         }
-        val key = "$sender/$requestId"
+        val key = "$memberId/$requestId"
         val e = seen[key]
         if (e == null) {
             if (seen.size >= maxEntries) throw ProtocolError(CloudError.BUSY) // refuse; evicting a live entry would reopen the window
@@ -80,50 +101,32 @@ class ReplayGuard(
     }
 }
 
-/** A key issued to a token client, shown once to the person who sets the client up. */
-class TokenGrant(val nodeId: String, val keyId: ByteArray, val key: ByteArray, val entry: Entry)
-
 /**
- * The 32-byte keys of the token clients that THIS node issued (section 8). Other members never see a key, so only the
- * issuer can verify those clients' requests. In memory here; the wiring stage keeps them in protected storage.
+ * Who sent an accepted request and what it said. [body] is the opened body. [resend] is true for a retry of a request id already
+ * seen (the dedup then returns the stored result). [session] is the session to seal the answer with, or null in loopback mode.
  */
-class TokenKeys(private val identity: DeviceIdentity) {
-    private val selfFp = Crypto.fingerprint(identity.publicKey)
-    private val keys = HashMap<String, ByteArray>()
-
-    /** Makes the key and the entry that records it. Nothing is kept if the entry cannot be written. */
-    @Synchronized fun issue(log: MemberLog, name: String, kind: MemberKind, now: Long): TokenGrant {
-        val keyId = Crypto.random(16)
-        val key = Crypto.random(32)
-        val nodeId = Hex.of(Crypto.random(4))
-        val entry = log.addTokenClient(identity, nodeId, name, kind, keyId, now)
-        keys[Hex.of(keyId)] = key
-        return TokenGrant(nodeId, keyId, key.copyOf(), entry)
-    }
-
-    @Synchronized fun key(keyIdHex: String): ByteArray? = keys[keyIdHex]
-    @Synchronized fun restore(keyIdHex: String, key: ByteArray) { keys[keyIdHex] = key }
-    @Synchronized fun forget(keyIdHex: String) { keys.remove(keyIdHex) }
-
-    /** The member id the list uses for the client with this key id. */
-    fun memberId(keyId: ByteArray): String = Hex.of(MemberLog.tokenMemberId(selfFp, keyId))
-}
-
-/** Who sent an accepted request. [resend] is true for a retry of a request id already seen (the dedup then returns the stored result). */
-class Accepted(val nodeId: String, val kind: MemberKind, val memberId: String, val viaToken: Boolean, val resend: Boolean)
+class Accepted(
+    val nodeId: String,
+    val kind: MemberKind,
+    val memberId: String,
+    val viaToken: Boolean,
+    val resend: Boolean,
+    val body: ByteArray,
+    val session: Session?,
+)
 
 /**
- * The checks of section 6.2, in order. [startedAtMs] is this process's start: a restart empties the replay memory, so a
- * request signed before it is refused (`skew`).
+ * The checks of section 6.2, in order. [startedAtMs] is this process's start: a restart empties the replay memory, so a request
+ * signed before it is refused (`skew`).
  */
 class RequestVerifier(
     private val sessions: SessionStore,
-    private val tokens: TokenKeys?,
-    private val state: () -> MemberState,
+    private val tokens: TokenIssuer?,
+    private val state: () -> ChainState,
     private val guard: ReplayGuard,
     private val startedAtMs: Long,
 ) {
-    fun verify(req: SignedRequest, now: Long): Accepted {
+    fun verify(req: SignedRequest, now: Long, fromLoopback: Boolean = false): Accepted {
         if (!Shape.isRequestId(req.requestId) || !Shape.isNodeId(req.sender) || (req.sessionId == null) == (req.tokenKeyId == null)) {
             throw ProtocolError(CloudError.MALFORMED)
         }
@@ -133,32 +136,38 @@ class RequestVerifier(
         val key: ByteArray
         val kind: MemberKind
         val memberId: String
-        val viaToken = req.tokenKeyId != null
+        val session: Session?
+        val viaToken: Boolean
         if (req.sessionId != null) {
             val s = sessions.get(req.sessionId, now, st) ?: throw ProtocolError(CloudError.UNKNOWN_SESSION)
             if (s.peerNodeId != req.sender) throw ProtocolError(CloudError.SENDER_MISMATCH)
-            key = s.macKey
-            kind = s.peerKind
-            memberId = s.peerId
+            key = s.macKey; kind = s.peerKind; memberId = s.peerId; session = s; viaToken = s.viaToken
         } else {
+            // the unsealed token mode exists for the PC test scripts through adb forward, and for nobody else
+            if (!fromLoopback) throw ProtocolError(CloudError.FORBIDDEN)
             val keyIdHex = req.tokenKeyId!!
             val keyId = Hex.parse(keyIdHex)
             if (keyId.size != 16) throw ProtocolError(CloudError.MALFORMED)
             val t = tokens ?: throw ProtocolError(CloudError.UNKNOWN_KEY)
-            // the key must be one this node issued AND still be recorded in the list (a removal or a removed issuer ends it)
-            key = t.key(keyIdHex) ?: throw ProtocolError(CloudError.UNKNOWN_KEY)
+            key = t.loopbackMacKey(keyIdHex) ?: throw ProtocolError(CloudError.UNKNOWN_KEY)
             val m = st.member(t.memberId(keyId)) ?: throw ProtocolError(CloudError.UNKNOWN_KEY)
             if (m.kind == MemberKind.NODE) throw ProtocolError(CloudError.UNKNOWN_KEY)
             if (m.nodeId != req.sender) throw ProtocolError(CloudError.SENDER_MISMATCH)
-            kind = m.kind
-            memberId = m.id
+            kind = m.kind; memberId = m.id; session = null; viaToken = true
         }
 
         val expected = RequestAuth.mac(key, req.method, req.pathWithQuery, req.ts, req.requestId, req.sender, req.body)
         if (!Crypto.equal(expected, req.mac)) throw ProtocolError(CloudError.BAD_MAC)
 
-        // only now, with a right MAC, may the request enter the replay memory
-        val admit = guard.admit(req.sender, req.requestId, req.mac, RequestAuth.fingerprint(req.method, req.pathWithQuery, req.body))
-        return Accepted(req.sender, kind, memberId, viaToken, admit == ReplayGuard.Admit.RESEND)
+        // the MAC is right: open the body (sealed in a session, plain in loopback mode)
+        val plain: ByteArray = if (session == null || req.body.isEmpty()) req.body else {
+            val h = FrameHeader.parse(req.body)
+            val o = session.opener(h.stream, req.requestId.toByteArray(), FrameType.REQUEST)
+            o.open(req.body).also { if (!o.finished) throw ProtocolError(CloudError.BAD_FRAME) }
+        }
+
+        // only now may the request enter the replay memory, keyed by the verified member, compared as the logical request
+        val admit = guard.admit(memberId, req.requestId, req.mac, RequestAuth.fingerprint(req.method, req.pathWithQuery, plain))
+        return Accepted(req.sender, kind, memberId, viaToken, admit == ReplayGuard.Admit.RESEND, plain, session)
     }
 }
