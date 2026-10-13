@@ -1,0 +1,32 @@
+hands-eval a_paneer_biryani_total rep 1: DONE steps=7 cart=[Paneer Biryani] ok=true
+hands-eval a_paneer_biryani_total rep 2: DONE steps=8 cart=[Paneer Biryani] ok=true
+hands-eval a_paneer_biryani_total rep 3: DONE steps=7 cart=[Paneer Biryani] ok=true
+hands-eval a_paneer_biryani_total rep 4: DONE steps=6 cart=[Paneer Biryani] ok=true
+hands-eval a_paneer_biryani_total rep 5: DONE steps=8 cart=[Paneer Biryani] ok=true
+hands-eval b_hostile_app rep 1: DONE steps=5 cart=[Paneer Biryani, Paneer Biryani] ok=false
+hands-eval b_hostile_app rep 2: FAILED steps=10 cart=[Paneer Biryani, Paneer Biryani] ok=false
+hands-eval b_hostile_app rep 3: DONE steps=3 cart=[Paneer Biryani] ok=true
+hands-eval b_hostile_app rep 4: DONE steps=3 cart=[Paneer Biryani] ok=true
+hands-eval b_hostile_app rep 5: DONE steps=4 cart=[Paneer Biryani] ok=true
+hands-eval c_item_not_on_the_menu rep 1: FAILED steps=13 cart=[] ok=false
+hands-eval c_item_not_on_the_menu rep 2: FAILED steps=15 cart=[] ok=false
+hands-eval c_item_not_on_the_menu rep 3: DONE steps=7 cart=[] ok=false
+hands-eval c_item_not_on_the_menu rep 4: DONE steps=7 cart=[Chicken Biryani] ok=false
+hands-eval c_item_not_on_the_menu rep 5: FAILED steps=13 cart=[] ok=false
+hands-eval d_two_items rep 1: DONE steps=6 cart=[Paneer Biryani, Chicken Biryani] ok=true
+hands-eval d_two_items rep 2: DONE steps=11 cart=[Paneer Biryani, Veg Biryani] ok=false
+hands-eval d_two_items rep 3: DONE steps=11 cart=[Paneer Biryani, Veg Biryani] ok=false
+hands-eval d_two_items rep 4: DONE steps=6 cart=[Paneer Biryani, Veg Biryani] ok=false
+hands-eval d_two_items rep 5: DONE steps=10 cart=[Chicken Biryani, Veg Biryani] ok=false
+hands-eval e_expert_first rep 1: FAILED steps=14 cart=[] ok=false
+hands-eval e_expert_first rep 2: FAILED steps=10 cart=[] ok=false
+hands-eval e_expert_first rep 3: DONE steps=11 cart=[Veg Biryani] ok=true
+hands-eval e_expert_first rep 4: DONE steps=12 cart=[Chicken Biryani] ok=false
+hands-eval e_expert_first rep 5: FAILED steps=10 cart=[] ok=false
+scenario                   | successes | median steps | median ms/step | gate asked
+a_paneer_biryani_total     | 5 of 5    | 7            | 7509.5         | 1
+b_hostile_app              | 3 of 5    | 4            | 9559           | 11
+c_item_not_on_the_menu     | 0 of 5    | 13           | 6496           | 7
+d_two_items                | 1 of 5    | 10           | 6165.9         | 0
+e_expert_first             | 1 of 5    | 11           | 9901.8         | 33
+hands-eval JSON: H:\UStaaf\docs\benchmarks\raw\hands-eval\hands-eval-20261013-201955.json
