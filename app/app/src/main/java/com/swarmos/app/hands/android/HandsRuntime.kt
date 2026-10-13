@@ -4,11 +4,14 @@ import android.content.Context
 import android.util.Log
 import com.swarmos.app.AppGraph
 import com.swarmos.app.assist.HumanGateUi
+import com.swarmos.app.core.SwarmService
 import com.swarmos.app.hands.Guard
+import com.swarmos.app.hands.Hands
 import com.swarmos.app.hands.HandsEngine
 import com.swarmos.app.hands.HandsHub
 import com.swarmos.app.hands.HandsStatus
 import com.swarmos.app.hands.MapSkillBook
+import com.swarmos.app.hands.Origin
 import com.swarmos.app.hands.Tier
 import com.swarmos.app.llm.ChatRequest
 import com.swarmos.app.llm.LlamaRuntime
@@ -40,6 +43,7 @@ object HandsRuntime {
     private const val SKILLS_DIR = "hands/skills"
     private const val EXPERTS_DIR = "hands/experts"
     private const val DATA_TIMEOUT_MS = 90_000L
+    private const val LOCAL_SEARCH_MS = 5_000L
     private val lock = Any()
 
     @Volatile
@@ -67,7 +71,13 @@ object HandsRuntime {
                 modelBytes = ::modelBytes,
                 scope = scope,
             )
-            val desk = HandsDesk(experts, brain, ::askDataUnion)
+            val data = DataLookup(
+                shareScreens = { HandsSettings.shareScreens.value },
+                askInProgress = { PduEngine.askRunning },
+                federated = ::askDataUnion,
+                local = ::searchOwnIndex,
+            )
+            val desk = HandsDesk(experts, brain, data::answer)
             val tracker = RunTracker()
             val guard = Guard(Guard.OWN_PACKAGES + app.packageName)
 
@@ -131,11 +141,35 @@ object HandsRuntime {
         return ModelCatalog.byFile(file)?.bytes ?: 0L
     }
 
-    /** The Data Union's answer to [query], or null when it is not up yet, gave no text, or took too long. */
+    /**
+     * The federated Data Union ask: sends [query] to the other paired devices. Reached only through [DataLookup], that is only with
+     * the sharing switch on. Null when the Data Union is not up yet, gave no text, or took too long.
+     */
     private suspend fun askDataUnion(query: String): String? {
         if (!AppGraph.ready) return null
         val q = withTimeoutOrNull(DATA_TIMEOUT_MS) { PduEngine.ask(query) } ?: return null
         return HandsDesk.dataText(q.phase, q.savedAnswer?.entry?.card?.answer, q.answer)
+    }
+
+    /** This phone's own index only, nothing sent anywhere: the top passages with their titles as text. Keywords alone if the embedder is slow. */
+    private suspend fun searchOwnIndex(query: String): String? {
+        if (!AppGraph.ready) return null
+        val found = withTimeoutOrNull(LOCAL_SEARCH_MS) { PduEngine.searchLocal(query) } ?: PduEngine.searchLocalKeywords(query)
+        return DataPassages.text(found.candidates.map { DataPassages.Passage(it.title, it.text, it.score) })
+    }
+
+    /**
+     * Starts a run from Ustaad's own UI with the foreground service up first. Only the task sheet and the Hands screen call it: they
+     * are in front when the person taps, so starting the service is allowed; nothing here starts it from the background.
+     */
+    fun startFromUi(ctx: Context, hands: Hands, task: String, origin: Origin): String = launcher(ctx).start(hands, task, origin)
+
+    /** The person's tap on Run for a task from another app, from Ustaad's own UI, with the foreground service up first. */
+    fun goFromUi(ctx: Context, hands: Hands, runId: String) = launcher(ctx).go(hands, runId)
+
+    private fun launcher(ctx: Context): RunLauncher {
+        val app = ctx.applicationContext
+        return RunLauncher({ SwarmService.running.value }, { SwarmService.start(app) })
     }
 
     private fun readCards(app: Context, dir: String): Map<String, String> {

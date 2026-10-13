@@ -461,6 +461,9 @@ object PduEngine {
      */
     val asking: Boolean get() = askSlot.running || servingNow.get() > 0
 
+    /** True while a question asked on this phone is running (the Data tab's, or any other caller's): a new [ask] would cancel it. A peer being served does not count. */
+    val askRunning: Boolean get() = askSlot.running
+
     suspend fun indexTree(tree: android.net.Uri): IndexReport {
         val rootDoc = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, android.provider.DocumentsContract.getTreeDocumentId(tree)).toString()
         return runIndex("folder", false, listOf(IndexRoot(rootDoc))) { PduIndexer.listTree(AppGraph.appContext, tree) }

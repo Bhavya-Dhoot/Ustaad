@@ -120,3 +120,57 @@ class HandsDesk(
         }
     }
 }
+
+/** Where a Hands question about the person's data may go. */
+enum class DataPath { FEDERATED, LOCAL, NONE }
+
+/**
+ * The one decision about `search_my_data` (rule S5). The query is written by the model and may carry screen text, so with the
+ * sharing switch off it never reaches the federated ask, which sends the query to the other paired devices: this phone's own index
+ * answers instead. A question the person is asking at this moment is never touched: the federated ask would cancel it.
+ */
+class DataLookup(
+    private val shareScreens: () -> Boolean,
+    private val askInProgress: () -> Boolean,
+    private val federated: suspend (String) -> String?,
+    private val local: suspend (String) -> String?,
+) {
+    suspend fun answer(query: String): String? = when (pathFor(shareScreens(), askInProgress())) {
+        DataPath.NONE -> null
+        DataPath.LOCAL -> local(query)
+        DataPath.FEDERATED -> federated(query)
+    }
+
+    companion object {
+        fun pathFor(shareScreens: Boolean, askInProgress: Boolean): DataPath = when {
+            askInProgress -> DataPath.NONE
+            shareScreens -> DataPath.FEDERATED
+            else -> DataPath.LOCAL
+        }
+    }
+}
+
+/** The top passages of this phone's own index as text for the model: each passage with its source (the document title), at most [MAX_CHARS] in all. */
+object DataPassages {
+    const val MAX_CHARS = 600
+    const val MAX_PASSAGES = 3
+    private const val TITLE_MAX = 60
+
+    class Passage(val title: String, val text: String, val score: Double)
+
+    fun text(found: List<Passage>): String? {
+        val top = found.sortedByDescending { it.score }
+            .map { Passage(clean(it.title), clean(it.text), it.score) }
+            .filter { it.text.isNotEmpty() }
+            .take(MAX_PASSAGES)
+        if (top.isEmpty()) return null
+        val budget = (MAX_CHARS - (top.size - 1)) / top.size // the newlines between entries count too
+        return top.joinToString("\n") { p ->
+            val head = "[" + p.title.ifEmpty { "untitled" }.take(TITLE_MAX) + "] "
+            val room = budget - head.length
+            head + if (p.text.length <= room) p.text else p.text.take((room - 1).coerceAtLeast(0)) + "…"
+        }
+    }
+
+    private fun clean(s: String) = s.replace(Regex("\\s+"), " ").trim()
+}
