@@ -152,7 +152,7 @@ class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CL
         }
         val link = env.linkAddresses().firstOrNull { it.address == bind }
             ?: return StartResult.Refused("$bind is not a Wi-Fi or Direct link address of this phone")
-        // memory is lent over the local link only: bound where the request arrived, the driver on that network
+        // memory is lent over the local link only: the request arrived on a Wi-Fi or Direct address with the driver on that network, and rpc-server binds such an address (maybe another link's)
         MemCloudLogic.lendRefusal(bind, viaAddress?.trim(), driverAddr, env.linkAddresses(), env.peerIsLocalNode(fromNode))?.let { return StartResult.Refused(it) }
         val where = if (link.direct) "direct link" else "Wi-Fi network"
         val driverName = env.peerName(fromNode) ?: fromNode ?: "another phone"

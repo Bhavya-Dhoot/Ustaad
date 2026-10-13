@@ -240,8 +240,19 @@ class MemCloudLogicTest {
         assertTrue(MemCloudLogic.mayLend("192.168.49.1", "192.168.49.1", "192.168.49.2", links))
     }
 
-    @Test fun theBindMustBeTheAddressTheRequestArrivedOn() {
-        assertTrue(MemCloudLogic.lendRefusal("192.168.49.1", "192.168.242.23", "192.168.242.50", links)!!.contains("arrived on (192.168.242.23), not to 192.168.49.1"))
+    @Test fun theRequestMayArriveOnOneLinkAndRpcServerBindTheOtherWhenBothArePhoneAddresses() {
+        // two phones on the same Wi-Fi and in a Wi-Fi Direct group: the request came over Wi-Fi, the driver names the Direct address for the bulk transfer
+        assertNull(MemCloudLogic.lendRefusal("192.168.49.1", "192.168.242.23", "192.168.242.50", links))
+        assertNull(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.49.1", "192.168.49.2", links))
+    }
+
+    @Test fun theBindMustBeAWifiOrDirectAddressOfThisPhoneWhereverTheRequestArrived() {
+        assertTrue(MemCloudLogic.lendRefusal("10.20.30.40", "192.168.242.23", "192.168.242.50", links)!!.contains("never bound to 10.20.30.40"))
+        assertTrue(MemCloudLogic.lendRefusal("0.0.0.0", "192.168.242.23", "192.168.242.50", links)!!.contains("never bound to 0.0.0.0"))
+        assertTrue(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.242.23", "192.168.242.50", emptyList()) != null)
+    }
+
+    @Test fun theArrivalLinkMustBeKnown() {
         assertTrue(MemCloudLogic.lendRefusal("192.168.49.1", null, "192.168.49.2", links)!!.contains("cannot tell which link"))
         assertTrue(MemCloudLogic.lendRefusal("192.168.49.1", " ", "192.168.49.2", links)!!.contains("cannot tell which link"))
     }

@@ -475,9 +475,15 @@ class RpcLenderTest {
         assertTrue("nothing was stopped or started", env.calls.none { it.startsWith("startRpc") || it.startsWith("stopOwn") })
     }
 
-    @Test fun aLoanIsRefusedWhenRpcServerWouldBindElsewhereThanWhereTheRequestArrived() {
-        // the body names the Wi-Fi Direct address, but the request came in on the Wi-Fi address
-        refusedWith(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1"), "c", via = "192.168.242.23") }, "arrived on (192.168.242.23)")
+    @Test fun theRequestMayArriveOnWifiAndRpcServerBindTheWifiDirectAddress() {
+        // the control request came over the Wi-Fi network; the driver names the Wi-Fi Direct address for the bulk transfer, and both are this phone's
+        assertOk(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1"), "c", via = "192.168.242.23", driver = "192.168.242.50") })
+        assertEquals("192.168.49.1", env.bind)
+        assertEquals("direct link", lender.lending.value!!.link)
+    }
+
+    @Test fun aBindThatIsNotALocalLinkAddressOfThisPhoneIsRefusedWhereverTheRequestArrived() {
+        refusedWith(runBlocking { lender.startOn(RpcStartRequest(bind = "10.20.30.40"), "c", via = "192.168.242.23", driver = "192.168.242.50") }, "10.20.30.40 is not a Wi-Fi or Direct link address")
     }
 
     @Test fun aLoanIsRefusedWhenTheLinkTheRequestArrivedOnIsUnknown() {
