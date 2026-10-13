@@ -341,7 +341,7 @@ class AssistActivity : ComponentActivity() {
             SectionTitle("Ustaad asks you first")
             PromptLine("App", p.app)
             PromptLine("Action", p.action)
-            if (p.why.isNotEmpty()) PromptLine("Why you are asked", p.why)
+            PromptWording.reason(p.kind, p.why).let { if (it.isNotEmpty()) PromptLine("Why you are asked", it) }
             Text(
                 if (armed) "Nothing happens unless you tap Do it." else "Read it first. Do it turns on in a moment.",
                 style = SwarmType.label.copy(color = SwarmColors.graphite),

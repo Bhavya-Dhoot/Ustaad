@@ -3,6 +3,7 @@ package com.swarmos.app.hands.android
 import android.content.Context
 import com.swarmos.app.BuildConfig
 import com.swarmos.app.core.SwarmPrefs
+import com.swarmos.app.hands.Caution
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +24,7 @@ object HandsSettings {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val share = MutableStateFlow(false)
     private val testPort = MutableStateFlow(0)
+    private val fewer = MutableStateFlow(false)
 
     /** Whether screen text may go to another device of the owner's cluster during a task (rule S5). */
     val shareScreens: StateFlow<Boolean> = share.asStateFlow()
@@ -30,8 +32,15 @@ object HandsSettings {
     /** The port of the test brain in force: 0 in every build that is not a debug build. */
     val testBrainPort: StateFlow<Int> = testPort.asStateFlow()
 
+    /** "Fewer questions": off (the default) is careful mode, on asks only when a step is recognised as committing. */
+    val fewerQuestions: StateFlow<Boolean> = fewer.asStateFlow()
+
+    /** What the engine reads before every action. */
+    fun caution(): Caution = cautionOf(fewer.value)
+
     suspend fun load(ctx: Context) {
         val prefs = SwarmPrefs(ctx.applicationContext)
+        fewer.value = prefs.handsFewerQuestions()
         share.value = prefs.handsShareScreens()
         testPort.value = effectivePort(prefs.handsTestBrainPort(), BuildConfig.DEBUG)
     }
@@ -39,6 +48,11 @@ object HandsSettings {
     fun setShareScreens(on: Boolean) {
         share.value = on
         persist { it.setHandsShareScreens(on) }
+    }
+
+    fun setFewerQuestions(on: Boolean) {
+        fewer.value = on
+        persist { it.setHandsFewerQuestions(on) }
     }
 
     /** Debug builds only; ignored elsewhere. 0 turns the test brain off. */
@@ -53,6 +67,8 @@ object HandsSettings {
         val ctx = runCatching { com.swarmos.app.AppGraph.appContext }.getOrNull() ?: return
         scope.launch { runCatching { write(SwarmPrefs(ctx)) } }
     }
+
+    fun cautionOf(fewerQuestions: Boolean): Caution = if (fewerQuestions) Caution.FEWER_QUESTIONS else Caution.CAREFUL
 
     /** A stored port counts only in a debug build and only if it is a real port number. */
     fun effectivePort(stored: Int, debug: Boolean): Int = if (debug && stored in 1..65535) stored else 0

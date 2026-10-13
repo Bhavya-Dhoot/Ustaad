@@ -11,6 +11,13 @@ class HandsSettingsTest {
     }
 
     @Test
+    fun cautionIsCarefulUnlessTheSwitchIsOn() {
+        assertEquals(com.swarmos.app.hands.Caution.CAREFUL, HandsSettings.cautionOf(false))
+        assertEquals(com.swarmos.app.hands.Caution.FEWER_QUESTIONS, HandsSettings.cautionOf(true))
+        assertEquals("a phone that has not loaded its settings is careful", com.swarmos.app.hands.Caution.CAREFUL, HandsSettings.caution())
+    }
+
+    @Test
     fun onlyARealPortNumberCounts() {
         for (bad in listOf(0, -1, 65536, Int.MAX_VALUE, Int.MIN_VALUE)) assertEquals(bad.toString(), 0, HandsSettings.effectivePort(bad, debug = true))
         assertEquals(1, HandsSettings.effectivePort(1, debug = true))

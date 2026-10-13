@@ -88,6 +88,15 @@ class SwarmPrefs(private val ctx: Context) {
         ctx.swarmStore.edit { it[handsShareScreensKey] = v }
     }
 
+    private val handsFewerQuestionsKey = booleanPreferencesKey("hands_fewer_questions")
+
+    /** Hands: ask only when a step is recognised as committing, not before every tap on a control not known to be harmless. Off by default. */
+    suspend fun handsFewerQuestions(): Boolean = ctx.swarmStore.data.first()[handsFewerQuestionsKey] ?: false
+
+    suspend fun setHandsFewerQuestions(v: Boolean) {
+        ctx.swarmStore.edit { it[handsFewerQuestionsKey] = v }
+    }
+
     /** Hands, debug builds only: port of a llama-server on 127.0.0.1 that both model tiers use. 0 = off. */
     suspend fun handsTestBrainPort(): Int = ctx.swarmStore.data.first()[handsTestBrainPortKey] ?: 0
 

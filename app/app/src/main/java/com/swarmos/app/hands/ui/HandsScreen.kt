@@ -174,10 +174,14 @@ private fun StatusBlock(context: Context, handsReady: Boolean, status: HandsStat
     }
 }
 
-/** The one switch that lets screen text leave this phone (rule S5). Off by default; the brain reads it at every model call. */
+/**
+ * The two switches. Sharing lets screen text leave this phone (rule S5); the brain reads it at every model call. Fewer questions
+ * moves the guard from careful to word-list recognition; the engine reads it before every action. Both off by default.
+ */
 @Composable
 private fun SharingBlock() {
     val share by HandsSettings.shareScreens.collectAsStateWithLifecycle()
+    val fewer by HandsSettings.fewerQuestions.collectAsStateWithLifecycle()
     val testPort by HandsSettings.testBrainPort.collectAsStateWithLifecycle()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -193,8 +197,17 @@ private fun SharingBlock() {
             else "Off means steps are decided on this phone only.",
             rotation = -1f,
         )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Fewer questions", Modifier.weight(1f), style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp))
+            InkSwitch(checked = fewer, onCheckedChange = { HandsSettings.setFewerQuestions(it) })
+        }
+        Note(
+            if (fewer) "On means Ustaad asks only when it recognises a step as paying, ordering, sending or deleting. That recognition is a word list, and it can miss a button."
+            else "Off means Ustaad asks before every tap except on controls it knows to be harmless, such as Add, Search or View cart.",
+            rotation = 1f,
+        )
         // a debug build only: HandsSettings keeps this at 0 everywhere else
-        if (testPort > 0) Note("Test brain on port $testPort (debug build)", rotation = 1f)
+        if (testPort > 0) Note("Test brain on port $testPort (debug build)", rotation = -1f)
     }
 }
 

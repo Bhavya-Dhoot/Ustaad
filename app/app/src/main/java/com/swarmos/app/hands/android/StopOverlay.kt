@@ -29,6 +29,11 @@ object StopOverlay {
     private var view: View? = null
     private var windows: WindowManager? = null
 
+    /** True while the chip is on screen. Written on the main thread, read from any. */
+    @Volatile
+    var isShown: Boolean = false
+        private set
+
     /** onStop runs on the main thread when the person taps Stop. Does nothing while the service is off. */
     fun show(onStop: () -> Unit) {
         main.post { showNow(onStop) }
@@ -101,13 +106,16 @@ object StopOverlay {
             wm.addView(chip, lp)
             windows = wm
             view = chip
+            isShown = true
         } catch (e: Exception) {
             Log.w(TAG, "overlay failed: ${e.javaClass.simpleName}")
             view = null
+            isShown = false
         }
     }
 
     private fun hideNow() {
+        isShown = false
         val v = view ?: return
         view = null
         try { windows?.removeView(v) } catch (e: Exception) { Log.w(TAG, "remove failed: ${e.javaClass.simpleName}") }
