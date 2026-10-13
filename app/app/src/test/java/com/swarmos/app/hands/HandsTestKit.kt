@@ -67,8 +67,8 @@ fun button(s: String, t: Int, l: Int = 40, r: Int = l + 400, handle: String = ""
 
 // ---------------------------------------------------------------- screens for the guard
 
-fun el(id: Int, role: Role, label: String, vararg flags: Flag, value: String = "", guard: String = GuardText.norm(label)) =
-    UiElement(id, role, label, value, flags.toSet(), "h$id", 100, 100 + id * 10, guard)
+fun el(id: Int, role: Role, label: String, vararg flags: Flag, value: String = "", guard: String = GuardText.norm(label), visible: String = GuardText.norm(label)) =
+    UiElement(id, role, label, value, flags.toSet(), "h$id", 100, 100 + id * 10, guard, visible)
 
 fun screenOf(pkg: String, vararg els: UiElement, unreadable: Boolean = false) = Screen(pkg, "Main", els.toList(), unreadable, "hash-$pkg-${els.size}")
 
@@ -152,13 +152,21 @@ fun typeInto(label: String, text: String): suspend (ScriptedBrain.Call) -> Strin
 
 // ---------------------------------------------------------------- the person and the experts
 
-class FakeGate(var answer: (ConfirmPrompt) -> Boolean = { false }, var reply: (String) -> String? = { null }) : HumanGate {
+class FakeGate(
+    var answer: (ConfirmPrompt) -> Boolean = { false },
+    var reply: (String) -> String? = { null },
+    /** When set, the answer is chosen by the kind of the question (a kind that is not in the map is answered by [answer]). */
+    var byKind: Map<AskKind, Boolean>? = null,
+) : HumanGate {
     val prompts = CopyOnWriteArrayList<ConfirmPrompt>()
     val questions = CopyOnWriteArrayList<String>()
     override suspend fun confirm(prompt: ConfirmPrompt): Boolean {
         prompts += prompt
-        return answer(prompt)
+        return byKind?.get(prompt.kind) ?: answer(prompt)
     }
+
+    /** The kinds that were asked, in order. */
+    val kinds: List<AskKind> get() = prompts.map { it.kind }
 
     override suspend fun ask(runId: String, question: String): String? {
         questions += question
@@ -177,6 +185,14 @@ class FakeDesk(
     override suspend fun ask(domain: String, question: String): String? {
         asked += domain to question
         return onAsk(domain, question)
+    }
+
+    /** The route flag of every question that came with one. */
+    val routes = CopyOnWriteArrayList<Boolean>()
+
+    override suspend fun ask(domain: String, question: String, onPhoneOnly: Boolean): String? {
+        routes += onPhoneOnly
+        return ask(domain, question)
     }
 
     override suspend fun searchMyData(query: String): String? {
@@ -367,6 +383,8 @@ class Rig(
     private val drivers: List<PhoneDriver>? = null,
     val clock: AtomicLong = AtomicLong(1_000),
 ) {
+    /** The old tests were written for fewer questions; the careful tests set CAREFUL before they start a run. */
+    @Volatile var caution: Caution = Caution.FEWER_QUESTIONS
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val changes = CopyOnWriteArrayList<RunState>()
     val engine = HandsEngine(
@@ -381,6 +399,7 @@ class Rig(
         clock = { clock.get() },
         delayMs = { },
         statusOf = { HandsStatus("fake", accessibilityOn = true, rootAvailable = false, fast = brain.fast, strong = brain.strong) },
+        caution = { caution },
         onChange = { changes += it },
     )
 
@@ -399,3 +418,6 @@ class Rig(
 
 /** Waits for a signal from the code under test, but fails the test instead of hanging when it never comes. */
 fun <T> awaitOrFail(d: kotlinx.coroutines.CompletableDeferred<T>, ms: Long = 10_000): T = runBlocking { withTimeout(ms) { d.await() } }
+
+/** An owner who says yes to the kinds given and no to every other kind. */
+fun gateYesTo(vararg kinds: AskKind) = FakeGate(byKind = AskKind.entries.associateWith { it in kinds })

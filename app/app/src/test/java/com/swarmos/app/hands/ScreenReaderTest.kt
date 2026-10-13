@@ -355,4 +355,54 @@ class ScreenReaderTest {
         assertEquals("Your OTP is ****", m.scrub("Your OTP is 777777"))
         assertEquals("Total 111111", m.scrub("Total 111111"))
     }
+
+    // ------------------------------------------------------------ what a person can read, and the whole screen (R11, R12, R15)
+
+    @Test fun r12_theVisibleTextHasNoResourceIdWordsNoAncestorsAndNothingHidden() {
+        val hidden = rn(text = "Checkout", visible = false, l = 0, t = 410, r = 300, b = 470)
+        val card = rn(
+            cls = "android.view.ViewGroup", clickable = true, l = 0, t = 400, r = W, b = 600, resId = "a:id/btn_place_order",
+            children = listOf(text("Add", 410), hidden),
+        )
+        val e = first(card)
+        assertEquals("add", e.visible)
+        assertTrue(e.guard, e.guard.contains("btn place order") && e.guard.contains("checkout"))
+        // a child under a clickable parent: the parent is in its guard text, not in what it shows
+        val amount = rn(cls = "android.widget.EditText", hint = "Amount", editable = true, l = 40, t = 320, r = 1040, b = 400, handle = "amount")
+        val pay = rn(cls = "android.view.ViewGroup", clickable = true, text = "Pay", l = 0, t = 300, r = W, b = 600, handle = "pay", children = listOf(amount))
+        val child = ScreenReader.compact(raw(pay)).elements.first { it.handle == "amount" }
+        assertEquals("amount", child.visible)
+        assertTrue(child.guard.contains("pay"))
+    }
+
+    @Test fun r15_aHiddenDescendantSayingCheckoutDoesNotMakeAPaymentScreen() {
+        val hidden = rn(text = "Checkout", visible = false, l = 0, t = 410, r = 300, b = 470)
+        val list = rn(cls = "androidx.recyclerview.widget.RecyclerView", scrollable = true, l = 0, t = 300, r = W, b = 2000, children = listOf(hidden, text("Menu", 320)))
+        val c = ScreenReader.compactFull(raw(list, button("Add", 100)))
+        assertFalse(c.checkout)
+        assertTrue(ScreenReader.compactFull(raw(text("Checkout", 100), button("Add", 300))).checkout)
+        assertFalse(Guard().check(call("tap", id = 1), c.screen, c.screen.elements.first { it.label == "Add" }, setOf("com.demo"), emptySet(), emptySet(), Guard.Context(caution = Caution.CAREFUL, checkout = c.checkout)).let { it is Decision.Confirm && it.kind == AskKind.CHECKOUT_SCREEN })
+    }
+
+    @Test fun r11_paymentContextAndACodeCaptionAreFoundOnTheCompleteTreeBeforeTheCapCutsAnything() {
+        val nodes = ArrayList<RawNode>()
+        for (i in 0 until 70) nodes += button("b$i", 100 + i * 30)
+        nodes += text("To pay 250", 2300)
+        nodes += text("Verification code", 2340)
+        val c = ScreenReader.compactFull(raw(*nodes.toTypedArray()), max = 60)
+        assertTrue("the captions were cut", c.screen.elements.none { it.label.contains("To pay") || it.label.contains("Verification") })
+        assertTrue(c.checkout)
+        assertTrue(c.asksForCode)
+    }
+
+    @Test fun r11_aScreenThatSaysNothingAboutPaymentOrACodeHasNeitherFlag() {
+        val c = ScreenReader.compactFull(raw(text("Chicken Biryani", 100), button("Add", 300)))
+        assertFalse(c.checkout)
+        assertFalse(c.asksForCode)
+    }
+
+    @Test fun r11_aHiddenCodeCaptionDoesNotMakeAProtectedScreen() {
+        val c = ScreenReader.compactFull(raw(rn(text = "Enter OTP", visible = false, l = 0, t = 100, r = 300, b = 160), button("Add", 300)))
+        assertFalse(c.asksForCode)
+    }
 }

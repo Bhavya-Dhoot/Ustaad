@@ -92,6 +92,41 @@ class GuardTextTest {
         assertEquals(setOf("1234", "12345678"), found)
     }
 
+    @Test fun marksLeftOnALetterAreRemovedSoALineUnderThePOfPayIsStillPay() {
+        assertEquals("pay", GuardText.norm("P̲ay"))
+        assertEquals("pay", GuardText.norm("p̶a̶y̶"))
+        assertEquals("café", GuardText.norm("café")) // a mark that composes is not lost
+    }
+
+    @Test fun r12_aCardNumberIsFoundAcrossAnySeparatorAndAnyDigits() {
+        assertTrue(GuardText.hasCardNumber("4111\n1111\n1111\n1111"))
+        assertTrue(GuardText.hasCardNumber("4111\t1111/1111_1111"))
+        assertTrue(GuardText.hasCardNumber("4111 | 1111 | 1111 | 1111"))
+        assertTrue(GuardText.hasCardNumber("4111\r\n1111\r\n1111\r\n1111"))
+        // Arabic-Indic digits
+        assertTrue(GuardText.hasCardNumber("٤١١١ ١١١١ ١١١١ ١١١١"))
+        // a letter ends the run
+        assertFalse(GuardText.hasCardNumber("4111 1111 x 1111 1111"))
+        assertFalse(GuardText.hasCardNumber("4111\n1111\n1111\n1112"))
+    }
+
+    @Test fun r13_everyRunOfFourOrMoreDigitsIsMasked() {
+        assertEquals("a **** b **** c 123", GuardText.maskDigits("a 1234 b 123456789012 c 123"))
+        assertEquals("****", GuardText.maskDigits("٤١١١"))
+        assertEquals("no digits", GuardText.maskDigits("no digits"))
+    }
+
+    @Test fun theHarmlessKeyIgnoresCountsAndBracketsButNotWords() {
+        assertEquals("view cart", GuardWords.harmlessKey("View Cart (12)"))
+        assertEquals("cart", GuardWords.harmlessKey("Cart · 3"))
+        assertEquals("add", GuardWords.harmlessKey("ADD 2"))
+        assertEquals("+", GuardWords.harmlessKey("+"))
+        assertTrue(GuardWords.isHarmless("View Cart (2)"))
+        assertFalse(GuardWords.isHarmless("(3)"))
+        assertFalse(GuardWords.isHarmless("Continue to cart"))
+        assertFalse(GuardWords.isHarmless(""))
+    }
+
     @Test fun aPriceIsRecognisedWithCurrencyMarksAndSeparators() {
         for (p in listOf("₹250", "rs. 250.00", "250", "₹ 1,250", "inr 99", "$10.50", "250 only")) assertTrue(p, GuardText.isPriceOnly(p))
         for (p in listOf("", "pay 250", "250 off", "₹", "abc")) assertFalse(p, GuardText.isPriceOnly(p))

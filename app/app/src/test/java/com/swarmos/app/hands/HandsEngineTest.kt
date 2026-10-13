@@ -219,6 +219,66 @@ class HandsEngineTest {
         assertTrue(r.brain.calls.last().user.contains("the app wants a login"))
     }
 
+    // ------------------------------------------------------------ careful mode through a whole run (R1) and the route of a planned question (R9)
+
+    @Test fun r1_aCarefulRunThroughTheFakeFoodAppAsksTwoQuestionsAnEnterAndTheRestaurantCard() {
+        val gate = gateYesTo(AskKind.ENTER, AskKind.UNKNOWN_CONTROL) // an owner who lets navigation through and refuses commits
+        val r = rig(gate = gate)
+        r.caution = Caution.CAREFUL
+        r.brain.reply(phonePlan())
+        r.brain.replyWith(*cartSteps)
+        r.brain.reply("""{"reply":"The cart has 1 chicken biryani."}""")
+        val run = r.await(r.engine.start("order a biryani", Origin.OWN_SHEET))
+        assertEquals(run.result, Phase.DONE, run.phase)
+        assertEquals(listOf(AskKind.ENTER, AskKind.UNKNOWN_CONTROL), gate.kinds)
+        assertEquals(listOf("press enter", "tap \"Biryani House 4.3 star 30 min\""), gate.prompts.map { it.action })
+        assertEquals(1, r.driver.cart)
+        assertFalse(r.driver.paid)
+    }
+
+    @Test fun r1_aCarefulRunWithAnOwnerWhoSaysNoStopsAtTheFirstQuestion() {
+        val gate = FakeGate()
+        val r = rig(gate = gate)
+        r.caution = Caution.CAREFUL
+        r.brain.reply(phonePlan())
+        r.brain.replyWith(*cartSteps)
+        val run = r.await(r.engine.start("order a biryani", Origin.OWN_SHEET))
+        assertEquals(Phase.STOPPED, run.phase)
+        assertEquals(listOf(AskKind.ENTER), gate.kinds)
+        assertEquals(0, r.driver.cart)
+    }
+
+    @Test fun r1_theSameRunInFewerQuestionsModeAsksNothing() {
+        val gate = FakeGate()
+        val r = rig(gate = gate)
+        r.brain.reply(phonePlan())
+        r.brain.replyWith(*cartSteps)
+        r.brain.reply("""{"reply":"ok"}""")
+        assertEquals(Phase.DONE, r.await(r.engine.start("order a biryani", Origin.OWN_SHEET)).phase)
+        assertTrue(gate.prompts.isEmpty())
+    }
+
+    @Test fun r9_aPlannedQuestionLeavesThePhoneOnlyWhenNoPhoneOrDataSubtaskHasRunBefore() {
+        val desk = FakeDesk(onAsk = { _, _ -> "an answer" })
+        val a = rig(desk = desk)
+        a.brain.reply(planJson(subJson("KNOWLEDGE", "which rice", expert = "cooking"), subJson("KNOWLEDGE", "how long", expert = "cooking")))
+        assertEquals(Phase.DONE, a.await(a.engine.start("rice", Origin.OWN_SHEET)).phase)
+        assertEquals(listOf(false, false), desk.routes.toList())
+
+        val desk2 = FakeDesk(onAsk = { _, _ -> "an answer" })
+        val b = rig(desk = desk2)
+        b.brain.reply(planJson(subJson("PHONE", "look at the menu", app = FOOD), subJson("KNOWLEDGE", "which rice", expert = "cooking")))
+        b.brain.replyWith({ step("done", text = "the menu says biryani") })
+        assertEquals(Phase.DONE, b.await(b.engine.start("rice", Origin.OWN_SHEET)).phase)
+        assertEquals(listOf(true), desk2.routes.toList())
+
+        val desk3 = FakeDesk(onAsk = { _, _ -> "an answer" }, onSearch = { "a note" })
+        val c = rig(desk = desk3)
+        c.brain.reply(planJson(subJson("DATA", "my notes"), subJson("KNOWLEDGE", "which rice", expert = "cooking")))
+        assertEquals(Phase.DONE, c.await(c.engine.start("rice", Origin.OWN_SHEET)).phase)
+        assertEquals(listOf(true), desk3.routes.toList())
+    }
+
     // ------------------------------------------------------------ no model, no driver
 
     @Test fun withoutAnyModelTheRunFailsAtOnceAndSaysSo() {
@@ -240,10 +300,10 @@ class HandsEngineTest {
         val on = FakeFoodDriver()
         val r = rig(driver = on, drivers = listOf(off, on))
         r.brain.reply(planJson(subJson("PHONE", "g", app = FOOD)))
-        r.brain.replyWith({ step("scroll", direction = "down") }, { step("done", text = "ok") })
+        r.brain.replyWith(tapLabel("Search"), { step("done", text = "ok") })
         r.await(r.engine.start("t", Origin.OWN_SHEET))
         assertTrue(off.actions.isEmpty() && off.reads == 0)
-        assertTrue(on.actions.any { it.startsWith("scroll") })
+        assertTrue(on.actions.any { it == "tap:search" })
     }
 
     // ------------------------------------------------------------ one run at a time, stop
@@ -601,16 +661,18 @@ class HandsEngineTest {
         assertEquals(listOf(BROWSER), b.driver.linkPackages.toList())
     }
 
-    @Test fun c6_aLinkTheyWroteInTheirTaskIsOpenedWithoutAQuestionInsideARun() {
+    @Test fun r10_aLinkInsideARunIsAskedAboutEvenWhenTheTaskHoldsItAndTheAppIsPlanned() {
         val d = FakeFoodDriver().also { it.linkTargetOf = { FOOD } }
-        val gate = FakeGate()
+        val gate = gateYesTo(AskKind.LINK)
         val r = rig(driver = d, gate = gate)
         r.brain.reply(planJson(subJson("PHONE", "open the menu link", app = FOOD)))
         r.brain.replyWith({ step("open_link", text = "https://food.example/menu") }, { step("done", text = "ok") })
         val run = r.await(r.engine.start("please open https://food.example/menu", Origin.OWN_SHEET))
         assertEquals(run.result, Phase.DONE, run.phase)
+        val p = gate.prompts.single()
+        assertEquals(AskKind.LINK, p.kind)
+        assertTrue(p.action, p.action.contains("https://food.example/menu") && p.action.contains("in FakeFood"))
         assertEquals(listOf("https://food.example/menu"), d.links.toList())
-        assertTrue(gate.prompts.isEmpty())
     }
 
     @Test fun c6_aLinkNoSingleAppOpensIsRefusedFromOutsideToo() {
