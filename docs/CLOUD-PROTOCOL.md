@@ -83,14 +83,14 @@ A device holds a chain from a **base** (the genesis, or a checkpoint it started 
 
 1. **Extension**: the run continues what the device holds (same prefix, then new entries): adopt the new entries. A shorter or equal run changes nothing.
 2. **Gap**: the run begins after the device's head: refused, unless it begins with a checkpoint that passes the jump rule below.
-3. **Fork**: the run and the held chain differ at number f. If the run's entry f is a **recovery-signed transfer** and the held entry f is not one, the run replaces everything from f on (rollback, flagged and the dropped entries kept for the Devices screen). Any other difference is **equivocation**: the device keeps what it has, refuses the other run and raises a flag the Devices screen can show.
+3. **Fork**: the run and the held chain differ at number f. If the run's entry f is a **recovery-signed transfer** and the held entry f is not one, the run replaces everything from f on (rollback, flagged and the dropped entries kept for the Devices screen). Any other difference is **equivocation** if the differing entry is itself valid (signed by the key in force at that number and following 3.3): the device keeps what it has, refuses the other run and raises a flag the Devices screen can show. A differing entry that is not valid is junk: it is refused and raises no flag, so a device that is not the owner cannot raise flags.
 4. An entry that does not satisfy 3.3, or is signed by anyone but the owner key in force (a node, a client, a removed member, the old owner after a transfer), makes the run invalid: nothing of it is taken.
 
 **Why a recovery transfer wins a conflict with an owner entry at the same number.** The owner key is the thing that gets stolen; the recovery key is offline. If the first entry seen won, a thief who is online would win the race against the real owner's recovery. The recovery key is also checked against the key in force *before* the fork, so a thief's owner-signed entries cannot retire it (an owner entry cannot change it anyway). Two different recovery transfers at one number, or an owner entry after a recovery transfer, are equivocation: the first seen stays.
 
 **Cost of that rule.** The holder of the recovery key (including a thief who has stolen the code) can fork from any point where that key was in force, however deep, and thereby undo removals made after that point. Removal is final against everybody except the recovery key. A retired recovery key keeps this power over the history before its retirement; destroy old codes.
 
-**Jump rule** (a long-absent member or a newcomer meets a checkpoint at c beyond its head): accepted only if the checkpoint is signed by the owner key the device holds in force, names that same owner and recovery key, and its removed set contains the device's own. If ownership changed in between, the device needs the entries.
+**Jump rule** (a long-absent member or a newcomer meets a checkpoint at c beyond its head): accepted only if the checkpoint is signed by the owner key the device holds in force, names that same owner and recovery key, has an epoch not lower than ours, and its removed set contains the device's own. If ownership changed in between, the device needs the entries.
 
 **Compaction.** A device may drop entries before the last checkpoint that it first saw at least 24 hours ago (its own clock). The hold gives the real owner a day to fork before a thief's checkpoint makes the thief's earlier changes permanent; after that, a recovery fork cannot go below the checkpoint.
 
@@ -225,7 +225,7 @@ A request carries (the first four names exist today; `X-Swarm-Sig` changes meani
 1. Shape of headers; `ts` not older than the receiver's start time (a restart empties the replay memory, so anything signed before the restart is refused: `skew`); `|now - ts| <= 30000` else `skew` (the answer carries server time).
 2. Look up the key: the session by `Sid` (unknown, expired, or its peer or the local device no longer a member: `unknown_session`; the session's peer node id must equal the header's: `sender_mismatch`), or, for `Kid`, the loopback key, and only if the request came from the loopback address (`forbidden` otherwise).
 3. Constant-time MAC check: `bad_mac`.
-4. Open the sealed body (the frame's stream number, context = the request id): `bad_frame`. Unsealed bodies exist only in loopback mode.
+4. Open the sealed body (the frame's stream number, context = the request id, one final frame): `bad_frame`. An empty body stays empty (the MAC covers it). Unsealed bodies exist only in loopback mode.
 5. Replay guard (6.3), keyed by the **verified member id** and the logical request, only for a request whose MAC was right and whose body opened, so a stranger cannot fill it.
 6. The caller applies the permission table (section 9) to the sender's kind and to how the request arrived.
 
@@ -286,7 +286,7 @@ The issuing node draws `K`, a `keyId` (16 bytes) and a node id for the client, a
 3. Keys: `prk = HKDF-Extract(salt = cn || sn || boot, ikm = K)`; `HKDF-Expand(prk, lp(label), L)` for `token/mac` (32), `token/seal/c2s` (32), `token/seal/s2c` (32), `token/id` (8, the session id).
 4. From here requests and answers are those of sections 6 and 10: `X-Swarm-Sid` = the token session id, sender = the client's node id, MAC under the token MAC key, bodies sealed under the c2s key, answers under the s2c key (AES-256-GCM only).
 
-The boot nonce is in every key: after the issuer restarts, a captured request has no session to belong to and the same hello yields different keys, so nothing recorded before the restart can be replayed (Codex Request.kt:130, where a persistent key and an emptied replay memory allowed it). At most 4 token sessions per client and 256 in all; a Welcome not used within 60 seconds is dropped; the budgets of 5.2 apply per source address.
+The boot nonce is in every key: after the issuer restarts, a captured request has no session to belong to and the same hello yields different keys, so nothing recorded before the restart can be replayed (Codex Request.kt:130, where a persistent key and an emptied replay memory allowed it). At most 4 token sessions per client; a Welcome not used within 60 seconds is dropped; the budgets of 5.2 apply per source address.
 
 ### 8.3 Unsealed loopback mode
 
