@@ -1,0 +1,1 @@
+after: 30 runs in a row of the same test with 16 CPU-spinning processes running: 0 failures (the resend fix in JobExecutor.submit and a version of the test that does not depend on the speed of the PC)
