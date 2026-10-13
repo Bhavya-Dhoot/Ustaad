@@ -197,14 +197,13 @@ class JoinTest {
         val rig = Rig()
         val inv = rig.invite()
         val photographer = Newcomer(name = "Photographer")
-        val p = client(inv, photographer)
-        val first = answer(rig.host.handle(p.request, T0))
-        val req = rig.owner.receive(first.forward!!, rig.hostPeer.id, T0)
-        // the owner sees a request it does not know, taps Cancel, and the photographer never asks again
-        val decision = rig.owner.decide(req, null, T0 + 1)
-        assertFalse(decision.granted)
-        assertTrue(rig.host.deliver(decision, T0 + 1))
-        // without releasing the binding the real newcomer got USED here
+        // it binds the invite, opens its commitment (the owner shows digits that the person does not recognise), and is declined
+        val req = rig.toOpen(client(inv, photographer), T0)
+        rig.owner.prompt(req, T0 + 3)
+        val decision = rig.owner.decide(req, null, T0 + 4)
+        assertFalse(decision.granted); assertFalse(decision.failed)
+        assertTrue(rig.host.deliver(decision, T0 + 4))
+        // without releasing the binding the real newcomer got USED here; the photographer never asks again
         val real = Newcomer()
         val out = rig.run(client(inv, real), T0 + 2_000)
         assertTrue(out is JoinOutcome.Joined)
@@ -213,14 +212,15 @@ class JoinTest {
         // the book keeps at most a few declined requesters per invite: the oldest is forgotten
         val inv2 = rig.invite(now = T0 + 3_000)
         repeat(InviteBook.MAX_DECLINED + 2) { i ->
-            val t = T0 + 3_000 + i
-            val f = answer(rig.host.handle(client(inv2, Newcomer()).request, t)).forward!!
-            val r = rig.owner.receive(f, rig.hostPeer.id, t)
-            assertTrue(rig.host.deliver(rig.owner.decide(r, null, t), t))
+            val t = T0 + 3_000 + i * 10L
+            val r = rig.toOpen(client(inv2, Newcomer()), t)
+            rig.owner.prompt(r, t + 3)
+            assertTrue(rig.host.deliver(rig.owner.decide(r, null, t + 4), t + 4))
         }
         val rec = rig.host.invites.known(T0 + 4_000).first { it.code.contentEquals(inv2.code) }
         assertEquals(InviteBook.MAX_DECLINED, rec.declined.size)
         assertNull(rec.boundTo)
+        assertFalse(rec.burnt)
     }
 
     // ---- the owner's tap (Codex Join.kt:223) ------------------------------------------------------------------------------------
@@ -541,11 +541,12 @@ class JoinTest {
         val key = JoinWire.a2cKey(Crypto.ecdh(eA.private, eN), inv.code, inv.cloudId, nc, na)
         val fakeSecrets = EpochSecrets(0, Crypto.random(32), Crypto.random(32))
         val all = rig.cloud.chain.entries()
-        val body = concat(Writer().u8(JoinStatus.OK).bytes(), JoinWire.secretsBytes(fakeSecrets), Writer().u32(all.size).bytes(), JoinWire.pageBytes(all))
+        val manifest = concat(Writer().u8(JoinStatus.OK).bytes(), JoinWire.secretsBytes(fakeSecrets), Writer().u32(all.size).u32(all.size).bytes(), JoinWire.chainDigest(all))
         fun forged(signer: DeviceIdentity, pubShown: ByteArray): ByteArray {
             val sig = signer.sign(JoinWire.answerSig(inv.cloudId, nc, na, eN, eAPub, JoinStatus.OK, JoinWire.secretsBytes(fakeSecrets), all.size, JoinWire.chainDigest(all)))
+            val sealer = FrameSealer(key, 0, inv.cloudId, FrameType.JOIN)
             return Writer().u8(1).fixed(na, 32).fixed(eAPub, 65).fixed(pubShown, 65).fixed(sig, 64)
-                .lp(FrameSealer(key, 0, inv.cloudId, FrameType.JOIN).seal(body, final = true)).bytes()
+                .lp(sealer.seal(manifest, final = false)).lp(sealer.seal(JoinWire.pageBytes(all), final = true)).bytes()
         }
         // (a) signed by the attacker's own key: its fingerprint is not the one in the QR code
         assertError(CloudError.JOIN_REFUSED) { c.finish(forged(attacker, attacker.publicKey), T0 + 1) }
@@ -697,7 +698,8 @@ class JoinTest {
         for (i in 1..20) assertError(CloudError.BUSY) { rig.owner.receive(fakeForward(rig, real, attacker), hostId, T0 + 1 + i) }
         // another host is not affected
         val other = rig.owner.receive(fakeForward(rig, real, attacker), rig.cloud.owner.id, T0 + 30)
-        rig.owner.decide(other, null, T0 + 31)
+        assertTrue(rig.owner.decide(other, null, T0 + 31).failed) // closed unopened: its own host's trial, nobody else's
+        rig.owner.acknowledge(rig.cloud.owner.id)
         // a person reads "a join attempt failed, show a new code" and acknowledges: one more trial, no more
         rig.owner.acknowledge(hostId)
         assertTrue(rig.owner.failures().isEmpty())
@@ -722,7 +724,8 @@ class JoinTest {
         val rig2 = Rig()
         val c = client(rig2.invite(), Newcomer())
         val req = rig2.toOpen(c, T0)
-        assertTrue(rig2.owner.expire(T0 + Owner.REQUEST_TTL_MS + 1).isEmpty())
+        val denial = rig2.owner.expire(T0 + Owner.REQUEST_TTL_MS + 1).single() // no tap in time: a denial for the host, not a failure
+        assertFalse(denial.failed); assertFalse(denial.granted)
         assertTrue(rig2.owner.failures().isEmpty()); assertNotNull(req)
     }
 
@@ -812,16 +815,16 @@ class JoinTest {
         val bytes = rig.answerAfterTap(c, T0 + 1_000)
         val (head, frames) = framesOf(bytes)
         val total = rig.cloud.chain.entries().size
-        assertEquals((total + 6) / 7, frames.size) // 7 entries to a frame
-        assertTrue(frames.size >= 9)
+        assertEquals(1 + (total + 6) / 7, frames.size) // a manifest, then 7 entries to a frame
+        assertTrue(frames.size >= 10)
         // the damaged ones first: each is refused, none ends the exchange, the real one still works afterwards
         fun refusedWith(e: CloudError, answer: ByteArray) { assertError(e) { c.finish(answer, rig.lastAt) }; assertTrue(c.holdsEphemeralKey()) }
         refusedWith(CloudError.OUT_OF_ORDER, rebuilt(head, frames.filterIndexed { i, _ -> i != 3 })) // a frame missing in the middle
         refusedWith(CloudError.OUT_OF_ORDER, rebuilt(head, frames.toMutableList().also { val t = it[2]; it[2] = it[4]; it[4] = t })) // reordered
         refusedWith(CloudError.TRUNCATED, rebuilt(head, frames.dropLast(1))) // cut before the final frame
-        refusedWith(CloudError.BAD_FRAME, rebuilt(head, frames + frames.last())) // something after the final frame
+        refusedWith(CloudError.JOIN_REFUSED, rebuilt(head, frames + frames.last())) // more frames than the signed manifest allows
         refusedWith(CloudError.BAD_FRAME, rebuilt(head, frames.toMutableList().also { it[5] = it[5].copyOf().also { f -> f[f.size - 1] = (f[f.size - 1].toInt() xor 1).toByte() } }))
-        refusedWith(CloudError.OUT_OF_ORDER, rebuilt(head, frames.drop(1))) // the first frame gone: the second is not number 0
+        refusedWith(CloudError.JOIN_REFUSED, rebuilt(head, frames.drop(1))) // the first frame gone: a page where the manifest belongs
         // a frame from another answer of the same exchange does not fit (new answer nonce, new key)
         val other = framesOf(answer(rig.host.handle(c.nextRequest(), rig.lastAt + 1)).bytes)
         refusedWith(CloudError.BAD_FRAME, rebuilt(head, frames.toMutableList().also { it[1] = other.second[1] }))
@@ -833,5 +836,121 @@ class JoinTest {
         assertEquals(total, out.chain.entries().size)
         assertEquals(rig.cloud.chain.heartbeat(), out.chain.heartbeat())
         assertEquals(n.id, out.chain.state().member(n.id)!!.id)
+    }
+
+    // ---- stage 1e -------------------------------------------------------------------------------------------------------------------
+
+    @Test fun everyWayOfClosingAnUnopenedRequestIsASpentTrial() { // Codex Join.kt:444
+        val rig = Rig()
+        val real = answer(rig.host.handle(client(rig.invite(), Newcomer()).request, T0)).forward!!
+        val attacker = SoftwareIdentity.generate()
+        val hostId = rig.hostPeer.id
+        // the host learnt the digits, committed for its own key, and the returned owner nonce gives other digits: it withholds the opening
+        // and lets the owner's timeout handler close the request with the refusal section 19.2 prescribes
+        val r1 = rig.owner.receive(fakeForward(rig, real, attacker), hostId, T0)
+        val d = rig.owner.decide(r1, null, T0 + Owner.REQUEST_TTL_MS)
+        assertTrue(d.failed); assertFalse(d.granted) // the failure latch and the code-2 decision, not a silent removal
+        assertEquals(1, rig.owner.failures().size)
+        assertTrue(rig.owner.pending().isEmpty())
+        assertError(CloudError.BUSY) { rig.owner.receive(fakeForward(rig, real, attacker), hostId, T0 + Owner.REQUEST_TTL_MS + 1) } // no free second challenge
+        // the same with an approval made up for a request that has no prompt: also a failure, never a silent removal
+        rig.owner.acknowledge(hostId)
+        val r2 = rig.owner.receive(fakeForward(rig, real, attacker), hostId, T0 + 10)
+        val other = rig.toOpen(client(rig.invite(), Newcomer()), T0, rig.cloud.owner.id)
+        val foreign = rig.owner.prompt(other, T0 + 3).approve(T0 + 3 + Owner.MIN_DWELL_MS)
+        assertTrue(rig.owner.decide(r2, foreign, T0 + 11).failed)
+        assertEquals(1, rig.owner.failures().size)
+        // an opening that arrives for a request that was closed this way gets the same answer again
+        assertTrue(rig.owner.opened(r2, SasOpen(real.ticket, Crypto.random(16)), T0 + 12)!!.failed)
+        // a request that was opened is another thing: the person's cancel is a code-0 denial and no failure
+        rig.owner.acknowledge(hostId)
+        val c = client(rig.invite(), Newcomer())
+        val opened = rig.toOpen(c, T0 + 20)
+        rig.owner.prompt(opened, T0 + 23)
+        val denied = rig.owner.decide(opened, null, T0 + 24)
+        assertFalse(denied.failed); assertFalse(denied.granted)
+        assertEquals(0, rig.owner.failures().size)
+    }
+
+    @Test fun anOpenedOrTokenRequestThatExpiresQueuesADenialSoTheHostReleasesTheInvite() { // Codex Join.kt:432
+        val rig = Rig()
+        val inv = rig.invite()
+        val c = client(inv, Newcomer())
+        val req = rig.toOpen(c, T0)
+        rig.owner.prompt(req, T0 + 3) // the screen was drawn and nobody tapped
+        val out = rig.owner.expire(T0 + Owner.REQUEST_TTL_MS + 1)
+        assertEquals(1, out.size); assertFalse(out.single().failed); assertFalse(out.single().granted)
+        assertTrue(rig.owner.failures().isEmpty()) // nobody tried to trick anybody
+        // the host gets it and answers the newcomer DECLINED; the invite is free for the next one
+        assertTrue(rig.host.deliver(AdmitDecision.parse(out.single().encode()), T0 + Owner.REQUEST_TTL_MS + 2))
+        assertEquals(JoinStatus.DECLINED, answer(rig.host.handle(c.nextRequest(), T0 + Owner.REQUEST_TTL_MS + 3)).status)
+        assertTrue(rig.run(client(inv, Newcomer()), T0 + Owner.REQUEST_TTL_MS + 100) is JoinOutcome.Joined)
+        // a token request that nobody confirmed expires the same way
+        val issuer = TokenIssuer(rig.hostPeer.id)
+        val m = issuer.prepare()
+        val fwd = AdmitForward.forToken(m, "script", MemberKind.CLIENT, rig.hostPeer.chain)
+        rig.owner.receive(fwd, rig.hostPeer.id, T0 + 1_000_000)
+        val tokenOut = rig.owner.expire(T0 + 1_000_000 + Owner.REQUEST_TTL_MS + 1)
+        assertEquals(1, tokenOut.size); assertFalse(tokenOut.single().failed); assertArrayEquals(fwd.ticket, tokenOut.single().ticket)
+        assertTrue(rig.owner.failures().isEmpty())
+    }
+
+    @Test fun anAnswerWithoutAChainIsOneFinalFrameAndNothingIsReadPastTheFirstUntilTheSignatureHolds() { // Codex Join.kt:770
+        val rig = Rig()
+        val inv = rig.invite()
+        val c = client(inv, Newcomer())
+        val genuine = answer(rig.host.handle(c.request, T0))
+        // an on-path holder of the code reads the request, takes eN, uses an eH of its own and the pinned host's public key, and
+        // supplies a PENDING frame that is not final, followed by as many frames as it likes
+        val nc = c.request.copyOfRange(1, 33)
+        val plain = Frames.openOnce(JoinWire.c2aKey(inv.code, inv.cloudId, nc), 0, inv.cloudId, FrameType.JOIN, c.request.copyOfRange(33, c.request.size))
+        val pr = Reader(plain); pr.u8(); pr.str(8); pr.str(64); pr.fixed(65); val eN = pr.fixed(65)
+        val eA = Crypto.newKeyPair(); val eAPub = Crypto.rawPublic(eA.public); val na = Crypto.random(32)
+        val key = JoinWire.a2cKey(Crypto.ecdh(eA.private, eN), inv.code, inv.cloudId, nc, na)
+        val sealer = FrameSealer(key, 0, inv.cloudId, FrameType.JOIN)
+        val head = Writer().u8(1).fixed(na, 32).fixed(eAPub, 65).fixed(rig.hostPeer.identity.publicKey, 65).fixed(Crypto.random(64), 64).bytes()
+        val first = sealer.seal(Writer().u8(JoinStatus.PENDING).u8(0).bytes(), final = false)
+        val more = List(50) { sealer.seal(ByteArray(2_000), final = false) }
+        val rd = c.beginAnswer(T0)
+        rd.head(head)
+        assertError(CloudError.JOIN_REFUSED) { rd.frame(first, T0) } // a PENDING answer is one final frame, and the signature is wrong anyway
+        assertError(CloudError.JOIN_REFUSED) { rd.frame(more[0], T0) } // the reader is dead: nothing further is looked at
+        assertError(CloudError.JOIN_REFUSED) { rd.end(T0) }
+        assertTrue(c.holdsEphemeralKey()) // the exchange goes on
+        // a final frame with a wrong signature: also refused on the first frame
+        val rd2 = c.beginAnswer(T0)
+        rd2.head(head)
+        assertError(CloudError.JOIN_REFUSED) { rd2.frame(FrameSealer(key, 0, inv.cloudId, FrameType.JOIN).seal(Writer().u8(JoinStatus.PENDING).u8(0).bytes(), final = true), T0) }
+        // the genuine answer is still read, and frame by frame it works the same as all at once
+        val g = Reader(genuine.bytes)
+        val rd3 = c.beginAnswer(T0)
+        rd3.head(g.fixed(JoinWire.HEAD_BYTES))
+        while (g.remaining() > 0) rd3.frame(g.lp(JoinWire.PAGE_FRAME_MAX), T0)
+        assertTrue(rd3.end(T0) is JoinOutcome.Pending)
+    }
+
+    @Test fun aChainAnswerIsReadIncrementallyUnderHardCapsOfFramesBytesAndTime() { // Codex Join.kt:770
+        val rig = Rig(joinPage = 7, extraEntries = 30)
+        val c = client(rig.invite(), Newcomer())
+        val bytes = rig.answerAfterTap(c, T0 + 1_000)
+        val (head, frames) = framesOf(bytes)
+        // the manifest is a small first frame; no page is accepted before the signature over it held
+        assertTrue(frames[0].size < JoinWire.MANIFEST_FRAME_MAX)
+        val slow = c.beginAnswer(rig.lastAt)
+        slow.head(head); slow.frame(frames[0], rig.lastAt); slow.frame(frames[1], rig.lastAt)
+        assertError(CloudError.JOIN_REFUSED) { slow.frame(frames[2], rig.lastAt + JoinWire.ANSWER_LIMIT_MS + 1) } // too slow
+        assertTrue(c.holdsEphemeralKey())
+        // a first frame over its size, or a page frame over the page size, is refused unread
+        val big = c.beginAnswer(rig.lastAt)
+        big.head(head)
+        assertError(CloudError.JOIN_REFUSED) { big.frame(ByteArray(JoinWire.MANIFEST_FRAME_MAX + 1), rig.lastAt) }
+        // the constants fit together: a full page of the largest entries is inside the page frame cap, the whole chain inside the byte cap
+        assertTrue(JoinWire.PAGE_FRAME_MAX >= FrameCodec.HEADER + FrameCodec.TAG + 4 + JoinWire.PAGE * EntryRun.MAX_ENTRY_BYTES)
+        assertTrue(JoinWire.ANSWER_BYTES_MAX > ChainEntry.MAX_ENTRIES.toLong() * EntryRun.MAX_ENTRY_BYTES)
+        assertTrue(JoinWire.PAGE_FRAME_MAX < FrameCodec.MAX_PLAIN)
+        // the unharmed answer is read in pieces to its end
+        val rd = c.beginAnswer(rig.lastAt)
+        rd.head(head); frames.forEach { rd.frame(it, rig.lastAt + 1) }
+        assertTrue(rd.end(rig.lastAt + 2) is JoinOutcome.Joined)
     }
 }
