@@ -12,11 +12,12 @@ class GuardTest {
     /** The older tests were written for fewer questions; the careful ones pass caution = CAREFUL. */
     private fun gc(
         apps: List<AppInfo> = emptyList(),
-        lastTypedGuard: String? = null,
+        lastTypedName: String? = null,
         linkTarget: String? = null,
         caution: Caution = Caution.FEWER_QUESTIONS,
         checkout: Boolean? = null,
-    ) = Guard.Context(apps, lastTypedGuard, linkTarget, caution, checkout)
+        task: String = "",
+    ) = Guard.Context(apps, lastTypedName, linkTarget, caution, checkout, task)
 
     private fun check(
         c: ToolCall,
@@ -64,7 +65,7 @@ class GuardTest {
     @Test fun g1_leavingUstaadIsAllowedSoARunCanStartFromTheTaskSheet() {
         val s = screenOf("com.swarmos.app", btn("Run"))
         assertAllow(check(call("home"), s))
-        assertAllow(check(call("open_app", app = FOOD), s))
+        assertAllow(check(call("open_app", app = FOOD), s, ctx = gc(task = "add a biryani in com.fake.food")))
         assertConfirm(check(call("open_link", text = "https://example.com"), s, plan = setOf(BROWSER), ctx = gc(linkTarget = BROWSER)))
     }
 
@@ -134,7 +135,7 @@ class GuardTest {
         assertAllow(tapIn("com.example.fine", "Search", ctx = ctx))
         assertAllow(tapIn("com.example.cash", "Search")) // without the installed apps only the package name is known
         assertRefuse(check(call("open_app", app = "com.example.cash"), screenOf(LAUNCHER), plan = setOf("com.example.cash"), ctx = ctx), "protected")
-        assertAllow(check(call("open_app", app = "com.example.fine"), screenOf(LAUNCHER), plan = setOf("com.example.fine"), ctx = ctx))
+        assertAllow(check(call("open_app", app = "com.example.fine"), screenOf(LAUNCHER), plan = setOf("com.example.fine"), approved = setOf("com.example.fine"), ctx = ctx))
         val link = gc(apps = apps, linkTarget = "com.example.cash")
         assertRefuse(check(call("open_link", text = "https://x.example"), screenOf(FOOD, btn("x")), ctx = link, plan = setOf("com.example.cash")), "protected")
     }
@@ -414,7 +415,7 @@ class GuardTest {
             val s = paymentScreen(c)
             assertConfirm(check(call("tap", id = 2), s, s.elements[1]).also { assertTrue("$c: $it", it is Decision.Confirm) })
             assertConfirm(check(call("type", id = 3, text = "SAVE10"), s, s.elements[2]))
-            assertConfirm(check(call("press_enter"), s, ctx = gc(lastTypedGuard = "search")))
+            assertConfirm(check(call("press_enter"), s, ctx = gc(lastTypedName = "Search")))
         }
     }
 
@@ -438,25 +439,20 @@ class GuardTest {
 
     // ------------------------------------------------------------ enter (C4)
 
-    @Test fun c4_enterNeedsTheirYesUnlessTheStepBeforeTypedIntoASearchField() {
+    @Test fun t7_enterIsAlwaysAskedAboutInBothModesAndTheQuestionNamesTheFieldTypedIntoLast() {
         val s = screenOf(FOOD, btn("Add to cart"))
-        assertConfirm(check(call("press_enter"), s))
-        assertConfirm(check(call("press_enter"), s, ctx = gc(lastTypedGuard = "delivery note")))
-        assertConfirm(check(call("press_enter"), s, ctx = gc(lastTypedGuard = "message")))
-        for (g in listOf("search for restaurants", "find a dish", "look for items", "खोजें", "सर्च")) {
-            assertAllow(check(call("press_enter"), s, ctx = gc(lastTypedGuard = g)))
+        for (mode in Caution.entries) {
+            for (name in listOf(null, "Search for restaurants", "Write a reply", "खोजें")) {
+                val d = check(call("press_enter"), s, ctx = gc(caution = mode, lastTypedName = name)) as Decision.Confirm
+                assertEquals("$mode $name", AskKind.ENTER, d.kind)
+                if (name != null) assertTrue(d.why, d.why.contains("\"$name\""))
+            }
         }
     }
 
     @Test fun c4_enterOnAPaymentScreenAlwaysNeedsTheirYes() {
         val s = paymentScreen("To pay 250")
-        assertConfirm(check(call("press_enter"), s, ctx = gc(lastTypedGuard = "search")))
-    }
-
-    @Test fun c4_aMessageAppEnterThatSendsIsAskedAboutEvenWithAVisibleSendLabelThatNothingMatches() {
-        // a field whose keyboard action sends, no button on the screen says so
-        val s = screenOf(FOOD, el(1, Role.EDIT, "Write a reply", Flag.EDITABLE, value = "hello"))
-        assertConfirm(check(call("press_enter"), s, ctx = gc(lastTypedGuard = "write a reply")))
+        assertConfirm(check(call("press_enter"), s, ctx = gc(lastTypedName = "Search")))
     }
 
     // ------------------------------------------------------------ scroll (C5)
@@ -495,14 +491,43 @@ class GuardTest {
         }
     }
 
-    @Test fun r8_aPlainListIsScrolledEvenNextToASliderOrOnAPaymentScreen() {
+    @Test fun r8_aPlainListIsScrolledEvenNextToASlider() {
         val slider = UiElement(1, Role.LIST, "", "", setOf(Flag.SCROLLABLE), "h", 1, 1, "slide to pay")
         for (mode in Caution.entries) {
             val c = gc(caution = mode)
             assertAllow(check(call("scroll", direction = "down"), screenOf(FOOD, listEl(1, "Menu")), ctx = c))
-            assertAllow(check(call("scroll", direction = "down"), screenOf(FOOD, slider, listEl(2, "Menu")), ctx = c))
-            assertAllow(check(call("scroll", direction = "down"), screenOf(FOOD, el(1, Role.TEXT, "To pay 250"), listEl(2, "Items")), ctx = c))
+            assertAllow(check(call("scroll", direction = "down"), screenOf(FOOD, listEl(2, "Menu"), UiElement(1, Role.LIST, "", "", setOf(Flag.SCROLLABLE), "h", 1, 1, "slide to pay")), ctx = c))
         }
+    }
+
+    @Test fun t8_everyScrollOnAPaymentScreenIsAskedAbout() {
+        val pay = screenOf(FOOD, el(1, Role.TEXT, "To pay 250"), listEl(2, "Items"))
+        for (mode in Caution.entries) {
+            val c = gc(caution = mode)
+            assertEquals(AskKind.CHECKOUT_SCREEN, kindOf(check(call("scroll", direction = "down"), pay, ctx = c)))
+            assertEquals(AskKind.CHECKOUT_SCREEN, kindOf(check(call("scroll", direction = "down", id = 2), pay, pay.elements[1], ctx = c)))
+        }
+    }
+
+    @Test fun t8_aScrollTargetIsFreeOnlyWhenItIsAList() {
+        val onSwitch = el(1, Role.TOGGLE, "Menu", Flag.SCROLLABLE, Flag.CLICKABLE)
+        val d = check(call("scroll", direction = "down", id = 1), screenOf(FOOD, onSwitch), onSwitch) as Decision.Confirm
+        assertEquals(AskKind.SCROLL, d.kind)
+        assertAllow(check(call("scroll", direction = "down", id = 2), screenOf(FOOD, listEl(2, "Menu")), listEl(2, "Menu")))
+        // nothing on the screen but buttons that scroll: no target is picked for a scroll without an id
+        assertRefuse(check(call("scroll", direction = "down"), screenOf(FOOD, el(1, Role.BUTTON, "Menu", Flag.SCROLLABLE, Flag.CLICKABLE))), "no blind swipes")
+    }
+
+    @Test fun t8_eraseClearAllWipeResetAndRemoveAllAreCommitWords() {
+        for (l in listOf("Erase", "Clear all", "Wipe", "Reset", "Remove all", "Erase history")) {
+            assertTrue(l, Guard.isCommitLabel(l))
+            val e = listEl(1, "x").let { UiElement(it.id, it.role, l, "", it.flags, "h", 1, 1, GuardText.norm(l)) }
+            val d = check(call("scroll", direction = "down", id = 1), screenOf(FOOD, e), e)
+            assertTrue("$l: $d", d is Decision.Confirm && d.kind == AskKind.SCROLL)
+            assertEquals(AskKind.COMMIT, kindOf(tapIn(FOOD, l)))
+        }
+        assertFalse(Guard.isCommitLabel("Preset menu"))
+        assertFalse(Guard.isCommitLabel("Resetting is hard"))
     }
 
     @Test fun c5_slideToSwipeToAndDragToAreCommitWords() {
@@ -524,14 +549,45 @@ class GuardTest {
         assertAllow(tapIn(LAUNCHER, "Search", plan = setOf(FOOD)))
     }
 
-    @Test fun g6_openingAnAppThatIsNotInThePlanOrApprovedNeedsTheirYes() {
+    @Test fun g6_openingAnAppThatIsNotApprovedNeedsTheirYes() {
         val s = screenOf(FOOD, btn("x"))
         val d = check(call("open_app", app = "com.fake.maps"), s)
         assertTrue(d is Decision.Confirm)
         assertEquals("com.fake.maps", (d as Decision.Confirm).app)
         assertAllow(check(call("open_app", app = "com.fake.maps"), s, approved = setOf("com.fake.maps")))
-        assertAllow(check(call("open_app", app = FOOD), s))
         assertConfirm(check(call("open_app", app = LAUNCHER), s))
+    }
+
+    private val installed = listOf(AppInfo(FOOD, "FakeFood"), AppInfo("com.fake.maps", "FakeMaps"), AppInfo("in.swiggy.android", "Swiggy: Food, Grocery Delivery"))
+
+    @Test fun t1_anAppThePlannerNamedIsAskedAboutBeforeItsFirstLaunchEvenWhenTheOwnersTaskDoesNotNameIt() {
+        val s = screenOf(LAUNCHER, btn("x"))
+        for (mode in Caution.entries) {
+            val d = check(call("open_app", app = FOOD), s, plan = setOf(FOOD), ctx = gc(apps = installed, caution = mode, task = "order a biryani")) as Decision.Confirm
+            assertEquals("$mode", AskKind.APP_SCOPE, d.kind)
+            assertEquals("open FakeFood?", d.why)
+            assertEquals(FOOD, d.app)
+        }
+    }
+
+    @Test fun t1_noQuestionWhenTheOwnersTaskNamesTheAppAsAWholeWord() {
+        val s = screenOf(LAUNCHER, btn("x"))
+        fun open(task: String) = check(call("open_app", app = FOOD), s, plan = setOf(FOOD), ctx = gc(apps = installed, task = task))
+        assertAllow(open("order a biryani in FakeFood"))
+        assertAllow(open("order a biryani in fakefood please"))
+        assertAllow(open("Use com.fake.food to order"))
+        assertConfirm(open("order a biryani in FakeFoods"))   // part of a longer word
+        assertConfirm(open("order a biryani in Fake Food"))
+        assertConfirm(open(""))
+        val swiggy = { task: String -> check(call("open_app", app = "in.swiggy.android"), s, plan = setOf("in.swiggy.android"), ctx = gc(apps = installed, task = task)) }
+        assertAllow(swiggy("get me a pizza on Swiggy"))   // the label before the colon
+        assertConfirm(swiggy("get me a pizza"))
+    }
+
+    @Test fun t1_aYesCoversTheAppForTheRestOfTheRunSoItIsNotAskedTwice() {
+        val s = screenOf(LAUNCHER, btn("x"))
+        assertConfirm(check(call("open_app", app = FOOD), s, plan = setOf(FOOD), ctx = gc(apps = installed)))
+        assertAllow(check(call("open_app", app = FOOD), s, plan = setOf(FOOD), approved = setOf(FOOD), ctx = gc(apps = installed)))
     }
 
     @Test fun g6_aCommitOutsideThePlanIsOneQuestionThatNamesBoth() {
@@ -656,10 +712,50 @@ class GuardTest {
 
     // ------------------------------------------------------------ enter (R3)
 
-    @Test fun r3_enterIsAlwaysAskedAboutInCarefulModeEvenDirectlyAfterASearchType() {
+    @Test fun r3_enterIsAlwaysAskedAboutEvenDirectlyAfterASearchType() {
         val s = screenOf(FOOD, btn("Add to cart"))
-        assertEquals(AskKind.ENTER, kindOf(check(call("press_enter"), s, ctx = gc(caution = Caution.CAREFUL, lastTypedGuard = "search for restaurants"))))
-        assertEquals(AskKind.ENTER, kindOf(check(call("press_enter"), s, ctx = gc(caution = Caution.CAREFUL))))
-        assertAllow(check(call("press_enter"), s, ctx = gc(caution = Caution.FEWER_QUESTIONS, lastTypedGuard = "search for restaurants")))
+        assertEquals(AskKind.ENTER, kindOf(check(call("press_enter"), s, ctx = gc(caution = Caution.CAREFUL, lastTypedName = "Search for restaurants"))))
+        assertEquals(AskKind.ENTER, kindOf(check(call("press_enter"), s, ctx = gc(caution = Caution.FEWER_QUESTIONS, lastTypedName = "Search for restaurants"))))
+    }
+
+    // ------------------------------------------------------------ harmless words on content (T2)
+
+    private fun tapRole(role: Role, visible: String): Decision {
+        val e = el(1, role, visible, Flag.CLICKABLE)
+        return check(call("tap", id = 1), screenOf(FOOD, e), e, ctx = careful)
+    }
+
+    @Test fun t2_aListedPhraseIsFreeOnlyOnAButtonOrAToggle() {
+        for (w in listOf("Close", "Add", "Back", "View cart")) {
+            assertAllow(tapRole(Role.BUTTON, w))
+            assertAllow(tapRole(Role.TOGGLE, w))
+            for (content in listOf(Role.TEXT, Role.IMAGE, Role.LIST, Role.OTHER)) assertEquals("$content $w", AskKind.UNKNOWN_CONTROL, kindOf(tapRole(content, w)))
+        }
+    }
+
+    @Test fun t2_onlyOneCountInBracketsFollowsTheListedPhrase() {
+        for (w in listOf("View cart (2)", "Cart [12]", "Add (1)", "Cart ( 3 )")) assertAllow(tapRole(Role.BUTTON, w))
+        for (w in listOf("Close 123 [456]", "Close 123", "Add 1", "Cart · 3", "Close (1) (2)", "Close (12345)", "Close (x)", "Cart 3 items")) {
+            assertEquals(w, AskKind.UNKNOWN_CONTROL, kindOf(tapRole(Role.BUTTON, w)))
+        }
+    }
+
+    // ------------------------------------------------------------ typing that commits (T3)
+
+    @Test fun t3_typingIntoAFieldThatNamesACommittingActionIsAskedAboutInBothModes() {
+        for (mode in Caution.entries) {
+            for (name in listOf("Send message as typed", "Post a comment", "Share with friends", "Pay by typing the amount", "Delete after typing")) {
+                val f = el(1, Role.EDIT, name, Flag.EDITABLE)
+                val d = check(call("type", id = 1, text = "hello"), screenOf(FOOD, f), f, ctx = gc(caution = mode))
+                assertTrue("$mode $name: $d", d is Decision.Confirm && d.kind == AskKind.COMMIT)
+            }
+            val search = el(1, Role.EDIT, "Search for restaurants", Flag.EDITABLE)
+            assertAllow(check(call("type", id = 1, text = "biryani"), screenOf(FOOD, search), search, ctx = gc(caution = mode)))
+        }
+    }
+
+    @Test fun t3_aFieldUnderACommittingParentIsAskedAboutToo() {
+        val f = el(1, Role.EDIT, "Note", Flag.EDITABLE, guard = "note send")
+        assertEquals(AskKind.COMMIT, kindOf(check(call("type", id = 1, text = "hi"), screenOf(FOOD, f), f)))
     }
 }

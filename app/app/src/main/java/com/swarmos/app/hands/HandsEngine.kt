@@ -156,7 +156,7 @@ class HandsEngine(
                 continue
             }
             setSub(id, idx, SubStatus.RUNNING, "")
-            val r = runSub(id, idx, sub, outcomes, approvals, budget, screenTextSeen)
+            val r = runSub(id, idx, sub, outcomes, approvals, budget, screenTextSeen, run.task)
             if (sub.kind == Kind.PHONE || sub.kind == Kind.DATA) screenTextSeen = true
             setSub(id, idx, r.status, r.outcome)
             if (r.stopped) {
@@ -178,7 +178,7 @@ class HandsEngine(
 
     private class SubResult(val status: SubStatus, val outcome: String, val stopped: Boolean = false)
 
-    private suspend fun runSub(id: String, idx: Int, sub: SubTask, outcomes: List<String>, approvals: Approvals, budget: Budget, screenTextSeen: Boolean): SubResult =
+    private suspend fun runSub(id: String, idx: Int, sub: SubTask, outcomes: List<String>, approvals: Approvals, budget: Budget, screenTextSeen: Boolean, task: String): SubResult =
         when (sub.kind) {
             Kind.PHONE -> {
                 val d = firstReady()
@@ -192,6 +192,7 @@ class HandsEngine(
                             onWaiting = { w ->
                                 live(id) { it.copy(phase = if (w) Phase.WAITING_FOR_PERSON else Phase.RUNNING) }
                             },
+                            task = task,
                         ),
                     )
                     when (r.end) {
