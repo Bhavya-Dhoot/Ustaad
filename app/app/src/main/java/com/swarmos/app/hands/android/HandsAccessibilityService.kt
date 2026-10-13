@@ -8,7 +8,7 @@ import android.view.accessibility.AccessibilityEvent
  * The accessibility service behind the Hands driver ("Ustaad Hands" in system settings). The owner turns it on there;
  * the app never does. It holds no logic: AccessibilityDriver uses the connected instance to read and act, and
  * this class only keeps that instance and the class name of the window that came to the front last.
- * Its config (what it may read, gestures, events) is res/xml/hands_accessibility.xml. Screen content is never logged.
+ * Its config (what it may read, events; it declares no gestures) is res/xml/hands_accessibility.xml. Screen content is never logged.
  */
 class HandsAccessibilityService : AccessibilityService() {
 
