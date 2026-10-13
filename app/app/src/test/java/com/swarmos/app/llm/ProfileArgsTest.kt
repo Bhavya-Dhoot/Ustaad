@@ -19,16 +19,22 @@ class ProfileArgsTest {
 
     private fun present(vararg files: String) = files.map { PresentModel(it, 1_000, true) }
 
-    @Test fun theSmallPlanReachesTheChatCommandLine() {
-        val cpu = LlamaArgs.build(Role.CHAT, "/m/q.gguf", 8080, allowedCores = 8, plan = small)
-        assertEquals("4", flag(cpu, "-t")) // the plan's bound of 4 (6 fast cores, two kept free), not the 6 of the iQOO 15
-        assertEquals("4096", flag(cpu, "-c"))
-        assertEquals("1", flag(cpu, "-np"))
-        val gpu = LlamaArgs.build(Role.CHAT, "/m/q.gguf", 8080, backend = Backend.GPU, plan = small)
-        assertEquals("4", flag(gpu, "-t"))
-        assertEquals("99", flag(gpu, "-ngl"))
+    private val cpu get() = LlamaArgs.build(Role.CHAT, "/m/q.gguf", 8080, allowedCores = 8, plan = small)
+
+    @Test fun theSmallPlansThreadsReachTheCommandLines() {
+        assertEquals("the plan's bound of 4 (6 fast cores, two kept free), not the 6 of the iQOO 15", "4", flag(cpu, "-t"))
+        assertEquals("4", flag(LlamaArgs.build(Role.CHAT, "/m/q.gguf", 8080, backend = Backend.GPU, plan = small), "-t"))
         assertEquals("1", flag(LlamaArgs.build(Role.EMBED, "/m/e.gguf", 8081, plan = small), "-t"))
         assertEquals("the bound still leaves a core free in the background", 2, LlamaArgs.cpuChatThreads(3, maxThreads = 4))
+    }
+
+    @Test fun theSmallPlansContextReachesTheChatCommandLine() = assertEquals("4096", flag(cpu, "-c"))
+
+    @Test fun theSmallPlansSlotsReachTheChatCommandLine() = assertEquals("1", flag(cpu, "-np"))
+
+    @Test fun thePlansGpuLayersReachTheGpuCommandLine() {
+        assertEquals("99", flag(LlamaArgs.build(Role.CHAT, "/m/q.gguf", 8080, backend = Backend.GPU, plan = small.copy(gpuLayers = 99)), "-ngl"))
+        assertEquals("20", flag(LlamaArgs.build(Role.CHAT, "/m/q.gguf", 8080, backend = Backend.GPU, plan = small.copy(gpuLayers = 20)), "-ngl"))
     }
 
     @Test fun aCallersFlagsStillWinOverThePlan() {
