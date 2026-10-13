@@ -66,6 +66,7 @@ fun deviceCheckLine(state: DeviceState?, checking: Boolean, catalog: List<Catalo
     val model = plan.chatModel?.let { file -> catalog.firstOrNull { it.file == file }?.label?.substringBefore(" Q") ?: file }
         ?: return "$memory: too little to run a model here, so this phone asks the other phones to compute and still stores and searches files."
     val gpu = when {
+        plan.useGpu && p.gpuProbe?.verdict == ProbeVerdict.NO_GPU -> "GPU not confirmed, will be tried"
         plan.useGpu -> "GPU ready"
         p.gpuProbe?.verdict == ProbeVerdict.NO_GPU -> "GPU not usable"
         else -> "no GPU"

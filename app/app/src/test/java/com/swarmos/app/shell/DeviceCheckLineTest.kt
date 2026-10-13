@@ -17,8 +17,13 @@ class DeviceCheckLineTest {
         assertEquals("16 GB memory, GPU ready: runs the Qwen3.5-4B model and can lend memory.", line(DeviceFixtures.iqoo15))
     }
 
-    @Test fun aPhoneWithAGpuBuildThatTheProbeRejectedSaysSo() {
+    @Test fun aPhoneWhoseProbeSawNoGpuButHasTheLibraryIsToldItWillBeTried() {
         val p = DeviceFixtures.phone8gb.copy(gpuProbe = GpuProbe(ProbeVerdict.NO_GPU, "none"))
+        assertEquals("8 GB memory, GPU not confirmed, will be tried: runs the Qwen3.5-4B model and can lend memory.", line(p))
+    }
+
+    @Test fun aPhoneWhoseProbeSawNoGpuAndHasNoLibraryIsToldItIsNotUsable() {
+        val p = DeviceFixtures.phone8gb.copy(openClPresent = false, gpuProbe = GpuProbe(ProbeVerdict.NO_GPU, "none"))
         assertEquals("8 GB memory, GPU not usable: runs the Qwen3.5-4B model and can lend memory.", line(p))
     }
 

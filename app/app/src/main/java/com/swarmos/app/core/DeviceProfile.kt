@@ -160,11 +160,11 @@ data class ProfilePlan(
             val chatThreads = (fastCores(p) - 2).coerceIn(LlamaArgs.MIN_CHAT_THREADS, MAX_CHAT_THREADS)
             val small = deviceClass <= DeviceClass.SMALL
             val lendMax = shareMb - LEND_RESERVE_MB // the lender stops its own servers, so what the load rule would let a model have is lendable
-            val gpu = p.gpuBinaryPresent && when (p.gpuProbe?.verdict) {
-                ProbeVerdict.GPU_LISTED -> true
-                ProbeVerdict.NO_GPU -> false
-                else -> p.openClPresent // no answer from the probe: the library check decides
-            }
+            // The GPU build is planned when its binary is there and the probe listed a GPU or the OpenCL library is present. A NO_GPU verdict is
+            // recorded and shown but does not turn the GPU off while the library is present: the start-up trial and its failure memory decide
+            // then, as before the probe existed. NO_GPU with no library means CPU, with no trial. NO_GPU can be trusted alone only once a phone
+            // run has shown the probe's output on a device where the GPU works and on one without (its launch and parser have never run on a phone).
+            val gpu = p.gpuBinaryPresent && (p.gpuProbe?.verdict == ProbeVerdict.GPU_LISTED || p.openClPresent)
             return ProfilePlan(
                 deviceClass = deviceClass,
                 chatModels = models.map { it.file },

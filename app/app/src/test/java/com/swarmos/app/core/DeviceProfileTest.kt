@@ -159,7 +159,9 @@ class DeviceProfileTest {
             plan(DeviceFixtures.iqoo15.copy(gpuBinaryPresent = binary, openClPresent = openCl, gpuProbe = probe)).useGpu
         assertTrue(gpu(probe = DeviceFixtures.gpuListed))
         assertFalse("no binary", gpu(binary = false, probe = DeviceFixtures.gpuListed))
-        assertFalse("the probe ran and saw no GPU", gpu(probe = GpuProbe(ProbeVerdict.NO_GPU, "none")))
+        val none = GpuProbe(ProbeVerdict.NO_GPU, "none")
+        assertTrue("NO_GPU alone does not switch a GPU off while the library is there: the trial at load decides, as before the probe", gpu(probe = none))
+        assertFalse("NO_GPU and no library: CPU, no trial", gpu(openCl = false, probe = none))
         assertTrue("a probe that gave no answer does not count against the GPU", gpu(probe = GpuProbe(ProbeVerdict.NO_ANSWER, "slow")))
         assertTrue("no probe: the library decides", gpu(probe = null))
         assertFalse("no probe and no library", gpu(openCl = false, probe = null))
