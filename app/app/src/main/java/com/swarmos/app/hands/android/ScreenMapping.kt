@@ -10,8 +10,21 @@ import java.security.MessageDigest
 /** One application window as the driver sees it. pkg null: the window gave no root (secure window or gone). */
 internal data class WindowCand(val active: Boolean, val focused: Boolean, val layer: Int, val pkg: String?)
 
-/** What the driver compares about a node between read() and an action: its class, its own text and its description. */
-internal data class NodeFacts(val cls: String, val text: String, val desc: String)
+/**
+ * What the driver compares about a node between read() and an action: its class, its own text and description, its hint and
+ * resource id, and the flags that change what the guard thinks of it (password, enabled, checkable, checked).
+ */
+internal data class NodeFacts(
+    val cls: String,
+    val text: String,
+    val desc: String,
+    val hint: String = "",
+    val resId: String = "",
+    val password: Boolean = false,
+    val enabled: Boolean = true,
+    val checkable: Boolean = false,
+    val checked: Boolean = false,
+)
 
 /** The facts of a node and of its children as read, kept per handle so an action can be checked against them. */
 internal class FactNode(val facts: NodeFacts, val kids: List<FactNode>)
@@ -32,8 +45,20 @@ internal object ScreenMapping {
     fun childHandle(parent: String, index: Int): String = "$parent.$index"
 
     /** The password rule again: a password node's text is empty here whatever the caller passes. */
-    fun factsOf(cls: CharSequence?, text: CharSequence?, desc: CharSequence?, password: Boolean): NodeFacts =
-        NodeFacts(cls?.toString().orEmpty(), if (password) "" else text?.toString().orEmpty(), desc?.toString().orEmpty())
+    fun factsOf(
+        cls: CharSequence?,
+        text: CharSequence?,
+        desc: CharSequence?,
+        password: Boolean,
+        hint: CharSequence? = null,
+        resId: String? = null,
+        enabled: Boolean = true,
+        checkable: Boolean = false,
+        checked: Boolean = false,
+    ): NodeFacts = NodeFacts(
+        cls?.toString().orEmpty(), if (password) "" else text?.toString().orEmpty(), desc?.toString().orEmpty(),
+        hint?.toString().orEmpty(), resId.orEmpty(), password, enabled, checkable, checked,
+    )
 
     /** null for the root. */
     fun parentOf(handle: String): String? {
@@ -46,10 +71,11 @@ internal object ScreenMapping {
 
     /**
      * A digest of a subtree: for the node and its descendants in reading order, at most maxNodes of them and not
-     * deeper than maxDepth below the root, the depth, class, text and description of each. Text is length-prefixed, so
-     * moving a letter from one text to the next changes it; so does moving a node. SHA-256, because the app that
-     * draws the screen chooses the texts and could otherwise aim for a collision. A change in a node past the cap goes
-     * unseen. A child that cannot be fetched (null) is skipped; release gives a fetched child back once its subtree is
+     * deeper than maxDepth below the root, the depth, class, text, description, hint, resource id and flags of each. Text is
+     * length-prefixed, so moving a letter from one text to the next changes it; so does moving a node. SHA-256, because the app
+     * that draws the screen chooses the texts and could otherwise aim for a collision. A subtree that reaches a cap (nodes,
+     * depth or lookups) cannot be verified: a change past the cap would go unseen, so the answer is null and the caller does
+     * nothing. A child that cannot be fetched (null) is skipped; release gives a fetched child back once its subtree is
      * done (the root is the caller's); checkCancelled runs before every lookup. At most 2 x maxNodes lookups.
      */
     fun <T : Any> subtreeSignature(
@@ -61,19 +87,27 @@ internal object ScreenMapping {
         maxNodes: Int = SIG_NODES,
         maxDepth: Int = MAX_DEPTH,
         checkCancelled: () -> Unit = {},
-    ): String {
+    ): String? {
         val md = MessageDigest.getInstance("SHA-256")
         fun put(n: Int) = md.update(byteArrayOf((n ushr 24).toByte(), (n ushr 16).toByte(), (n ushr 8).toByte(), n.toByte()))
         fun put(s: String) { val b = s.toByteArray(Charsets.UTF_8); put(b.size); md.update(b) }
         var seen = 0
         var lookups = 0
+        var truncated = false
         fun walk(node: T, depth: Int) {
             seen++
             val f = facts(node)
-            put(depth); put(f.cls); put(f.text); put(f.desc)
-            if (depth >= maxDepth) return
+            put(depth); put(f.cls); put(f.text); put(f.desc); put(f.hint); put(f.resId)
+            put((if (f.password) 1 else 0) or (if (f.enabled) 2 else 0) or (if (f.checkable) 4 else 0) or (if (f.checked) 8 else 0))
+            if (depth >= maxDepth) {
+                if (childCount(node) > 0) truncated = true
+                return
+            }
             for (i in 0 until childCount(node)) {
-                if (seen >= maxNodes || lookups >= 2 * maxNodes) break
+                if (seen >= maxNodes || lookups >= 2 * maxNodes) {
+                    truncated = true
+                    break
+                }
                 checkCancelled()
                 lookups++
                 val child = childAt(node, i) ?: continue
@@ -81,8 +115,16 @@ internal object ScreenMapping {
             }
         }
         walk(root, 0)
+        if (truncated) return null
         return md.digest().joinToString("") { "%02x".format(it) }
     }
+
+    /**
+     * Enter acts only on the node that last received text through setText: the signature of the node that has input focus now must be
+     * the signature taken right after that text was set. Anything else (focus moved to another field, the field changed) is false.
+     */
+    fun enterAllowed(focusedSignature: String?, typedSignature: String?): Boolean =
+        focusedSignature != null && typedSignature != null && focusedSignature == typedSignature
 
     /**
      * The package that handles a link or the home screen, from what resolveActivity answered (pkg, cls) and the
@@ -141,7 +183,9 @@ internal object ScreenMapping {
      * Builds the tree depth first, parent before children, at most maxNodes nodes and nodes down to maxDepth
      * (the root is depth 0), after at most maxLookups child lookups (found or not). visit runs when a node is
      * entered, make runs once its children are built. A child that cannot be fetched (null) is skipped and keeps
-     * its index. checkCancelled runs before every lookup; whatever it throws ends the walk.
+     * its index. checkCancelled runs before every lookup; whatever it throws ends the walk. When a cap stops the walk while a
+     * child is still to be looked at, onCap is told which one ("nodes", "lookups" or "depth"): the tree is then incomplete and the
+     * caller treats the whole read as unreadable.
      */
     fun <T : Any> buildTree(
         root: T,
@@ -153,6 +197,7 @@ internal object ScreenMapping {
         maxDepth: Int = MAX_DEPTH,
         maxLookups: Int = MAX_LOOKUPS,
         checkCancelled: () -> Unit = {},
+        onCap: (String) -> Unit = {},
     ): RawNode {
         var seen = 0
         var lookups = 0
@@ -162,12 +207,15 @@ internal object ScreenMapping {
             val kids = ArrayList<RawNode>()
             if (depth < maxDepth) {
                 for (i in 0 until childCount(node)) {
-                    if (seen >= maxNodes || lookups >= maxLookups) break
+                    if (seen >= maxNodes) { onCap("nodes"); break }
+                    if (lookups >= maxLookups) { onCap("lookups"); break }
                     checkCancelled()
                     lookups++
                     val child = childAt(node, i) ?: continue
                     kids += walk(child, childHandle(handle, i), depth + 1)
                 }
+            } else if (childCount(node) > 0) {
+                onCap("depth")
             }
             return make(node, handle, kids)
         }
