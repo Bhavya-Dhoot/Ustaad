@@ -14,10 +14,24 @@ sealed interface Decision {
 
 /**
  * The part of Hands that does not depend on the model (safety rules S1 to S3). It sees the tool call, the screen the call was
- * decided on and the element it points at; it never sees the model's note. Rules run in this order, the first that fires wins:
- * G1 own UI, G2 blocked apps, links, G3 secrets, G4 unreadable screen, G5 commit words, G6 app scope.
+ * decided on and the element it points at; it never sees the model's note. Elements are judged by [UiElement.guard], the full
+ * normalised text, never by the short label the model reads. Rules run in this order; a refusal ends it, the reasons to ask are collected
+ * and asked as one question: G1 own UI, G2 protected apps, links, G4 unreadable screen, G3 secrets, scroll, enter, G5 commit,
+ * payment screen, G6 app scope.
  */
 class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
+
+    /** What the guard needs besides the call. */
+    class Context(
+        /** The installed apps: a package is protected when its package name or its label is. */
+        val apps: List<AppInfo> = emptyList(),
+        /** The guard text of the field the previous successful step typed into, null if the previous step was something else. */
+        val lastTypedGuard: String? = null,
+        /** The task the person gave. A link they wrote themselves in it needs no question. */
+        val task: String = "",
+        /** For open_link: the package the driver says would open the link, empty if none, null if it was not asked. */
+        val linkTarget: String? = null,
+    )
 
     fun check(
         call: ToolCall,
@@ -26,6 +40,7 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
         planApps: Set<String>,
         approvedApps: Set<String>,
         launcherPackages: Set<String>,
+        ctx: Context = Context(),
     ): Decision {
         val tool = call.tool
         val spec = HandsTools.spec(tool) ?: return Decision.Refuse("unknown tool '$tool'")
@@ -34,6 +49,8 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
         val pkg = screen?.pkg.orEmpty()
         val target = (call.args["app"] as? JsonPrimitive)?.content.orEmpty().trim()
         val text = (call.args["text"] as? JsonPrimitive)?.content.orEmpty()
+        val asks = ArrayList<String>()
+        var scopePkg = ""
 
         // G1: the agent never acts inside Ustaad. Leaving it (home, open another app, open a link) is how a run starts from the task sheet.
         if (tool == "open_app" && ownPackages.any { it.equals(target, ignoreCase = true) }) {
@@ -43,59 +60,113 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
             return Decision.Refuse("the screen is Ustaad's own; the agent never acts there")
         }
 
-        // G2: banking, UPI, wallets, password managers, authenticators, permission dialogs, installers, root, Settings
-        if (screen != null && isBlocked(pkg)) return Decision.Refuse("$pkg is a protected app (money, passwords, permissions or settings); the agent does not act there")
-        if (tool == "open_app" && isBlocked(target)) return Decision.Refuse("$target is a protected app (money, passwords, permissions or settings)")
+        // G2: banking, UPI, wallets, password managers, authenticators, permission dialogs, installers, root, Settings: by package or by label
+        if (screen != null && blockedApp(pkg, ctx)) return Decision.Refuse("$pkg is a protected app (money, passwords, permissions or settings); the agent does not act there")
+        if (tool == "open_app" && blockedApp(target, ctx)) return Decision.Refuse("$target is a protected app (money, passwords, permissions or settings)")
 
-        if (tool == "open_link" && !HandsTools.linkAllowed(text)) {
-            return Decision.Refuse("this link is not allowed (${HandsTools.linkScheme(text) ?: "no scheme"}); only ${HandsTools.LINK_SCHEMES.joinToString(", ")} may be opened")
+        if (tool == "open_link") {
+            if (!HandsTools.linkAllowed(text)) {
+                return Decision.Refuse("this link is not allowed (${HandsTools.linkScheme(text) ?: "no scheme"}); only ${HandsTools.LINK_SCHEMES.joinToString(", ")} may be opened")
+            }
+            val lt = ctx.linkTarget
+            if (lt.isNullOrEmpty()) return Decision.Refuse("no single app opens this link")
+            if (ownPackages.any { it.equals(lt, ignoreCase = true) }) return Decision.Refuse("Ustaad cannot open itself")
+            if (blockedApp(lt, ctx)) return Decision.Refuse("$lt is a protected app (money, passwords, permissions or settings); no link is sent to it")
+            if (lt !in planApps && lt !in approvedApps) {
+                asks += "the link would open $lt, which is not part of this task"
+                scopePkg = lt
+            }
+            // text the model copied from a screen could leave the phone in a link: only a link the person wrote themselves goes without a question
+            if (!ctx.task.contains(text.trim())) asks += "the link was not in your task: ${text.trim()}"
         }
 
-        // G4 first for the facts it needs: no blind taps, and a tap or a type needs an element that exists on this screen
+        // G4: no blind taps, and a tap or a type needs an element that exists on this screen
         val blind = screen == null || screen.unreadable
-        if (blind && tool in BLIND_REFUSED) return Decision.Refuse("the screen cannot be read; no blind taps or typing")
+        if (blind && (tool in BLIND_REFUSED || tool == "scroll")) return Decision.Refuse("the screen cannot be read; no blind taps, typing or scrolling")
         val needsElement = tool == "tap" || tool == "type" || (tool == "scroll" && call.args["id"] != null)
         if (needsElement && element == null) return Decision.Refuse("there is no such element on this screen")
+
+        val checkout = screen != null && !screen.unreadable && isPaymentScreen(screen)
 
         // G3: secrets
         if (tool == "type" && element != null) {
             if (Flag.PASSWORD in element.flags) return Decision.Refuse("the agent never types into a password field")
-            if (SECRET_LABEL.containsMatchIn(element.label)) return Decision.Refuse("the agent never types a password, PIN, one-time code or card number")
-            if (screen != null && screen.elements.any { SCREEN_ASKS_CODE.containsMatchIn(it.label) }) {
+            if (GuardWords.SECRET.matches(element.guard)) return Decision.Refuse("the agent never types a password, PIN, one-time code or card number")
+            if (screen != null && screen.elements.any { GuardWords.SCREEN_ASKS_CODE.matches(it.guard) }) {
                 return Decision.Refuse("this screen asks for a code or a card number; the agent does not type here")
+            }
+            // A card number typed into any field is refused by its digits. What cannot be recognised: a password or PIN field that is
+            // neither flagged as a password nor named like one (the label says "Search"). The guard cannot see purpose, only words.
+            if (GuardText.hasCardNumber(text)) return Decision.Refuse("the text holds a card number; the agent never types one")
+            if (element.guard.isEmpty()) asks += "the field has no name, so nothing says what it is for"
+        }
+
+        // scroll: it can commit too ("slide to pay")
+        if (tool == "scroll") {
+            if (element != null) {
+                if (Flag.SCROLLABLE !in element.flags) return Decision.Refuse("that element does not scroll")
+                if (movesOrCommits(element.guard)) asks += "\"${shown(element)}\" may commit when it is moved"
+            } else if (screen != null) {
+                val plain = screen.elements.any { Flag.SCROLLABLE in it.flags && !movesOrCommits(it.guard) }
+                if (!plain && checkout) asks += "a swipe on a payment screen"
             }
         }
 
-        // G5: commit words
-        var commit: String? = null
-        if (tool == "tap" && element != null && isCommitLabel(element.label)) {
-            commit = "\"${element.label}\" commits something (pay, order, send, delete, install, sign in ...)"
+        // enter sends what a focused field's keyboard action sends: only the enter that ends a search is safe by itself
+        if (tool == "press_enter" && !checkout) {
+            val search = ctx.lastTypedGuard?.let { GuardWords.SEARCH.matches(it) } == true
+            if (!search) asks += "enter may send or submit what is typed"
         }
-        if (tool == "press_enter" && screen != null) {
-            val b = screen.elements.firstOrNull { it.role == Role.BUTTON && isWholeCommit(it.label) }
-            if (b != null) commit = "enter may press \"${b.label}\", which commits something"
+
+        // G5: commit words, prices, unlabeled controls
+        if (tool == "tap" && element != null) {
+            val g = element.guard
+            when {
+                g.isEmpty() -> asks += "an unlabeled control: nothing says what it does"
+                isCommitText(g) -> asks += "\"${shown(element)}\" commits something (pay, order, send, delete, install, sign in ...)"
+                Flag.CLICKABLE in element.flags && GuardText.isPriceOnly(g) -> asks += "a price on a button may be the button that pays"
+            }
+        }
+
+        // a payment screen: every tap, type and enter is asked, except a plain way out
+        if (checkout && tool in PAYMENT_ASKED) {
+            val wayOut = tool == "tap" && element != null && GuardWords.WAY_OUT.matchesWhole(element.guard)
+            if (!wayOut) asks += "this is a payment screen"
         }
 
         // G6: app scope. Ustaad's own screen is only left, never judged.
         val known = planApps + approvedApps + launcherPackages
-        var outside: String? = null
-        var outsidePkg = ""
         if (screen != null && pkg.isNotEmpty() && pkg !in known && pkg !in ownPackages) {
-            outside = "continue in $pkg?"
-            outsidePkg = pkg
+            asks += "continue in $pkg?"
+            scopePkg = pkg
         }
         if (tool == "open_app" && target.isNotEmpty() && target !in planApps && target !in approvedApps) {
-            outside = "open $target?"
-            outsidePkg = target
+            asks += "open $target?"
+            scopePkg = target
         }
 
-        return when {
-            commit != null && outside != null -> Decision.Confirm("$commit; also outside the planned apps ($outsidePkg)", outsidePkg)
-            commit != null -> Decision.Confirm(commit)
-            outside != null -> Decision.Confirm(outside, outsidePkg)
-            else -> Decision.Allow
-        }
+        return if (asks.isEmpty()) Decision.Allow else Decision.Confirm(asks.distinct().joinToString("; "), scopePkg)
     }
+
+    /**
+     * What the model and the log may be shown of a screen: the screen of a protected app, or one that asks for a code or a card,
+     * is shown as a screen with no elements. Package and activity stay, so the guard still knows where it is.
+     */
+    fun shield(s: Screen, apps: List<AppInfo>): Screen {
+        if (s.unreadable) return s
+        val protectedScreen = blockedApp(s.pkg, Context(apps = apps)) || s.elements.any { GuardWords.SCREEN_ASKS_CODE.matches(it.guard) }
+        return if (protectedScreen) Screen(s.pkg, s.activity, emptyList(), true, "protected-" + s.hash) else s
+    }
+
+    private fun blockedApp(pkgOrName: String, ctx: Context): Boolean {
+        if (isBlocked(pkgOrName)) return true
+        val label = ctx.apps.firstOrNull { it.pkg.equals(pkgOrName, ignoreCase = true) }?.label ?: return false
+        return isBlocked(label)
+    }
+
+    private fun shown(e: UiElement) = e.label.ifEmpty { e.guard }
+
+    private fun isPaymentScreen(s: Screen): Boolean = GuardWords.PAYMENT_CONTEXT.matches(GuardText.join(*s.elements.map { it.guard }.toTypedArray()))
 
     companion object {
         val OWN_PACKAGES = setOf("com.swarmos.app", "com.ustaad.app")
@@ -103,6 +174,7 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
         /** Actions that take the agent out of the current app; allowed from Ustaad's own screen. */
         private val LEAVING = setOf("home", "open_app", "open_link")
         private val BLIND_REFUSED = setOf("tap", "type", "press_enter")
+        private val PAYMENT_ASKED = setOf("tap", "type", "press_enter")
 
         // ---------------------------------------------------------------- G2: protected apps (extend freely)
 
@@ -111,7 +183,7 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
             // UPI, wallets, banking
             "com.phonepe.app", "com.google.android.apps.nbu.paisa.user", "net.one97.paytm", "in.org.npci.upiapp",
             "com.dreamplug.androidapp", "com.mobikwik_new", "com.freecharge.android", "com.samsung.android.spay",
-            // Amazon Pay is a part of the Amazon shopping app, not a separate package: its pay buttons are caught by G5.
+            // Amazon Pay is a part of the Amazon shopping app, not a separate package: its pay buttons are caught by the commit words.
             // authenticators
             "com.google.android.apps.authenticator2", "com.azure.authenticator", "com.authy.authy", "com.twofasapp",
             "com.beemdevelopment.aegis", "org.fedorahosted.freeotp",
@@ -136,60 +208,26 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
         val BLOCKED_NAME_WORDS = setOf("sbi", "axis", "upi", "cred", "settings")
 
         fun isBlocked(pkgOrName: String): Boolean {
-            val s = pkgOrName.trim().lowercase()
+            val s = GuardText.norm(pkgOrName, camel = false)
             if (s.isEmpty()) return false
             if (BLOCKED_PACKAGES.any { it.lowercase() == s }) return true
             val words = s.split(Regex("[^a-z0-9_]+")).filter { it.isNotEmpty() }
             return words.any { w -> w in BLOCKED_NAME_WORDS || BLOCKED_NAME_PARTS.any { w.contains(it) } }
         }
 
-        // ---------------------------------------------------------------- word lists
+        // ---------------------------------------------------------------- matching
 
-        /** Matches a whole word or phrase, not part of a longer word. A space inside a phrase matches a space or a dash. */
-        private fun wordRegex(words: List<String>): Regex {
-            val alt = words.joinToString("|") { Regex.escape(it).replace(" ", "\\E[\\s\\-]+\\Q") }
-            return Regex("(?<![\\p{L}\\p{N}\\p{M}_])(?:$alt)(?![\\p{L}\\p{N}\\p{M}_])", RegexOption.IGNORE_CASE)
-        }
+        fun isSecretLabel(text: String): Boolean = GuardWords.SECRET.matches(GuardText.norm(text))
 
-        /** G3: fields the agent never types into (English; Hindi: password, passcode, OTP, PIN). */
-        val SECRET_WORDS = listOf(
-            "password", "passcode", "passphrase", "pin", "mpin", "otp", "one time", "cvv", "cvv2", "cvc", "card number",
-            "upi pin", "security code", "verification code", "authentication code", "2fa code",
-            "पासवर्ड", "पासकोड", "ओटीपी", "पिन", "वन टाइम",
-        )
-        private val SECRET_LABEL = wordRegex(SECRET_WORDS)
+        /** The words of every language, on normalised text; adjacent pieces count ("p" "ay", "paynow"), longer words that contain a short one do not. */
+        fun isCommitText(guard: String): Boolean = GuardWords.COMMIT.matches(guard)
 
-        /** G3: a screen that asks for one of these is not typed on at all (narrower than SECRET_WORDS: "Forgot password?" is everywhere). */
-        private val SCREEN_ASKS_CODE = wordRegex(
-            listOf("otp", "one time", "cvv", "cvc", "card number", "upi pin", "security code", "verification code", "ओटीपी", "वन टाइम"),
-        )
+        /** For a label as people write it: normalises first. */
+        fun isCommitLabel(label: String): Boolean = isCommitText(GuardText.norm(label))
 
-        /** G5: a tap on an element whose label has one of these needs the person's yes. */
-        val COMMIT_WORDS = listOf(
-            "pay", "payment", "place order", "place your order", "order now", "reorder", "buy", "purchase", "checkout", "check out",
-            "book", "send", "post", "publish", "share", "delete", "remove", "uninstall", "install", "subscribe", "transfer", "donate",
-            "submit", "sign in", "signin", "sign up", "signup", "log in", "login", "log out", "logout", "agree", "accept", "allow", "grant",
-            "confirm", "slide to pay", "swipe to pay",
-            // Hindi: pay, order, buy, send, book, delete, install
-            "भुगतान", "पे", "पेमेंट", "ऑर्डर करें", "ऑर्डर दें", "ऑर्डर प्लेस करें", "आर्डर करें", "खरीदें", "खरीदिए",
-            "भेजें", "भेजिए", "बुक करें", "बुक", "हटाएं", "हटाएँ", "डिलीट", "मिटाएं", "इंस्टॉल", "इंस्टाल",
-        )
-        private val COMMIT_IN_LABEL = wordRegex(COMMIT_WORDS)
-        private val COMMIT_WHOLE = Regex("^(?:" + COMMIT_WORDS.joinToString("|") { Regex.escape(it).replace(" ", "\\E[\\s\\-]+\\Q") } + ")$", RegexOption.IGNORE_CASE)
+        fun isPriceOnly(text: String): Boolean = GuardText.isPriceOnly(text)
 
-        private val PRICE_NOISE = Regex("[\\s₹$€£.,/+\\-]|rs\\.?|inr|usd|eur", RegexOption.IGNORE_CASE)
-
-        /** "₹250", "Rs. 250.00": a price is a number, not a commit. */
-        fun isPriceOnly(label: String): Boolean {
-            val rest = PRICE_NOISE.replace(label, "")
-            return rest.isNotEmpty() && rest.all { it.isDigit() }
-        }
-
-        fun isSecretLabel(label: String): Boolean = SECRET_LABEL.containsMatchIn(label)
-
-        fun isCommitLabel(label: String): Boolean = !isPriceOnly(label) && COMMIT_IN_LABEL.containsMatchIn(label)
-
-        /** A label that is nothing but a commit word or phrase ("Pay", "Place order!"). */
-        fun isWholeCommit(label: String): Boolean = COMMIT_WHOLE.matches(label.trim().trim { !it.isLetterOrDigit() }.replace(Regex("\\s+"), " "))
+        /** Something that moves under a finger or commits when touched: scrolling it is not a plain scroll. */
+        fun movesOrCommits(guard: String): Boolean = isCommitText(guard) || GuardWords.SLIDER.matches(guard)
     }
 }
