@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher shortcut labels (shortcuts.xml cannot hold literal text). -->
+    <string name="shortcut_ask_short">Ask Ustaad</string>
+    <string name="shortcut_ask_long">Ask Ustaad to do a task</string>
+</resources>

@@ -29,6 +29,8 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Hands ways in: the confirmation prompt hides other apps' overlay windows while it is on screen (Android 12 and up) -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -68,12 +70,78 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="swarmos" android:host="pair" />
             </intent-filter>
+            <!-- Hands ways in: the static shortcut "Ask Ustaad" (res/xml/shortcuts.xml) -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
 
         <service
             android:name=".core.SwarmService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Hands ways in -->
+        <!-- The task sheet. Exported on purpose: the assistant gesture, share, selected text and ustaad://do?q=... reach it. Whatever comes
+             from another app is shown in the field and starts only on the person's tap on Run (assist/AssistIntents.kt, SheetRules.kt). -->
+        <activity
+            android:name=".assist.AssistActivity"
+            android:label="Ask Ustaad"
+            android:exported="true"
+            android:theme="@style/Theme.Ustaad.Sheet"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.swarmos.app.assist"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density|fontScale|locale|layoutDirection">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ustaad" android:host="do" />
+            </intent-filter>
+        </activity>
+
+        <!-- The digital assistant role. Only the system can bind these (BIND_VOICE_INTERACTION). Ustaad reads no screen structure and
+             takes no screenshot of the app underneath, and offers no recognition of its own (the recognition service answers with an error). -->
+        <service
+            android:name=".assist.UstaadVoiceService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data android:name="android.voice_interaction" android:resource="@xml/voice_interaction" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".assist.UstaadSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <service
+            android:name=".assist.UstaadRecognitionService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+        <!-- end of Hands ways in -->
 
         <!-- ML Kit ships Google's usage-log uploader (datatransport). The app makes no cloud calls, so its backend and schedulers are removed. -->
         <service

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The demo build has the applicationId com.ustaad.app (app/build.gradle.kts, androidComponents); the class stays in the Kotlin namespace. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="ask_ustaad"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_ask_short"
+        android:shortcutLongLabel="@string/shortcut_ask_long">
+        <intent
+            android:action="android.intent.action.ASSIST"
+            android:targetPackage="com.ustaad.app"
+            android:targetClass="com.swarmos.app.assist.AssistActivity" />
+    </shortcut>
+</shortcuts>
