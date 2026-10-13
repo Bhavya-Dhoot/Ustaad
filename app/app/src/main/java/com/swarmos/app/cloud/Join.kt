@@ -6,8 +6,9 @@ import java.security.KeyPair
  * Joining a cloud (docs/CLOUD-PROTOCOL.md section 4). Any node may host an [Invite]; the newcomer scans it. The one-time code is a
  * secret shared by camera. The request is sealed under a key from the code; the answer is sealed under a key that also needs an
  * ephemeral ECDH result and is signed by the host's key pinned in the QR code, so a code learnt later opens nothing and a holder of
- * the code cannot forge an answer. A newcomer is a member only when the OWNER has signed its add entry after a person confirmed on
- * the owner's device (4.4, 4.5).
+ * the code cannot forge an answer. A newcomer is a member only when the OWNER has signed its add entry after a person compared six
+ * digits on both screens and tapped Allow on the owner's device (4.4, 4.5). The digits are a committed comparison: the newcomer
+ * commits first, the owner answers with a nonce, the newcomer opens; a host in the middle cannot steer them.
  */
 class Invite(
     val cloudId: ByteArray,
@@ -50,14 +51,28 @@ class Invite(
 
 /** What the host keeps per invitation, in memory. */
 class InviteBook {
+    /** A requester the owner declined: it keeps its own answer while the invite goes back to the next newcomer (4.3). */
+    internal class Declined(val nc: ByteArray, val eN: ByteArray, val fp: String)
+
     internal class Record(val code: ByteArray, val kind: MemberKind, val issuedAt: Long) {
         /** Member id of the key the invite is bound to (the first valid request). */
         var boundTo: String? = null
         var nodeId = ""
         var name = ""
         var key: ByteArray? = null
+        var eN: ByteArray? = null
+        var nc: ByteArray? = null
+        var commit: ByteArray? = null
+        var nO: ByteArray? = null
+        var openForwarded = false
         var state = NONE
         var ticket: ByteArray? = null
+        val declined = ArrayList<Declined>()
+
+        fun release() {
+            boundTo = null; key = null; eN = null; nc = null; commit = null; nO = null; ticket = null
+            openForwarded = false; state = NONE
+        }
     }
 
     private val records = ArrayList<Record>()
@@ -80,6 +95,7 @@ class InviteBook {
     companion object {
         const val MAX_OPEN = 8
         const val RETAIN_MS = 3_600_000L
+        const val MAX_DECLINED = 4
         const val NONE = 0
         const val WAITING = 1
         const val GRANTED = 2
@@ -101,40 +117,54 @@ object JoinStatus {
 enum class Refusal { MALFORMED, WRONG_CODE, BAD_PROOF, EXPIRED, USED }
 
 sealed interface HostResult {
-    /** [forward] is set the first time a request is passed on: send it to the owner over the session, or hand it to a local [Owner]. */
-    class Answer(val bytes: ByteArray, val status: Int, val forward: AdmitForward?) : HostResult
+    /**
+     * [forward] is set the first time a request is passed on, [open] the first time the newcomer's opening arrives: send them to the
+     * owner over the session (or hand them to a local [Owner]).
+     */
+    class Answer(val bytes: ByteArray, val status: Int, val forward: AdmitForward?, val open: SasOpen? = null) : HostResult
     class Refused(val reason: Refusal) : HostResult
 }
 
 internal object JoinWire {
-    /** Newcomer to host. `nc` is fresh per request. The request is sealed under the code alone: it carries nothing secret. */
+    /** Newcomer to host, phase 0. `nc` is fresh per request. The request is sealed under the code alone: it carries nothing secret. */
     fun c2aKey(code: ByteArray, cloudId: ByteArray, nc: ByteArray): ByteArray = Crypto.hkdf(code, concat(cloudId, nc), lbl("join/c2a"), 32)
+
+    /** Newcomer to host, phase 1: a fresh key, so no key and nonce ever carry two plaintexts. */
+    fun c2a2Key(code: ByteArray, cloudId: ByteArray, nc: ByteArray, nO: ByteArray): ByteArray =
+        Crypto.hkdf(code, concat(cloudId, nc, nO), lbl("join/c2a2"), 32)
 
     /** Host to newcomer: the ECDH result AND the code. Neither a late learner of the code nor a holder of the code on the path can make it. */
     fun a2cKey(ecdh: ByteArray, code: ByteArray, cloudId: ByteArray, nc: ByteArray, na: ByteArray): ByteArray =
         Crypto.hkdf(concat(ecdh, code), concat(cloudId, nc, na), lbl("join/a2c"), 32)
 
-    /** Possession of the key, bound to this ephemeral key, this exchange and this host. */
-    fun pop(cloudId: ByteArray, nc: ByteArray, nodeId: String, name: String, key: ByteArray, eN: ByteArray, hostNodeId: String): ByteArray =
-        concat(lbl("join/pop"), cloudId, nc, Writer().str(nodeId).str(name).fixed(key, Crypto.PUB_BYTES).fixed(eN, Crypto.PUB_BYTES).str(hostNodeId).bytes())
+    /** The newcomer commits to its key, node id, name and a nonce it keeps secret until the owner's nonce has arrived. */
+    fun commit(cloudId: ByteArray, key: ByteArray, nodeId: String, name: String, nN: ByteArray): ByteArray =
+        Crypto.sha256(lbl("join/commit"), cloudId, Writer().fixed(key, Crypto.PUB_BYTES).str(nodeId).str(name).fixed(nN, 16).bytes())
+
+    /** Possession of the key, bound to this ephemeral key, this exchange, this commitment and this host. */
+    fun pop(cloudId: ByteArray, nc: ByteArray, nodeId: String, name: String, key: ByteArray, eN: ByteArray, commit: ByteArray, hostNodeId: String): ByteArray =
+        concat(lbl("join/pop"), cloudId, nc, Writer().str(nodeId).str(name).fixed(key, Crypto.PUB_BYTES).fixed(eN, Crypto.PUB_BYTES).fixed(commit, 32).str(hostNodeId).bytes())
 
     /** What the host signs: both nonces, both ephemeral keys, the status and digests of everything it carries. */
-    fun answerSig(cloudId: ByteArray, nc: ByteArray, na: ByteArray, eN: ByteArray, eH: ByteArray, status: Int, secrets: ByteArray, chain: ByteArray): ByteArray =
-        concat(lbl("join/answer"), cloudId, nc, na, eN, eH, Writer().u8(status).bytes(), Crypto.sha256(secrets), Crypto.sha256(chain))
+    fun answerSig(cloudId: ByteArray, nc: ByteArray, na: ByteArray, eN: ByteArray, eH: ByteArray, status: Int, extra: ByteArray, chain: ByteArray): ByteArray =
+        concat(lbl("join/answer"), cloudId, nc, na, eN, eH, Writer().u8(status).bytes(), Crypto.sha256(extra), Crypto.sha256(chain))
 
     fun secretsBytes(s: EpochSecrets): ByteArray = Writer().u32(s.epoch).fixed(s.discoveryKey, 32).fixed(s.storageKey, 32).bytes()
 }
 
-/** The six digits both screens show (4.4): the newcomer's and the owner's, computed from the same three things. */
+/**
+ * The six digits both screens show (4.4): computed from the cloud, the newcomer's key, node id and name, the newcomer's secret
+ * nonce and the owner's nonce. Both nonces are fixed only after a party has committed, so nobody can search for a match.
+ */
 object ConfirmationCode {
-    fun of(keyOrKeyId: ByteArray, nodeId: String, name: String): String {
-        val h = Crypto.sha256(lbl("join/sas"), keyOrKeyId, Writer().str(nodeId).str(name).bytes())
+    fun of(cloudId: ByteArray, keyOrKeyId: ByteArray, nodeId: String, name: String, nN: ByteArray, nO: ByteArray): String {
+        val h = Crypto.sha256(lbl("join/sas"), cloudId, keyOrKeyId, Writer().str(nodeId).str(name).fixed(nN, 16).fixed(nO, 16).bytes())
         val v = ((h[0].toLong() and 0xFF) shl 24) or ((h[1].toLong() and 0xFF) shl 16) or ((h[2].toLong() and 0xFF) shl 8) or (h[3].toLong() and 0xFF)
         return (v % 1_000_000L).toString().padStart(6, '0')
     }
 }
 
-/** Host to owner (4.5), sealed in their session. `ticket` ties the owner's decision back to the waiting request. */
+/** Host to owner (4.5), sealed in their session. `ticket` ties the owner's messages back to the waiting request. */
 class AdmitForward(
     val ticket: ByteArray,
     val keyType: Int,
@@ -143,12 +173,14 @@ class AdmitForward(
     val kind: MemberKind,
     val key: ByteArray?,
     val tokenKeyId: ByteArray?,
+    /** The newcomer's commitment (device keys only). */
+    val commit: ByteArray?,
     val hostHeadSeq: Long,
     val hostHeadId: ByteArray,
 ) {
     fun encode(): ByteArray {
         val w = Writer().u8(1).fixed(ticket, 8).u8(keyType).str(nodeId).str(name).u8(kind.code)
-        if (keyType == 1) w.fixed(key!!, Crypto.PUB_BYTES) else w.fixed(tokenKeyId!!, 16)
+        if (keyType == 1) w.fixed(key!!, Crypto.PUB_BYTES).fixed(commit!!, 32) else w.fixed(tokenKeyId!!, 16)
         return w.u64(hostHeadSeq).fixed(hostHeadId, 32).bytes()
     }
 
@@ -158,28 +190,63 @@ class AdmitForward(
             if (r.u8() != 1) malformed("admit version")
             val ticket = r.fixed(8)
             val keyType = r.u8()
+            if (keyType !in 1..2) malformed("key type")
             val nodeId = Shape.requireNodeId(r.str(8))
             val name = Shape.requireName(r.str(Shape.MAX_NAME_BYTES))
             val kind = MemberKind.of(r.u8()) ?: malformed("kind")
-            val key = if (keyType == 1) r.fixed(Crypto.PUB_BYTES).also { if (!Crypto.isValidPoint(it)) malformed("key") } else null
-            val keyId = if (keyType == 2) r.fixed(16) else null
-            if (keyType !in 1..2) malformed("key type")
+            var key: ByteArray? = null; var commit: ByteArray? = null; var keyId: ByteArray? = null
+            if (keyType == 1) {
+                key = r.fixed(Crypto.PUB_BYTES).also { if (!Crypto.isValidPoint(it)) malformed("key") }
+                commit = r.fixed(32)
+            } else {
+                keyId = r.fixed(16)
+            }
             val seq = r.u64()
             val head = r.fixed(32)
             r.end()
             if (seq < 0) malformed("head")
-            return AdmitForward(ticket, keyType, nodeId, name, kind, key, keyId, seq, head)
+            return AdmitForward(ticket, keyType, nodeId, name, kind, key, keyId, commit, seq, head)
         }
 
         /** A token client recorded by its issuing node (section 8.1). */
         fun forToken(m: TokenMaterial, name: String, kind: MemberKind, chain: Chain): AdmitForward {
             val s = chain.state()
-            return AdmitForward(Crypto.random(8), 2, m.nodeId, name, kind, null, m.keyId, s.headSeq, s.headId)
+            return AdmitForward(Crypto.random(8), 2, m.nodeId, name, kind, null, m.keyId, null, s.headSeq, s.headId)
         }
     }
 }
 
-/** Owner to host (4.5), sealed in their session: granted with the entries the host lacks, or denied. */
+/** Owner to host, sealed: the owner's fresh nonce, sent only after it holds the newcomer's commitment (4.4). */
+class SasChallenge(val ticket: ByteArray, val nO: ByteArray) {
+    fun encode(): ByteArray = Writer().u8(1).fixed(ticket, 8).fixed(nO, 16).bytes()
+
+    companion object {
+        fun parse(bytes: ByteArray): SasChallenge {
+            val r = Reader(bytes)
+            if (r.u8() != 1) malformed("challenge version")
+            val c = SasChallenge(r.fixed(8), r.fixed(16))
+            r.end()
+            return c
+        }
+    }
+}
+
+/** Host to owner, sealed: the newcomer's opening of its commitment, sent after the newcomer has seen the owner's nonce. */
+class SasOpen(val ticket: ByteArray, val nN: ByteArray) {
+    fun encode(): ByteArray = Writer().u8(1).fixed(ticket, 8).fixed(nN, 16).bytes()
+
+    companion object {
+        fun parse(bytes: ByteArray): SasOpen {
+            val r = Reader(bytes)
+            if (r.u8() != 1) malformed("opening version")
+            val o = SasOpen(r.fixed(8), r.fixed(16))
+            r.end()
+            return o
+        }
+    }
+}
+
+/** Owner to host (4.5), sealed: granted with the entries the host lacks, or denied. */
 class AdmitDecision(val ticket: ByteArray, val granted: Boolean, val entries: List<ChainEntry>, val reason: String = "") {
     fun encode(): ByteArray {
         val w = Writer().u8(1).fixed(ticket, 8).u8(if (granted) 1 else 0)
@@ -200,7 +267,7 @@ class AdmitDecision(val ticket: ByteArray, val granted: Boolean, val entries: Li
     }
 }
 
-/** A request the owner's device shows to a person: the exact key, node id, name and kind, who passed it on, and a code to compare. */
+/** A request at the owner: the exact key, node id, name and kind, who passed it on, and (once the opening has been checked) six digits. */
 class AdmitRequest internal constructor(
     val id: String,
     val hostMemberId: String,
@@ -212,30 +279,59 @@ class AdmitRequest internal constructor(
     val tokenKeyId: ByteArray?,
     val createdAt: Long,
     internal val forward: AdmitForward,
+    internal val cloudId: ByteArray,
+    internal val nO: ByteArray?,
 ) {
+    /** The owner's nonce to send back to the host. Null for a token client (no newcomer device, no digits). */
+    val challenge: SasChallenge? get() = nO?.let { SasChallenge(forward.ticket, it) }
+
+    /** Six digits, known only after the newcomer's opening was checked against its commitment. */
+    @Volatile var digits: String? = null
+        internal set
+
     /** The newcomer's key fingerprint (null for a token client). */
     val fingerprint: String? get() = key?.let { Hex.of(Crypto.fingerprint(it)) }
 
-    /** Six digits; the newcomer's screen shows the same, and a person compares them. */
-    val confirmationCode: String get() = ConfirmationCode.of(key ?: tokenKeyId!!, nodeId, name)
+    internal val opened: Boolean get() = tokenKeyId != null || digits != null
+    @Volatile internal var prompt: Prompt? = null
+}
 
-    /** The only way to a granting [Approval]; the screen calls it on the tap. Cancelling is not calling it. */
+/**
+ * What the owner's screen is given to draw: the host, node id, name, kind and the six digits. The only way to a granting [Approval]
+ * is [approve], and it is meant to be called from the tap on Allow and from nowhere else (docs section 19).
+ */
+class Prompt internal constructor(internal val request: AdmitRequest, val shownAt: Long) {
+    val hostNodeId: String get() = request.hostNodeId
+    val nodeId: String get() = request.nodeId
+    val name: String get() = request.name
+    val kind: MemberKind get() = request.kind
+    val digits: String? get() = request.digits
+
     fun approve(now: Long): Approval = Approval(this, now)
 }
 
-/** A person's yes for one [AdmitRequest]: single-use, and good for 120 seconds. */
-class Approval internal constructor(internal val request: AdmitRequest, val at: Long) {
+/** A person's yes for one [Prompt]: single-use, at least 800 ms after the prompt was shown and at most 120 seconds. */
+class Approval internal constructor(internal val prompt: Prompt, val at: Long) {
     @Volatile internal var used = false
 }
 
 /**
- * The owner's side of an admission (4.4, 4.5). Only this class turns a request into a chain entry, and only with an [Approval] made
- * by that very request. No approval, someone else's, an old one, a used one, or the 120 seconds gone: refused.
+ * The owner's side of an admission (4.4, 4.5). Only this class turns a request into a chain entry, and only with an [Approval]
+ * made by the [Prompt] of that very request. No approval, someone else's, one made too fast or too late, a used one, a request whose
+ * commitment was not opened, or the 120 seconds gone: refused.
  */
-class Owner(private val identity: DeviceIdentity, private val chain: Chain, private val ttlMs: Long = REQUEST_TTL_MS) {
+class Owner(
+    private val identity: DeviceIdentity,
+    private val chain: Chain,
+    private val ttlMs: Long = REQUEST_TTL_MS,
+    private val minDwellMs: Long = MIN_DWELL_MS,
+) {
     private val open = LinkedHashMap<String, AdmitRequest>()
 
-    /** [hostMemberId] is the verified peer of the session the forward came over; it must be a current node. */
+    /**
+     * [hostMemberId] is the verified peer of the session the forward came over; it must be a current node. At most one request per
+     * host is open at a time, so a host cannot try several commitments in parallel against one set of digits.
+     */
     @Synchronized fun receive(forward: AdmitForward, hostMemberId: String, now: Long): AdmitRequest {
         expire(now)
         val st = chain.state()
@@ -246,13 +342,37 @@ class Owner(private val identity: DeviceIdentity, private val chain: Chain, priv
         if (open.values.count { it.hostMemberId == hostMemberId } >= MAX_OPEN_PER_HOST) throw ProtocolError(CloudError.BUSY)
         val req = AdmitRequest(
             Hex.of(Crypto.random(8)), hostMemberId, host.nodeId, forward.nodeId, forward.name, forward.kind,
-            forward.key, forward.tokenKeyId, now, forward,
+            forward.key, forward.tokenKeyId, now, forward, chain.cloudId, if (forward.keyType == 1) Crypto.random(16) else null,
         )
         open[req.id] = req
         return req
     }
 
     @Synchronized fun pending(): List<AdmitRequest> = open.values.toList()
+
+    /**
+     * The newcomer's opening arrived: check it against the commitment it made before the owner's nonce existed. A wrong opening
+     * closes the request and returns a denial for the host; a right one makes the digits.
+     */
+    @Synchronized fun opened(request: AdmitRequest, opening: SasOpen, now: Long): AdmitDecision? {
+        expire(now)
+        val ok = open[request.id] === request && request.key != null && request.nO != null &&
+            opening.ticket.contentEquals(request.forward.ticket) && request.digits == null &&
+            Crypto.equal(JoinWire.commit(request.cloudId, request.key, request.nodeId, request.name, opening.nN), request.forward.commit!!)
+        if (!ok) {
+            open.remove(request.id)
+            return AdmitDecision(request.forward.ticket, false, emptyList(), "the opening does not match the commitment")
+        }
+        request.digits = ConfirmationCode.of(request.cloudId, request.key, request.nodeId, request.name, opening.nN, request.nO)
+        return null
+    }
+
+    /** What the screen draws. Only for a request that is still open and whose commitment has been opened (a token client needs none). */
+    @Synchronized fun prompt(request: AdmitRequest, now: Long): Prompt {
+        check(open[request.id] === request) { "not an open request" }
+        check(request.opened) { "the newcomer has not opened its commitment yet: no digits to show" }
+        return request.prompt ?: Prompt(request, now).also { request.prompt = it }
+    }
 
     /** Closes requests nobody answered within the time limit; each counts as refused. */
     @Synchronized fun expire(now: Long): Int {
@@ -261,17 +381,19 @@ class Owner(private val identity: DeviceIdentity, private val chain: Chain, priv
         return old.size
     }
 
-    /** Signs the add entry if, and only if, [approval] is this request's, fresh and unused. A null approval is a refusal. */
+    /** Signs the add entry if, and only if, [approval] is this request's prompt's, in time and unused. A null approval is a refusal. */
     @Synchronized fun decide(request: AdmitRequest, approval: Approval?, now: Long): AdmitDecision {
         val ticket = request.forward.ticket
         val still = open.remove(request.id)
         fun no(why: String) = AdmitDecision(ticket, false, emptyList(), why)
         if (still == null || still !== request) return no("not an open request")
         if (approval == null) return no("cancelled")
-        if (approval.request !== request) return no("approval belongs to another request")
+        val prompt = request.prompt ?: return no("nothing was shown to a person")
+        if (approval.prompt !== prompt) return no("approval belongs to another prompt")
         if (approval.used) return no("approval already used")
         approval.used = true
-        if (now - request.createdAt > ttlMs || now - approval.at > ttlMs || approval.at < request.createdAt) return no("too late")
+        if (approval.at - prompt.shownAt < minDwellMs) return no("approved faster than a person can read")
+        if (now - request.createdAt > ttlMs || approval.at - prompt.shownAt > ttlMs || now - approval.at > ttlMs) return no("too late")
         return try {
             if (request.key != null) chain.addDevice(identity, request.nodeId, request.name, request.kind, request.key, now)
             else chain.addToken(identity, request.hostMemberId, request.nodeId, request.name, request.kind, request.tokenKeyId!!, now)
@@ -283,13 +405,15 @@ class Owner(private val identity: DeviceIdentity, private val chain: Chain, priv
 
     companion object {
         const val REQUEST_TTL_MS = 120_000L
-        const val MAX_OPEN_PER_HOST = 8
+        const val MIN_DWELL_MS = 800L
+        const val MAX_OPEN_PER_HOST = 1
     }
 }
 
 /**
- * The host's side (any node). It can read a request, check the proof, bind the invite, pass the request to the owner, and answer
- * PENDING until the owner's decision arrives. It cannot write the list. [secrets] gives the current epoch's secrets this node holds.
+ * The host's side (any node). It can read a request, check the proof, bind the invite, pass the request and the opening to the
+ * owner, and answer PENDING until the owner's decision arrives. It cannot write the list. [secrets] gives the current epoch's
+ * secrets this node holds.
  */
 class JoinHost(
     private val identity: DeviceIdentity,
@@ -303,29 +427,40 @@ class JoinHost(
     fun invite(kind: MemberKind, addresses: List<String>, port: Int, now: Long): Invite =
         Invite(cloudId, nodeId, Crypto.fingerprint(identity.publicKey), addresses, port, invites.issue(kind, now))
 
-    private class Parsed(val nodeId: String, val name: String, val key: ByteArray, val eN: ByteArray, val sig: ByteArray)
+    private class Parsed(val nodeId: String, val name: String, val key: ByteArray, val eN: ByteArray, val commit: ByteArray, val sig: ByteArray)
 
     private fun parseRequest(plain: ByteArray): Parsed {
         val r = Reader(plain)
         if (r.u8() != 1) malformed("version")
         val p = Parsed(
             Shape.requireNodeId(r.str(8)), Shape.requireName(r.str(Shape.MAX_NAME_BYTES)),
-            r.fixed(Crypto.PUB_BYTES), r.fixed(Crypto.PUB_BYTES), r.fixed(Crypto.SIG_BYTES),
+            r.fixed(Crypto.PUB_BYTES), r.fixed(Crypto.PUB_BYTES), r.fixed(32), r.fixed(Crypto.SIG_BYTES),
         )
         r.end()
         if (!Crypto.isValidPoint(p.key) || !Crypto.isValidPoint(p.eN)) malformed("key")
         return p
     }
 
+    /** Everything the answer needs, whichever phase the request was. */
+    private class Ctx(val rec: InviteBook.Record?, val nc: ByteArray, val eN: ByteArray, val fp: String, val nodeId: String, val name: String, val key: ByteArray, val commit: ByteArray)
+
+    private class Head(val ver: Int, val nc: ByteArray, val nO: ByteArray?, val frame: ByteArray)
+
     @Synchronized fun handle(request: ByteArray, now: Long): HostResult {
-        val head = try {
+        val h = try {
             val r = Reader(request)
-            if (r.u8() != 1) malformed("version")
-            r.fixed(32) to r.rest()
+            val ver = r.u8()
+            if (ver != 1 && ver != 2) malformed("version")
+            val nc = r.fixed(32)
+            val nO = if (ver == 2) r.fixed(16) else null
+            Head(ver, nc, nO, r.rest())
         } catch (e: ProtocolError) {
             return HostResult.Refused(Refusal.MALFORMED)
         }
-        val (nc, frame) = head
+        return if (h.ver == 1) phase0(h.nc, h.frame, now) else phase1(h.nc, h.nO!!, h.frame, now)
+    }
+
+    private fun phase0(nc: ByteArray, frame: ByteArray, now: Long): HostResult {
         // The request does not say which code it uses: try each (at most 8 live plus a few retained); only the right one opens it.
         var rec: InviteBook.Record? = null
         var plain: ByteArray? = null
@@ -341,64 +476,113 @@ class JoinHost(
         if (rec == null || plain == null) return HostResult.Refused(Refusal.WRONG_CODE)
 
         val req = try { parseRequest(plain) } catch (e: ProtocolError) { return HostResult.Refused(Refusal.MALFORMED) }
-        if (!Crypto.ecdsaVerify(req.key, JoinWire.pop(cloudId, nc, req.nodeId, req.name, req.key, req.eN, nodeId), req.sig)) {
+        if (!Crypto.ecdsaVerify(req.key, JoinWire.pop(cloudId, nc, req.nodeId, req.name, req.key, req.eN, req.commit, nodeId), req.sig)) {
             return HostResult.Refused(Refusal.BAD_PROOF)
         }
         val fp = Hex.of(Crypto.fingerprint(req.key))
         val st = chain.state()
         val isMember = st.member(fp) != null
+        val declined = rec.declined.any { it.fp == fp }
         when {
+            declined -> {}
             rec.boundTo == fp -> if (!isMember && rec.state == InviteBook.WAITING && now >= rec.issuedAt + Invite.LIFETIME_MS + PENDING_GRACE_MS) {
                 return HostResult.Refused(Refusal.EXPIRED)
             }
             rec.boundTo != null -> return HostResult.Refused(Refusal.USED)
             now >= rec.issuedAt + Invite.LIFETIME_MS -> return HostResult.Refused(Refusal.EXPIRED)
         }
+        return answer(Ctx(rec, nc, req.eN, fp, req.nodeId, req.name, req.key, req.commit), declined, null, now)
+    }
 
+    private fun phase1(nc: ByteArray, nO: ByteArray, frame: ByteArray, now: Long): HostResult {
+        val rec = invites.known(now).firstOrNull { r ->
+            (r.nc?.contentEquals(nc) == true && r.nO?.contentEquals(nO) == true) || r.declined.any { it.nc.contentEquals(nc) }
+        } ?: return HostResult.Refused(Refusal.WRONG_CODE)
+        val dec = rec.declined.firstOrNull { it.nc.contentEquals(nc) }
+        if (dec != null) { // the requester the owner declined keeps asking: it gets its own answer, whoever holds the invite now
+            return answer(Ctx(rec, nc, dec.eN, dec.fp, "", "", ByteArray(65), ByteArray(32)), true, null, now)
+        }
+        val nN = try {
+            val p = Reader(Frames.openOnce(JoinWire.c2a2Key(rec.code, cloudId, nc, nO), 0, cloudId, FrameType.JOIN, frame))
+            if (p.u8() != 1) malformed("version")
+            p.fixed(16).also { p.end() }
+        } catch (e: ProtocolError) {
+            return HostResult.Refused(Refusal.WRONG_CODE)
+        }
+        val fp = rec.boundTo ?: return HostResult.Refused(Refusal.WRONG_CODE)
+        var open: SasOpen? = null
+        if (!rec.openForwarded && rec.state == InviteBook.WAITING && rec.ticket != null) {
+            rec.openForwarded = true
+            open = SasOpen(rec.ticket!!, nN)
+        }
+        return answer(Ctx(rec, nc, rec.eN!!, fp, rec.nodeId, rec.name, rec.key!!, rec.commit!!), false, open, now)
+    }
+
+    /** The status from the list and the invite's state, then the signed, sealed answer. */
+    private fun answer(c: Ctx, declined: Boolean, open: SasOpen?, now: Long): HostResult {
+        val rec = c.rec!!
+        val st = chain.state()
+        val isMember = st.member(c.fp) != null
         var forward: AdmitForward? = null
         val sec = secrets()?.takeIf { it.epoch == st.epoch }
         val status = when {
-            st.isRemoved(fp) -> JoinStatus.REMOVED // a removed key never comes back; the person reinstalls and gets a new key
-            isMember && sec != null -> { rec.boundTo = fp; if (rec.state == InviteBook.GRANTED) JoinStatus.OK else JoinStatus.ALREADY_MEMBER }
+            declined -> JoinStatus.DECLINED
+            st.isRemoved(c.fp) -> JoinStatus.REMOVED // a removed key never comes back; the person reinstalls and gets a new key
+            isMember && sec != null -> { rec.boundTo = c.fp; if (rec.state == InviteBook.GRANTED) JoinStatus.OK else JoinStatus.ALREADY_MEMBER }
             isMember -> JoinStatus.PENDING // we do not hold the current epoch's secrets yet
-            st.byNodeId(req.nodeId) != null -> JoinStatus.NODE_ID_TAKEN
-            rec.boundTo == fp && rec.state == InviteBook.DENIED -> {
-                rec.boundTo = null; rec.state = InviteBook.NONE; rec.ticket = null // the owner said no: the invite is usable again
-                JoinStatus.DECLINED
-            }
+            st.byNodeId(c.nodeId) != null -> JoinStatus.NODE_ID_TAKEN
             else -> {
                 if (rec.state == InviteBook.NONE) {
-                    rec.boundTo = fp; rec.nodeId = req.nodeId; rec.name = req.name; rec.key = req.key
+                    rec.boundTo = c.fp; rec.nodeId = c.nodeId; rec.name = c.name; rec.key = c.key; rec.eN = c.eN; rec.nc = c.nc; rec.commit = c.commit
                     rec.state = InviteBook.WAITING; rec.ticket = Crypto.random(8)
-                    forward = AdmitForward(rec.ticket!!, 1, req.nodeId, req.name, rec.kind, req.key, null, st.headSeq, st.headId)
+                    forward = AdmitForward(rec.ticket!!, 1, c.nodeId, c.name, rec.kind, c.key, null, c.commit, st.headSeq, st.headId)
                 }
                 JoinStatus.PENDING
             }
         }
-        val withMaterial = status == JoinStatus.OK || status == JoinStatus.ALREADY_MEMBER
-        val secretsBytes = if (withMaterial) JoinWire.secretsBytes(sec!!) else ByteArray(0)
-        val chainBytes = if (withMaterial) EntryRun.encode(chain.entries()) else ByteArray(0)
+        val material = status == JoinStatus.OK || status == JoinStatus.ALREADY_MEMBER
+        // the signed "extra": the secrets for a final answer, the owner's nonce (or its absence) for PENDING
+        val extra = when {
+            material -> JoinWire.secretsBytes(sec!!)
+            status == JoinStatus.PENDING -> rec.nO?.takeIf { rec.boundTo == c.fp }?.let { byteArrayOf(1) + it } ?: byteArrayOf(0)
+            else -> ByteArray(0)
+        }
+        val chainBytes = if (material) EntryRun.encode(chain.entries()) else ByteArray(0)
 
         // The answer: sealed under a key that needs the newcomer's ephemeral key and the code, signed by this host's key.
         val na = Crypto.random(32)
         val eH = Crypto.newKeyPair()
         val eHPub = Crypto.rawPublic(eH.public)
-        val ecdh = Crypto.ecdh(eH.private, req.eN)
-        val key = JoinWire.a2cKey(ecdh, rec.code, cloudId, nc, na)
+        val ecdh = Crypto.ecdh(eH.private, c.eN)
+        val rcode = rec.code
+        val key = JoinWire.a2cKey(ecdh, rcode, cloudId, c.nc, na)
         Crypto.wipe(ecdh)
-        val sig = identity.sign(JoinWire.answerSig(cloudId, nc, na, req.eN, eHPub, status, secretsBytes, chainBytes))
-        val sealed = Frames.sealOnce(key, 0, cloudId, FrameType.JOIN, concat(Writer().u8(status).bytes(), secretsBytes, chainBytes))
+        val sig = identity.sign(JoinWire.answerSig(cloudId, c.nc, na, c.eN, eHPub, status, extra, chainBytes))
+        val sealed = Frames.sealOnce(key, 0, cloudId, FrameType.JOIN, concat(Writer().u8(status).bytes(), extra, chainBytes))
         Crypto.wipe(key)
         val bytes = Writer().u8(1).fixed(na, 32).fixed(eHPub, Crypto.PUB_BYTES).fixed(identity.publicKey, Crypto.PUB_BYTES)
             .fixed(sig, Crypto.SIG_BYTES).raw(sealed).bytes()
-        return HostResult.Answer(bytes, status, forward)
+        return HostResult.Answer(bytes, status, forward, open)
+    }
+
+    /** The owner's nonce for a waiting request, matched by its ticket. False if nothing waits for it. */
+    @Synchronized fun challenge(challenge: SasChallenge, now: Long): Boolean {
+        val rec = invites.known(now).firstOrNull { it.ticket != null && it.ticket!!.contentEquals(challenge.ticket) && it.state == InviteBook.WAITING } ?: return false
+        if (rec.nO == null) rec.nO = challenge.nO.copyOf()
+        return true
     }
 
     /** The owner's decision for a waiting request, matched by its ticket. Returns false if nothing was waiting for it. */
     @Synchronized fun deliver(decision: AdmitDecision, now: Long): Boolean {
         val rec = invites.known(now).firstOrNull { it.ticket != null && it.ticket!!.contentEquals(decision.ticket) && it.state == InviteBook.WAITING } ?: return false
-        if (!decision.granted) { rec.state = InviteBook.DENIED; return true }
-        return when (chain.offer(decision.entries, now)) {
+        if (!decision.granted) {
+            // the invite goes back to the next newcomer at once; the declined requester keeps its own answer (4.3)
+            if (rec.declined.size >= InviteBook.MAX_DECLINED) rec.declined.removeAt(0)
+            rec.declined.add(InviteBook.Declined(rec.nc!!, rec.eN!!, rec.boundTo!!))
+            rec.release()
+            return true
+        }
+        return when (chain.offer(decision.entries)) {
             is Offer.Adopted, is Offer.Unchanged -> { rec.state = InviteBook.GRANTED; true }
             else -> false // entries that do not apply: keep waiting, the caller may ask again
         }
@@ -415,13 +599,13 @@ sealed interface JoinOutcome {
     /** One of [JoinStatus.REMOVED], [JoinStatus.NODE_ID_TAKEN], [JoinStatus.DECLINED]. */
     class Rejected(val status: Int) : JoinOutcome
 
-    /** The owner has not decided yet: ask again with the same [JoinClient.request]. */
-    object Pending : JoinOutcome
+    /** The owner has not decided yet: ask again with [JoinClient.nextRequest]. [code] is the six digits once the owner's nonce is in. */
+    class Pending(val code: String?) : JoinOutcome
 }
 
 /**
- * The newcomer's side. [request] is built once: sending the same bytes again is how it polls. Its ephemeral private key is dropped
- * as soon as the exchange ends (a final status or an error).
+ * The newcomer's side. [request] (phase 0) is built once; once the owner's nonce is in, [nextRequest] gives the phase-1 request
+ * with the opening. Sending the same bytes again is how it polls. Its ephemeral private key is dropped as soon as the exchange ends.
  */
 class JoinClient(
     private val invite: Invite,
@@ -430,19 +614,27 @@ class JoinClient(
     private val name: String,
 ) {
     private val nc = Crypto.random(32)
+    private val nN = Crypto.random(16)
     private var eph: KeyPair? = Crypto.newKeyPair()
     private val ephPub = Crypto.rawPublic(eph!!.public)
+    private var nO: ByteArray? = null
+    private var opening: ByteArray? = null
 
-    /** Six digits to compare with the owner's screen (4.4). */
-    val confirmationCode: String = ConfirmationCode.of(identity.publicKey, Shape.requireNodeId(nodeId), Shape.requireName(name))
+    /** Six digits to compare with the owner's screen (4.4); null until the owner's nonce has arrived. */
+    var confirmationCode: String? = null
+        private set
 
     val request: ByteArray = run {
         val key = identity.publicKey
-        val sig = identity.sign(JoinWire.pop(invite.cloudId, nc, nodeId, name, key, ephPub, invite.nodeId))
-        val plain = Writer().u8(1).str(nodeId).str(name).fixed(key, Crypto.PUB_BYTES).fixed(ephPub, Crypto.PUB_BYTES).fixed(sig, Crypto.SIG_BYTES).bytes()
+        val commit = JoinWire.commit(invite.cloudId, key, Shape.requireNodeId(nodeId), Shape.requireName(name), nN)
+        val sig = identity.sign(JoinWire.pop(invite.cloudId, nc, nodeId, name, key, ephPub, commit, invite.nodeId))
+        val plain = Writer().u8(1).str(nodeId).str(name).fixed(key, Crypto.PUB_BYTES).fixed(ephPub, Crypto.PUB_BYTES).fixed(commit, 32).fixed(sig, Crypto.SIG_BYTES).bytes()
         val frame = Frames.sealOnce(JoinWire.c2aKey(invite.code, invite.cloudId, nc), 0, invite.cloudId, FrameType.JOIN, plain)
         Writer().u8(1).fixed(nc, 32).raw(frame).bytes()
     }
+
+    /** The request to send now: phase 0 until the owner's nonce is in, then the phase-1 request with the opening. */
+    @Synchronized fun nextRequest(): ByteArray = opening ?: request
 
     internal fun holdsEphemeralKey(): Boolean = eph != null
 
@@ -455,8 +647,8 @@ class JoinClient(
     /**
      * Checks the answer completely before anything is kept: it is signed by the host key pinned in the QR code over both nonces,
      * both ephemeral keys, the status and digests of what it carries; the frame opens under the ECDH-and-code key; the chain
-     * verifies; the cloud id is the invitation's; the host is a current node with the pinned fingerprint; this key is a member; the
-     * secrets match the chain's commitment for the current epoch.
+     * verifies from its genesis, which hashes to the cloud id of the invitation; the host is a current node with the pinned
+     * fingerprint; this key is a member; the secrets match the chain's commitment for the current epoch.
      */
     @Synchronized fun finish(answer: ByteArray, now: Long): JoinOutcome {
         val mine = eph ?: throw ProtocolError(CloudError.JOIN_REFUSED)
@@ -480,24 +672,41 @@ class JoinClient(
         val status = p.u8()
         var secrets: EpochSecrets? = null
         var entries: List<ChainEntry> = emptyList()
+        var extra = ByteArray(0)
+        var ownerNonce: ByteArray? = null
         when (status) {
             JoinStatus.OK, JoinStatus.ALREADY_MEMBER -> {
                 secrets = EpochSecrets(p.u32(), p.fixed(32), p.fixed(32))
+                extra = JoinWire.secretsBytes(secrets)
                 entries = EntryRun.decode(p)
             }
-            JoinStatus.REMOVED, JoinStatus.NODE_ID_TAKEN, JoinStatus.DECLINED, JoinStatus.PENDING -> {}
+            JoinStatus.PENDING -> {
+                val has = p.u8()
+                if (has > 1) junk()
+                if (has == 1) { ownerNonce = p.fixed(16); extra = byteArrayOf(1) + ownerNonce } else extra = byteArrayOf(0)
+            }
+            JoinStatus.REMOVED, JoinStatus.NODE_ID_TAKEN, JoinStatus.DECLINED -> {}
             else -> junk()
         }
         p.end()
-        val secretsBytes = secrets?.let { JoinWire.secretsBytes(it) } ?: ByteArray(0)
         val chainBytes = if (entries.isEmpty()) ByteArray(0) else EntryRun.encode(entries)
-        if (!Crypto.ecdsaVerify(hostKey, JoinWire.answerSig(invite.cloudId, nc, na, ephPub, eH, status, secretsBytes, chainBytes), sig)) junk()
+        if (!Crypto.ecdsaVerify(hostKey, JoinWire.answerSig(invite.cloudId, nc, na, ephPub, eH, status, extra, chainBytes), sig)) junk()
         when (status) {
-            JoinStatus.PENDING -> return JoinOutcome.Pending
+            JoinStatus.PENDING -> {
+                if (ownerNonce != null && nO == null) { // the first owner nonce is the one; the digits are fixed from here
+                    nO = ownerNonce
+                    confirmationCode = ConfirmationCode.of(invite.cloudId, identity.publicKey, nodeId, name, nN, ownerNonce)
+                    val ok = JoinWire.c2a2Key(invite.code, invite.cloudId, nc, ownerNonce)
+                    val openFrame = Frames.sealOnce(ok, 0, invite.cloudId, FrameType.JOIN, Writer().u8(1).fixed(nN, 16).bytes())
+                    Crypto.wipe(ok)
+                    opening = Writer().u8(2).fixed(nc, 32).fixed(ownerNonce, 16).raw(openFrame).bytes()
+                }
+                return JoinOutcome.Pending(confirmationCode)
+            }
             JoinStatus.REMOVED, JoinStatus.NODE_ID_TAKEN, JoinStatus.DECLINED -> { eph = null; return JoinOutcome.Rejected(status) }
         }
         val chain = try {
-            Chain.fromEntries(entries, now, invite.cloudId)
+            Chain.fromEntries(entries, invite.cloudId)
         } catch (e: ProtocolError) {
             refuse()
         }
