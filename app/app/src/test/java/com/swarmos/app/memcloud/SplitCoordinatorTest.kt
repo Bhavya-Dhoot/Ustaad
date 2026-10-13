@@ -153,6 +153,10 @@ private class FakeEnv : SplitEnv {
     override fun selfId() = "a"
     override fun selfName() = "Phone A"
     override fun selfHealth() = Health(9000, 0)
+    /** This phone's Wi-Fi addresses: the fake peers (10.0.0.2, 10.0.0.3) are on its network. */
+    @Volatile var localLinkList = listOf(LinkAddr("10.0.0.1", false, 24))
+    override fun localLinks() = localLinkList
+
     /** Runs once, on whichever thread asks next for the registry (a test parks a coroutine inside its own check with it). */
     @Volatile var peersHook: (() -> Unit)? = null
 
@@ -1202,6 +1206,28 @@ class SplitCoordinatorTest {
         assertEquals("the new loan was not ended by the old retry", second, env.currentLoan[c3])
         assertEquals(0, env.count("rpcStop $c3"))
         assertEquals(Phase.READY, c.state.value.phase)
+    }
+
+    // ---------- memory is shared over the local link only ----------
+
+    private val offLinkC = PeerInfo("c", "Phone C", "172.20.1.9:8787", false, 9000, 1) // online, but not on this phone's network
+
+    @Test fun aPhoneThatIsNotOnThisPhonesLocalNetworkIsLeftOutOfThePlanAndTheReasonIsShown() {
+        env.peerList = listOf(env.peerList.first { it.nodeId == "b" }, offLinkC)
+        assertEquals("the preview leaves it out too", 2, c.previewPlan("model.gguf", emptyList(), SplitMode.EQUAL).shares.size)
+        assertNull(start("Phone B", "Phone C"))
+        val s = awaitState("READY") { it.phase == Phase.READY }
+        assertEquals(listOf("Phone A", "Phone B"), s.phones.map { it.name })
+        assertTrue(s.warnings.single().let { it.contains("Phone C (172.20.1.9)") && it.contains("local link only") })
+        assertEquals("nothing was sent to it", 0, env.count("rpcStart 172.20.1.9"))
+    }
+
+    @Test fun whenNoPhoneIsOnTheLocalNetworkTheLoadFailsAndSaysWhy() {
+        env.peerList = listOf(offLinkC)
+        assertNull(start("Phone C"))
+        val s = awaitState("FAILED") { it.phase == Phase.FAILED }
+        assertTrue(s.failReason!!, s.failReason!!.startsWith("No other phone is online on this phone's local network") && s.failReason!!.contains("Phone C (172.20.1.9)"))
+        assertEquals(0, env.count("stopLocal"))
     }
 
     @Test fun aRestartedAppSendsTheTokenItSavedAndKeepsItWhenThePhoneIsStillAway() {

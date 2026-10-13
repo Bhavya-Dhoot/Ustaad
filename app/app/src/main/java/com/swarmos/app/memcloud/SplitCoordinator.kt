@@ -283,6 +283,13 @@ class SplitCoordinator(
 
     /** Peers that are online now, ordered by name (Phone A, B, C), optionally narrowed by node id or name. */
     fun onlinePeers(selection: List<String> = emptyList(), emptyMeansNone: Boolean = false): List<PeerInfo> =
+        selectedOnline(selection, emptyMeansNone).filter { MemCloudLogic.leftOutReason(it.name, it.host, env.localLinks()) == null }
+
+    /** Why each online, selected phone that is not on this phone's local network is left out of a plan (see [MemCloudLogic.leftOutReason]). */
+    fun leftOut(selection: List<String> = emptyList(), emptyMeansNone: Boolean = false): List<String> =
+        selectedOnline(selection, emptyMeansNone).mapNotNull { MemCloudLogic.leftOutReason(it.name, it.host, env.localLinks()) }
+
+    private fun selectedOnline(selection: List<String>, emptyMeansNone: Boolean): List<PeerInfo> =
         env.peers().filter { !it.away }
             .filter { p -> if (selection.isEmpty()) !emptyMeansNone else selection.any { it.equals(p.nodeId, true) || it.equals(p.name, true) } }
             .sortedBy { it.name }
@@ -404,7 +411,8 @@ class SplitCoordinator(
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
             val peers = onlinePeers(sel)
-            if (peers.isEmpty()) return fail("No other phone is online. The model needs ${gb(info.fileBytes)} and one phone cannot hold it.")
+            val outside = leftOut(sel) // phones that are online but not on this phone's local network: shown, not planned
+            if (peers.isEmpty()) return fail("No other phone is online${if (outside.isEmpty()) "" else " on this phone's local network (${outside.joinToString("; ")})"}. The model needs ${gb(info.fileBytes)} and one phone cannot hold it.")
             manual?.let { SplitPlanner.checkLayers(it, info.blockCount, peers.size + 1) }?.let { return fail(it) }
             releaseExcluded(peers)
             step("Asking ${peers.joinToString { it.name }} what it is running")
@@ -419,9 +427,10 @@ class SplitCoordinator(
             participants = peers
             forced = force
             val misfits = sp.fits().filter { !it.ok }
-            val warnings = misfits.map { "${it.device.name} has ${mb(it.haveMb)} free and the planning estimate is ${mb(it.needMb)}" }
+            val misfitTexts = misfits.map { "${it.device.name} has ${mb(it.haveMb)} free and the planning estimate is ${mb(it.needMb)}" }
+            val warnings = outside + misfitTexts
             // refuse before anything is stopped or sent; `force` is the explicit way to run the "does not fit" demonstration
-            if (misfits.isNotEmpty() && !force) return fail("The plan does not fit: ${warnings.joinToString("; ")}. Nothing was started or stopped. Give a phone fewer layers, add a phone, or start with force to try anyway.")
+            if (misfits.isNotEmpty() && !force) return fail("The plan does not fit: ${misfitTexts.joinToString("; ")}. Nothing was started or stopped. Give a phone fewer layers, add a phone, or start with force to try anyway.")
             val moe = if (info.isMoe) info.moeLayers else 0
             _state.update {
                 it.copy(

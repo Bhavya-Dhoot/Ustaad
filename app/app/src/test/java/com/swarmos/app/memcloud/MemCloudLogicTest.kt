@@ -206,6 +206,52 @@ class MemCloudLogicTest {
         assertTrue(MemCloudLogic.holdsPhone(MemCloudState(phase = Phase.BASELINE, released = true)))
     }
 
+    // ---- memory is lent over the local link only ----
+
+    private val wifi = LinkAddr("192.168.242.23", false, 24)
+    private val direct = LinkAddr("192.168.49.1", true, 24)
+    private val links = listOf(wifi, direct)
+
+    @Test fun aDriverOnTheSameWifiOrDirectNetworkMayBorrowOnTheAddressItArrivedOn() {
+        assertNull(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.242.23", "192.168.242.50", links))
+        assertNull(MemCloudLogic.lendRefusal("192.168.49.1", "192.168.49.1", "192.168.49.2", links))
+        assertTrue(MemCloudLogic.mayLend("192.168.49.1", "192.168.49.1", "192.168.49.2", links))
+    }
+
+    @Test fun theBindMustBeTheAddressTheRequestArrivedOn() {
+        assertTrue(MemCloudLogic.lendRefusal("192.168.49.1", "192.168.242.23", "192.168.242.50", links)!!.contains("arrived on (192.168.242.23), not to 192.168.49.1"))
+        assertTrue(MemCloudLogic.lendRefusal("192.168.49.1", null, "192.168.49.2", links)!!.contains("cannot tell which link"))
+        assertTrue(MemCloudLogic.lendRefusal("192.168.49.1", " ", "192.168.49.2", links)!!.contains("cannot tell which link"))
+    }
+
+    @Test fun theAddressItArrivedOnMustBeAWifiOrDirectAddressOfThisPhone() {
+        assertTrue(MemCloudLogic.lendRefusal("10.20.30.40", "10.20.30.40", "10.20.30.41", links)!!.contains("not a Wi-Fi or Wi-Fi Direct address"))
+        assertTrue(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.242.23", "192.168.242.50", emptyList())!!.contains("not a Wi-Fi or Wi-Fi Direct address"))
+    }
+
+    @Test fun theDriverMustBeOnThatNetworkAndOnALocalAddress() {
+        assertTrue(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.242.23", "192.168.243.50", links)!!.contains("not on the same Wi-Fi network"))
+        assertTrue(MemCloudLogic.lendRefusal("192.168.49.1", "192.168.49.1", "192.168.242.50", links)!!.contains("not on the same Wi-Fi Direct network"))
+        assertTrue(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.242.23", "8.8.8.8", links)!!.contains("not on a local network"))
+        assertTrue(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.242.23", null, links)!!.contains("not on a local network"))
+        // a wider network (a /22) takes a driver in the next /24
+        assertNull(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.242.23", "192.168.243.50", listOf(LinkAddr("192.168.242.23", false, 22))))
+    }
+
+    @Test fun aPeerThatIsNotADeviceOfThisLocalNetworkNeverBorrowsOrTakesPart() {
+        assertTrue(MemCloudLogic.lendRefusal("192.168.242.23", "192.168.242.23", "192.168.242.50", links, peerIsLocalNode = false)!!.contains("not a device of this local network"))
+        assertFalse(MemCloudLogic.mayLend("192.168.242.23", "192.168.242.23", "192.168.242.50", links, peerIsLocalNode = false))
+        assertTrue(MemCloudLogic.leftOutReason("Phone B", "192.168.242.50", links, peerIsLocalNode = false)!!.contains("not a device"))
+    }
+
+    @Test fun aPhoneIsPlannedOnlyWhenItIsOnANetworkThisPhoneIsOn() {
+        assertNull(MemCloudLogic.leftOutReason("Phone B", "192.168.242.50", links))
+        assertNull(MemCloudLogic.leftOutReason("Phone B", "192.168.49.2", links))
+        assertTrue(MemCloudLogic.leftOutReason("Phone C", "172.20.1.9", links)!!.startsWith("Phone C (172.20.1.9) is not on a Wi-Fi or Wi-Fi Direct network this phone is on"))
+        assertTrue(MemCloudLogic.leftOutReason("Phone C", "203.0.113.5", links) != null) // an address from the internet
+        assertTrue(MemCloudLogic.leftOutReason("Phone C", "192.168.242.50", emptyList()) != null) // this phone is on no Wi-Fi at all
+    }
+
     @Test fun theWaitBetweenRestoreRoundsDoublesWhileCallsFailAndStartsAgainOnProgress() {
         var wait = 5_000L
         val seen = mutableListOf(wait)

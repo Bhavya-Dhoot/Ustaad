@@ -78,7 +78,17 @@ private class FakeLender : LenderEnv {
     override fun setActivity(owner: String, text: String, onStop: () -> Unit) { calls += "set $owner $text" }
     override fun clearActivity(owner: String) { calls += "clear $owner" }
     override fun audit(kind: String, vararg kv: Pair<String, String>) { calls += "audit $kind" }
+
+    /** Whether the driver is a device of this local network (a later package decides this; true now). */
+    var localNode = true
+    override fun peerIsLocalNode(nodeId: String?) = localNode
 }
+
+/** A start as the route makes it: the request arrived on [via] (the address the body binds, by default) from a driver on that network. */
+private suspend fun RpcLender.startOn(
+    req: RpcStartRequest, from: String?, via: String? = req.bind,
+    driver: String? = if (req.bind?.startsWith("192.168.49.") == true) "192.168.49.2" else "192.168.242.50",
+) = start(req, via, from, driver)
 
 class RpcLenderTest {
     /** A start that worked: rpc-server is ready, [stopped] is what the lender stopped itself, and the loan has a token. */
@@ -94,7 +104,7 @@ class RpcLenderTest {
     private val restore = listOf(RestoreItem("chat", "small.gguf"), RestoreItem("embed", "embed.gguf"))
 
     private fun start(bind: String? = "192.168.49.1", from: String? = "c", restore: List<RestoreItem> = this.restore, stopOwn: Boolean = false, needMb: Long? = null) =
-        runBlocking { lender.start(RpcStartRequest(bind = bind, restore = restore, stopOwn = stopOwn, needMb = needMb), null, from) }
+        runBlocking { lender.startOn(RpcStartRequest(bind = bind, restore = restore, stopOwn = stopOwn, needMb = needMb), from) }
 
     @Test fun theBindAddressMustBeAnAdvertisableLinkAddress() {
         for (bad in listOf("0.0.0.0", "::", "127.0.0.1", "", "10.20.30.40" /* e.g. a cellular address */, "192.168.49.2" /* not ours */)) {
@@ -104,7 +114,7 @@ class RpcLenderTest {
         assertFalse(env.ready)
         assertTrue(env.calls.none { it.startsWith("startRpc") })
         // the request's own local address is used when the body names none
-        val r = runBlocking { lender.start(RpcStartRequest(), "192.168.242.23", "c") }
+        val r = runBlocking { lender.start(RpcStartRequest(), "192.168.242.23", "c", "192.168.242.50") }
         assertOk(r)
         assertEquals("192.168.242.23", env.bind)
         assertEquals("Wi-Fi network", lender.lending.value!!.link)
@@ -152,7 +162,7 @@ class RpcLenderTest {
         start(from = "c")
         assertTrue(lender.renew("x") is RpcLender.RenewResult.Refused)
         assertTrue(lender.renew(null) is RpcLender.RenewResult.Refused)
-        val other = runBlocking { lender.start(RpcStartRequest(bind = "192.168.49.1"), null, "x") }
+        val other = runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1"), "x") }
         assertTrue(other is RpcLender.StartResult.Refused)
         assertTrue((other as RpcLender.StartResult.Refused).message.contains("Phone C"))
         // the same driver may call start again (idempotent): rpc-server is not restarted
@@ -331,10 +341,10 @@ class RpcLenderTest {
     @Test fun twoDriversCannotBothBeAcceptedWhileTheFirstStartIsStillSuspended() = runBlocking {
         val gate = CompletableDeferred<Unit>()
         env.startGate = gate
-        val first = async { lender.start(req(), null, "c") }
+        val first = async { lender.startOn(req(), "c") }
         yield() // the first start runs until rpc-server is starting
         assertTrue(env.calls.any { it.startsWith("startRpc") })
-        val second = lender.start(req(), null, "x")
+        val second = lender.startOn(req(), "x")
         assertTrue("$second", second is RpcLender.StartResult.Refused && second.message.contains("lent to Phone C"))
         gate.complete(Unit)
         assertOk(first.await())
@@ -345,9 +355,9 @@ class RpcLenderTest {
     @Test fun theSameDriverAskingTwiceAtOnceIsToldTheFirstStartIsStillRunning() = runBlocking {
         val gate = CompletableDeferred<Unit>()
         env.startGate = gate
-        val first = async { lender.start(req(), null, "c") }
+        val first = async { lender.startOn(req(), "c") }
         yield()
-        val again = lender.start(req(), null, "c")
+        val again = lender.startOn(req(), "c")
         assertTrue("$again", again is RpcLender.StartResult.Refused && again.message.contains("still starting"))
         gate.complete(Unit)
         assertOk(first.await())
@@ -367,7 +377,7 @@ class RpcLenderTest {
     @Test fun aStopFromTheDriverWhileRpcServerIsStartingEndsTheLoanForGood() = runBlocking {
         val gate = CompletableDeferred<Unit>()
         env.startGate = gate
-        val first = async { lender.start(RpcStartRequest(bind = "192.168.49.1", stopOwn = true), null, "c") }
+        val first = async { lender.startOn(RpcStartRequest(bind = "192.168.49.1", stopOwn = true), "c") }
         yield()
         assertEquals(RpcLender.StopResult.Ok, lender.stopFrom("c", null, "stopped by the driver"))
         assertTrue("the servers it had stopped are back", env.calls.contains("restore chat small.gguf") && env.calls.contains("restore embed embed.gguf"))
@@ -423,6 +433,41 @@ class RpcLenderTest {
         assertEquals(1, env.calls.count { it.startsWith("startRpc") })
     }
 
+    // ---------- memory is lent over the local link only ----------
+
+    private fun refusedWith(r: RpcLender.StartResult, text: String) {
+        assertTrue("$r", r is RpcLender.StartResult.Refused && r.message.contains(text))
+        assertNull(lender.lending.value)
+        assertTrue("nothing was stopped or started", env.calls.none { it.startsWith("startRpc") || it.startsWith("stopOwn") })
+    }
+
+    @Test fun aLoanIsRefusedWhenRpcServerWouldBindElsewhereThanWhereTheRequestArrived() {
+        // the body names the Wi-Fi Direct address, but the request came in on the Wi-Fi address
+        refusedWith(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1"), "c", via = "192.168.242.23") }, "arrived on (192.168.242.23)")
+    }
+
+    @Test fun aLoanIsRefusedWhenTheLinkTheRequestArrivedOnIsUnknown() {
+        refusedWith(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1"), "c", via = null) }, "cannot tell which link")
+    }
+
+    @Test fun aLoanIsRefusedWhenTheDriverIsNotOnThatNetwork() {
+        refusedWith(runBlocking { lender.startOn(req(), "c", driver = "192.168.7.9") }, "not on the same Wi-Fi Direct network")
+        refusedWith(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.242.23"), "c", driver = "192.168.49.2") }, "not on the same Wi-Fi network")
+        refusedWith(runBlocking { lender.startOn(req(), "c", driver = "203.0.113.5") }, "not on a local network") // an address from the internet
+        refusedWith(runBlocking { lender.startOn(req(), "c", driver = null) }, "not on a local network")
+    }
+
+    @Test fun aLoanIsRefusedToAPeerThatIsNotADeviceOfThisLocalNetwork() {
+        env.localNode = false
+        refusedWith(runBlocking { lender.startOn(req(), "c") }, "not a device of this local network")
+    }
+
+    @Test fun aDriverOnTheSameWifiOrDirectNetworkIsServed() {
+        assertOk(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.242.23"), "c") })
+        lender.stop("test")
+        assertOk(runBlocking { lender.startOn(req(), "c") }) // the Wi-Fi Direct group
+    }
+
     // ---------- the models come back only after rpc-server's process is gone ----------
 
     private fun indexOfCall(prefix: String) = env.calls.indexOfFirst { it.startsWith(prefix) }
@@ -468,7 +513,7 @@ class RpcLenderTest {
         var th: Thread? = null
         env.onWait = {
             // the first loan is over, rpc-server is still leaving: a start from another driver gets every chance to get in
-            th = Thread { inner = runBlocking { lender.start(req(), null, "x") } }.also { it.start(); it.join(300) }
+            th = Thread { inner = runBlocking { lender.startOn(req(), "x") } }.also { it.start(); it.join(300) }
         }
         lender.stop("test") // returns: the monitor was not held by the wait
         th!!.join(3_000)
@@ -482,20 +527,20 @@ class RpcLenderTest {
     @Test fun aNewLoanIsRefusedNotAdmittedWhenTheGiveBackBeforeItIsStuck() {
         val e = FakeLender()
         val l = RpcLender(e, closingWaitMs = 300).also { e.lender = it }
-        val first = runBlocking { l.start(RpcStartRequest(bind = "192.168.49.1", restore = restore), null, "c") }
+        val first = runBlocking { l.startOn(RpcStartRequest(bind = "192.168.49.1", restore = restore), "c") }
         assertOk(first)
         val release = java.util.concurrent.CountDownLatch(1)
         e.onWait = { release.await(10, java.util.concurrent.TimeUnit.SECONDS) } // rpc-server never seems to leave
         val ending = Thread { l.stop("test") }.also { it.start() }
         while (e.calls.none { it.startsWith("awaitRpcGone") }) Thread.sleep(5)
-        val second = runBlocking { l.start(req(), null, "x") }
+        val second = runBlocking { l.startOn(req(), "x") }
         assertTrue("$second", second is RpcLender.StartResult.Refused && second.message.contains("getting its own models back"))
         assertEquals("rpc-server was started once, for the first loan only", 1, e.calls.count { it.startsWith("startRpc") })
         assertNull(l.lending.value)
         release.countDown()
         ending.join(3_000)
         // once the models are dispatched the phone takes a loan again
-        assertOk(runBlocking { l.start(req(), null, "x") })
+        assertOk(runBlocking { l.startOn(req(), "x") })
     }
 
     @Test fun aRpcServerThatStaysPastTheTimeoutDoesNotStopTheModelsFromBeingRequested() {

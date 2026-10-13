@@ -34,6 +34,9 @@ interface LenderEnv {
     /** Addresses rpc-server may bind to: Wi-Fi, hotspot and Direct interfaces from the link module's advertisable set, never cellular. */
     fun linkAddresses(): List<LinkAddr>
     fun peerName(nodeId: String?): String?
+
+    /** Whether [nodeId] is a device of this local network (a later package that knows device kinds overrides this: an away client never borrows memory). */
+    fun peerIsLocalNode(nodeId: String?): Boolean = true
     fun threads(): Int
 
     /** Starts rpc-server (the shipped binary) and returns true once it is READY. */
@@ -137,13 +140,16 @@ class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CL
 
     fun leaseMsLeft(): Long? = if (_lending.value == null) null else (leaseUntilMs - env.elapsedMs()).coerceAtLeast(0)
 
-    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): StartResult {
+    /** [viaAddress]: the local address the signed request arrived on. [driverAddr]: the address it came from. */
+    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?, driverAddr: String? = null): StartResult {
         val bind = (req.bind ?: viaAddress)?.trim().orEmpty()
         if (bind.isEmpty() || bind == "0.0.0.0" || bind == "::" || bind.startsWith("127.")) {
             return StartResult.Refused("rpc-server is never bound to '$bind': it needs the address of the link the split uses")
         }
         val link = env.linkAddresses().firstOrNull { it.address == bind }
             ?: return StartResult.Refused("$bind is not a Wi-Fi or Direct link address of this phone")
+        // memory is lent over the local link only: bound where the request arrived, the driver on that network
+        MemCloudLogic.lendRefusal(bind, viaAddress?.trim(), driverAddr, env.linkAddresses(), env.peerIsLocalNode(fromNode))?.let { return StartResult.Refused(it) }
         val where = if (link.direct) "direct link" else "Wi-Fi network"
         val driverName = env.peerName(fromNode) ?: fromNode ?: "another phone"
 

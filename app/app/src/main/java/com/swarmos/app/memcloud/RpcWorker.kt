@@ -106,9 +106,9 @@ object RpcWorker {
     fun cacheDir(): File = File(File(AppGraph.appContext.filesDir, "llama-cache"), "rpc")
 
     /** Runs in this object's own scope: a driver that gives up or is cut off must not abort a start half way, with this phone's servers already stopped. */
-    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): RpcLender.StartResult =
+    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?, driverAddr: String? = null): RpcLender.StartResult =
         scope.async {
-            lender.start(req, viaAddress, fromNode).also { if (it is RpcLender.StartResult.Ok && it.ready) ensureTicking() }
+            lender.start(req, viaAddress, fromNode, driverAddr).also { if (it is RpcLender.StartResult.Ok && it.ready) ensureTicking() }
         }.await()
 
     fun renew(fromNode: String?, loan: String? = null): RpcLender.RenewResult = lender.renew(fromNode, loan)

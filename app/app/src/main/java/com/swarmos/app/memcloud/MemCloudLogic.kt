@@ -1,5 +1,7 @@
 package com.swarmos.app.memcloud
 
+import com.swarmos.app.link.LinkRoute
+
 /**
  * The decisions of the MemoryCloud state machine as pure functions, so they are tested without a phone and work for
  * any number of peers (two or three phones in total, or more): nothing here names a phone or assumes a count.
@@ -150,6 +152,37 @@ object MemCloudLogic {
         progressed -> baseMs
         attempted -> (currentMs * 2).coerceAtMost(maxMs)
         else -> currentMs
+    }
+
+    /**
+     * Memory is lent over the local link only, as a rule of its own. Why this phone may not lend to the driver at [driverAddr] with rpc-server bound
+     * to [bind], or null when it may: [bind] must be the local address the request arrived on ([arrivedOn]), that address must be one of this phone's
+     * Wi-Fi or Wi-Fi Direct addresses ([local]), and the driver must be on that address's network. [peerIsLocalNode]: the driver is a device of this
+     * local network (true for now; a later package that knows device kinds feeds it, so an away client never borrows memory).
+     */
+    fun lendRefusal(bind: String, arrivedOn: String?, driverAddr: String?, local: List<LinkAddr>, peerIsLocalNode: Boolean = true): String? {
+        if (!peerIsLocalNode) return "the driver is not a device of this local network, so this phone lends it no memory"
+        if (arrivedOn.isNullOrBlank()) return "this phone cannot tell which link the request arrived on, so it lends no memory"
+        if (bind != arrivedOn) return "rpc-server is bound only to the address the request arrived on ($arrivedOn), not to $bind"
+        val link = local.firstOrNull { it.address == arrivedOn } ?: return "$arrivedOn is not a Wi-Fi or Wi-Fi Direct address of this phone"
+        if (driverAddr.isNullOrBlank() || !LinkRoute.isLocalAddress(driverAddr)) {
+            return "the driver's address (${driverAddr ?: "unknown"}) is not on a local network; memory is lent only over the local link"
+        }
+        if (!LinkRoute.sameSubnet(link.address, driverAddr, link.prefix)) {
+            return "the driver ($driverAddr) is not on the same ${if (link.direct) "Wi-Fi Direct" else "Wi-Fi"} network as this phone ($arrivedOn); memory is lent only over the local link"
+        }
+        return null
+    }
+
+    fun mayLend(bind: String, arrivedOn: String?, driverAddr: String?, local: List<LinkAddr>, peerIsLocalNode: Boolean = true): Boolean =
+        lendRefusal(bind, arrivedOn, driverAddr, local, peerIsLocalNode) == null
+
+    /** Why the phone [name] at [host] is left out of a plan, or null: it must be on a Wi-Fi or Wi-Fi Direct network this phone is on (and a device of it). */
+    fun leftOutReason(name: String, host: String, local: List<LinkAddr>, peerIsLocalNode: Boolean = true): String? = when {
+        !peerIsLocalNode -> "$name is not a device of this local network, so it takes no part"
+        !LinkRoute.isLocalAddress(host) || local.none { LinkRoute.sameSubnet(it.address, host, it.prefix) } ->
+            "$name ($host) is not on a Wi-Fi or Wi-Fi Direct network this phone is on, so it takes no part: memory is shared over the local link only"
+        else -> null
     }
 
     /** Buttons the screen offers in DEGRADED: re-plan needs at least one phone left besides this one. */

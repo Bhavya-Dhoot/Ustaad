@@ -67,6 +67,9 @@ interface SplitEnv {
     fun selfHealth(): Health
     fun peers(): List<PeerInfo>
 
+    /** This phone's Wi-Fi, hotspot and Wi-Fi Direct addresses: a phone takes part in a split only when it is on one of these networks ([MemCloudLogic.leftOutReason]). */
+    fun localLinks(): List<LinkAddr>
+
     /** Heartbeat round trip (an HTTP call) to a peer. */
     fun heartbeatRttMs(nodeId: String): Double?
 
@@ -122,6 +125,8 @@ object AndroidSplitEnv : SplitEnv {
     override fun peers() = AppGraph.registry.peers.value.map {
         PeerInfo(it.info.nodeId, it.info.name, com.swarmos.app.link.LinkModule.bestBulkAddress(it.info.nodeId)?.hostAddress ?: it.info.ip, it.away, it.health?.ramAvailMb, it.health?.thermalStatus)
     }
+
+    override fun localLinks() = linkAddresses()
 
     override fun heartbeatRttMs(nodeId: String) = PeerLinks.find(nodeId)?.status?.value?.rttMs
 
@@ -233,7 +238,7 @@ object AndroidSplitEnv : SplitEnv {
     }
 
     /** Link addresses a worker may bind rpc-server to: Wi-Fi, hotspot and Direct interfaces only (the link module's advertisable set), never cellular. */
-    fun linkAddresses(): List<LinkAddr> = LinkRoute.advertisable().map { LinkAddr(it.address, it.type == LinkType.DIRECT) }
+    fun linkAddresses(): List<LinkAddr> = LinkRoute.advertisable().map { LinkAddr(it.address, it.type == LinkType.DIRECT, it.prefix) }
 }
 
 /** The driver's request to a phone to load a model it stopped for a split: the phone's own restore, so it is marked automatic (a refusal for heat is retried there). */
@@ -242,7 +247,8 @@ internal fun restoreLoadBody(role: String, file: String): String = """{"role":"$
 /** The lender refused a stop (HTTP 409): its loan belongs to another phone or to a newer loan of this one, so there is nothing of ours left to end. */
 class LoanNotOurs(message: String) : Exception(message)
 
-data class LinkAddr(val address: String, val direct: Boolean)
+/** One Wi-Fi, hotspot or Wi-Fi Direct address of this phone, with the prefix length of its network. */
+data class LinkAddr(val address: String, val direct: Boolean, val prefix: Int = 24)
 
 object ModelFiles {
     /** A file name from a request, reduced to its last path element; null when nothing usable is left or it is not a .gguf. */
