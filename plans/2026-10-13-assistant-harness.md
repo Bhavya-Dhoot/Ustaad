@@ -87,6 +87,17 @@ The second adversarial read (docs/review/2026-10-13-hands-codex-2.txt) closed 10
 - The driver uses no gestures at all: a tap is a click on the exact node, or on its nearest clickable ancestor (the one the guard text already covers); the node's whole subtree text is compared again at the moment of the click. The service no longer asks for the gesture capability.
 - Residual, stated: a password field that is neither flagged nor labelled cannot be recognised; a code shown as a bare number on a screen with no word for it cannot be recognised; an app that mislabels its own controls can still commit in Fewer questions mode and, with a harmless-list word, in Careful mode.
 
+## The phone's own assistant as the caller (founder, 2026-10-13 about 22:25)
+
+Verbatim: "We are trying to make this executable and this environment for the already existing voice assitant on device and not as a standalone , research if we can do this and I think we can there should be a google dev kit for this , so ensure that we are able to implement it using the kit".
+
+Research: docs/research/09-assistant-tool-kit.md. The kit exists: Android App Functions (platform API 36, Jetpack `androidx.appfunctions` 1.0.0-alpha13, called "the on-device equivalent of MCP" by Google). What it means for us:
+- Buildable now: one entry-point service with the Hands tools as functions (package `appfn/`, work package H10, running). Needs compileSdk 37 (platform 37.0 was installed by the builder through the SDK manager), KSP 2.3.10.
+- Testable without an assistant: `adb shell cmd app_function list-app-functions` and `execute-app-function` on a device or emulator image from Android 16 QPR2 on. Our emulator image (API 36, build BE2A.250530) predates the shell command; an image "system-images;android-36.1;google_apis;x86_64" is available to the SDK manager but not installed. Installing it (a download of a few GB to the C: drive, and an emulator beside a PC with about 3.5 GB of free memory) is the founder's call.
+- Not possible today, and not ours to change: Gemini calling a third-party app's functions is a private preview with an allowlist on Google's side (an early-access form exists: the founder would have to apply); no source shows an iQOO or vivo build where any assistant holds the caller permission; Android 15 (the Redmi) cannot host App Functions at all.
+- App Actions (the older kit) register only through a Play Console upload, work only in en-US for free text, and the classic Assistant is being retired on phones. Not built.
+- Safety for functions: a task sent by the assistant waits for the owner's tap unless the owner turns on "The phone's assistant may start tasks"; searching the owner's data is denied unless the owner turns on its own switch; nothing a function does can answer a question to the owner. The careful-mode questions still appear on the phone.
+
 ## Status
 
 2026-10-13 21:40:
