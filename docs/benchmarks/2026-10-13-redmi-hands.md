@@ -95,3 +95,22 @@ Again no tap on a pay or order control in any of the 25 runs. With a gate that r
 ## 9. The assistant picker (21:19)
 
 Build: debug APK of master d4d7272 (2621 unit tests, 0 failures, 1 skipped). Settings, Digital assistant app, tap on "Default digital assistant app": the system's picker (`com.android.permissioncontroller ... DefaultAppActivity`) lists "None", "ChatGPT", "Google", "Ustaad". So the sideloaded build is offered the assistant role on Android 15. The picker was left with Back; the setting still reads Google. The assistant gesture itself has not been tried: choosing Ustaad is the founder's.
+
+## 10. First run inside a real app: YouTube search, careful mode (22:29 to 22:32)
+
+The founder had turned on "Ustaad Hands" in the accessibility settings (read at 22:26: `enabled_accessibility_services` names the service; the Hands tab showed Driver in use "accessibility", Accessibility service "on"). Build 775812c, test brain on the PC (restarted at 22:27), careful mode, sharing switch off. Task typed on the Hands tab: "search youtube for lofi music". The tester answered the questions that are plain navigation and declined at the end.
+
+| Time | What happened |
+|---|---|
+| 22:29:30 | Run tapped |
+| 22:29:39 | YouTube in front (opened by Ustaad through the accessibility service) |
+| 22:30:45 | step log: `type 3 "lofi music"`, allowed, "typed into 3" |
+| 22:30:54 | Ustaad's question in front: App "YouTube", Action "press enter", Why "enter may send or submit what is typed", buttons "Do not" and "Do it" |
+| 22:31:05 | tester tapped "Do it"; step log: `press_enter` "refused: the screen cannot be read; no blind taps, typing or scrolling" |
+| 22:31:10 | question: `tap "lofi music"`, "Ustaad does not know this control"; tester tapped "Do it"; step log: "you said yes: the screen changed; nothing was done" |
+| 22:31:24 to 22:31:58 | the model went back, asked again (same result), went home, found and opened YouTube again |
+| 22:32:04 | question "press enter" again; tester tapped "Do not"; the run ended: "the person declined: press enter" |
+
+What this shows: on a real phone the service opens an app, reads its screen, finds the search field and types into it; the question to the owner appears over the other app and a no ends the run. What failed: after a yes nothing was done, twice, for two causes that are in the core and not in the model: the fresh read was taken while Ustaad's own question window was still in front (reported as unreadable, as designed), and the other app's list had moved while the question was shown, so the target was no longer where it had been. Both are being fixed (wait for the other app to return; a unique target is accepted wherever it lies). The search itself was therefore never submitted. No FATAL EXCEPTION; the app process stayed alive (same pid since 21:35).
+
+A side note for testers: a swipe sent with `adb shell input swipe` while the keyboard is open is taken by the keyboard as glide typing.
