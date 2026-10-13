@@ -91,7 +91,7 @@ object HandsRuntime {
                         strong = brain.has(Tier.STRONG),
                     )
                 },
-                onChange = { run -> tracker.onChange(run).forEach { apply(app, it) } },
+                onChange = { run -> tracker.onChange(run).forEach { perform(app, it) } },
             )
             engine = built
             // the notification's Stop stops whatever run is acting
@@ -102,7 +102,7 @@ object HandsRuntime {
         }
     }
 
-    private fun apply(app: Context, effect: RunEffect) {
+    private fun perform(app: Context, effect: RunEffect) {
         runCatching {
             when (effect) {
                 is RunEffect.ShowStop -> {
