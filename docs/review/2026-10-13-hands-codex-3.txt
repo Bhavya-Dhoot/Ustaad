@@ -1,0 +1,69 @@
+GPT-6 (Codex); 70 repository files read, some only in relevant excerpts.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Planner.kt:93 - A hostile planner can name an installed attacker app that the owner's task never named; validation accepts it, StepLoop automatically opens it, and Guard treats that model-selected package as planned. Its launch activity can send or delete immediately without an owner question; no dishonest control label is needed. Smallest fix: require owner approval before first launching each model-selected app.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:137 - In a planned messaging app, supply a quick-reply item whose attacker-controlled content is “Close”, or “Close 123 [456]”, with no committing word in its guard text and no payment context. The harmless check accepts the content, including after stripping digits and brackets, and fresh validation leads to ACTION_CLICK sending that reply; faithfully displaying reply content requires no dishonest app label. Smallest fix: allow free taps only on identified app controls, not on content items whose text resembles a harmless label.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:98 - An honestly labelled editable field such as “Send message as typed” passes type checking because committing words are checked for taps, not typing. ToolRunner reaches ACTION_FOCUS and ACTION_SET_TEXT without a question, allowing a field's focus handler, text-change handler or automatic submission to send the message; no dishonest label is needed. Smallest fix: confirm typing outside an explicitly trusted set of noncommitting fields, including fields that auto-submit.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/AccessibilityDriver.kt:198 - After the final fresh read approves typing into an empty Search field, change its hint to Password and set its password flag before execution, retaining its class, empty text and description. The signature remains identical, so verified accepts it and setText writes into the now honestly labelled password field; no dishonest label is needed. Smallest fix: revalidate hints, resource IDs, flags, current window identity and guard-relevant context before acting.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/ScreenMapping.kt:76 - An initially harmless clickable Add container can change a descendant beyond its first 300 nodes to Pay after the final guard read; the signature ignores that change and ACTION_CLICK executes its current payment action, without requiring dishonest labels. Separately, placing a Verification code caption after the raw traversal's 1,500-node limit leaves an earlier unflagged Value field containing 482913 unshielded, and a plain done response preserves that number in the run log. Smallest fix: propagate an incomplete-tree result at either limit and refuse affected reads or actions.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ToolRunner.kt:268 - Show two identically labelled Delete controls more than 24 pixels apart, approve deletion through the first, then reorder their underlying items while the prompt is open. refind accepts the sole nearby match despite the distant twin, reuses COMMIT approval and clicks the second item's freshly verified Delete control; both labels can be honest. Smallest fix: require uniqueness across both complete reads and refuse position-based substitution of an approved target.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/ToolRunner.kt:221 - In FEWER_QUESTIONS, type into Search, move focus to an honestly labelled message field, and return press_enter: lastTyped still establishes “search”, while the driver sends through the currently focused field without asking. In CAREFUL, approve ENTER and change focus before the post-answer read; target remains null and the same ENTER kind is reused for the new field, without a fresh tap or dishonest label. Smallest fix: always ask for Enter and bind its approval to the focused field, its value and its action.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/Guard.kt:114 - Expose an honestly labelled scrollable Erase control whose ACTION_SCROLL_FORWARD deletes; “erase” matches neither the committing nor slider lists, so CAREFUL permits the scroll. This also passes on a recognized checkout screen because PAYMENT_ASKED excludes scroll, and the driver performs the checked node's scroll action without a question; no dishonest label is needed. Smallest fix: confirm scrolls whose noncommitting purpose is not independently established, including every scroll on a payment screen.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/GuardText.kt:91 - Type 24 repetitions of “1 ” followed by “4111 1111 1111 1111” into an ordinary nonsecret field: only the first 24 digit groups are checked, none passes Luhn, and the card-bearing text reaches ACTION_SET_TEXT without requiring a dishonest label. Conversely, typing “4/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1” is refused but its complete card digits remain in argsText and the step log because no individual digit run reaches four characters. Smallest fix: scan all groups and use the same separator-aware card detection to redact arguments before logging.
+
+HIGH app/app/src/main/java/com/swarmos/app/hands/android/BrainRoute.kt:27 - In a debug build, another app can launch the exported MainActivity with handsBrainPort and configure the test route without an owner tap. With the documented adb reverse route to the PC present, step and expert screen-bearing prompts are posted to that PC even while sharing is off, because TEST precedes the sharing check; no dishonest app label is needed. Smallest fix: enforce sharing permission before TEST routing and remove externally writable test routing settings.
+
+MEDIUM app/app/src/main/java/com/swarmos/app/hands/ToolRunner.kt:207 - Approve one harmless action in an unplanned app, then have the model request a different harmless control there. The package is retained in Approvals, removing APP_SCOPE from subsequent judgments for the rest of the run and skipping another question without a fresh tap; no dishonest label is needed. Smallest fix: consume scope approval for the single action and target instead of granting the package continuing approval.
+
+MEDIUM app/app/src/main/java/com/swarmos/app/hands/android/HandsNotice.kt:46 - Let StopOverlay fail to attach while notifications initially work, then disable the Hands notification channel during RUNNING. HandsNotice.visible retains its earlier true value, unchanged RUNNING events do not refresh it, and StopGatedDriver continues permitting actions with neither Stop surface shown; no dishonest label is needed. Smallest fix: check current notification availability at action time and invalidate cached visibility when availability changes.
+
+Second-review findings closed:
+2, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15 — numbering the second review's finding paragraphs; these dispositions cover their original sequences.
+1 closes in CAREFUL, including the price/resource-ID case.
+3 closes against unasked Enter in CAREFUL.
+11 closes for the caption dropped by the 60-element compaction limit.
+
+Not closed:
+1, partially: FEWER_QUESTIONS still permits an unchanged payonline or payermaintenant button outside recognized payment context; the driver clicks without asking. Honest compound labels suffice; this limitation is documented.
+3, partially: FEWER_QUESTIONS still permits Enter after Search typing when focus moves to a sending field. No dishonest label is required for the focus-change variant.
+11, partially: bare ordinary text 123456 without code wording reaches the local prompt, and done with plain 123456 reaches the log and outcome unchanged. No dishonest label is required; this residual is documented.
+12, partially: an unflagged password field labelled Search still accepts hunter2 through ACTION_SET_TEXT and logs it. This requires a dishonest app label, outside the stated trust assumption; numeric PIN arguments now receive digit-run masking.
+
+Where docs/HANDS.md says more than the code does:
+Line 46: harmless text does not establish a content item's noncommitting purpose.
+Line 45: recognized committing purposes are not consistently checked for type, scroll, launch or lifecycle effects.
+Line 45: payment-context confirmation covers tap, type and Enter, not every action.
+Lines 45 and 49: approvals can cover substituted controls or changed Enter focus, and app-scope approval persists across targets.
+Line 48: execution-time changes can turn a checked field into a password field; card detection and redaction have gaps.
+Line 49: uniqueness has a positional exception, and whole-subtree comparison stops at 300 nodes and omits guard-relevant facts.
+Lines 16 and 48: raw-tree truncation can conceal protected context; debug routing can send screens away with sharing off.
+Line 50: the wrapper accepts either Stop surface, and notification availability is cached rather than continuously established.
+Line 56: the planner can extend trusted scope to apps the owner's task never named.
+
+Checks that hold:
+The original coordinate fallback is removed; the service declares no gesture capability.
+An unchanged nonclickable edit beneath a parent labelled Pay includes that parent's committing text and asks before tapping.
+Recognized checkout context asks before every tap, type and Enter, including Close and Cancel.
+Every allowed open_link asks, resolves its handler first and launches into the checked package.
+Scroll without a checked target is refused; the driver has no blind-swipe fallback.
+A newly introduced confirmation kind after an answer asks again.
+Prompt yes requires the current ID and 700 milliseconds of visibility; no intent, notification or model-answer hook was found.
+Confirmation timeout, dismissal and cancellation produce no; ask_user can return no answer and the loop can continue.
+Step-written expert questions carry onPhoneOnly=true; ordinary screen-bearing model routes stay local or fail with sharing off and test routing disabled.
+Hands.call uses ToolRunner and the production Stop wrapper; no production caller or exposed endpoint was found.
+External task intents still require Run; assistant-session tokens do not bypass it.
+Service reconnection requests restoration of the Stop chip.
+Run audit payloads contain counts and fixed enum names, not task, screen, argument or outcome text.
+
+Not examined:
+No files were modified; no builds, tests, network calls or device execution were performed.
+Git history and diffs were not obtained; review used the current tree after graph access was denied.
+Actual incidence in named third-party apps, merged manifests, device-specific accessibility and notification behavior, and commits caused by global Back or Home lifecycle callbacks.
+Tests outside the inspected security regression files, generated App Functions artifacts, and unrelated application subsystems beyond the traced dependencies.
