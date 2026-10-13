@@ -24,7 +24,8 @@ object BrainRoute {
         shareScreens: Boolean,
         testBrain: Boolean,
     ): Route {
-        if (testBrain) return Route.TEST
+        // the stand-in server is another machine: a prompt with screen text goes to it only when the owner turned sharing on
+        if (testBrain && (!onPhoneOnly || shareScreens)) return Route.TEST
         // a screen never leaves the phone unless the owner said so, whatever the tier: no model here means no answer
         if (onPhoneOnly && !shareScreens) return if (localReady) Route.LOCAL else Route.NONE
         return when (tier) {

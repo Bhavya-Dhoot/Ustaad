@@ -108,7 +108,7 @@ object HandsRuntime {
             val guard = Guard(Guard.OWN_PACKAGES + app.packageName)
 
             // a driver acts only while the person can stop the run: the Stop chip or the notification is showing
-            val gated = HandsDrivers.list(app).map { StopGatedDriver(it, ::stopSurface) }
+            val gated = HandsDrivers.list(app).map { StopGatedDriver(it, surface = { stopSurface(app) }) }
             val built = HandsEngine(
                 drivers = { gated },
                 brain = brain,
@@ -145,7 +145,8 @@ object HandsRuntime {
         }
     }
 
-    private fun stopSurface(): Boolean = StopOverlay.isShown || HandsNotice.visible
+    /** Asked at the moment of every action: the chip is attached now, or notifications for the Hands channel are on now. Nothing is remembered. */
+    private fun stopSurface(app: Context): Boolean = StopOverlay.isShown || HandsNotice.enabledNow(app)
 
     private fun perform(app: Context, effect: RunEffect) {
         runCatching {

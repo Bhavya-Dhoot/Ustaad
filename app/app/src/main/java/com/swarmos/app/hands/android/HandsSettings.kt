@@ -18,7 +18,8 @@ import kotlinx.coroutines.launch
  *
  * The test brain exists only in debug builds. The test phone has too little memory for a chat model, so a debug build can send
  * both tiers to a llama-server on the PC through `adb reverse`. A release or demo build never reads, keeps or follows the
- * stored port.
+ * stored port. Only the owner sets it, by typing it on the Hands screen; no intent extra reaches it. Screen text goes to the test
+ * brain only while the sharing switch is on ([BrainRoute]).
  */
 object HandsSettings {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
