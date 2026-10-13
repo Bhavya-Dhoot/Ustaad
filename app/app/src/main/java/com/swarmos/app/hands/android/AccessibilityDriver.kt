@@ -1,10 +1,8 @@
 package com.swarmos.app.hands.android
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.Intent
-import android.graphics.Path
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
@@ -22,24 +20,23 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
 
 /**
  * PhoneDriver over the accessibility service. One call at a time (a mutex), all of them off the main thread.
- * It keeps the nodes of the last read() by handle, with their class, text and description as read, and acts on exactly
- * those nodes; a node the system no longer has, or that now differs in any of the three, gives false and the core
- * reads again. It carries no policy and logs no screen content, only the class of an exception.
+ * It keeps the nodes of the last read() by handle, with the class, text and description of each node of every subtree
+ * as read, and acts only on those nodes through accessibility actions (no gesture, no touch by position); a node the
+ * system no longer has, or whose subtree differs, gives false and the core reads again. It carries no policy and
+ * logs no screen content, only the class of an exception.
  */
 class AccessibilityDriver(ctx: Context) : PhoneDriver {
     private val app = ctx.applicationContext
     private val lock = Mutex()
 
-    // handle -> node of the last read, and what that node was at read(). Both guarded by lock; empty when the last read gave no app window.
+    // handle -> node of the last read, and handle -> facts of that node and its subtree as read. Both guarded by lock;
+    // empty when the last read gave no app window.
     private var nodes: Map<String, AccessibilityNodeInfo> = emptyMap()
-    private var facts: Map<String, NodeFacts> = emptyMap()
+    private var facts: Map<String, FactNode> = emptyMap()
 
     override val name: String = "accessibility"
 
@@ -57,20 +54,22 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
 
     // tap, setText, scroll and enter check again, at call time, that none of our own windows is in front
 
+    /**
+     * ACTION_CLICK on the node when it is clickable, else on its nearest clickable ancestor (the guard judged the element
+     * together with that ancestor's text), else false. No gesture: nothing is ever touched by position, so cx and cy are ignored.
+     */
     override suspend fun tap(handle: String, cx: Int, cy: Int): Boolean = step(false) { svc ->
         if (ownInFront(svc)) return@step false
-        val node = live(handle) ?: return@step false
-        // the exact node, never a parent: a clickable node is clicked and its answer is the answer
-        if (node.isClickable) return@step node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        // not clickable: touch where a finger would, if the node is still visible and still there
-        val b = Rect()
-        node.getBoundsInScreen(b)
-        node.isVisibleToUser && b.contains(cx, cy) && gestureTap(svc, cx, cy)
+        val job = currentCoroutineContext()
+        val v = verified(handle) { job.ensureActive() } ?: return@step false
+        val target = if (v.node.isClickable) v.node else v.ancestor ?: return@step false
+        target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     override suspend fun setText(handle: String, cx: Int, cy: Int, text: String): Boolean = step(false) { svc ->
         if (ownInFront(svc)) return@step false
-        val node = live(handle) ?: return@step false
+        val job = currentCoroutineContext()
+        val node = verified(handle) { job.ensureActive() }?.node ?: return@step false
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
         node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
@@ -91,25 +90,16 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         }
     }
 
-    override suspend fun scroll(handle: String?, forward: Boolean): Boolean = step(false) { svc ->
-        // with or without a handle: a swipe or a scroll action must not land on our own prompt
-        if (ownInFront(svc)) return@step false
-        val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-        val area = Rect()
-        if (handle != null) {
-            val node = live(handle) ?: return@step false
-            // the exact node only; one that refuses (already at the end) answers false
-            if (node.isScrollable) return@step node.performAction(action)
-            node.getBoundsInScreen(area)
-        } else {
-            // a swipe across the middle of the screen, only if the last read got an app window that is not ours
-            if (nodes.isEmpty()) return@step false
-            screenSize().let { (w, h) -> area.set(0, 0, w, h) }
+    /** ACTION_SCROLL on the exact node when it is scrollable (false when it refuses, at the end), else false. No handle: false, no swipe. */
+    override suspend fun scroll(handle: String?, forward: Boolean): Boolean {
+        if (handle == null) return false
+        return step(false) { svc ->
+            if (ownInFront(svc)) return@step false
+            val job = currentCoroutineContext()
+            val node = verified(handle) { job.ensureActive() }?.node ?: return@step false
+            if (!node.isScrollable) return@step false
+            node.performAction(if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
         }
-        if (area.isEmpty) return@step false
-        val (y1, y2) = ScreenMapping.swipeSpan(area.top, area.bottom, forward)
-        val path = Path().apply { moveTo(area.centerX().toFloat(), y1.toFloat()); lineTo(area.centerX().toFloat(), y2.toFloat()) }
-        gesture(svc, path, SWIPE_MS)
     }
 
     override suspend fun back(): Boolean = step(false) { it.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) }
@@ -170,14 +160,39 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     private fun screenSize(): Pair<Int, Int> = app.resources.displayMetrics.let { it.widthPixels to it.heightPixels }
 
     /**
-     * The node of the last read, brought up to date; null when the handle is unknown, the system dropped the node, or
-     * the node now has another class, text or description than at read(): the screen changed under the tap, the core reads again.
+     * The node of the last read, brought up to date, when its whole subtree (class, text and description of up to 300
+     * nodes, see ScreenMapping.subtreeSignature) is the same now as at read(). null when the handle is unknown, the
+     * system dropped the node, or anything in the subtree changed: the screen moved under the action, the core reads again.
+     * Cost: one refresh plus one child lookup per subtree node beyond the first, at most 300, a handful for a button.
      */
-    private fun live(handle: String): AccessibilityNodeInfo? {
+    private fun unchanged(handle: String, cancelled: () -> Unit): AccessibilityNodeInfo? {
         val node = nodes[handle] ?: return null
-        val atRead = facts[handle] ?: return null
+        val read = facts[handle] ?: return null
         if (!node.refresh()) return null
-        return node.takeIf { ScreenMapping.sameTarget(atRead, factsOf(it)) }
+        val depthLeft = ScreenMapping.MAX_DEPTH - ScreenMapping.depthOf(handle)
+        val before = ScreenMapping.subtreeSignature(read, { it.kids.size }, { n, i -> n.kids[i] }, { it.facts }, maxDepth = depthLeft)
+        val now = ScreenMapping.subtreeSignature(
+            node, { it.childCount }, { n, i -> n.getChild(i) }, { factsOf(it) },
+            release = { release(it) }, maxDepth = depthLeft, checkCancelled = cancelled,
+        )
+        return node.takeIf { before == now }
+    }
+
+    /** The node to act on, and for a node that is not clickable its nearest clickable ancestor (null when there is none). */
+    private class Verified(val node: AccessibilityNodeInfo, val ancestor: AccessibilityNodeInfo?)
+
+    /**
+     * The node and, when it is not clickable, its nearest clickable ancestor (found by walking the handle path upward),
+     * each only if [unchanged]. null when either changed. The ancestor costs one more refresh and up to 300 more lookups,
+     * so a tap on a plain label is at most about 600 lookups, usually under ten.
+     */
+    private fun verified(handle: String, cancelled: () -> Unit): Verified? {
+        val node = unchanged(handle, cancelled) ?: return null
+        if (node.isClickable) return Verified(node, null)
+        val up = generateSequence(ScreenMapping.parentOf(handle)) { ScreenMapping.parentOf(it) }
+            .firstOrNull { nodes[it]?.isClickable == true } ?: return Verified(node, null)
+        val ancestor = unchanged(up, cancelled)?.takeIf { it.isClickable } ?: return null
+        return Verified(node, ancestor)
     }
 
     private fun factsOf(n: AccessibilityNodeInfo): NodeFacts {
@@ -240,14 +255,18 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
             is Look.None -> { clearNodes(); return null }
         }
         val taken = HashMap<String, AccessibilityNodeInfo>()
-        val takenFacts = HashMap<String, NodeFacts>()
+        val takenFacts = HashMap<String, FactNode>()
         val root: RawNode = try {
             ScreenMapping.buildTree(
                 root = picked.root,
                 childCount = { it.childCount },
                 childAt = { n, i -> n.getChild(i) },
                 visit = { n, handle -> taken[handle] = n },
-                make = { n, handle, kids -> takenFacts[handle] = factsOf(n); toRaw(n, handle, kids) },
+                make = { n, handle, kids ->
+                    // kids were made first, so their facts are in the map
+                    takenFacts[handle] = FactNode(factsOf(n), kids.map { takenFacts.getValue(it.handle) })
+                    toRaw(n, handle, kids)
+                },
                 checkCancelled = checkCancelled,
             )
         } catch (e: Exception) {
@@ -285,30 +304,8 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         )
     }
 
-    private suspend fun gestureTap(svc: AccessibilityService, cx: Int, cy: Int): Boolean {
-        val (w, h) = screenSize()
-        val path = Path().apply { moveTo(cx.coerceIn(0, w - 1).toFloat(), cy.coerceIn(0, h - 1).toFloat()) }
-        return gesture(svc, path, TAP_MS)
-    }
-
-    private suspend fun gesture(svc: AccessibilityService, path: Path, durationMs: Long): Boolean {
-        val g = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, durationMs)).build()
-        return withTimeoutOrNull(GESTURE_TIMEOUT_MS) {
-            suspendCancellableCoroutine { cont ->
-                val sent = svc.dispatchGesture(g, object : AccessibilityService.GestureResultCallback() {
-                    override fun onCompleted(gestureDescription: GestureDescription?) { if (cont.isActive) cont.resume(true) }
-                    override fun onCancelled(gestureDescription: GestureDescription?) { if (cont.isActive) cont.resume(false) }
-                }, null)
-                if (!sent && cont.isActive) cont.resume(false)
-            }
-        } ?: false
-    }
-
     private companion object {
         const val TAG = "HandsDriver"
-        const val TAP_MS = 50L
-        const val SWIPE_MS = 300L
-        const val GESTURE_TIMEOUT_MS = 5_000L
     }
 }
 

@@ -4,6 +4,7 @@ import com.swarmos.app.hands.AppInfo
 import com.swarmos.app.hands.RawNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -45,12 +46,12 @@ class ScreenMappingTest {
         assertEquals("0.12.0", ScreenMapping.childHandle(ScreenMapping.childHandle("0", 12), 0))
     }
 
-    @Test fun a_node_that_changed_its_label_class_or_description_is_not_the_node_that_was_read() {
-        val read = ScreenMapping.factsOf("android.widget.Button", "Add", "add item", password = false)
-        assertTrue(ScreenMapping.sameTarget(read, ScreenMapping.factsOf("android.widget.Button", "Add", "add item", password = false)))
-        assertFalse(ScreenMapping.sameTarget(read, ScreenMapping.factsOf("android.widget.Button", "Pay", "add item", password = false)))
-        assertFalse(ScreenMapping.sameTarget(read, ScreenMapping.factsOf("android.widget.Button", "Add", "pay now", password = false)))
-        assertFalse(ScreenMapping.sameTarget(read, ScreenMapping.factsOf("android.widget.TextView", "Add", "add item", password = false)))
+    @Test fun parent_and_depth_of_a_handle() {
+        assertEquals("0.3", ScreenMapping.parentOf("0.3.1"))
+        assertEquals("0", ScreenMapping.parentOf("0.3"))
+        assertNull(ScreenMapping.parentOf("0"))
+        assertEquals(0, ScreenMapping.depthOf("0"))
+        assertEquals(2, ScreenMapping.depthOf("0.3.1"))
     }
 
     @Test fun facts_treat_missing_values_as_empty_and_ignore_the_text_of_a_password_node() {
@@ -58,7 +59,98 @@ class ScreenMappingTest {
         val a = ScreenMapping.factsOf("android.widget.EditText", "hunter2", null, password = true)
         val b = ScreenMapping.factsOf("android.widget.EditText", "hunter3", null, password = true)
         assertEquals("", a.text)
-        assertTrue(ScreenMapping.sameTarget(a, b))
+        assertEquals(a, b)
+        assertEquals(sig(F(a)), sig(F(b)))
+    }
+
+    // ---- subtree signature. F = a node as read; L = a live node (children may be null, fetches are counted).
+
+    private fun facts(cls: String = "android.view.View", text: String = "", desc: String = "") = NodeFacts(cls, text, desc)
+    private fun F(f: NodeFacts, vararg kids: FactNode) = FactNode(f, kids.toList())
+    private fun sig(root: FactNode, maxNodes: Int = ScreenMapping.SIG_NODES, maxDepth: Int = ScreenMapping.MAX_DEPTH): String =
+        ScreenMapping.subtreeSignature(root, { it.kids.size }, { n, i -> n.kids[i] }, { it.facts }, maxNodes = maxNodes, maxDepth = maxDepth)
+
+    private class L(val f: NodeFacts, val kids: List<L?> = emptyList())
+    private fun liveSig(root: L, fetched: MutableList<L>? = null, released: MutableList<L>? = null, maxNodes: Int = ScreenMapping.SIG_NODES): String =
+        ScreenMapping.subtreeSignature(
+            root, { it.kids.size }, { n, i -> n.kids[i]?.also { fetched?.add(it) } }, { it.f },
+            release = { released?.add(it) }, maxNodes = maxNodes,
+        )
+
+    private fun card(child: String, parentText: String = "", cls: String = "android.view.ViewGroup") =
+        F(facts(cls, parentText), F(facts("android.widget.TextView", child)))
+
+    @Test fun same_subtree_gives_the_same_signature_and_a_change_anywhere_in_it_gives_another() {
+        val read = sig(card("Add"))
+        assertEquals(read, sig(card("Add")))
+        assertTrue(sig(card("Pay")) != read)                  // only the child changed, the parent has empty text
+        assertTrue(sig(card("Add", parentText = "x")) != read)
+        assertTrue(sig(card("Add", cls = "android.widget.Button")) != read)
+        val deep = F(facts(), F(facts(), F(facts(desc = "add item"))))
+        assertTrue(sig(F(facts(), F(facts(), F(facts(desc = "pay now"))))) != sig(deep))
+    }
+
+    @Test fun signature_sees_where_text_sits_not_only_which_text_there_is() {
+        assertTrue(sig(F(facts(), F(facts(text = "a")), F(facts(text = "b")))) != sig(F(facts(), F(facts(text = "b")), F(facts(text = "a")))))
+        assertTrue(sig(F(facts(), F(facts(text = "a"), F(facts(text = "b"))))) != sig(F(facts(), F(facts(text = "a")), F(facts(text = "b")))))
+        // text boundaries: ("ab", "c") is not ("a", "bc")
+        assertTrue(sig(F(facts(text = "ab", desc = "c"))) != sig(F(facts(text = "a", desc = "bc"))))
+    }
+
+    @Test fun live_and_read_trees_with_the_same_facts_have_the_same_signature() {
+        val read = sig(card("Add", parentText = "Item"))
+        val live = L(facts("android.view.ViewGroup", "Item"), listOf(L(facts("android.widget.TextView", "Add"))))
+        assertEquals(read, liveSig(live))
+        val changed = L(facts("android.view.ViewGroup", "Item"), listOf(L(facts("android.widget.TextView", "Pay"))))
+        assertTrue(read != liveSig(changed))
+        val extraChild = L(facts("android.view.ViewGroup", "Item"), listOf(L(facts("android.widget.TextView", "Add")), L(facts(text = "Pay"))))
+        assertTrue(read != liveSig(extraChild))
+    }
+
+    @Test fun a_child_that_cannot_be_fetched_is_skipped_and_every_fetched_child_is_released_but_not_the_root() {
+        val fetched = ArrayList<L>()
+        val released = ArrayList<L>()
+        val a = L(facts(text = "a"))
+        val b = L(facts(text = "b"), listOf(L(facts(text = "b0"))))
+        val root = L(facts(), listOf(a, null, b))
+        val live = liveSig(root, fetched, released)
+        assertEquals(sig(F(facts(), F(facts(text = "a")), F(facts(text = "b"), F(facts(text = "b0"))))), live)
+        assertEquals(3, fetched.size)
+        assertEquals(fetched.toSet(), released.toSet())
+        assertFalse(released.contains(root))
+    }
+
+    @Test fun signature_covers_300_nodes_and_ignores_a_change_after_them() {
+        fun wide(last: String) = F(facts(), *Array(400) { F(facts(text = if (it == 399) last else "c$it")) })
+        assertEquals(300, ScreenMapping.SIG_NODES)
+        assertEquals(sig(wide("x")), sig(wide("y")))                    // child 399 is past the 300 nodes
+        fun early(first: String) = F(facts(), *Array(400) { F(facts(text = if (it == 5) first else "c$it")) })
+        assertTrue(sig(early("x")) != sig(early("y")))
+    }
+
+    @Test fun signature_stops_at_the_depth_it_is_given() {
+        fun chain(leaf: String) = F(facts(), F(facts(), F(facts(text = leaf))))
+        assertTrue(sig(chain("a")) != sig(chain("b")))
+        assertEquals(sig(chain("a"), maxDepth = 1), sig(chain("b"), maxDepth = 1))
+    }
+
+    @Test fun signature_lookups_are_capped_and_can_be_cancelled() {
+        var asked = 0
+        val none = ScreenMapping.subtreeSignature(
+            L(facts(), List(5000) { null }), { it.kids.size }, { _, _ -> asked++; null }, { it.f }, maxNodes = 300,
+        )
+        assertEquals(600, asked)
+        assertTrue(none.length == 64)
+        var checks = 0
+        try {
+            ScreenMapping.subtreeSignature(
+                L(facts(), List(50) { L(facts()) }), { it.kids.size }, { n, i -> n.kids[i] }, { it.f },
+                checkCancelled = { if (++checks > 3) throw IllegalStateException("stopped") },
+            )
+            org.junit.Assert.fail("should have stopped")
+        } catch (e: IllegalStateException) {
+            assertEquals("stopped", e.message)
+        }
     }
 
     @Test fun link_handler_is_the_package_resolveActivity_names_when_it_is_a_listed_handler() {
@@ -257,12 +349,6 @@ class ScreenMappingTest {
         val secure = WindowCand(active = true, focused = false, layer = 2, pkg = null)
         val behind = WindowCand(active = false, focused = false, layer = 1, pkg = "p.x")
         assertEquals(0, ScreenMapping.pickWindow(listOf(secure, behind), "own"))
-    }
-
-    @Test fun swipe_forward_goes_up_and_backward_goes_down() {
-        assertEquals(700 to 300, ScreenMapping.swipeSpan(0, 1000, forward = true))
-        assertEquals(300 to 700, ScreenMapping.swipeSpan(0, 1000, forward = false))
-        assertEquals(1200 to 800,ScreenMapping.swipeSpan(500, 1500, forward = true))
     }
 
     @Test fun app_list_has_one_entry_per_package_sorted_by_label() {

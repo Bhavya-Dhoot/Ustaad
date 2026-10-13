@@ -2,6 +2,7 @@ package com.swarmos.app.hands.android
 
 import com.swarmos.app.hands.AppInfo
 import com.swarmos.app.hands.RawNode
+import java.security.MessageDigest
 
 // The rules of the accessibility driver that need no Android class, so plain JVM tests cover them.
 // AccessibilityDriver feeds these with the fields it reads; nothing here logs or stores screen content.
@@ -12,12 +13,18 @@ internal data class WindowCand(val active: Boolean, val focused: Boolean, val la
 /** What the driver compares about a node between read() and an action: its class, its own text and its description. */
 internal data class NodeFacts(val cls: String, val text: String, val desc: String)
 
+/** The facts of a node and of its children as read, kept per handle so an action can be checked against them. */
+internal class FactNode(val facts: NodeFacts, val kids: List<FactNode>)
+
 internal object ScreenMapping {
     const val MAX_NODES = 1500
     const val MAX_DEPTH = 40
 
     /** Child lookups tried, found or not. A tree that answers null for most children cannot keep the walk busy longer than this. */
     const val MAX_LOOKUPS = 3000
+
+    /** Nodes of a subtree that its signature covers. */
+    const val SIG_NODES = 300
 
     /** The root of every read. A child is its parent's handle plus the child index: "0.3.1". */
     const val ROOT_HANDLE = "0"
@@ -28,8 +35,54 @@ internal object ScreenMapping {
     fun factsOf(cls: CharSequence?, text: CharSequence?, desc: CharSequence?, password: Boolean): NodeFacts =
         NodeFacts(cls?.toString().orEmpty(), if (password) "" else text?.toString().orEmpty(), desc?.toString().orEmpty())
 
-    /** The node the system returns now is the node that was read: the same class, own text and description. */
-    fun sameTarget(atRead: NodeFacts, now: NodeFacts): Boolean = atRead == now
+    /** null for the root. */
+    fun parentOf(handle: String): String? {
+        val i = handle.lastIndexOf('.')
+        return if (i < 0) null else handle.substring(0, i)
+    }
+
+    /** 0 for the root, 2 for "0.3.1": how deep a handle sits, which the depth cap of the read counts the same way. */
+    fun depthOf(handle: String): Int = handle.count { it == '.' }
+
+    /**
+     * A digest of a subtree: for the node and its descendants in reading order, at most maxNodes of them and not
+     * deeper than maxDepth below the root, the depth, class, text and description of each. Text is length-prefixed, so
+     * moving a letter from one text to the next changes it; so does moving a node. SHA-256, because the app that
+     * draws the screen chooses the texts and could otherwise aim for a collision. A change in a node past the cap goes
+     * unseen. A child that cannot be fetched (null) is skipped; release gives a fetched child back once its subtree is
+     * done (the root is the caller's); checkCancelled runs before every lookup. At most 2 x maxNodes lookups.
+     */
+    fun <T : Any> subtreeSignature(
+        root: T,
+        childCount: (T) -> Int,
+        childAt: (T, Int) -> T?,
+        facts: (T) -> NodeFacts,
+        release: (T) -> Unit = {},
+        maxNodes: Int = SIG_NODES,
+        maxDepth: Int = MAX_DEPTH,
+        checkCancelled: () -> Unit = {},
+    ): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        fun put(n: Int) = md.update(byteArrayOf((n ushr 24).toByte(), (n ushr 16).toByte(), (n ushr 8).toByte(), n.toByte()))
+        fun put(s: String) { val b = s.toByteArray(Charsets.UTF_8); put(b.size); md.update(b) }
+        var seen = 0
+        var lookups = 0
+        fun walk(node: T, depth: Int) {
+            seen++
+            val f = facts(node)
+            put(depth); put(f.cls); put(f.text); put(f.desc)
+            if (depth >= maxDepth) return
+            for (i in 0 until childCount(node)) {
+                if (seen >= maxNodes || lookups >= 2 * maxNodes) break
+                checkCancelled()
+                lookups++
+                val child = childAt(node, i) ?: continue
+                try { walk(child, depth + 1) } finally { release(child) }
+            }
+        }
+        walk(root, 0)
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
 
     /**
      * The package that handles a link or the home screen, from what resolveActivity answered (pkg, cls) and the
@@ -145,14 +198,6 @@ internal object ScreenMapping {
                     .thenBy { it.index },
             )
             .firstOrNull()?.index ?: PICK_NONE
-    }
-
-    /** Vertical swipe inside [top, bottom] that moves the content forward (finger up) or backward (finger down): from, to. */
-    fun swipeSpan(top: Int, bottom: Int, forward: Boolean): Pair<Int, Int> {
-        val h = bottom - top
-        val low = top + h * 7 / 10
-        val high = top + h * 3 / 10
-        return if (forward) low to high else high to low
     }
 
     /** One entry per package (an app can have several launcher activities), sorted by label. */
