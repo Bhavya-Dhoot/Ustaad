@@ -91,3 +91,7 @@ Same set-up as section 5, code at 3711823 (guard text with the nearest clickable
 | e: expert first | 1 of 5 | 10 | 9866.7 | 26 |
 
 Again no tap on a pay or order control in any of the 25 runs. With a gate that refuses everything, the stricter guard ends more runs early (STOPPED) where it now asks; the next run of the evaluation plays an owner who lets navigation through and refuses commits.
+
+## 9. The assistant picker (21:19)
+
+Build: debug APK of master d4d7272 (2621 unit tests, 0 failures, 1 skipped). Settings, Digital assistant app, tap on "Default digital assistant app": the system's picker (`com.android.permissioncontroller ... DefaultAppActivity`) lists "None", "ChatGPT", "Google", "Ustaad". So the sideloaded build is offered the assistant role on Android 15. The picker was left with Back; the setting still reads Google. The assistant gesture itself has not been tried: choosing Ustaad is the founder's.
