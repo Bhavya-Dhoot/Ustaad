@@ -2,11 +2,12 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.swarmos.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.swarmos.app"
@@ -67,6 +68,11 @@ androidComponents {
     }
 }
 
+// Hands app functions (appfn/): the compiler writes the entry-point service and the function description from the KDoc
+ksp {
+    arg("appfunctions:aggregateAppFunctions", "true")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -105,6 +111,8 @@ dependencies {
     implementation(libs.androidx.sqlite)
     implementation(libs.androidx.sqlite.bundled)
     implementation(libs.datastore.preferences)
+    implementation(libs.androidx.appfunctions)
+    ksp(libs.androidx.appfunctions.compiler)
 
     testImplementation(libs.junit)
 }
