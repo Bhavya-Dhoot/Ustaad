@@ -700,7 +700,7 @@ class SplitCoordinator(
         var retries = 0
         while (true) {
             val failure: String = try {
-                val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList(), stopOwn = true, needMb = needMbFor(p)))
+                val st = env.peerRpcStart(p.addr, RpcStartRequest(port = Ports.RPC, cache = true, bind = p.host, restore = restore[p.nodeId] ?: emptyList(), stopOwn = true, needMb = needMbFor(p), model = _state.value.file))
                 if (st.state == "READY") return st
                 "rpc-server is ${st.state}: ${st.reason ?: st.lastLog.lastOrNull().orEmpty()}"
             } catch (e: CancellationException) {

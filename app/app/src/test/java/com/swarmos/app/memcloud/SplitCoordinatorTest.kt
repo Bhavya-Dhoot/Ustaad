@@ -59,6 +59,9 @@ private class FakeEnv : SplitEnv {
     /** The megabytes the driver asked of each peer in its last /rpc/start (-1: none). */
     val needMbSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    /** The model file the driver named in its last /rpc/start to each peer ("none": it named none). */
+    val modelSeen = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     /** How many more /rpc/start calls to a peer fail because its rpc port is still held. */
     val portHeld = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
@@ -190,6 +193,7 @@ private class FakeEnv : SplitEnv {
         calls += "rpcStart $addr restore=${req.restore.joinToString(",") { it.role + ":" + it.file }} stopOwn=${req.stopOwn}"
         recordAtStart[addr] = saved.lastOrNull() ?: Persisted()
         needMbSeen[addr] = req.needMb ?: -1L
+        modelSeen[addr] = req.model ?: "none"
         val held = portHeld[addr] ?: 0
         if (held > 0) {
             portHeld[addr] = held - 1
@@ -1289,6 +1293,13 @@ class SplitCoordinatorTest {
         env.peerList = env.peerList.map { if (it.nodeId == "c") it.copy(away = false) else it }
         val s = awaitState("READY on all three") { it.phase == Phase.READY && it.phones.size == 3 }
         assertEquals(listOf("Phone A", "Phone B", "Phone C"), s.phones.map { it.name })
+    }
+
+    @Test fun theDriverNamesTheModelToEveryLenderSoItsCacheFilesBelongToIt() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        assertEquals("model.gguf", env.modelSeen["10.0.0.2:8787"])
+        assertEquals("model.gguf", env.modelSeen["10.0.0.3:8787"])
     }
 
     // ---------- memory is shared over the local link only ----------

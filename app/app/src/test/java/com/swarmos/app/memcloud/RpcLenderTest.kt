@@ -79,6 +79,11 @@ private class FakeLender : LenderEnv {
     override fun clearActivity(owner: String) { calls += "clear $owner" }
     override fun audit(kind: String, vararg kv: Pair<String, String>) { calls += "audit $kind" }
 
+    /** The cache budget keeper's two moments: [onCacheEnd] runs inside the second. */
+    var onCacheEnd: (() -> Unit)? = null
+    override fun cacheLoanStarted(model: String?) { calls += "cacheStart $model" }
+    override fun cacheLoanEnded() { calls += "cacheEnd"; onCacheEnd?.invoke() }
+
     /** Whether the driver is a device of this local network (a later package decides this; true now). */
     var localNode = true
     override fun peerIsLocalNode(nodeId: String?) = localNode
@@ -431,6 +436,35 @@ class RpcLenderTest {
         val t = tokenOf(start(from = "c"))
         assertEquals(t, tokenOf(start(from = "c")))
         assertEquals(1, env.calls.count { it.startsWith("startRpc") })
+    }
+
+    // ---------- the cache budget keeper's two moments ----------
+
+    @Test fun aLoanTellsTheKeeperItsModelBeforeRpcServerStartsAndWhenItEndsAfterTheModelsAreDispatched() {
+        assertOk(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1", restore = restore, model = "../tmp/q.gguf"), "c") })
+        assertTrue(env.calls.toString(), indexOfCall("cacheStart q.gguf") in 0 until indexOfCall("startRpc")) // a path is reduced to a file name
+        assertEquals("rpc-server is restarted by the same driver: the loan goes on, no second record", 1, env.calls.count { it.startsWith("cacheStart") })
+        assertOk(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1", model = "q.gguf"), "c") })
+        assertEquals(1, env.calls.count { it.startsWith("cacheStart") })
+        lender.stop("test")
+        assertTrue(env.calls.toString(), indexOfCall("restore chat") in 0 until indexOfCall("cacheEnd"))
+        assertEquals(1, env.calls.count { it == "cacheEnd" })
+    }
+
+    @Test fun aLoanWithoutAModelNameIsRecordedAsNone() {
+        assertOk(start())
+        assertTrue(env.calls.toString(), env.calls.contains("cacheStart null"))
+    }
+
+    @Test fun aNewLoanWaitsUntilTheKeeperHasRecordedTheEndedOne() {
+        start(from = "c")
+        var inner: RpcLender.StartResult? = null
+        var th: Thread? = null
+        env.onCacheEnd = { th = Thread { inner = runBlocking { lender.startOn(req(), "x") } }.also { it.start(); it.join(300) } }
+        lender.stop("test")
+        th!!.join(3_000)
+        assertTrue("$inner", inner is RpcLender.StartResult.Ok)
+        assertTrue(env.calls.toString(), indexOfCall("cacheEnd") in 0 until env.calls.indexOfLast { it.startsWith("cacheStart") })
     }
 
     // ---------- memory is lent over the local link only ----------
