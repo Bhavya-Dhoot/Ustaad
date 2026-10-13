@@ -1,5 +1,7 @@
 package com.swarmos.app.memcloud
 
+import com.swarmos.app.core.DeviceClass
+import com.swarmos.app.core.ProfilePlan
 import com.swarmos.app.link.LinkRoute
 
 /**
@@ -179,12 +181,35 @@ object MemCloudLogic {
     fun mayLend(bind: String, arrivedOn: String?, driverAddr: String?, local: List<LinkAddr>, peerIsLocalNode: Boolean = true): Boolean =
         lendRefusal(bind, arrivedOn, driverAddr, local, peerIsLocalNode) == null
 
-    /** Why the phone [name] at [host] is left out of a plan, or null: it must be on a Wi-Fi or Wi-Fi Direct network this phone is on (and a device of it). */
-    fun leftOutReason(name: String, host: String, local: List<LinkAddr>, peerIsLocalNode: Boolean = true): String? = when {
+    /**
+     * Why the phone [name] at [host] is left out of a plan, or null: it must be on a Wi-Fi or Wi-Fi Direct network this phone is on (and a device of
+     * it), and its capacity report must not call it a client ([deviceClass], the [DeviceClass] name it reported, null when unknown: no chat model
+     * fits in a client's memory, it asks other devices to compute, so no layers are planned onto it).
+     */
+    fun leftOutReason(name: String, host: String, local: List<LinkAddr>, peerIsLocalNode: Boolean = true, deviceClass: String? = null): String? = when {
         !peerIsLocalNode -> "$name is not a device of this local network, so it takes no part"
         !LinkRoute.isLocalAddress(host) || local.none { LinkRoute.sameSubnet(it.address, host, it.prefix) } ->
             "$name ($host) is not on a Wi-Fi or Wi-Fi Direct network this phone is on, so it takes no part: memory is shared over the local link only"
+        deviceClass == DeviceClass.CLIENT.name -> "$name is a client device (no chat model fits in its memory), so it takes no part in a split: it asks other devices to compute"
         else -> null
+    }
+
+    /** What a device's plan says about lending memory: whether it may, and the most it offers, in MB. */
+    data class LendPolicy(val mayLend: Boolean, val maxMb: Long)
+
+    /** The lending part of the device's plan, or null while there is no profile (lending then behaves as before the profile existed). */
+    fun lendPolicyOf(plan: ProfilePlan?): LendPolicy? = plan?.let { LendPolicy(it.mayLend, it.lendMaxMb) }
+
+    /**
+     * Why a loan that asks [askedMb] of this device is refused by its plan, or null: the plan says it may not lend, or the split's weights are more
+     * than the plan's maximum (which already keeps the planning allowance back, [ProfilePlan.LEND_RESERVE_MB], that the driver adds to its figure).
+     * [askedMb] null (an older driver, or a forced start) is not compared; the lender's own memory check stays as the second guard.
+     */
+    fun lendPlanRefusal(policy: LendPolicy?, askedMb: Long?): String? {
+        if (policy == null) return null
+        if (!policy.mayLend) return "this device's plan does not lend memory: it has too little to spare"
+        val weightsMb = askedMb?.minus(SplitPlanner.OVERHEAD_MB) ?: return null
+        return if (weightsMb > policy.maxMb) "the split asks this phone for $weightsMb MB of weights; its plan lends at most ${policy.maxMb} MB" else null
     }
 
     sealed interface AutoReplan {

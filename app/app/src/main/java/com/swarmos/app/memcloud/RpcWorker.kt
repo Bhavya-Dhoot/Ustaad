@@ -2,6 +2,7 @@ package com.swarmos.app.memcloud
 
 import android.os.SystemClock
 import com.swarmos.app.AppGraph
+import com.swarmos.app.core.DeviceProfiles
 import com.swarmos.app.core.PhoneActivity
 import com.swarmos.app.llm.LlamaRuntime
 import com.swarmos.app.llm.ModelStore
@@ -46,6 +47,8 @@ object AndroidLenderEnv : LenderEnv {
 
     /** The pid of the rpc-server that [stopRpc] last stopped, until [awaitRpcGone] has seen it leave. LlamaRuntime forgets the pid at once. */
     @Volatile private var stoppedPid: Long? = null
+
+    override fun lendPolicy() = MemCloudLogic.lendPolicyOf(DeviceProfiles.current?.plan)
 
     override fun cacheLoanStarted(model: String?) = RpcWorker.keeper.loanStarted(model)
 

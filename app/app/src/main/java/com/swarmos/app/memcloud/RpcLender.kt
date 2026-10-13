@@ -38,6 +38,9 @@ interface LenderEnv {
     /** Whether [nodeId] is a device of this local network (a later package that knows device kinds overrides this: an away client never borrows memory). */
     fun peerIsLocalNode(nodeId: String?): Boolean = true
 
+    /** What this device's plan says about lending, null until the device check has run ([MemCloudLogic.lendPolicyOf]). */
+    fun lendPolicy(): MemCloudLogic.LendPolicy? = null
+
     /** A loan for [model] (a file name, null from an older driver) is about to start rpc-server / has ended and rpc-server is gone: the cache budget keeper's two moments. */
     fun cacheLoanStarted(model: String?) {}
     fun cacheLoanEnded() {}
@@ -154,6 +157,8 @@ class RpcLender(private val env: LenderEnv, private val closingWaitMs: Long = CL
             ?: return StartResult.Refused("$bind is not a Wi-Fi or Direct link address of this phone")
         // memory is lent over the local link only: the request arrived on a Wi-Fi or Direct address with the driver on that network, and rpc-server binds such an address (maybe another link's)
         MemCloudLogic.lendRefusal(bind, viaAddress?.trim(), driverAddr, env.linkAddresses(), env.peerIsLocalNode(fromNode))?.let { return StartResult.Refused(it) }
+        // and within what this device's plan lends (the memory check below stays as the second guard)
+        MemCloudLogic.lendPlanRefusal(env.lendPolicy(), req.needMb)?.let { return StartResult.Refused(it) }
         val where = if (link.direct) "direct link" else "Wi-Fi network"
         val driverName = env.peerName(fromNode) ?: fromNode ?: "another phone"
 

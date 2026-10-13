@@ -1,5 +1,10 @@
 package com.swarmos.app.memcloud
 
+import com.swarmos.app.core.DeviceClass
+import com.swarmos.app.core.DeviceFixtures
+import com.swarmos.app.core.DeviceProfile
+import com.swarmos.app.core.ProfilePlan
+import com.swarmos.app.llm.ModelCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -204,6 +209,47 @@ class MemCloudLogicTest {
         // the flag means nothing outside DEGRADED
         assertTrue(MemCloudLogic.holdsPhone(MemCloudState(phase = Phase.READY, released = true)))
         assertTrue(MemCloudLogic.holdsPhone(MemCloudState(phase = Phase.BASELINE, released = true)))
+    }
+
+    // ---- lending respects the device's plan; a client is not planned onto ----
+
+    private fun policyOf(p: DeviceProfile) = MemCloudLogic.lendPolicyOf(ProfilePlan.plan(p, ModelCatalog.entries))
+
+    @Test fun noProfileMeansLendingIsAsBefore() {
+        assertNull(MemCloudLogic.lendPolicyOf(null))
+        assertNull(MemCloudLogic.lendPlanRefusal(null, 100_000))
+    }
+
+    @Test fun thePlanOfTheIqoo15LendsWhatTheLoadRuleLeavesAndRefusesOnlyAboveIt() {
+        val policy = policyOf(DeviceFixtures.iqoo15)!!
+        assertTrue(policy.mayLend)
+        assertEquals("65 % of 15,218 MB is 9,891; the planning allowance of 1,536 stays", 8_355L, policy.maxMb)
+        val allowance = SplitPlanner.OVERHEAD_MB
+        assertNull("a 4B split's share", MemCloudLogic.lendPlanRefusal(policy, 1_700 + allowance))
+        assertNull("a third of the 30B model", MemCloudLogic.lendPlanRefusal(policy, 6_200 + allowance))
+        assertNull("exactly the maximum", MemCloudLogic.lendPlanRefusal(policy, 8_355 + allowance))
+        assertTrue(MemCloudLogic.lendPlanRefusal(policy, 8_356 + allowance)!!.contains("lends at most 8355 MB"))
+        assertNull("no figure asked: the memory check decides", MemCloudLogic.lendPlanRefusal(policy, null))
+    }
+
+    @Test fun aDeviceWithTooLittleMemoryToSpareDoesNotLend() {
+        for (p in listOf(DeviceFixtures.phone4gb, DeviceFixtures.phone2gb)) {
+            val policy = policyOf(p)!!
+            assertFalse(policy.mayLend)
+            assertTrue(MemCloudLogic.lendPlanRefusal(policy, 100)!!.contains("plan does not lend memory"))
+            assertTrue("whatever is asked, even nothing", MemCloudLogic.lendPlanRefusal(policy, null)!!.contains("does not lend"))
+        }
+        assertTrue(policyOf(DeviceFixtures.phone8gb)!!.mayLend)
+        assertTrue(policyOf(DeviceFixtures.desktop32)!!.maxMb > policyOf(DeviceFixtures.iqoo15)!!.maxMb)
+    }
+
+    @Test fun aClientIsLeftOutOfAPlanWithTheReasonAndOtherClassesAreNot() {
+        val links = listOf(LinkAddr("192.168.242.23", false, 24))
+        val reason = MemCloudLogic.leftOutReason("Phone C", "192.168.242.50", links, deviceClass = DeviceClass.CLIENT.name)!!
+        assertTrue(reason, reason.startsWith("Phone C is a client device") && reason.contains("asks other devices to compute"))
+        for (c in listOf(DeviceClass.SMALL, DeviceClass.STANDARD, DeviceClass.LARGE)) assertNull("$c", MemCloudLogic.leftOutReason("Phone C", "192.168.242.50", links, deviceClass = c.name))
+        assertNull("a phone that does not say is planned on as today", MemCloudLogic.leftOutReason("Phone C", "192.168.242.50", links, deviceClass = null))
+        assertTrue("off the local network first", MemCloudLogic.leftOutReason("Phone C", "172.20.1.9", links, deviceClass = "CLIENT")!!.contains("Wi-Fi or Wi-Fi Direct network"))
     }
 
     // ---- a degraded split re-plans by itself ----

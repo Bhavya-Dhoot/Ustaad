@@ -84,6 +84,10 @@ private class FakeLender : LenderEnv {
     override fun cacheLoanStarted(model: String?) { calls += "cacheStart $model" }
     override fun cacheLoanEnded() { calls += "cacheEnd"; onCacheEnd?.invoke() }
 
+    /** What this device's plan says about lending (null: no profile yet). */
+    var policy: MemCloudLogic.LendPolicy? = null
+    override fun lendPolicy() = policy
+
     /** Whether the driver is a device of this local network (a later package decides this; true now). */
     var localNode = true
     override fun peerIsLocalNode(nodeId: String?) = localNode
@@ -436,6 +440,27 @@ class RpcLenderTest {
         val t = tokenOf(start(from = "c"))
         assertEquals(t, tokenOf(start(from = "c")))
         assertEquals(1, env.calls.count { it.startsWith("startRpc") })
+    }
+
+    // ---------- lending respects the device's plan ----------
+
+    @Test fun aDeviceWhosePlanSaysItMayNotLendRefusesALoanWithAPlainReason() {
+        env.policy = MemCloudLogic.LendPolicy(mayLend = false, maxMb = 0)
+        refusedWith(runBlocking { lender.startOn(req(), "c") }, "plan does not lend memory")
+    }
+
+    @Test fun aLoanThatAsksForMoreWeightsThanThePlansMaximumIsRefusedAndOneWithinItIsServed() {
+        env.policy = MemCloudLogic.LendPolicy(mayLend = true, maxMb = 8_000)
+        val allowance = SplitPlanner.OVERHEAD_MB // the driver adds its planning allowance to the weights it asks for
+        refusedWith(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1", needMb = 8_001 + allowance), "c") }, "of weights; its plan lends at most 8000 MB")
+        assertOk(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1", needMb = 8_000 + allowance), "c") }) // exactly the maximum
+    }
+
+    @Test fun withoutAProfileOrWithoutAnAskedFigureTheLoanIsServedAsBefore() {
+        assertOk(runBlocking { lender.startOn(RpcStartRequest(bind = "192.168.49.1", needMb = 9_000), "c") }) // no policy yet
+        lender.stop("test")
+        env.policy = MemCloudLogic.LendPolicy(mayLend = true, maxMb = 100)
+        assertOk(runBlocking { lender.startOn(req(), "c") }) // an older driver or a forced start names no figure: the memory check is the guard
     }
 
     // ---------- the cache budget keeper's two moments ----------
