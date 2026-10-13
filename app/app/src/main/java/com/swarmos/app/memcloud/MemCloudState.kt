@@ -173,6 +173,8 @@ data class MemCloudState(
      * available memory, with the servers it is about to stop counted as free, is below this. Null: no check (older drivers, or [StartRequest.force]).
      */
     val needMb: Long? = null,
+    /** The GGUF file the driver loads: the tensors rpc-server caches during this loan belong to that model, for the cache budget. Null from an older driver. */
+    val model: String? = null,
 )
 
 @Serializable

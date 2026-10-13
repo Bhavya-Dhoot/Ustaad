@@ -47,6 +47,13 @@ object AndroidLenderEnv : LenderEnv {
     /** The pid of the rpc-server that [stopRpc] last stopped, until [awaitRpcGone] has seen it leave. LlamaRuntime forgets the pid at once. */
     @Volatile private var stoppedPid: Long? = null
 
+    override fun cacheLoanStarted(model: String?) = RpcWorker.keeper.loanStarted(model)
+
+    override fun cacheLoanEnded() {
+        awaitRpcGone(RpcLender.RPC_GONE_WAIT_MS) // its last tensors are on disk only once the process is gone
+        RpcWorker.keeper.loanEnded()
+    }
+
     override fun stopRpc() {
         LlamaRuntime.statusOf(Role.RPC).pid?.let { stoppedPid = it }
         LlamaRuntime.stop(Role.RPC)
@@ -106,9 +113,9 @@ object RpcWorker {
     fun cacheDir(): File = File(File(AppGraph.appContext.filesDir, "llama-cache"), "rpc")
 
     /** Runs in this object's own scope: a driver that gives up or is cut off must not abort a start half way, with this phone's servers already stopped. */
-    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?): RpcLender.StartResult =
+    suspend fun start(req: RpcStartRequest, viaAddress: String?, fromNode: String?, driverAddr: String? = null): RpcLender.StartResult =
         scope.async {
-            lender.start(req, viaAddress, fromNode).also { if (it is RpcLender.StartResult.Ok && it.ready) ensureTicking() }
+            lender.start(req, viaAddress, fromNode, driverAddr).also { if (it is RpcLender.StartResult.Ok && it.ready) ensureTicking() }
         }.await()
 
     fun renew(fromNode: String?, loan: String? = null): RpcLender.RenewResult = lender.renew(fromNode, loan)
@@ -174,8 +181,17 @@ object RpcWorker {
             LlamaRuntime.statusOf(Role.RPC).state.let { it == ServerState.READY || it == ServerState.STARTING } -> "rpc-server is running; stop it first" // FAILED has no process: the cache may go
             else -> null
         }
-        return RpcCache.clear(cacheDir(), busy)
+        return RpcCache.clear(cacheDir(), busy).also { if (it is RpcCache.ClearResult.Cleared) keeper.forgetAll() }
     }
+
+    /** The cache budget in bytes, asked each time; the device profile replaces this later. */
+    @Volatile var cacheBudget: () -> Long = { RpcCacheKeeper.DEFAULT_BUDGET_BYTES }
+
+    /** Records which model's loan created which cache files, and keeps the cache within [cacheBudget] by dropping whole models, least recently used first. */
+    internal val keeper by lazy { RpcCacheKeeper(cacheDir(), File(AppGraph.appContext.filesDir, "llama-cache"), { cacheBudget() }) }
+
+    /** Size of the cache and its budget, for the Memory tab. Lists a folder: call off the main thread. */
+    fun cacheReport(): RpcCacheKeeper.Report = keeper.report()
 
     private fun procKb(pid: Long, key: String): Long? = try {
         ProcInfo.statusKb(File("/proc/$pid/status").readText(), key)

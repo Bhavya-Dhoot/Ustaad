@@ -1,5 +1,7 @@
 package com.swarmos.app.memcloud
 
+import com.swarmos.app.link.LinkRoute
+
 /**
  * The decisions of the MemoryCloud state machine as pure functions, so they are tested without a phone and work for
  * any number of peers (two or three phones in total, or more): nothing here names a phone or assumes a count.
@@ -150,6 +152,58 @@ object MemCloudLogic {
         progressed -> baseMs
         attempted -> (currentMs * 2).coerceAtMost(maxMs)
         else -> currentMs
+    }
+
+    /**
+     * Memory is lent over the local link only, as a rule of its own. Why this phone may not lend to the driver at [driverAddr] with rpc-server bound
+     * to [bind], or null when it may: the request must have arrived on one of this phone's Wi-Fi or Wi-Fi Direct addresses ([arrivedOn] in [local])
+     * and the driver must be a private address on that address's network (that is what proves it a neighbour on a local link); [bind] must be one of
+     * those addresses too, but not necessarily the one the request arrived on: the control request may come over Wi-Fi while the driver asks for the
+     * bulk transfer on the Wi-Fi Direct link (it names the fastest bulk path, the request follows the small-message policy). [peerIsLocalNode]: the
+     * driver is a device of this local network (true for now; a later package that knows device kinds feeds it, so an away client never borrows memory).
+     */
+    fun lendRefusal(bind: String, arrivedOn: String?, driverAddr: String?, local: List<LinkAddr>, peerIsLocalNode: Boolean = true): String? {
+        if (!peerIsLocalNode) return "the driver is not a device of this local network, so this phone lends it no memory"
+        if (arrivedOn.isNullOrBlank()) return "this phone cannot tell which link the request arrived on, so it lends no memory"
+        val link = local.firstOrNull { it.address == arrivedOn } ?: return "$arrivedOn is not a Wi-Fi or Wi-Fi Direct address of this phone"
+        if (driverAddr.isNullOrBlank() || !LinkRoute.isLocalAddress(driverAddr)) {
+            return "the driver's address (${driverAddr ?: "unknown"}) is not on a local network; memory is lent only over the local link"
+        }
+        if (!LinkRoute.sameSubnet(link.address, driverAddr, link.prefix)) {
+            return "the driver ($driverAddr) is not on the same ${if (link.direct) "Wi-Fi Direct" else "Wi-Fi"} network as this phone ($arrivedOn); memory is lent only over the local link"
+        }
+        if (local.none { it.address == bind }) return "rpc-server is never bound to $bind: it is not a Wi-Fi or Wi-Fi Direct address of this phone"
+        return null
+    }
+
+    fun mayLend(bind: String, arrivedOn: String?, driverAddr: String?, local: List<LinkAddr>, peerIsLocalNode: Boolean = true): Boolean =
+        lendRefusal(bind, arrivedOn, driverAddr, local, peerIsLocalNode) == null
+
+    /** Why the phone [name] at [host] is left out of a plan, or null: it must be on a Wi-Fi or Wi-Fi Direct network this phone is on (and a device of it). */
+    fun leftOutReason(name: String, host: String, local: List<LinkAddr>, peerIsLocalNode: Boolean = true): String? = when {
+        !peerIsLocalNode -> "$name is not a device of this local network, so it takes no part"
+        !LinkRoute.isLocalAddress(host) || local.none { LinkRoute.sameSubnet(it.address, host, it.prefix) } ->
+            "$name ($host) is not on a Wi-Fi or Wi-Fi Direct network this phone is on, so it takes no part: memory is shared over the local link only"
+        else -> null
+    }
+
+    sealed interface AutoReplan {
+        data object Go : AutoReplan
+
+        /** Nothing is done; [why] is said in the steps and the release after the degraded wait applies as before. */
+        data class Skip(val why: String) : AutoReplan
+    }
+
+    /**
+     * Whether a degraded split re-plans by itself now: it is still DEGRADED (a Stop in between ends it), fewer than [maxTries] automatic tries were
+     * used on this split, at least one lender is [lendersUp] on the local link (the lost phone counts if it came back), and the model [fits] what is left.
+     */
+    fun autoReplan(phase: Phase, triesUsed: Int, maxTries: Int, lendersUp: Int, fits: Boolean): AutoReplan = when {
+        phase != Phase.DEGRADED -> AutoReplan.Skip("the split is $phase")
+        triesUsed >= maxTries -> AutoReplan.Skip("it has already re-planned $triesUsed times on its own")
+        lendersUp < 1 -> AutoReplan.Skip("no other phone is left on the local network")
+        !fits -> AutoReplan.Skip("the model does not fit on the phones that are left")
+        else -> AutoReplan.Go
     }
 
     /** Buttons the screen offers in DEGRADED: re-plan needs at least one phone left besides this one. */

@@ -59,6 +59,9 @@ private class FakeEnv : SplitEnv {
     /** The megabytes the driver asked of each peer in its last /rpc/start (-1: none). */
     val needMbSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    /** The model file the driver named in its last /rpc/start to each peer ("none": it named none). */
+    val modelSeen = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     /** How many more /rpc/start calls to a peer fail because its rpc port is still held. */
     val portHeld = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
@@ -153,6 +156,13 @@ private class FakeEnv : SplitEnv {
     override fun selfId() = "a"
     override fun selfName() = "Phone A"
     override fun selfHealth() = Health(9000, 0)
+    /** Bytes of each of the model's 32 layers (70 MB: about 2.2 GB in all). */
+    @Volatile var layerBytes = 70_000_000L
+
+    /** This phone's Wi-Fi addresses: the fake peers (10.0.0.2, 10.0.0.3) are on its network. */
+    @Volatile var localLinkList = listOf(LinkAddr("10.0.0.1", false, 24))
+    override fun localLinks() = localLinkList
+
     /** Runs once, on whichever thread asks next for the registry (a test parks a coroutine inside its own check with it). */
     @Volatile var peersHook: (() -> Unit)? = null
 
@@ -165,7 +175,7 @@ private class FakeEnv : SplitEnv {
     override fun threads() = 6
 
     override fun modelFile(name: String): File? = ModelFiles.clean(name)?.takeIf { it in existing }?.let { File(dir, it).also { f -> f.writeText("x") } }
-    override fun readHeader(file: File) = GgufInfo(file.name, 3_000_000_000, "qwen35", "Test 4B", 32, 2560, 4096, 0, 0, 0, List(32) { 70_000_000L }, 500_000_000, 10_000_000, 0)
+    override fun readHeader(file: File) = GgufInfo(file.name, 3_000_000_000, "qwen35", "Test 4B", 32, 2560, 4096, 0, 0, 0, List(32) { layerBytes }, 500_000_000, 10_000_000, 0)
 
     private fun reach(addr: String) { if (addr in unreachable) throw java.io.IOException("$addr does not answer") }
 
@@ -183,6 +193,7 @@ private class FakeEnv : SplitEnv {
         calls += "rpcStart $addr restore=${req.restore.joinToString(",") { it.role + ":" + it.file }} stopOwn=${req.stopOwn}"
         recordAtStart[addr] = saved.lastOrNull() ?: Persisted()
         needMbSeen[addr] = req.needMb ?: -1L
+        modelSeen[addr] = req.model ?: "none"
         val held = portHeld[addr] ?: 0
         if (held > 0) {
             portHeld[addr] = held - 1
@@ -276,7 +287,7 @@ class SplitCoordinatorTest {
     private lateinit var env: FakeEnv
     private lateinit var scope: CoroutineScope
     private lateinit var c: SplitCoordinator
-    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1, firstTokenStallMs = 600, tokenStallMs = 150, stallPollMs = 10, degradedRestoreMs = 400, restoreRetryMaxMs = 240)
+    private val timing = SplitCoordinator.Timing(watchMs = 20, renewMs = 20, degradedRenewMs = 150, loadTimeoutMs = 60_000, settleMs = 1, restoreRetryMs = 30, portRetryDelayMs = 1, firstTokenStallMs = 600, tokenStallMs = 150, stallPollMs = 10, degradedRestoreMs = 400, restoreRetryMaxMs = 240, autoReplanMax = 0)
 
     @Before fun setUp() {
         env = FakeEnv()
@@ -1202,6 +1213,115 @@ class SplitCoordinatorTest {
         assertEquals("the new loan was not ended by the old retry", second, env.currentLoan[c3])
         assertEquals(0, env.count("rpcStop $c3"))
         assertEquals(Phase.READY, c.state.value.phase)
+    }
+
+    // ---------- a degraded split re-plans by itself ----------
+
+    private fun autoReplanning(afterMs: Long = 50, max: Int = 2) {
+        c = SplitCoordinator(env, scope, timing.copy(autoReplanMs = afterMs, autoReplanMax = max))
+    }
+
+    @Test fun aDegradedSplitReplansByItselfWhenTheModelStillFitsOnTheLenderLeft() {
+        autoReplanning()
+        degradeByLosingC()
+        val s = awaitState("READY again on its own") { it.phase == Phase.READY && it.phones.size == 2 }
+        assertEquals(listOf("Phone A", "Phone B"), s.phones.map { it.name })
+        assertEquals("the lender that was left kept its rpc-server", 0, env.count("rpcStop 10.0.0.2:8787"))
+        assertEquals(2, env.chatStarts.get())
+        assertEquals("and this phone's own models were not given back first", 0, env.count("restoreLocal chat small.gguf"))
+    }
+
+    @Test fun nothingIsReplannedWhenTheModelDoesNotFitOnWhatIsLeftAndTheReleaseApplies() {
+        env.layerBytes = 350_000_000L // 11 GB: three phones take it, two do not
+        autoReplanning(afterMs = 300)
+        degradeByLosingC()
+        env.peerList = env.peerList.map { if (it.nodeId == "b") it.copy(ramAvailMb = 0) else it } // the lender left has little free
+        val s = awaitState("released as before") { st -> st.notices.any { it.contains("restored automatically") } }
+        assertEquals(Phase.DEGRADED, s.phase)
+        assertTrue(s.steps.toString(), s.steps.any { it == "Not re-planning by itself: the model does not fit on the phones that are left" })
+        assertEquals(1, env.chatStarts.get())
+    }
+
+    @Test fun nothingIsReplannedWhenNoLenderIsLeft() {
+        autoReplanning()
+        assertNull(start("Phone B"))
+        awaitState("READY") { it.phase == Phase.READY }
+        env.peerList = env.peerList.map { if (it.nodeId == "b") it.copy(away = true) else it }
+        awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+        val s = awaitState("said so") { st -> st.steps.any { it.startsWith("Not re-planning by itself") } }
+        assertTrue(s.steps.toString(), s.steps.any { it == "Not re-planning by itself: no other phone is left on the local network" })
+        assertEquals(1, env.chatStarts.get())
+    }
+
+    @Test fun aLenderThatIsOffThisPhonesLocalNetworkDoesNotCountAsLeft() {
+        autoReplanning(afterMs = 300)
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        // Phone C is lost, and Phone B (still answering) turns out to be on a network this phone is not on
+        env.peerList = env.peerList.map { if (it.nodeId == "c") it.copy(away = true) else if (it.nodeId == "b") it.copy(addr = "172.20.1.9:8787") else it }
+        awaitState("DEGRADED") { it.phase == Phase.DEGRADED }
+        val s = awaitState("said so") { st -> st.steps.any { it.startsWith("Not re-planning by itself") } }
+        assertTrue(s.steps.toString(), s.steps.any { it == "Not re-planning by itself: no other phone is left on the local network" })
+        assertEquals(1, env.chatStarts.get())
+    }
+
+    @Test fun theTriesOfASplitAreUsedUpAndTheReleaseApplies() {
+        autoReplanning(max = 1)
+        degradeByLosingC()
+        awaitState("READY again on its own") { it.phase == Phase.READY && it.phones.size == 2 }
+        env.peerList = env.peerList.map { if (it.nodeId == "b") it.copy(away = true) else it }
+        awaitState("DEGRADED again") { it.phase == Phase.DEGRADED }
+        val s = awaitState("said so") { st -> st.steps.any { it.startsWith("Not re-planning by itself") } }
+        assertTrue(s.steps.toString(), s.steps.any { it == "Not re-planning by itself: it has already re-planned 1 times on its own" })
+        assertEquals(2, env.chatStarts.get())
+        awaitState("released as before") { st -> st.notices.any { it.contains("restored automatically") } }
+    }
+
+    @Test fun aStopBeforeTheWaitIsOverCancelsTheAutomaticReplan() {
+        autoReplanning(afterMs = 300)
+        degradeByLosingC()
+        c.stop()
+        awaitState("IDLE") { it.phase == Phase.IDLE }
+        runBlocking { delay(500) }
+        assertEquals(Phase.IDLE, c.state.value.phase)
+        assertEquals("nothing was started again", 1, env.chatStarts.get())
+    }
+
+    @Test fun theLostPhoneComingBackBeforeTheWaitIsOverIsPlannedWithAgain() {
+        autoReplanning(afterMs = 200)
+        degradeByLosingC()
+        env.peerList = env.peerList.map { if (it.nodeId == "c") it.copy(away = false) else it }
+        val s = awaitState("READY on all three") { it.phase == Phase.READY && it.phones.size == 3 }
+        assertEquals(listOf("Phone A", "Phone B", "Phone C"), s.phones.map { it.name })
+    }
+
+    @Test fun theDriverNamesTheModelToEveryLenderSoItsCacheFilesBelongToIt() {
+        assertNull(start("Phone B", "Phone C"))
+        awaitState("READY") { it.phase == Phase.READY }
+        assertEquals("model.gguf", env.modelSeen["10.0.0.2:8787"])
+        assertEquals("model.gguf", env.modelSeen["10.0.0.3:8787"])
+    }
+
+    // ---------- memory is shared over the local link only ----------
+
+    private val offLinkC = PeerInfo("c", "Phone C", "172.20.1.9:8787", false, 9000, 1) // online, but not on this phone's network
+
+    @Test fun aPhoneThatIsNotOnThisPhonesLocalNetworkIsLeftOutOfThePlanAndTheReasonIsShown() {
+        env.peerList = listOf(env.peerList.first { it.nodeId == "b" }, offLinkC)
+        assertEquals("the preview leaves it out too", 2, c.previewPlan("model.gguf", emptyList(), SplitMode.EQUAL).shares.size)
+        assertNull(start("Phone B", "Phone C"))
+        val s = awaitState("READY") { it.phase == Phase.READY }
+        assertEquals(listOf("Phone A", "Phone B"), s.phones.map { it.name })
+        assertTrue(s.warnings.single().let { it.contains("Phone C (172.20.1.9)") && it.contains("local link only") })
+        assertEquals("nothing was sent to it", 0, env.count("rpcStart 172.20.1.9"))
+    }
+
+    @Test fun whenNoPhoneIsOnTheLocalNetworkTheLoadFailsAndSaysWhy() {
+        env.peerList = listOf(offLinkC)
+        assertNull(start("Phone C"))
+        val s = awaitState("FAILED") { it.phase == Phase.FAILED }
+        assertTrue(s.failReason!!, s.failReason!!.startsWith("No other phone is online on this phone's local network") && s.failReason!!.contains("Phone C (172.20.1.9)"))
+        assertEquals(0, env.count("stopLocal"))
     }
 
     @Test fun aRestartedAppSendsTheTokenItSavedAndKeepsItWhenThePhoneIsStillAway() {
