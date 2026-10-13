@@ -21,11 +21,13 @@ const val H = 2400
 const val FOOD = "com.fake.food"
 const val OWN = "com.swarmos.app"
 const val LAUNCHER = "com.vivo.launcher"
+const val BROWSER = "com.fake.browser"
 val FAKE_APPS = listOf(
     AppInfo(FOOD, "FakeFood"),
     AppInfo("com.fake.bank", "Fake Bank"),
     AppInfo("com.fake.maps", "FakeMaps"),
     AppInfo(OWN, "Ustaad"),
+    AppInfo(BROWSER, "FakeBrowser"),
 )
 val FOOD_CARDS = mapOf(
     "food_delivery" to "category: food_delivery\napps: $FOOD\nlabels: fakefood\n---\nSearch for the dish, add it, open the cart and stop there.",
@@ -65,8 +67,8 @@ fun button(s: String, t: Int, l: Int = 40, r: Int = l + 400, handle: String = ""
 
 // ---------------------------------------------------------------- screens for the guard
 
-fun el(id: Int, role: Role, label: String, vararg flags: Flag, value: String = "") =
-    UiElement(id, role, label, value, flags.toSet(), "h$id", 100, 100 + id * 10)
+fun el(id: Int, role: Role, label: String, vararg flags: Flag, value: String = "", guard: String = GuardText.norm(label)) =
+    UiElement(id, role, label, value, flags.toSet(), "h$id", 100, 100 + id * 10, guard)
 
 fun screenOf(pkg: String, vararg els: UiElement, unreadable: Boolean = false) = Screen(pkg, "Main", els.toList(), unreadable, "hash-$pkg-${els.size}")
 
@@ -316,9 +318,16 @@ class FakeFoodDriver(
         return true
     }
 
-    override suspend fun openLink(uri: String): Boolean {
+    /** Which package would open a link; empty means none or a chooser. */
+    var linkTargetOf: (String) -> String = { BROWSER }
+    val linkPackages = CopyOnWriteArrayList<String>()
+
+    override suspend fun linkTarget(uri: String): String = linkTargetOf(uri)
+
+    override suspend fun openLink(uri: String, pkg: String): Boolean {
         actions += "link:$uri"
         links += uri
+        linkPackages += pkg
         return true
     }
 

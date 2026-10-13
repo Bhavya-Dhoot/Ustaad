@@ -260,4 +260,99 @@ class ScreenReaderTest {
         val e = ScreenReader.compact(RawScreen("p", "a", W, H, root(), false))
         assertNotEquals(u.hash, e.hash)
     }
+
+    // ------------------------------------------------------------ the guard text (C1)
+
+    private fun first(vararg kids: RawNode): UiElement = ScreenReader.compact(raw(*kids)).elements.first()
+
+    @Test fun c1_aClickablesGuardTextHoldsEveryDescendantTextAndTheWordsOfItsId() {
+        val card = rn(
+            cls = "android.view.ViewGroup", clickable = true, l = 0, t = 400, r = W, b = 600, resId = "com.demo:id/btn_place_order",
+            children = listOf(text("P", 410), rn(text = "ay", l = 100, t = 410, r = 300, b = 470, desc = "now", hint = "x", resId = "a:id/child_label")),
+        )
+        val g = first(card).guard
+        for (w in listOf("btn place order", "p", "ay", "now", "child label")) assertTrue("'$w' in '$g'", g.contains(w))
+    }
+
+    @Test fun c1_theGuardTextIsNormalised() {
+        assertEquals("pay now", first(button("P​ay­‮  NOW\u0000", 100)).guard)
+        assertEquals("pay", first(button("Ｐａｙ", 100)).guard) // full-width letters
+        assertEquals("pay", first(button("pаy", 100)).guard) // a Cyrillic a inside
+        assertEquals("pay now button", first(rn(cls = "android.widget.ImageButton", clickable = true, resId = "x:id/PayNowButton", l = 0, t = 50, r = 100, b = 150)).guard)
+    }
+
+    @Test fun c1_theGuardTextIsNeverCutAndNeverShown() {
+        val long = "word ".repeat(40) + "pay"
+        val e = first(button(long, 100))
+        assertEquals(80, e.label.length.coerceAtMost(80))
+        assertFalse(e.label.contains("pay"))
+        assertTrue(e.guard.endsWith("pay"))
+        val hidden = first(rn(text = "Add", cls = "android.widget.Button", clickable = true, resId = "a:id/secret_sauce_pay", l = 0, t = 50, r = 400, b = 150))
+        assertTrue(hidden.guard.contains("secret sauce pay"))
+        val out = ScreenReader.render(ScreenReader.compact(raw(rn(text = "Add", cls = "android.widget.Button", clickable = true, resId = "a:id/secret_sauce_pay", l = 0, t = 50, r = 400, b = 150))))
+        assertFalse(out.contains("sauce"))
+    }
+
+    @Test fun c1_aTouchOnAChildReachesTheNearestClickableAncestorSoItsTextIsInTheChildsGuard() {
+        val amount = rn(cls = "android.widget.EditText", hint = "Amount", editable = true, l = 40, t = 320, r = 1040, b = 400, handle = "amount")
+        val inner = rn(cls = "android.view.ViewGroup", clickable = true, text = "Inner", l = 0, t = 300, r = W, b = 600, handle = "inner", children = listOf(amount))
+        val outer = rn(cls = "android.view.ViewGroup", clickable = true, text = "Pay", l = 0, t = 250, r = W, b = 700, handle = "outer", children = listOf(inner))
+        val s = ScreenReader.compact(raw(outer))
+        val child = s.elements.first { it.handle == "amount" }
+        assertTrue(child.guard, child.guard.contains("amount") && child.guard.contains("inner"))
+        assertFalse("only the nearest clickable ancestor", child.guard.contains("pay"))
+        val ownerOfTouch = s.elements.first { it.handle == "inner" }
+        assertEquals("a clickable is its own touch target: its ancestors do not add to it", "inner amount", ownerOfTouch.guard)
+    }
+
+    @Test fun c1_aNonClickableEditUnderAPayButtonIsJudgedAsThePayButton() {
+        val amount = rn(cls = "android.widget.EditText", hint = "Amount", editable = true, l = 40, t = 320, r = 1040, b = 400, handle = "amount")
+        val pay = rn(cls = "android.view.ViewGroup", clickable = true, text = "Pay", l = 0, t = 300, r = W, b = 600, handle = "pay", children = listOf(amount))
+        val e = ScreenReader.compact(raw(pay)).elements.first { it.handle == "amount" }
+        assertTrue(Guard.isCommitText(e.guard))
+    }
+
+    @Test fun c1_aPasswordFieldsTextIsNotInAnyGuardText() {
+        val pw = rn(cls = "android.widget.EditText", text = "hunter2", editable = true, password = true, hint = "Password", l = 40, t = 320, r = 1040, b = 400)
+        val box = rn(cls = "android.view.ViewGroup", clickable = true, l = 0, t = 300, r = W, b = 600, children = listOf(text("Login", 310), pw))
+        val s = ScreenReader.compact(raw(box))
+        assertTrue(s.elements.none { it.guard.contains("hunter2") })
+        assertTrue(s.elements.any { it.guard.contains("password") })
+    }
+
+    // ------------------------------------------------------------ secrets on screen (C7)
+
+    @Test fun c7_whatAnUnflaggedFieldCalledOtpHoldsIsNotRead() {
+        fun screen(v: String) = ScreenReader.compact(raw(rn(cls = "android.widget.EditText", hint = "OTP", text = v, editable = true, l = 40, t = 300, r = 1040, b = 400)))
+        val s = screen("482913")
+        assertEquals("", s.elements[0].value)
+        assertFalse(ScreenReader.render(s).contains("482913"))
+        assertEquals(s.hash, screen("111111").hash)
+        val pw = ScreenReader.compact(raw(rn(cls = "android.widget.EditText", desc = "Password", text = "hunter2", editable = true, l = 40, t = 300, r = 1040, b = 400)))
+        assertEquals("", pw.elements[0].value)
+    }
+
+    @Test fun c7_aCodeInATextThatTalksAboutACodeIsMaskedBeforeAnythingSeesIt() {
+        fun full(code: String) = ScreenReader.compactFull(raw(text("Your verification code is $code. Do not share.", 100), button("Copy code $code", 300)))
+        val c = full("482913")
+        assertEquals("Your verification code is ****. Do not share.", c.screen.elements[0].label)
+        assertEquals("Copy code ****", c.screen.elements[1].label)
+        assertEquals(setOf("482913"), c.masked)
+        assertFalse(ScreenReader.render(c.screen).contains("482913"))
+        assertEquals("the hash input holds no code", c.screen.hash, full("555555").screen.hash)
+        assertFalse(c.screen.elements.any { it.guard.contains("482913") })
+    }
+
+    @Test fun c7_onlyRunsOfFourToEightDigitsAndOnlyNextToACodeWord() {
+        val s = ScreenReader.compact(raw(text("Order 482913 confirmed", 100), text("Total 1250", 200), text("OTP 123", 300), text("code 123456789", 400), text("code 1234 and 12345678", 500)))
+        assertEquals(listOf("Order 482913 confirmed", "Total 1250", "OTP 123", "code 123456789", "code **** and ****"), s.elements.map { it.label })
+    }
+
+    @Test fun c7_anAnswerThatRepeatsAMaskedCodeOrNamesOneIsScrubbed() {
+        val m = StepMemory()
+        m.remember(setOf("482913"))
+        assertEquals("It is ****", m.scrub("It is 482913"))
+        assertEquals("Your OTP is ****", m.scrub("Your OTP is 777777"))
+        assertEquals("Total 111111", m.scrub("Total 111111"))
+    }
 }
