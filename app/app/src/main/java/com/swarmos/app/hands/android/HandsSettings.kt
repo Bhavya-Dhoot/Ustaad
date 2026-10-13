@@ -13,8 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * The two Hands settings, kept in memory for the brain (which cannot wait for DataStore) and stored in [SwarmPrefs].
- * Both start at their safe value: sharing off, test brain off. [load] runs once at app start, before the Hands screen can show.
+ * The Hands settings, kept in memory for the brain (which cannot wait for DataStore) and stored in [SwarmPrefs].
+ * All start at their safe value: sharing off, test brain off, the phone's assistant may not start tasks or search data. [load] runs once at app start, before the Hands screen can show.
  *
  * The test brain exists only in debug builds. The test phone has too little memory for a chat model, so a debug build can send
  * both tiers to a llama-server on the PC through `adb reverse`. A release or demo build never reads, keeps or follows the
@@ -25,6 +25,8 @@ object HandsSettings {
     private val share = MutableStateFlow(false)
     private val testPort = MutableStateFlow(0)
     private val fewer = MutableStateFlow(false)
+    private val assistStart = MutableStateFlow(false)
+    private val assistData = MutableStateFlow(false)
 
     /** Whether screen text may go to another device of the owner's cluster during a task (rule S5). */
     val shareScreens: StateFlow<Boolean> = share.asStateFlow()
@@ -35,6 +37,12 @@ object HandsSettings {
     /** "Fewer questions": off (the default) is careful mode, on asks only when a step is recognised as committing. */
     val fewerQuestions: StateFlow<Boolean> = fewer.asStateFlow()
 
+    /** "The phone's assistant may start tasks": off (the default) means a task from the assistant waits for the owner's tap on Run. */
+    val assistantMayStart: StateFlow<Boolean> = assistStart.asStateFlow()
+
+    /** "The phone's assistant may search my data": off (the default) means the app function refuses, because the answer leaves Ustaad. */
+    val assistantMaySearchData: StateFlow<Boolean> = assistData.asStateFlow()
+
     /** What the engine reads before every action. */
     fun caution(): Caution = cautionOf(fewer.value)
 
@@ -42,6 +50,8 @@ object HandsSettings {
         val prefs = SwarmPrefs(ctx.applicationContext)
         fewer.value = prefs.handsFewerQuestions()
         share.value = prefs.handsShareScreens()
+        assistStart.value = prefs.handsAssistantStart()
+        assistData.value = prefs.handsAssistantData()
         testPort.value = effectivePort(prefs.handsTestBrainPort(), BuildConfig.DEBUG)
     }
 
@@ -53,6 +63,16 @@ object HandsSettings {
     fun setFewerQuestions(on: Boolean) {
         fewer.value = on
         persist { it.setHandsFewerQuestions(on) }
+    }
+
+    fun setAssistantMayStart(on: Boolean) {
+        assistStart.value = on
+        persist { it.setHandsAssistantStart(on) }
+    }
+
+    fun setAssistantMaySearchData(on: Boolean) {
+        assistData.value = on
+        persist { it.setHandsAssistantData(on) }
     }
 
     /** Debug builds only; ignored elsewhere. 0 turns the test brain off. */

@@ -17,6 +17,8 @@ pdfbox = "2.0.27.0"
 androidxSqlite = "2.7.1"
 datastore = "1.2.1"
 junit = "4.13.2"
+ksp = "2.3.10"
+appfunctions = "1.0.0-alpha13"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -53,8 +55,11 @@ androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.r
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 slf4j-android = { module = "uk.uuid.slf4j:slf4j-android", version = "2.0.20-0" }
 junit = { module = "junit:junit", version.ref = "junit" }
+androidx-appfunctions = { module = "androidx.appfunctions:appfunctions", version.ref = "appfunctions" }
+androidx-appfunctions-compiler = { module = "androidx.appfunctions:appfunctions-compiler", version.ref = "appfunctions" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

@@ -97,6 +97,23 @@ class SwarmPrefs(private val ctx: Context) {
         ctx.swarmStore.edit { it[handsFewerQuestionsKey] = v }
     }
 
+    private val handsAssistantStartKey = booleanPreferencesKey("hands_assistant_start")
+    private val handsAssistantDataKey = booleanPreferencesKey("hands_assistant_data")
+
+    /** Hands: a task from the phone's assistant (App Functions) starts at once instead of waiting for the owner's tap on Run. Off by default. */
+    suspend fun handsAssistantStart(): Boolean = ctx.swarmStore.data.first()[handsAssistantStartKey] ?: false
+
+    suspend fun setHandsAssistantStart(v: Boolean) {
+        ctx.swarmStore.edit { it[handsAssistantStartKey] = v }
+    }
+
+    /** Hands: the phone's assistant may search the owner's data through App Functions; the answer leaves Ustaad. Off by default. */
+    suspend fun handsAssistantData(): Boolean = ctx.swarmStore.data.first()[handsAssistantDataKey] ?: false
+
+    suspend fun setHandsAssistantData(v: Boolean) {
+        ctx.swarmStore.edit { it[handsAssistantDataKey] = v }
+    }
+
     /** Hands, debug builds only: port of a llama-server on 127.0.0.1 that both model tiers use. 0 = off. */
     suspend fun handsTestBrainPort(): Int = ctx.swarmStore.data.first()[handsTestBrainPortKey] ?: 0
 

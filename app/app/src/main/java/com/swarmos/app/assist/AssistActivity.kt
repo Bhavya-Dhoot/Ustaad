@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.hands.Hands
 import com.swarmos.app.hands.HandsHub
+import com.swarmos.app.hands.Phase
 import com.swarmos.app.hands.android.HandsRuntime
 import com.swarmos.app.hands.RunState
 import com.swarmos.app.hands.ui.RunDetail
@@ -80,6 +81,8 @@ internal class SheetState {
     var spoken by mutableStateOf(false)
     var runId by mutableStateOf<String?>(null)
     var promptOnly by mutableStateOf(false)
+    /** The run in view was named by the notice for a task the phone's assistant sent (see [openRun]). */
+    var fromNotice by mutableStateOf(false)
     /** Raised at each opening by the assistant session with an empty field: the sheet starts listening if it may. */
     var listenTrigger by mutableIntStateOf(0)
 
@@ -92,7 +95,19 @@ internal class SheetState {
         spoken = false
         runId = null
         promptOnly = false
+        fromNotice = false
         if (fromSession && task.isEmpty()) listenTrigger++
+    }
+
+    /** Shows a run that already exists, such as a task the phone's assistant sent and the owner has not yet run. */
+    fun openRun(id: String, runTask: String) {
+        task = runTask
+        seeded = false
+        fromSession = false
+        spoken = false
+        runId = id
+        promptOnly = false
+        fromNotice = true
     }
 }
 
@@ -174,6 +189,11 @@ class AssistActivity : ComponentActivity() {
                 if (!sheet.hasContent) sheet.promptOnly = true
                 return
             }
+            intent.getStringExtra(EXTRA_RUN_ID)?.let { id ->
+                // a task the phone's assistant sent: the sheet shows that run with its Run button; the tap is the owner's
+                sheet.openRun(id, HandsHub.hands?.runs?.value?.firstOrNull { it.id == id }?.task.orEmpty())
+                return
+            }
             val extras = HashMap<String, String>()
             for (key in listOf(Intent.EXTRA_TEXT, Intent.EXTRA_PROCESS_TEXT)) {
                 intent.getCharSequenceExtra(key)?.toString()?.let { extras[key] = it }
@@ -241,7 +261,7 @@ class AssistActivity : ComponentActivity() {
                         LaunchedEffect(p.id) { lastPromptId = p.id }
                         PromptPanel(p, interactive)
                     }
-                    sheet.runId != null -> RunPanel(hands, run)
+                    sheet.runId != null -> RunPanel(hands, run, busy = actingRun(runs) != null)
                     else -> TaskPanel(hands, runs, dictation)
                 }
             }
@@ -287,17 +307,35 @@ class AssistActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun RunPanel(hands: Hands?, run: RunState?) {
+    private fun RunPanel(hands: Hands?, run: RunState?, busy: Boolean) {
         val ended = run != null && isEnded(run.phase)
+        // a run that waits for the owner's tap: a task the phone's assistant sent through an app function
+        val waiting = run?.takeIf { it.phase == Phase.WAITING_FOR_GO }
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionTitle("Ustaad", Modifier.weight(1f))
             BackLink({ close() }, label = "Close")
         }
+        if (waiting != null) Note("This came from your phone's assistant. Read it, then tap Run.")
         Text("Task", style = SwarmType.label.copy(color = SwarmColors.graphite))
         MonoText(sheet.task.trim(), maxLines = 3, overflow = TextOverflow.Ellipsis)
-        if (run == null) Text("Starting the run.", style = SwarmType.label.copy(color = SwarmColors.graphite)) else RunDetail(run, maxSteps = 4)
-        if (ended) {
+        // a notice for a task of an earlier process: Hands is up and does not know the run
+        val gone = run == null && hands != null && sheet.fromNotice
+        if (run == null) {
+            Text(if (gone) "This task is not here any more." else "Starting the run.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+        } else {
+            RunDetail(run, maxSteps = 4)
+        }
+        if (ended || gone) {
             SecondaryButton("New task", onClick = { speaker.stop(); sheet.open("", fromSession = false) }, modifier = Modifier.fillMaxWidth())
+        } else if (waiting != null) {
+            if (busy) Text("A task is running. Stop it before you run this one.", style = SwarmType.label.copy(color = SwarmColors.graphite))
+            PrimaryButton(
+                "Run this task",
+                onClick = { if (hands != null) HandsRuntime.goFromUi(this@AssistActivity, hands, waiting.id) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = hands != null && !busy,
+            )
+            SecondaryButton("Discard", onClick = { hands?.stop(waiting.id) }, modifier = Modifier.fillMaxWidth())
         } else {
             SecondaryButton(
                 "Stop",
@@ -373,9 +411,17 @@ class AssistActivity : ComponentActivity() {
         var isResumed = false
             private set
 
+        /** Opens the sheet on a run that waits for the owner's tap on Run (a task the phone's assistant sent); the tap is still the owner's. */
+        const val EXTRA_RUN_ID = "com.swarmos.app.assist.RUN_ID"
+
         fun promptIntent(context: Context): Intent =
             Intent(context, AssistActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(EXTRA_PROMPT_ONLY, true)
+
+        fun runIntent(context: Context, runId: String): Intent =
+            Intent(context, AssistActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_RUN_ID, runId)
     }
 }
