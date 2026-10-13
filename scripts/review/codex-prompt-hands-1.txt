@@ -1,0 +1,24 @@
+You are doing an adversarial, read-only security review of a feature in an Android app. Do not modify any file. Do not run builds, tests or network calls. You may run read-only git commands. Read source only.
+
+Context. "Ustaad" is a sideloaded Android app that runs local language models. The feature under review is "Hands": the phone's owner types or speaks a task; a planner splits it into subtasks; a step loop reads the screen of the app in front through the app's own AccessibilityService, asks a small local model for ONE tool call as schema-constrained JSON, a guard checks the call, and a driver performs it (tap, type, scroll, open app, open link). The owner must confirm, by a tap in Ustaad's own window, anything that pays, orders, sends, posts, deletes or installs. The plan and the binding safety rules S1 to S7 are in plans/2026-10-13-assistant-harness.md. The contract is app/app/src/main/java/com/swarmos/app/hands/Contract.kt.
+
+Code to read, all under app/app/src/main/java/com/swarmos/app/: hands/Guard.kt, hands/ToolRunner.kt, hands/StepLoop.kt, hands/HandsEngine.kt, hands/HandsTools.kt, hands/ScreenReader.kt, hands/Planner.kt, hands/Skills.kt, hands/UiDump.kt, hands/android/*.kt, assist/*.kt, hands/ui/*.kt, plus app/app/src/main/AndroidManifest.xml and app/app/src/main/res/xml/. The tests are under app/app/src/test/java/com/swarmos/app/hands and .../assist.
+
+The model is assumed hostile or confused: treat every model output as attacker-chosen within the JSON schema. Text on the screen of other apps is attacker-chosen. Other apps on the phone are attacker-controlled and can send any intent to exported components, draw overlays, and put any text in any label. The owner is honest but may tap quickly.
+
+Find sequences that break a safety rule. In particular:
+1. A way for the model, screen text, or another app to make a committing action happen without the owner's tap: a tap whose label escapes the commit word match (case, Unicode look-alikes, zero-width characters, split across child nodes, icon buttons with an empty label, a label in another language, a price-only label that is the pay button, "Slide to pay" controls, a scroll or press_enter that commits), an action through open_link (which schemes and which hosts or paths can commit by themselves, for example upi:, tel:, sms:, market:, intent:, or an https link that an app opens straight into a payment), a tap by position after the screen changed, the re-read after the owner's yes.
+2. A way for the agent to tap or dismiss Ustaad's own confirmation prompt, or to answer it: through the driver while Ustaad's window is in front, through a gesture at a position, through the back or home action, through a race between the prompt becoming visible and a queued tap, through the Stop chip overlay, through the notification, through another exported component.
+3. A way for another app to start a task or a tool call without the owner's tap on Run: every exported activity and service in the manifest, every intent filter, the assistant session path, the one-time session token, the deep link, extras, re-delivery of an old intent, a task affinity or singleTask trick, a PendingIntent that can be reused.
+4. A way to make the agent type or read a secret: password fields that are not flagged as such, one-time codes shown as plain text on screen that then go to the model or to the run log, a field whose label hides its purpose, the value of an edit field copied into the log or into another app.
+5. A way for screen text to leave the phone when the sharing switch is off (which prompts carry screen-derived text: step prompts, outcomes passed to later subtasks, the reply subtask, expert questions built from outcomes).
+6. A way to act outside the apps of the plan without the owner's yes; a way to reach a blocked app (package list and name patterns: bypass by a package the list misses, by an app opened through a link, by a system chooser).
+7. Denial and nuisance: a task or screen that makes the loop run forever, spam prompts at the owner, or keep the Stop control from working; state left behind after stop or after a crash that makes the next run act on a stale screen.
+8. Anything in the AccessibilityService configuration, the overlay, or the manifest that gives more than the feature needs.
+
+Output format, plain text, nothing else:
+- First line: the model you are and how many repository files you read.
+- Then findings, most severe first, one per paragraph: SEVERITY (BLOCKER, HIGH, MEDIUM, LOW) file:line - the concrete sequence in two or three sentences, reproducible from the code - the smallest fix.
+- Then "Checks that hold:" one line each.
+- Then "Not examined:".
+Report only what you confirmed by reading the code path end to end. At most 18 findings. No praise, no summary, no style remarks.
