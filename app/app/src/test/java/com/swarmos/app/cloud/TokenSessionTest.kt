@@ -308,4 +308,21 @@ class TokenSessionTest {
         assertError(CloudError.BUSY) { small.hello(r.client().start(T0 + 5).hello, T0 + 5, r.state, source = "10.0.0.7") }
         small.hello(r.client().start(T0 + 61_000).hello, T0 + 61_000, r.state, source = "10.0.0.7") // a minute later the old records are gone
     }
+
+    @Test fun oneStolenTokenKeyCannotFillTheTableOfSeenHellosForTheOtherClients() { // Codex TokenSession.kt:119
+        val r = Rig()
+        val issuer = TokenIssuer(r.issuerPeer.id, maxSeenHellos = 6, maxSeenHellosPerClient = 3, maxPendingPerClient = 10)
+        issuer.restore(Hex.of(r.material.keyId), r.material.key)
+        val m2 = issuer.prepare()
+        r.cloud.chain.addToken(r.cloud.owner.identity, r.issuerPeer.id, m2.nodeId, "second client", MemberKind.CLIENT, m2.keyId, T0)
+        r.cloud.copyTo(r.issuerPeer)
+        val c2 = TokenClient(m2.keyId, m2.key, m2.nodeId, r.issuerPeer.nodeId, r.issuerPeer.id)
+        // the thief holds one key and uses many real addresses: it gets three records, then busy
+        repeat(3) { issuer.hello(r.client().start(T0 + it).hello, T0 + it, r.state, source = "9.9.9.$it") }
+        assertError(CloudError.BUSY) { issuer.hello(r.client().start(T0 + 5).hello, T0 + 5, r.state, source = "9.9.9.9") }
+        // the other client's records are not crowded out: three more fit in the table of six
+        repeat(3) { issuer.hello(c2.start(T0 + 6 + it).hello, T0 + 6 + it, r.state, source = "8.8.8.$it") }
+        // when the records of a minute have expired the thief may start again
+        issuer.hello(r.client().start(T0 + 61_000).hello, T0 + 61_000, r.state, source = "9.9.9.10")
+    }
 }

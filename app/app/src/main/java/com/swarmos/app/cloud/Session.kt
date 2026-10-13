@@ -2,6 +2,7 @@ package com.swarmos.app.cloud
 
 import java.security.KeyPair
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
 
 /**
  * Keys shared by two members after the exchange of docs/CLOUD-PROTOCOL.md section 5 (or by a token client and its issuer,
@@ -137,9 +138,9 @@ class SessionHandshake(
     private fun signedPart(role: String, transcript: ByteArray) = concat(lbl("session/sig/$role"), transcript)
 
     /** What the initiator signs in the Init: everything in it, and the responder it is meant for (so it is no good at another one). */
-    private fun initProof(nodeI: String, fpI: ByteArray, ephI: ByteArray, nonceI: ByteArray, tag: ByteArray, extI: ByteArray, nodeR: String, fpR: ByteArray): ByteArray =
+    private fun initProof(nodeI: String, fpI: ByteArray, ephI: ByteArray, nonceI: ByteArray, tag: ByteArray, ts: Long, extI: ByteArray, nodeR: String, fpR: ByteArray): ByteArray =
         Writer().raw(lbl("session/init")).fixed(cloudId, 16).str(nodeI).fixed(fpI, 32).fixed(ephI, Crypto.PUB_BYTES).fixed(nonceI, 32)
-            .fixed(tag, Discovery.TAG_BYTES).lp(extI).str(nodeR).fixed(fpR, 32).bytes()
+            .fixed(tag, Discovery.TAG_BYTES).u64(ts).lp(extI).str(nodeR).fixed(fpR, 32).bytes()
 
     /** Keys from the ECDH result, the nonces as salt, distinct labels, the transcript hash in `info` (section 5.3). */
     private fun derive(
@@ -173,9 +174,9 @@ class SessionHandshake(
         val keys = discoveryKeys()
         check(keys.isNotEmpty()) { "no discovery key for the current epoch" }
         val tag = Discovery.tag(keys[0], selfNodeId, Discovery.slot(now))
-        val proof = identity.sign(initProof(selfNodeId, selfFp, ephPub, nonce, tag, ownExt, peerNodeId, fpR))
+        val proof = identity.sign(initProof(selfNodeId, selfFp, ephPub, nonce, tag, now, ownExt, peerNodeId, fpR))
         val init = Writer().u8(1).u8(1).str(selfNodeId).fixed(selfFp, 32).fixed(ephPub, Crypto.PUB_BYTES).fixed(nonce, 32)
-            .fixed(tag, Discovery.TAG_BYTES).lp(ownExt).fixed(proof, Crypto.SIG_BYTES).bytes()
+            .fixed(tag, Discovery.TAG_BYTES).u64(now).lp(ownExt).fixed(proof, Crypto.SIG_BYTES).bytes()
         return Initiating(peerNodeId, peerMemberId, eph, ephPub, nonce, init)
     }
 
@@ -251,15 +252,19 @@ class SessionHandshake(
         val ephI = r.fixed(Crypto.PUB_BYTES)
         val nonceI = r.fixed(32)
         val tag = r.fixed(Discovery.TAG_BYTES)
+        val ts = r.u64()
         val extI = r.lp(Caps.MAX_EXT)
         val proof = r.fixed(Crypto.SIG_BYTES)
         r.end()
         if (!initBudget.allow(source, now)) throw ProtocolError(CloudError.BUSY) // the cheap per-address budget; a refusal leaves no record
+        // freshness, before anything else is spent: the time is inside the signature, so an Init captured on the wire is no good once
+        // its window has passed, however long the nonce records are kept (Codex Session.kt:266)
+        if (abs(now - ts) > INIT_SKEW_MS) throw ProtocolError(CloudError.SKEW)
         // the tag is only a cheap filter: a tag from no recent epoch leads to the small resync path, not to a refusal
         val tagOk = discoveryKeys().any { Discovery.matches(it, nodeI, tag, now) }
         // the identity proof: a current member with this node id whose listed key signed exactly this Init for this responder
         val m = peer(Hex.of(fpI), nodeI)
-        if (!Crypto.ecdsaVerify(m.publicKey!!, initProof(nodeI, fpI, ephI, nonceI, tag, extI, selfNodeId, selfFp), proof)) throw ProtocolError(CloudError.NOT_MEMBER)
+        if (!Crypto.ecdsaVerify(m.publicKey!!, initProof(nodeI, fpI, ephI, nonceI, tag, ts, extI, selfNodeId, selfFp), proof)) throw ProtocolError(CloudError.NOT_MEMBER)
         raceHook?.invoke()
         val nonceKey = Hex.of(nonceI)
         val slot = synchronized(lock) {
@@ -337,6 +342,8 @@ class SessionHandshake(
     }
 
     companion object {
+        /** An Init is fresh for this long either side of the responder's clock; nonce records are kept far longer (10 minutes), so a copy inside the window is a replay and a copy after it is stale. */
+        const val INIT_SKEW_MS = 30_000L
         const val SEEN_INIT_MS = 600_000L
     }
 }
