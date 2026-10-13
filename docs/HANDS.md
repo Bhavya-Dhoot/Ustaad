@@ -1,6 +1,6 @@
 # Hands: Ustaad carries out a task on the phone
 
-State: built and unit-tested; the ways in and two tasks that need no other app ran on one phone (a Redmi on Android 15); no task that acts in another app has run on a phone yet, because the accessibility switch is the owner's to flip. Numbers and their source: docs/benchmarks/2026-10-13-redmi-hands.md. Plan and safety rules: plans/2026-10-13-assistant-harness.md. Reviews: docs/review/2026-10-13-hands-codex-1.txt and -2.txt.
+State: built and unit-tested; the ways in and two tasks that need no other app ran on one phone (a Redmi on Android 15); on that phone Hands has opened a real app (YouTube), typed into it and, after the owner's yes, pressed Enter and tapped; no task has been carried through to its end on a phone, and no committing button has been reached in a real app. Numbers and their source: docs/benchmarks/2026-10-13-redmi-hands.md. Plan and safety rules: plans/2026-10-13-assistant-harness.md. Reviews: docs/review/2026-10-13-hands-codex-1.txt and -2.txt.
 
 ## What it is
 
@@ -26,11 +26,36 @@ Two model tiers. The step model decides each action; the planning model plans an
 
 What does not exist, and why:
 - Google Assistant and Gemini cannot be given custom commands for an app that is not on Google Play (App Actions are registered through a Play upload). They can open the app; the owner speaks inside it.
-- Android 16 App Functions (the way Gemini calls functions of apps) are not built: alpha library, compileSdk 37, and the caller permission is privileged on most builds.
+- Gemini calling these tools is not possible today, although the kit for it is built in (next section): Google runs third-party App Functions for Gemini as a private preview with its own allowlist, and no source shows an iQOO or vivo build where any assistant holds the caller permission.
 - There is no wake word: the platform reserves it for bundled assistants.
 - Bixby has no public way for a third-party app to receive a task. On Samsung phones the paths above apply.
 - Siri: there is no iOS app. The bridge would be an iOS Shortcut that posts the task to a device of the cluster; it needs the web gateway of the closed-cloud plan and is not built.
 - An endpoint that lets another agent on the phone call these tools (MCP), and a driver that acts through a root shell instead of the accessibility service, are not built: the safety layer of the build session stopped both. The contract has room for them (`Hands.tools()`, `Hands.call()`, `PhoneDriver`).
+
+## The phone's own assistant as the caller (Android App Functions)
+
+Google's kit for letting the system assistant call an app's tools is Android App Functions (Android 16 and later; Jetpack `androidx.appfunctions` 1.0.0-alpha13; Google describes it as the on-device equivalent of MCP). The Hands tools are published through it, in `appfn/`:
+
+| Function id (debug build) | What it does |
+|---|---|
+| `com.swarmos.app.appfn.UstaadFunctions#startTask` (`task`) | hands a task to Hands; returns the task id and the state |
+| `...#taskStatus` (`taskId`) | phase, plan with a status per subtask, the result |
+| `...#stopTask` (`taskId`) | stops it |
+| `...#askExpert` (`domain`, `question`), `...#listExperts` | an answer from an expert prompt; the list of experts |
+| `...#searchMyData` (`query`) | passages from the owner's indexed files, from this phone's index only |
+
+Rules: a task the assistant sends waits, with a notice, until the owner reads it and taps Run, unless the owner turns on "The phone's assistant may start tasks"; `searchMyData` is refused unless the owner turns on "The phone's assistant may search my data"; both switches are off by default; no function can answer a question to the owner, and the careful-mode questions still appear on the phone. The system decides who may call: an assistant holding the platform's caller permission, or the shell.
+
+State: built, 41 unit tests of the rules, the generated function file is in the APK, the build runs on Android 15 with the service switched off there. Never listed or executed on a device. To try it on a device or emulator with Android 16 QPR2 or later:
+
+```
+adb shell cmd app_function list-app-functions
+adb shell "cmd app_function execute-app-function --package com.swarmos.app --function 'com.swarmos.app.appfn.UstaadFunctions#startTask' --parameters '{\"task\":\"set a timer for ten minutes\"}'"
+adb shell "cmd app_function execute-app-function --package com.swarmos.app --function 'com.swarmos.app.appfn.UstaadFunctions#taskStatus' --parameters '{\"taskId\":\"<id from the first line of startTask>\"}'"
+adb shell "cmd app_function execute-app-function --package com.swarmos.app --function 'com.swarmos.app.appfn.UstaadFunctions#listExperts' --parameters '{}'"
+```
+
+What does not depend on us: whether Gemini calls third-party functions on a given phone (Google's early-access programme and allowlist), and whether a phone maker's build has the service and gives any assistant the caller permission. Research and sources: docs/research/09-assistant-tool-kit.md.
 
 ## What the owner turns on
 
