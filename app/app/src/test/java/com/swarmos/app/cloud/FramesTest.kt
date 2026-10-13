@@ -248,6 +248,54 @@ class FramesTest {
         assertTrue(refused)
     }
 
+    // ---- Codex Frames.kt:130, :117 and the response envelope (stage 1b) ----------------------------------------------------
+
+    @Test fun aTruncatedStreamStaysFailedEvenIfTheMissingFinalFrameArrivesLater() { // Codex Frames.kt:130
+        val frames = threeFrames()
+        val o = opener()
+        o.open(frames[0]); o.open(frames[1])
+        assertError(CloudError.TRUNCATED) { o.end() }
+        assertError(CloudError.BAD_FRAME) { o.open(frames[2]) } // the final frame is too late
+        assertFalse(o.finished)
+        assertError(CloudError.TRUNCATED) { o.end() } // and the stream never reports success
+    }
+
+    @Test fun aBulkStreamIsDeadAfterAnyError() { // Codex Frames.kt:130
+        val (s, o) = bulkPair()
+        val good = s.seal(0, byteArrayOf(1, 2, 3))
+        assertError(CloudError.BAD_FRAME) { o.open(good.copyOf().also { it[good.size - 1] = (it[good.size - 1].toInt() xor 1).toByte() }) }
+        assertError(CloudError.BAD_FRAME) { o.open(good) } // a valid chunk is refused afterwards
+        assertFalse(o.complete())
+    }
+
+    @Test fun anAnswerStreamMayStartWithResponseAndContinueWithEvents() { // Codex Frames.kt:117
+        val s = FrameSealer(dirKey, 9, ctx, FrameType.RESPONSE, thenType = FrameType.EVENT)
+        val frames = listOf(s.seal("head".toByteArray()), s.seal("tok1".toByteArray()), s.seal("tok2".toByteArray(), final = true))
+        assertEquals(FrameType.RESPONSE, frames[0][0].toInt()); assertEquals(FrameType.EVENT, frames[1][0].toInt()); assertEquals(FrameType.EVENT, frames[2][0].toInt())
+        val o = FrameOpener(dirKey, 9, ctx, FrameType.RESPONSE, thenType = FrameType.EVENT)
+        assertEquals("head", String(o.open(frames[0]))); assertEquals("tok1", String(o.open(frames[1]))); assertEquals("tok2", String(o.open(frames[2])))
+        o.end()
+        // the order is enforced: an event first, or a response where an event belongs, is refused
+        assertError(CloudError.BAD_FRAME) { FrameOpener(dirKey, 9, ctx, FrameType.RESPONSE, thenType = FrameType.EVENT).open(FrameSealer(dirKey, 9, ctx, FrameType.EVENT).seal(byteArrayOf(1))) }
+        val o2 = FrameOpener(dirKey, 9, ctx, FrameType.RESPONSE, thenType = FrameType.EVENT)
+        o2.open(frames[0])
+        val second = FrameSealer(dirKey, 9, ctx, FrameType.RESPONSE).also { it.seal(byteArrayOf(1)) }.seal(byteArrayOf(2)) // type 2 at counter 1
+        assertError(CloudError.BAD_FRAME) { o2.open(second) }
+        // an opener told only one type refuses the transition
+        assertError(CloudError.BAD_FRAME) { FrameOpener(dirKey, 9, ctx, FrameType.RESPONSE).also { it.open(frames[0]) }.open(frames[1]) }
+    }
+
+    @Test fun theResponseEnvelopeCarriesTheStatusAndContentTypeInsideTheSealedFrame() { // sections 6, 7, 10
+        val env = ResponseEnvelope(404, "application/json", """{"error":"nope"}""".toByteArray())
+        val frame = FrameSealer(dirKey, 3, ctx, FrameType.RESPONSE, thenType = FrameType.EVENT).seal(env.encode(), final = true)
+        val back = ResponseEnvelope.parse(FrameOpener(dirKey, 3, ctx, FrameType.RESPONSE, thenType = FrameType.EVENT).open(frame))
+        assertEquals(404, back.status); assertEquals("application/json", back.contentType); assertEquals("""{"error":"nope"}""", String(back.body))
+        // an attacker who changes the carrier's status cannot change this one; changing the sealed bytes breaks the tag
+        assertError(CloudError.BAD_FRAME) { FrameOpener(dirKey, 3, ctx, FrameType.RESPONSE, thenType = FrameType.EVENT).open(flip(frame, 14)) }
+        assertError(CloudError.MALFORMED) { ResponseEnvelope.parse(byteArrayOf(0, 5, 0, 0, 0, 0)) } // status 5 is not a status
+        assertError(CloudError.MALFORMED) { ResponseEnvelope.parse(byteArrayOf(1)) }
+    }
+
     @Test fun bulkWorksWithChaChaAndMegabyteChunks() {
         val (s, o) = bulkPair(aead = Aead.CHACHA20_POLY1305)
         val big = Crypto.random(1024 * 1024)

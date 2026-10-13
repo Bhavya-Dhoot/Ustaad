@@ -2,15 +2,6 @@ package com.swarmos.app.cloud
 
 import java.util.BitSet
 
-/** Kind of member (docs/CLOUD-PROTOCOL.md section 3.1). Only a node computes for others, lends memory or manages the list. */
-enum class MemberKind(val code: Int) {
-    NODE(1), CLIENT(2), BROWSER(3);
-
-    companion object {
-        fun of(code: Int): MemberKind? = values().firstOrNull { it.code == code }
-    }
-}
-
 /**
  * One signed entry of a cloud's member list (section 3). The wire form is `lp(body) || sig`; the id is SHA-256 of the
  * body, so two copies of an entry with different (equally valid) ECDSA signatures are the same entry.

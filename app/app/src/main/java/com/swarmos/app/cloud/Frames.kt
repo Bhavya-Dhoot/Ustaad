@@ -64,7 +64,11 @@ internal object FrameCodec {
         Crypto.open(aead, key, nonce(h.position), aad(h), frame.copyOfRange(HEADER, frame.size))
 }
 
-/** Seals the frames of one ordered stream (types 1 to 5). The last frame is marked final; nothing can be sealed after it. */
+/**
+ * Seals the frames of one ordered stream (types 1 to 5). The last frame is marked final; nothing can be sealed after it.
+ * An answer stream starts with RESPONSE and continues with EVENT under one counter: pass `type = RESPONSE,
+ * thenType = EVENT` (docs 10; Codex Frames.kt:117).
+ */
 class FrameSealer(
     directionKey: ByteArray,
     private val stream: Int,
@@ -72,12 +76,15 @@ class FrameSealer(
     private val type: Int,
     private val aead: Aead = Aead.AES_256_GCM,
     private val maxPlain: Int = FrameCodec.MAX_PLAIN,
+    private val thenType: Int = type,
 ) {
     private val key = FrameCodec.streamKey(directionKey, aead, stream, context)
     private var counter = 0L
     private var done = false
 
-    init { require(type in FrameType.REQUEST..FrameType.CONTROL && stream >= 0) { "ordered stream" } }
+    init {
+        require(type in FrameType.REQUEST..FrameType.CONTROL && thenType in FrameType.REQUEST..FrameType.CONTROL && stream >= 0) { "ordered stream" }
+    }
 
     @Synchronized fun seal(plain: ByteArray, final: Boolean = false): ByteArray {
         check(!done) { "the stream already has its final frame" }
@@ -85,7 +92,7 @@ class FrameSealer(
         check(counter < FrameCodec.MAX_COUNTER) { "stream counter exhausted" }
         val c = counter++
         if (final) done = true
-        return FrameCodec.seal(key, aead, FrameHeader(type, if (final) FrameCodec.FINAL else 0, stream, c), plain)
+        return FrameCodec.seal(key, aead, FrameHeader(if (c == 0L) type else thenType, if (final) FrameCodec.FINAL else 0, stream, c), plain)
     }
 }
 
@@ -101,6 +108,7 @@ class FrameOpener(
     private val type: Int,
     private val aead: Aead = Aead.AES_256_GCM,
     private val maxPlain: Int = FrameCodec.MAX_PLAIN,
+    private val thenType: Int = type,
 ) {
     private val key = FrameCodec.streamKey(directionKey, aead, stream, context)
     private var next = 0L
@@ -114,8 +122,9 @@ class FrameOpener(
         try {
             if (frame.size > FrameCodec.HEADER + maxPlain + FrameCodec.TAG) throw ProtocolError(CloudError.BAD_FRAME)
             val h = FrameHeader.parse(frame)
-            if (h.type != type || h.stream != stream || (h.flags and FrameCodec.FINAL.inv()) != 0) throw ProtocolError(CloudError.BAD_FRAME)
+            if (h.stream != stream || (h.flags and FrameCodec.FINAL.inv()) != 0) throw ProtocolError(CloudError.BAD_FRAME)
             if (h.position != next) throw ProtocolError(CloudError.OUT_OF_ORDER) // replayed, reordered or a frame missing before it
+            if (h.type != (if (next == 0L) type else thenType)) throw ProtocolError(CloudError.BAD_FRAME)
             val plain = FrameCodec.open(key, aead, h, frame) ?: throw ProtocolError(CloudError.BAD_FRAME)
             next++
             if (h.final) finished = true
@@ -126,9 +135,15 @@ class FrameOpener(
         }
     }
 
-    /** The carrier closed. A stream that never reached its final frame was cut: the partial data must not be used. */
+    /**
+     * The carrier closed. A stream that never reached its final frame was cut: the partial data must not be used, and the
+     * stream stays dead (a missing final frame that turns up later is not accepted; Codex Frames.kt:130).
+     */
     @Synchronized fun end() {
-        if (failed || !finished) throw ProtocolError(CloudError.TRUNCATED)
+        if (failed || !finished) {
+            failed = true
+            throw ProtocolError(CloudError.TRUNCATED)
+        }
     }
 }
 
@@ -175,7 +190,20 @@ class BulkOpener(
     private val held = TreeMap<Long, Int>() // offset to length
     private var total = -1L
 
+    private var failed = false
+
+    /** Any error kills the stream: nothing more is accepted from it (Codex Frames.kt:130). */
     @Synchronized fun open(frame: ByteArray): BulkChunk? {
+        if (failed) throw ProtocolError(CloudError.BAD_FRAME)
+        try {
+            return openChunk(frame)
+        } catch (e: ProtocolError) {
+            failed = true
+            throw e
+        }
+    }
+
+    private fun openChunk(frame: ByteArray): BulkChunk? {
         if (frame.size > FrameCodec.HEADER + maxPlain + FrameCodec.TAG) throw ProtocolError(CloudError.BAD_FRAME)
         val h = FrameHeader.parse(frame)
         if (h.type != FrameType.BULK || h.stream != stream || (h.flags and FrameCodec.FINAL.inv()) != 0) throw ProtocolError(CloudError.BAD_FRAME)
@@ -214,6 +242,27 @@ class BulkOpener(
 
     /** True when the final chunk has arrived and nothing is missing before it. */
     @Synchronized fun complete(): Boolean = total >= 0 && firstMissing() == total
+}
+
+/**
+ * The authenticated answer of an HTTP request or a channel stream (docs 6.4): the status and content type travel inside the
+ * first sealed frame, so an on-path attacker cannot keep a valid body and change its meaning (Codex sections 6, 7, 10).
+ */
+class ResponseEnvelope(val status: Int, val contentType: String, val body: ByteArray) {
+    fun encode(): ByteArray {
+        require(status in 100..599)
+        return Writer().u8(status ushr 8).u8(status and 0xFF).str(contentType).raw(body).bytes()
+    }
+
+    companion object {
+        fun parse(plain: ByteArray): ResponseEnvelope {
+            val r = Reader(plain)
+            val status = (r.u8() shl 8) or r.u8()
+            if (status !in 100..599) malformed("status")
+            val ct = r.str(256)
+            return ResponseEnvelope(status, ct, r.rest())
+        }
+    }
 }
 
 object Frames {
