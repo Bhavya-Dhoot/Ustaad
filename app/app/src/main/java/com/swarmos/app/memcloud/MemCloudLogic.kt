@@ -185,6 +185,25 @@ object MemCloudLogic {
         else -> null
     }
 
+    sealed interface AutoReplan {
+        data object Go : AutoReplan
+
+        /** Nothing is done; [why] is said in the steps and the release after the degraded wait applies as before. */
+        data class Skip(val why: String) : AutoReplan
+    }
+
+    /**
+     * Whether a degraded split re-plans by itself now: it is still DEGRADED (a Stop in between ends it), fewer than [maxTries] automatic tries were
+     * used on this split, at least one lender is [lendersUp] on the local link (the lost phone counts if it came back), and the model [fits] what is left.
+     */
+    fun autoReplan(phase: Phase, triesUsed: Int, maxTries: Int, lendersUp: Int, fits: Boolean): AutoReplan = when {
+        phase != Phase.DEGRADED -> AutoReplan.Skip("the split is $phase")
+        triesUsed >= maxTries -> AutoReplan.Skip("it has already re-planned $triesUsed times on its own")
+        lendersUp < 1 -> AutoReplan.Skip("no other phone is left on the local network")
+        !fits -> AutoReplan.Skip("the model does not fit on the phones that are left")
+        else -> AutoReplan.Go
+    }
+
     /** Buttons the screen offers in DEGRADED: re-plan needs at least one phone left besides this one. */
     fun canReplan(remainingPeers: Int): Boolean = remainingPeers >= 1
 }

@@ -206,6 +206,28 @@ class MemCloudLogicTest {
         assertTrue(MemCloudLogic.holdsPhone(MemCloudState(phase = Phase.BASELINE, released = true)))
     }
 
+    // ---- a degraded split re-plans by itself ----
+
+    private fun auto(phase: Phase = Phase.DEGRADED, tries: Int = 0, max: Int = 2, lenders: Int = 1, fits: Boolean = true) = MemCloudLogic.autoReplan(phase, tries, max, lenders, fits)
+
+    @Test fun aDegradedSplitWithALenderLeftAndRoomForTheModelReplansByItself() {
+        assertEquals(MemCloudLogic.AutoReplan.Go, auto())
+        assertEquals("the lost phone back before the wait is over is a lender left", MemCloudLogic.AutoReplan.Go, auto(lenders = 2))
+        assertEquals("the second try", MemCloudLogic.AutoReplan.Go, auto(tries = 1))
+    }
+
+    @Test fun nothingIsReplannedWhenItDoesNotFitNobodyIsLeftOrTheTriesAreUsedUp() {
+        assertTrue((auto(fits = false) as MemCloudLogic.AutoReplan.Skip).why.contains("does not fit"))
+        assertTrue((auto(lenders = 0) as MemCloudLogic.AutoReplan.Skip).why.contains("no other phone is left on the local network"))
+        assertTrue((auto(tries = 2) as MemCloudLogic.AutoReplan.Skip).why.contains("already re-planned 2 times"))
+        assertTrue("tries are counted before anything else", (auto(tries = 2, lenders = 0, fits = false) as MemCloudLogic.AutoReplan.Skip).why.contains("already re-planned"))
+        assertTrue("0 tries disables it", auto(max = 0) is MemCloudLogic.AutoReplan.Skip)
+    }
+
+    @Test fun aStopInBetweenOrAnyOtherPhaseEndsIt() {
+        for (p in Phase.entries.filter { it != Phase.DEGRADED }) assertTrue("$p", auto(phase = p) is MemCloudLogic.AutoReplan.Skip)
+    }
+
     // ---- memory is lent over the local link only ----
 
     private val wifi = LinkAddr("192.168.242.23", false, 24)

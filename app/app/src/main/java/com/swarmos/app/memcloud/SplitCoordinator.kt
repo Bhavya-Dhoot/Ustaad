@@ -79,6 +79,9 @@ class SplitCoordinator(
         val probeFailLimit: Int = 3,
         /** A split that stays DEGRADED this long with no re-plan gives this phone's own chat and embedding models back. */
         val degradedRestoreMs: Long = 120_000,
+        /** DEGRADED re-plans by itself this long after the loss when the model still fits on the phones left on the local link ([MemCloudLogic.autoReplan]); 0 tries disables it. */
+        val autoReplanMs: Long = 10_000,
+        val autoReplanMax: Int = 2,
     )
 
     companion object {
@@ -131,6 +134,10 @@ class SplitCoordinator(
 
     /** Waits [Timing.degradedRestoreMs] in DEGRADED, then restores; [degradedNote] says so in the state. */
     private var degradedJob: Job? = null
+
+    /** Waits [Timing.autoReplanMs] in DEGRADED, then re-plans when [MemCloudLogic.autoReplan] says so; [autoReplans] counts the tries of this split (a new start or Stop resets it). */
+    private var autoReplanJob: Job? = null
+    @Volatile private var autoReplans = 0
     @Volatile private var degradedNote: String? = null
 
     @Volatile private var baselinePending: String? = null
@@ -357,13 +364,18 @@ class SplitCoordinator(
         if (!MemCloudLogic.canStart(ph)) return "a split is $ph; stop it or re-plan first"
         val f = env.modelFile(req.file) ?: return "no such model file in the models folder: ${req.file}"
         val mode = if (req.mode.equals("ram", true)) SplitMode.RAM else SplitMode.EQUAL
+        autoReplans = 0
         opJob = scope.launch { onAppStart(); runLoad(f.name, req.peers, mode, req.layers, req.force) }
         null
     }
 
     /** Load again on the phones that are still online (or [peers] when given). Allowed from DEGRADED, FAILED, READY and IDLE with a file chosen. */
-    fun replan(peers: List<String> = emptyList()): String? = synchronized(lock) {
+    fun replan(peers: List<String> = emptyList()): String? = replan(peers, onlyFrom = null)
+
+    /** [onlyFrom]: re-plan only if the phase is still this one (the automatic re-plan must not outlive a Stop). */
+    private fun replan(peers: List<String>, onlyFrom: Phase?): String? = synchronized(lock) {
         val st = _state.value
+        if (onlyFrom != null && st.phase != onlyFrom) return "the split is ${st.phase}, not $onlyFrom"
         val file = st.file ?: return "nothing to re-plan"
         if (opRunning() && st.phase != Phase.LOADING) return "busy: ${st.phase.name}"
         val registry = env.peers()
@@ -388,6 +400,8 @@ class SplitCoordinator(
                 val old = synchronized(lock) { opJob }
                 old?.cancelAndJoin() // IDLE is published after the cancelled operation has finished its own clean-up, so a start right after Stop is not refused as busy
                 degradedJob?.cancel()
+                autoReplanJob?.cancel()
+                autoReplans = 0
                 degradedNote = null
                 // a teardown that throws must not leave the phase on READY, LOADING or DEGRADED: Stop always ends in IDLE
                 val problem = try { teardownAll(); null } catch (e: CancellationException) { throw e } catch (e: Exception) { e.message ?: e.toString() }
@@ -406,6 +420,7 @@ class SplitCoordinator(
         loadParser = LoadLogParser()
         probeFailures.clear()
         degradedJob?.cancel()
+        autoReplanJob?.cancel()
         degradedNote = null
         _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
@@ -860,6 +875,34 @@ class SplitCoordinator(
         cancelGeneration()
         if (ownsChat) { env.stopLocal(Role.CHAT); ownsChat = false }
         startDegradedRestore()
+        startAutoReplan()
+    }
+
+    /**
+     * A degraded split re-plans by itself, the same path as the Re-plan button: [Timing.autoReplanMs] after the loss, when [MemCloudLogic.autoReplan]
+     * says there is a lender left on the local link, the model fits on what is left, and this split has not used its tries. Otherwise the release
+     * after [Timing.degradedRestoreMs] applies as before, and the steps say why nothing was done.
+     */
+    private fun startAutoReplan() {
+        autoReplanJob?.cancel()
+        if (timing.autoReplanMax <= 0) return
+        autoReplanJob = scope.launch {
+            delay(timing.autoReplanMs)
+            val file = _state.value.file
+            val online = env.peers().filter { !it.away }.map { it.nodeId }
+            // the phones of the last plan that are still up (the lost phone too, if it came back) and on this phone's local network
+            val keep = onlinePeers(MemCloudLogic.replanPeers(participants.map { it.nodeId }, online), emptyMeansNone = true)
+            val fits = file != null && keep.isNotEmpty() && (forced || runCatching {
+                SplitPlanner.plan(withContext(Dispatchers.IO) { header(file) }, devicesFor(keep), SplitMode.EQUAL, null).fitsAll()
+            }.getOrDefault(false))
+            when (val d = MemCloudLogic.autoReplan(_state.value.phase, autoReplans, timing.autoReplanMax, keep.size, fits)) {
+                MemCloudLogic.AutoReplan.Go -> {
+                    autoReplans++ // the re-plan starts a fresh state, so there is no step to leave: the screen shows the split loading again
+                    replan(keep.map { it.nodeId }, onlyFrom = Phase.DEGRADED)
+                }
+                is MemCloudLogic.AutoReplan.Skip -> if (_state.value.phase == Phase.DEGRADED) step("Not re-planning by itself: ${d.why}")
+            }
+        }
     }
 
     /**
