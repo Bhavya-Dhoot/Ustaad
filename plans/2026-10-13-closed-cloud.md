@@ -98,7 +98,7 @@ In one sentence: a cloud is a named, closed group of devices with one identity e
 
 ### 7. Away from home
 
-- The away phone is a `client`. It reaches a home node over the transport that research 07 recommends (to be filled in), always sealed, with nothing listening on a public address. Timeouts and the heartbeat are widened for that link. If the path drops in the middle of a task the home side finishes or reallocates as it does for a local device, and the client asks again for the same job id.
+- The away phone is a `client`. Research 07 (docs/research/07-remote-access-to-a-home-cluster.md) compared an overlay the owner installs, the same overlay inside the app, a small relay, WebRTC, an onion service and iroh. Its first choice is a small relay: the home node and the away phone both dial out on port 443, the relay pairs them and forwards sealed frames it cannot read, so carrier NAT does not matter, nothing listens at home, and the owner does nothing beyond the pairing they already do. Its fallback is an overlay the owner installs (Tailscale), which needs no code beyond accepting that address. The app is built for both: every request and streamed reply is sealed end to end whatever carries it; the relay is one transport and a directly reachable address is another. The relay server is a small module in this repository that an owner can host; this plan does not deploy one. Running a relay costs about 2 to 6 dollars a month, and the research flags two questions it could not settle from primary sources (whether Cloudflare's terms allow it on Workers, and whether India's 2022 CERT-In rules would treat such a relay as a VPN service); both are the founder's to decide before a relay is offered to others. Always sealed, with nothing listening on a public address. Timeouts and the heartbeat are widened for that link. If the path drops in the middle of a task the home side finishes or reallocates as it does for a local device, and the client asks again for the same job id.
 
 ### 8. A device that leaves
 
@@ -142,7 +142,7 @@ Ledger: surveys and research delegated (bounded, checkable by reading); P1 to P9
 
 ## Open decisions, with the default this plan proceeds on
 
-- The transport for the away phone: the recommendation of research 07.
+- The transport for the away phone: sealed frames over either a relay the owner hosts or a directly reachable address (an overlay). The relay's code is built; none is deployed. Deploying one, and for whom, is the founder's decision.
 - How many copies of a stored chunk: 2.
 - Who may add or remove devices: every `node` member (a household, not an organisation). An owner-only rule can be added later.
 - A device's default storage offer: 10 % of its free space at the time of the profile, at least 1 GB, never more than half.
