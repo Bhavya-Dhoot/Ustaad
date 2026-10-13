@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hands: the driver that reads the screen and acts for a task the owner started. Turned on by the owner in system settings, never by the app. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/hands_a11y_description"
+    android:summary="@string/hands_a11y_summary"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
+    android:notificationTimeout="100" />

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only the two strings the system settings page reads for the Hands accessibility service; every other string is inline in Kotlin. -->
+    <string name="hands_a11y_summary">Lets Ustaad carry out a task you started, with a Stop button on screen while it works.</string>
+    <string name="hands_a11y_description">Ustaad Hands carries out a task that you start in Ustaad, for example open a shopping app, find an item and add it to the cart.\n\nWhat it reads: while a task runs it reads the screen of the app in front, the text, labels and buttons on it. It never reads what is typed into a password field.\n\nWhat it does: it taps, scrolls and types for you, goes back or home, and opens apps and links.\n\nWhen: only during a task that you started. A task that arrives from another app waits until you tap Run in Ustaad. While a task runs, a Stop button shows on top of the screen and in the notification.\n\nWhat it never does: it never types a password, a code or a card number, and it never pays, orders or sends a message by itself. Anything like that needs your own tap in Ustaad.\n\nWhat it reads stays on your own devices. Nothing is sent to a server.</string>
+</resources>
