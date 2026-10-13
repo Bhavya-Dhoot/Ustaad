@@ -1192,7 +1192,8 @@ class SplitCoordinatorTest {
         c = SplitCoordinator(env, scope, timing.copy(restoreRetryMs = 5_000, restoreRetryMaxMs = 60_000, restoreWait = { waits += it; delay(2) }))
         readyThenLoseC()
         awaitCall("six waits") { waits.size >= 6 }
-        assertEquals(listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L, 60_000L), waits.take(6))
+        // toList() first: take(6) on the live list returns the whole list when it had 6 at the size check, and a seventh wait can land before the copy
+        assertEquals(listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L, 60_000L), waits.toList().take(6))
         assertEquals("the record of the phone that is not answering stays", listOf("Phone C has not got its models back yet"), c.state.value.notices)
     }
 
