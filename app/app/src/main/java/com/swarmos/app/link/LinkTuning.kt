@@ -3,6 +3,7 @@ package com.swarmos.app.link
 import android.app.ActivityManager
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -108,17 +109,21 @@ object WifiLocks {
         else -> LockMode.HIGH_PERF
     }
 
+    /** WIFI_MODE_FULL_LOW_LATENCY is Android 10 (API 29); below it the lock that can be held is the high-performance one. */
+    internal fun lockModeFor(want: LockMode, sdkInt: Int): LockMode =
+        if (want == LockMode.LOW_LATENCY && sdkInt < 29) LockMode.HIGH_PERF else want
+
     private fun swarmActive(): Boolean =
         PeerLinks.peers.value.any { it.state == LinkState.ONLINE } || LinkRuntime.hosting.value != null
 
     @Synchronized
     fun reevaluate() {
         val w = wifi ?: return
-        val want = if (!running && override == null) LockMode.NONE else wanted()
+        val want = lockModeFor(if (!running && override == null) LockMode.NONE else wanted(), Build.VERSION.SDK_INT)
         if (want == _held.value) return
         release()
         if (want == LockMode.NONE) return
-        val mode = if (want == LockMode.LOW_LATENCY) WifiManager.WIFI_MODE_FULL_LOW_LATENCY else WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        val mode = if (want == LockMode.LOW_LATENCY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) WifiManager.WIFI_MODE_FULL_LOW_LATENCY else WifiManager.WIFI_MODE_FULL_HIGH_PERF
         lock = w.createWifiLock(mode, "swarmos:wifi").apply { setReferenceCounted(false); acquire() }
         _held.value = want
         Log.i(TAG, "wifi lock now $want")

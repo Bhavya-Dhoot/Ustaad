@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Light only. Light parent, light system bars, and no forced dark. -->
-    <style name="Theme.SwarmOS" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Light only. Light parent, light system bars, and no forced dark. The items that need a newer Android are layered by version:
+         windowLightNavigationBar from 27 (values-v27), the dark and contrast items from 29 (values-v29); each Base.Theme.SwarmOS.Vnn
+         adds to the one below it, and the Base.Theme.SwarmOS of the highest folder that applies is the theme's parent. -->
+    <style name="Base.Theme.SwarmOS.V26" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/whiteboard</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:forceDarkAllowed">false</item>
-        <item name="android:enforceNavigationBarContrast">false</item>
-        <item name="android:enforceStatusBarContrast">false</item>
     </style>
+
+    <style name="Base.Theme.SwarmOS" parent="Base.Theme.SwarmOS.V26" />
+
+    <style name="Theme.SwarmOS" parent="Base.Theme.SwarmOS" />
 </resources>

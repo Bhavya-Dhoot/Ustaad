@@ -1,13 +1,14 @@
 package com.swarmos.app.pdu
 
-import android.Manifest
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import com.swarmos.app.shell.photoLibraryPermission
 import kotlinx.serialization.Serializable
 import java.io.File
 
@@ -78,15 +79,20 @@ object PduIndexer {
     /**
      * MediaStore images, optionally only those whose RELATIVE_PATH starts with [relPrefix] (e.g. "Pictures/UstaadDemo"). The listing
      * succeeded when a cursor came back and the photo permission is still held: without it MediaStore answers with the app's own
-     * images only, which looks like a library that lost its pictures.
+     * images only, which looks like a library that lost its pictures. The folder of an image is MediaStore's RELATIVE_PATH from Android
+     * 10 (API 29); on Android 8 and 9 that column does not exist and the folder is cut from the file path (DATA).
      */
+    @Suppress("DEPRECATION") // DATA is deprecated from API 29 and is used only below it
     fun listPhotos(ctx: Context, relPrefix: String?, limit: Int?): Listing {
+        val relative = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        val folderColumn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) MediaStore.Images.Media.RELATIVE_PATH else MediaStore.Images.Media.DATA
+        val storageRoot = Environment.getExternalStorageDirectory().path
         val proj = arrayOf(
             MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_TAKEN,
-            MediaStore.Images.Media.DATE_MODIFIED, MediaStore.Images.Media.RELATIVE_PATH,
+            MediaStore.Images.Media.DATE_MODIFIED, folderColumn,
         )
-        val sel = relPrefix?.let { "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?" }
-        val args = relPrefix?.let { arrayOf(it.trimEnd('/') + "%") }
+        val sel = relPrefix?.let { "$folderColumn LIKE ?" }
+        val args = relPrefix?.let { arrayOf(photoFolderLike(it, relative, storageRoot)) }
         val out = ArrayList<DocRef>()
         var opened = false
         ctx.contentResolver.query(
@@ -99,11 +105,24 @@ object PduIndexer {
                 val taken = c.getLong(2)
                 out += DocRef(
                     uri, c.getString(1) ?: "image-${c.getLong(0)}", "photo",
-                    (c.getString(4) ?: "Pictures/").trim('/'), modified, if (taken > 0) taken else modified,
+                    photoFolderOf(c.getString(4), relative, storageRoot), modified, if (taken > 0) taken else modified,
                 )
             }
         }
-        return Listing(out, opened && ctx.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED)
+        return Listing(out, opened && ctx.checkSelfPermission(photoLibraryPermission(Build.VERSION.SDK_INT)) == PackageManager.PERMISSION_GRANTED)
+    }
+
+    /** The LIKE argument that matches the images under [relPrefix] ("Pictures/SwarmDemo") in the folder column: a folder path, or a full file path below [storageRoot]. */
+    internal fun photoFolderLike(relPrefix: String, relative: Boolean, storageRoot: String): String =
+        (if (relative) "" else storageRoot.trimEnd('/') + "/") + relPrefix.trimEnd('/') + "%"
+
+    /**
+     * The folder of an image ("Pictures/SwarmDemo") from the value of the folder column: RELATIVE_PATH as it is, or the directory of the
+     * file path with the [storageRoot] cut off. A missing value is "Pictures".
+     */
+    internal fun photoFolderOf(raw: String?, relative: Boolean, storageRoot: String): String {
+        if (raw == null) return "Pictures"
+        return (if (relative) raw else raw.substringBeforeLast('/', "").removePrefix(storageRoot.trimEnd('/'))).trim('/')
     }
 
     /**

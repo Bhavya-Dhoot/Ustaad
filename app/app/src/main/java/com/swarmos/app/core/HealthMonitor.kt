@@ -9,6 +9,7 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Build
 import android.os.PowerManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -110,7 +111,6 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
 
     @Suppress("DEPRECATION")
     private fun sample(): NodeHealth {
-        val pm = ctx.getSystemService(PowerManager::class.java)
         val am = ctx.getSystemService(ActivityManager::class.java)
         val mem = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
 
@@ -122,10 +122,12 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
         val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
 
         val link = readLink()
+        val thermal = thermalReading(ctx) { bat }
 
         return NodeHealth(
             nodeId = selfId(),
-            thermalStatus = pm.currentThermalStatus,
+            thermalStatus = thermal.status,
+            thermalDerived = thermal.derived,
             batteryPct = pct,
             charging = charging,
             ramAvailMb = mem.availMem / (1024 * 1024),
@@ -139,7 +141,9 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
      * Wi-Fi link seen by this app, or null when there is none. Primary source: the transportInfo of every Wi-Fi
      * network's NetworkCapabilities (standard, PHY speed and frequency are not location-gated there). A phone with a
      * second Wi-Fi interface can answer WifiManager.connectionInfo with the idle one (speed -1), which is why that
-     * call is only the last fallback and the first reading with a real speed wins.
+     * call is only the last fallback and the first reading with a real speed wins. Before Android 10 (API 29) there is no transportInfo
+     * and that call is the only source; before Android 11 (API 30) a reading has no Wi-Fi standard (0, unknown) and the label falls back
+     * to the band.
      */
     @Suppress("DEPRECATION")
     private fun readLink(): LinkReading? {
@@ -152,11 +156,11 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
                 val caps = cm.getNetworkCapabilities(n) ?: continue
                 if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue
                 wifiNetworkSeen = true
-                (caps.transportInfo as? WifiInfo)?.let { wifi += it }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) (caps.transportInfo as? WifiInfo)?.let { wifi += it }
             }
         }
         ctx.getSystemService(WifiManager::class.java)?.connectionInfo?.let { wifi += it }
-        val readings = wifi.map { LinkReading(it.wifiStandard, it.linkSpeed, it.frequency) }
+        val readings = wifi.map { LinkReading(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) it.wifiStandard else 0, it.linkSpeed, it.frequency) }
         return pickLink(readings) ?: if (wifiNetworkSeen) LinkReading(0, -1, -1) else null
     }
 
@@ -165,6 +169,23 @@ class HealthMonitor(private val ctx: Context, private val selfId: () -> String) 
 
     companion object {
         const val REFRESH_MS = 2000L
+
+        /**
+         * The thermal status now: the system's (PowerManager, Android 10 and up, as before) or, on Android 8 and 9 (API 26 to 28), the stand-in derived
+         * from the battery temperature ([BatteryHeat]) and marked derived. [battery] gives the battery broadcast and is called only on
+         * the older versions.
+         */
+        fun thermalReading(ctx: Context, battery: () -> Intent?): ThermalReading =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ThermalReading(ctx.getSystemService(PowerManager::class.java).currentThermalStatus, derived = false)
+            } else {
+                val extra = battery()?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
+                ThermalReading(BatteryHeat.statusFor(BatteryHeat.tenthsOrNull(extra)), derived = true)
+            }
+
+        /** [thermalReading] for a caller that holds no battery broadcast (reads the sticky one itself, on the older versions only). */
+        fun thermalNow(ctx: Context): ThermalReading =
+            thermalReading(ctx) { ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) }
 
         fun standardName(s: Int): String? = when (s) {
             1 -> "11a/b/g"

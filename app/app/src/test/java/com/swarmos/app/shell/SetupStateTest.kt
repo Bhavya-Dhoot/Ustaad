@@ -60,6 +60,66 @@ class SetupStateTest {
         assertEquals(4, perms.size)
     }
 
+    private val location = "android.permission.ACCESS_FINE_LOCATION"
+    private val bluetooth = listOf("android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_ADVERTISE", "android.permission.BLUETOOTH_CONNECT")
+
+    /** The whole "which permissions on which version" choice for one Android version, as the three lists the screens ask for. */
+    private fun asked(sdk: Int) = Triple(nearbyPermissions(sdk), notificationPermission(sdk), photoLibraryPermission(sdk))
+
+    @Test
+    fun android8And9AskForLocationOnlyAndReadPhotosWithExternalStorage() {
+        for (sdk in 26..28) {
+            assertEquals("sdk $sdk", Triple(listOf(location), null, "android.permission.READ_EXTERNAL_STORAGE"), asked(sdk))
+        }
+    }
+
+    @Test
+    fun android10AsksForTheSameAsAndroid9() {
+        assertEquals(Triple(listOf(location), null, "android.permission.READ_EXTERNAL_STORAGE"), asked(29))
+    }
+
+    @Test
+    fun android11AsksForTheSameAsAndroid10() {
+        // API 30: the Bluetooth permissions of Android 12 do not exist yet, so a request for them could never be granted
+        assertEquals(Triple(listOf(location), null, "android.permission.READ_EXTERNAL_STORAGE"), asked(30))
+    }
+
+    @Test
+    fun android12AddsTheBluetoothTrioButNotNearbyWifiOrNotifications() {
+        for (sdk in 31..32) {
+            assertEquals("sdk $sdk", Triple(listOf(location) + bluetooth, null, "android.permission.READ_EXTERNAL_STORAGE"), asked(sdk))
+        }
+    }
+
+    @Test
+    fun android13AndUpAskForNearbyWifiNotificationsAndMediaImages() {
+        for (sdk in listOf(33, 34, 35, 36)) {
+            assertEquals(
+                "sdk $sdk",
+                Triple(
+                    listOf("android.permission.NEARBY_WIFI_DEVICES", location) + bluetooth,
+                    "android.permission.POST_NOTIFICATIONS",
+                    "android.permission.READ_MEDIA_IMAGES",
+                ),
+                asked(sdk),
+            )
+        }
+    }
+
+    @Test
+    fun noVersionAsksForAPermissionThatDoesNotExistThere() {
+        // a permission unknown to the system can never be granted, which would leave the setup row open forever
+        val since = mapOf(
+            "android.permission.NEARBY_WIFI_DEVICES" to 33, "android.permission.POST_NOTIFICATIONS" to 33,
+            "android.permission.READ_MEDIA_IMAGES" to 33, "android.permission.BLUETOOTH_SCAN" to 31,
+            "android.permission.BLUETOOTH_ADVERTISE" to 31, "android.permission.BLUETOOTH_CONNECT" to 31,
+        )
+        for (sdk in 26..36) {
+            val (nearby, notifications, photos) = asked(sdk)
+            for (p in nearby + listOfNotNull(notifications, photos)) assertTrue("$p on sdk $sdk", sdk >= (since[p] ?: 0))
+        }
+    }
+
     @Test
     fun cameraAndPhotosAreNotRequestedInSetup() {
         val perms = nearbyPermissions(36)

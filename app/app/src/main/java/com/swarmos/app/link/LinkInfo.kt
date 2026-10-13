@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiManager
+import android.os.Build
 import com.swarmos.app.core.HealthMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,10 +55,10 @@ object LinkInfo {
         return LinkDesc(
             iface = local.ifName,
             localIp = local.address,
-            standard = if (connected) HealthMonitor.standardName(wi!!.wifiStandard) else null,
+            standard = if (connected && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HealthMonitor.standardName(wi!!.wifiStandard) else null,
             phyMbps = if (connected) wi!!.linkSpeed else null,
-            txMbps = if (connected) wi!!.txLinkSpeedMbps else null,
-            rxMbps = if (connected) wi!!.rxLinkSpeedMbps else null,
+            txMbps = if (connected && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) wi!!.txLinkSpeedMbps else null,
+            rxMbps = if (connected && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) wi!!.rxLinkSpeedMbps else null,
             frequencyMhz = if (connected) wi!!.frequency else null,
             band = if (connected) bandOf(wi!!.frequency) else null,
             rssi = if (connected) wi!!.rssi else null,

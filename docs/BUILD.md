@@ -80,6 +80,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://192.168.242.76:8787/v1/link/pair
 
 Replace the port with `8847` when the demo was built with `-PportOffset=60`.
 
+## Older phones (minSdk 26, Android 8.0)
+
+The model server is built for arm64 only, so a 32-bit phone cannot run a model and cannot install today's APK at all (no matching ABI); a 64-bit phone on Android 8 to 11 installs and joins the swarm, and takes the part its memory allows (a client that stores, searches and asks, or one that also lends). What degrades there: the system's thermal status needs Android 10, so on Android 8 and 9 a stand-in is derived from the battery temperature (`core/BatteryHeat.kt`, fitted to the three iQOO 15 phones, not to an old one) and the health report carries `thermalDerived: true`; the chip is the board name, not a chip model (needs Android 12); the Wi-Fi standard shows as the band (needs Android 11); Wi-Fi Direct groups with a fixed name need Android 10, so below it hosting uses the current Wi-Fi; photo text reading uses BitmapFactory below Android 9; permissions are asked differently (`shell/SetupState.kt`: location only below Android 12, plus the three Bluetooth permissions from 12, plus nearby Wi-Fi, notifications and media images from 13, the storage-read permission instead of media images below 13). None of this has run on an old phone: it is held by the lint check (`NewApi`), the build and the unit tests only.
+
 ## Model server binaries (llama.cpp)
 
 `libllama-server.so` (CPU) is `native/build-llama-android.sh -v i8mm` and `libllama-server-gpu.so` (OpenCL) is `-v opencl`, both from llama.cpp v0.6.0 with `native/patches/server-no-checkpoint-without-cache.patch` applied (`git apply` it inside `third_party/llama.cpp`; the tree holds no other patch, `rpc-env-nagle.patch` is for one benchmark only). Strip with `native/package-llama-android.sh <build dir> <out dir>` and copy only the server file into `app/app/src/main/jniLibs/arm64-v8a/` and `native/prebuilt/`. Without the patch these two commands reproduce the previously shipped files byte for byte.

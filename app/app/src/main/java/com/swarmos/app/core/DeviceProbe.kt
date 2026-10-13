@@ -87,7 +87,8 @@ object DeviceProbe {
             cores = cpuDirs.size.takeIf { it > 0 } ?: Runtime.getRuntime().availableProcessors(),
             // a partly readable list would under-count the fast cores: use all of it or none of it
             coreMaxKhz = if (freqs.size == cpuDirs.size) freqs else emptyList(),
-            chip = Build.SOC_MODEL.takeIf { it.isNotBlank() && it != Build.UNKNOWN } ?: Build.HARDWARE,
+            // Build.SOC_MODEL is Android 12 (API 31); below it the board name stands in (a platform code such as "qcom", not a chip model)
+            chip = DeviceProfile.chipName(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else null, Build.HARDWARE),
             abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
             osLevel = Build.VERSION.SDK_INT,
             freeStorageMb = freeStorageMb(ModelStore.modelsDir().path) ?: 0L,

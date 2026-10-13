@@ -1,5 +1,8 @@
 package com.swarmos.app.pdu
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Environment
 import android.os.SystemClock
 import com.swarmos.app.AppGraph
@@ -421,12 +424,17 @@ object PduEngine {
             var ok = true
             if (req.photos) PduIndexer.listPhotos(ctx, req.relPrefix, req.limit).let { out += it.refs; ok = ok && it.succeeded }
             req.dir?.let { d ->
-                check(Environment.isExternalStorageManager()) { "all-files access is not granted to this app" }
+                check(allFilesAccess()) { "all-files access is not granted to this app" }
                 PduIndexer.listDir(File(d)).let { out += it.refs; ok = ok && it.succeeded }
             }
             Listing(out, ok)
         }
     }
+
+    /** Whether the app may read any folder: the all-files access from Android 11 (API 30); before it the storage read permission covers it. */
+    private fun allFilesAccess(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager()
+        else AppGraph.appContext.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
 
     private fun photosRoot(relPrefix: String?) = IndexRoot(
         android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI.toString().trimEnd('/') + "/",

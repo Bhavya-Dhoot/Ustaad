@@ -35,6 +35,8 @@ data class NodeHealth(
     val lastDecodeTokPerSec: Double?,
     val linkStandard: String?,
     val linkSpeedMbps: Int?,
+    /** True when [thermalStatus] was derived from the battery temperature (Android 8 and 9: no system status, see [BatteryHeat]), not read from the system. */
+    val thermalDerived: Boolean = false,
 )
 
 /** The one Json configuration used for node API traffic and the audit log. */

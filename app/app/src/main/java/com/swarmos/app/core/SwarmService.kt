@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
@@ -74,9 +75,11 @@ class SwarmService : Service() {
             }
             return START_NOT_STICKY
         }
-        // must be called within seconds of startForegroundService; it needs nothing from AppGraph
+        // must be called within seconds of startForegroundService; it needs nothing from AppGraph. The service type exists from Android 10
+        // (API 29); below it the call takes none (the manifest's foregroundServiceType is ignored there as well).
         ServiceCompat.startForeground(
-            this, NOTIFICATION_ID, buildNotification("Starting Ustaad."), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+            this, NOTIFICATION_ID, buildNotification("Starting Ustaad."),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0,
         )
         _running.value = true
         tornDown.set(false)

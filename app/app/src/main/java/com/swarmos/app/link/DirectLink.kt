@@ -7,6 +7,7 @@ import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
+import android.os.Build
 import android.os.Looper
 import android.util.Log
 import com.swarmos.app.AppGraph
@@ -51,6 +52,9 @@ data class DirectState(
 data class StoredDirect(val role: String, val ssid: String, val pass: String)
 
 class P2pException(val reason: Int, msg: String) : RuntimeException(msg)
+
+/** A group by name and passphrase (WifiP2pConfig.Builder, createGroup with a config) is Android 10 (API 29); below it the access point carries the traffic. */
+private const val NEEDS_ANDROID_10 = "Wi-Fi Direct groups need Android 10 or newer; use the current Wi-Fi."
 
 /**
  * App-created Wi-Fi Direct group, no dialogs: the host makes an autonomous group on 5 GHz with a known
@@ -136,6 +140,7 @@ object DirectLink {
      * outcome is in [DirectState.frequencyMhz] next to [DirectState.requestedMhz].
      */
     suspend fun host(creds: P2pCreds? = null, freqMhz: Int? = null): P2pCreds = lock.withLock {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) throw P2pException(-1, NEEDS_ANDROID_10)
         val ctx = AppGraph.appContext
         val mgr = manager(ctx)
         val ch = channel(ctx, mgr)
@@ -200,6 +205,7 @@ object DirectLink {
 
     /** Join a group by credentials. Returns the group owner address. */
     suspend fun join(creds: P2pCreds): String = lock.withLock {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) throw P2pException(-1, NEEDS_ANDROID_10)
         val ctx = AppGraph.appContext
         val mgr = manager(ctx)
         val ch = channel(ctx, mgr)

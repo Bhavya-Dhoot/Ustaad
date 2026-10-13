@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Base.Theme.SwarmOS.V29" parent="Base.Theme.SwarmOS.V27">
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+    </style>
+
+    <style name="Base.Theme.SwarmOS" parent="Base.Theme.SwarmOS.V29" />
+</resources>

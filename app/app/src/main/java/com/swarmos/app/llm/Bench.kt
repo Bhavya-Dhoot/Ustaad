@@ -93,9 +93,8 @@ object Bench {
             null
         }
 
-    /** Live thermal status straight from PowerManager (not the 2 s sample). */
-    fun thermalStatusNow(): Int =
-        AppGraph.appContext.getSystemService(android.os.PowerManager::class.java).currentThermalStatus
+    /** Live thermal status straight from PowerManager (not the 2 s sample); on Android 8 and 9 the stand-in from the battery temperature. */
+    fun thermalStatusNow(): Int = HealthMonitor.thermalNow(AppGraph.appContext).status
 
     fun blockReason(): String? = blockReasonFor(thermalStatusNow())
 

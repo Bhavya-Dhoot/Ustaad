@@ -1,9 +1,9 @@
 package com.swarmos.app.pdu
 
-import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -41,6 +41,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swarmos.app.AppGraph
 import com.swarmos.app.kb.KbPage
+import com.swarmos.app.shell.photoLibraryPermission
 import com.swarmos.app.ui.Hairline
 import com.swarmos.app.ui.HeroMetric
 import com.swarmos.app.ui.InkProgress
@@ -173,9 +174,9 @@ private fun LibraryPage(go: (String) -> Unit) {
             SectionTitle("Sources")
             if (counts.chunks == 0 && !progress.running) Note("nothing indexed yet, tap Index on Photos", rotation = -1.5f)
             SourceRow(SwarmIcon.Photo, "Photos", "${counts.photos} with text" + if (counts.skipped > 0) ", ${counts.skipped} skipped" else "", "Index", canIndex) {
-                if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED) {
+                if (ContextCompat.checkSelfPermission(ctx, photoLibraryPermission(Build.VERSION.SDK_INT)) == PackageManager.PERMISSION_GRANTED) {
                     PduEngine.scope.launch { PduEngine.indexPhotos() }
-                } else photoPermission.launch(Manifest.permission.READ_MEDIA_IMAGES)
+                } else photoPermission.launch(photoLibraryPermission(Build.VERSION.SDK_INT))
             }
             SourceRow(SwarmIcon.Folder, "Documents", "${counts.documents} files", "Pick folder", canIndex) { pickTree.launch(null) }
             for (t in trees) {
