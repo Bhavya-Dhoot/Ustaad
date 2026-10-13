@@ -35,7 +35,7 @@ class TokenSessionTest {
 
         /** hello, welcome, both sessions */
         fun open(now: Long = T0, c: TokenClient = client()): Session {
-            val started = c.start()
+            val started = c.start(now)
             val welcome = issuer.hello(started.hello, now, state)
             return c.finish(started, welcome, now)
         }
@@ -74,7 +74,7 @@ class TokenSessionTest {
     @Test fun theKeysFollowTheDocumentAndNeedOnlyHmacHkdfAndAesGcm() { // implementable in plain JavaScript
         val r = Rig()
         val c = r.client()
-        val started = c.start()
+        val started = c.start(T0)
         val welcome = r.issuer.hello(started.hello, T0, r.state)
         val s = c.finish(started, welcome, T0)
         // recompute everything with nothing but javax.crypto.Mac and Cipher, as a page in a browser would
@@ -102,7 +102,7 @@ class TokenSessionTest {
 
     @Test fun theClientChecksThatTheIssuerHoldsTheKey() {
         val r = Rig()
-        val started = r.client().start()
+        val started = r.client().start(T0)
         val welcome = r.issuer.hello(started.hello, T0, r.state)
         assertError(CloudError.BAD_MAC) { r.client(Crypto.random(32)).finish(started, welcome, T0) } // a client with another key
         val forged = welcome.copyOf().also { it[5] = (it[5].toInt() xor 1).toByte() }
@@ -121,7 +121,7 @@ class TokenSessionTest {
         val verifier2 = RequestVerifier(store2, issuer2, { r.issuerPeer.chain.state() }, ReplayGuard(), T0 + 1)
         assertError(CloudError.UNKNOWN_SESSION) { verifier2.verify(q, T0 + 2) } // the session is gone
         // the same hello gives different keys
-        val started = r.client().start()
+        val started = r.client().start(T0)
         val w1 = r.issuer.hello(started.hello, T0, r.state)
         val w2 = issuer2.hello(started.hello, T0, r.state)
         val sameHello = TokenClient.Started(started.hello, started.cn) // a finish is single use, so the second issuer's Welcome gets a copy of the hello
@@ -160,7 +160,7 @@ class TokenSessionTest {
         val r = Rig()
         val established = List(4) { i -> r.open(T0).also { r.verifier.verify(r.request(it, "e-$i", "{}"), T0) } }
         assertEquals(4, r.store.size) // the quota of four per client is full
-        repeat(60) { i -> r.issuer.hello(r.client().start().hello, T0 + i, r.state, source = "10.0.${i / 250}.${i % 250}") }
+        repeat(60) { i -> r.issuer.hello(r.client().start(T0 + i).hello, T0 + i, r.state, source = "10.0.${i / 250}.${i % 250}") }
         // the unproven hellos live in a table of their own: at most four of this client, the oldest dropped
         assertEquals(4, r.issuer.pendingCount)
         assertEquals(4, r.store.size)
@@ -171,10 +171,10 @@ class TokenSessionTest {
         val r = Rig()
         val small = TokenIssuer(r.issuerPeer.id, maxPending = 3, maxPendingPerClient = 10, pendingMs = 5_000L)
         small.restore(Hex.of(r.material.keyId), r.material.key)
-        repeat(3) { small.hello(r.client().start().hello, T0 + it, r.state, source = "10.0.0.$it") }
+        repeat(3) { small.hello(r.client().start(T0 + it).hello, T0 + it, r.state, source = "10.0.0.$it") }
         assertEquals(3, small.pendingCount)
-        assertError(CloudError.BUSY) { small.hello(r.client().start().hello, T0 + 10, r.state, source = "10.0.0.9") }
-        small.hello(r.client().start().hello, T0 + 6_000, r.state, source = "10.0.0.9") // the first three expired
+        assertError(CloudError.BUSY) { small.hello(r.client().start(T0 + 10).hello, T0 + 10, r.state, source = "10.0.0.9") }
+        small.hello(r.client().start(T0 + 6_000).hello, T0 + 6_000, r.state, source = "10.0.0.9") // the first three expired
         assertEquals(1, small.pendingCount)
     }
 
@@ -182,10 +182,10 @@ class TokenSessionTest {
         val r = Rig()
         val few = TokenIssuer(r.issuerPeer.id, maxHellosPerMinutePerSource = 3, maxAddressRecords = 8)
         few.restore(Hex.of(r.material.keyId), r.material.key)
-        repeat(8) { few.hello(r.client().start().hello, T0 + it, r.state, source = "10.0.0.$it") }
+        repeat(8) { few.hello(r.client().start(T0 + it).hello, T0 + it, r.state, source = "10.0.0.$it") }
         assertEquals(8, few.addressRecords)
-        assertError(CloudError.BUSY) { few.hello(r.client().start().hello, T0 + 10, r.state, source = "10.0.1.1") } // a ninth address while all are live
-        few.hello(r.client().start().hello, T0 + 61_000, r.state, source = "10.0.1.1") // a minute later the old records are gone
+        assertError(CloudError.BUSY) { few.hello(r.client().start(T0 + 10).hello, T0 + 10, r.state, source = "10.0.1.1") } // a ninth address while all are live
+        few.hello(r.client().start(T0 + 61_000).hello, T0 + 61_000, r.state, source = "10.0.1.1") // a minute later the old records are gone
         assertEquals(1, few.addressRecords)
     }
 
@@ -200,9 +200,12 @@ class TokenSessionTest {
     @Test fun theClientFinishesAHelloOnceAndASecondWelcomeNeverGivesASecondSession() { // Codex TokenSession.kt:114
         val r = Rig()
         val c = r.client()
-        val started = c.start()
+        val started = c.start(T0)
         val w1 = r.issuer.hello(started.hello, T0, r.state)
-        val w2 = r.issuer.hello(started.hello, T0, r.state) // the same hello answered twice: another server nonce
+        // the same proven hello answered by a second issuer (the same key after a restart): another server nonce and boot nonce
+        val issuer2 = TokenIssuer(r.issuerPeer.id)
+        issuer2.restore(Hex.of(r.material.keyId), r.material.key)
+        val w2 = issuer2.hello(started.hello, T0, r.state)
         assertFalse(w1.contentEquals(w2))
         val s1 = c.finish(started, w1, T0)
         s1.nextStreamNo(); s1.nextStreamNo()
@@ -211,7 +214,7 @@ class TokenSessionTest {
         assertError(CloudError.BAD_MAC) { c.finish(started, w2, T0 + 6) } // any other Welcome for this hello: refused
         assertSame(s1, c.finish(started, w1, T0 + 7))
         // a Welcome made for another hello never fits
-        val other = c.start()
+        val other = c.start(T0)
         assertError(CloudError.BAD_MAC) { c.finish(other, w1, T0) }
     }
 
@@ -235,7 +238,7 @@ class TokenSessionTest {
         r.verifier.verify(r.request(s, "a", "{}"), T0)
         r.cloud.remove(r.issuer.memberId(r.material.keyId)); r.cloud.copyTo(r.issuerPeer)
         assertError(CloudError.UNKNOWN_SESSION) { r.verifier.verify(r.request(s, "b", "{}"), T0) }
-        assertError(CloudError.UNKNOWN_KEY) { r.issuer.hello(r.client().start().hello, T0, r.state) }
+        assertError(CloudError.UNKNOWN_KEY) { r.issuer.hello(r.client().start(T0).hello, T0, r.state) }
     }
 
     @Test fun helloIsBudgetedAndAnUnknownKeyIdIsRefused() {
@@ -243,10 +246,10 @@ class TokenSessionTest {
         val c = r.client()
         val limited = TokenIssuer(r.issuerPeer.id, maxHellosPerMinutePerSource = 3)
         limited.restore(Hex.of(r.material.keyId), r.material.key)
-        repeat(3) { limited.hello(c.start().hello, T0 + it, r.state, source = "10.0.0.5") }
-        assertError(CloudError.BUSY) { limited.hello(c.start().hello, T0 + 4, r.state, source = "10.0.0.5") }
-        limited.hello(c.start().hello, T0 + 5, r.state, source = "10.0.0.6") // another address
-        assertError(CloudError.UNKNOWN_KEY) { r.issuer.hello(TokenProtocol.hello(Crypto.random(16), Crypto.random(32)), T0, r.state) }
+        repeat(3) { limited.hello(c.start(T0 + it).hello, T0 + it, r.state, source = "10.0.0.5") }
+        assertError(CloudError.BUSY) { limited.hello(c.start(T0 + 4).hello, T0 + 4, r.state, source = "10.0.0.5") }
+        limited.hello(c.start(T0 + 5).hello, T0 + 5, r.state, source = "10.0.0.6") // another address
+        assertError(CloudError.UNKNOWN_KEY) { r.issuer.hello(TokenProtocol.hello(Crypto.random(32), Crypto.random(16), Crypto.random(32), T0), T0, r.state) }
         assertError(CloudError.MALFORMED) { r.issuer.hello(ByteArray(5), T0, r.state) }
     }
 
@@ -258,5 +261,51 @@ class TokenSessionTest {
         assertTrue(Permissions.allowed(MemberKind.CLIENT, Action.SUBMIT_TASK, local = true, sealed = false, loopback = true))
         assertTrue(Permissions.allowed(MemberKind.BROWSER, Action.USE_FILES, local = false, sealed = false, loopback = true))
         assertFalse(Permissions.allowed(MemberKind.CLIENT, Action.LEND_MEMORY, local = true, sealed = false, loopback = true)) // still the table
+    }
+
+    @Test fun aStrangerWhoKnowsOnlyTheKeyIdCanNeitherEvictNorFillNorReplayAnything() { // Codex TokenSession.kt:112
+        val r = Rig()
+        val c = r.client()
+        // the honest client starts and gets its Welcome, but has not sent its first request yet
+        val started = c.start(T0)
+        val welcome = r.issuer.hello(started.hello, T0, r.state, source = "10.0.0.1")
+        assertEquals(1, r.issuer.pendingCount)
+        // a stranger knows the key id (it is in the public member list) and sends hellos without the key: all refused, nothing kept
+        repeat(30) { i ->
+            val forged = TokenProtocol.hello(Crypto.random(32), r.material.keyId, Crypto.random(32), T0 + i)
+            assertError(CloudError.BAD_MAC) { r.issuer.hello(forged, T0 + i, r.state, source = "10.9.${i / 250}.${i % 250}") }
+        }
+        assertEquals(1, r.issuer.pendingCount)
+        // the honest hello captured on the wire and sent again: a copy, refused, nothing added; and later it is out of the window
+        assertError(CloudError.REPLAYED) { r.issuer.hello(started.hello, T0 + 1, r.state, source = "10.9.9.9") }
+        assertError(CloudError.SKEW) { r.issuer.hello(started.hello, T0 + 31_000, r.state, source = "10.9.9.9") }
+        assertEquals(1, r.issuer.pendingCount)
+        // so the honest first request still finds its session
+        val s = c.finish(started, welcome, T0)
+        assertEquals("{}", String(r.verifier.verify(r.request(s, "first", "{}"), T0 + 5).body))
+        assertEquals(1, r.store.size)
+    }
+
+    @Test fun aHelloOutsideTheTimeWindowOrWithoutTheRightProofIsRefusedBeforeAnythingIsLookedAt() {
+        val r = Rig()
+        val c = r.client()
+        assertError(CloudError.SKEW) { r.issuer.hello(c.start(T0 - 31_000).hello, T0, r.state) }
+        assertError(CloudError.SKEW) { r.issuer.hello(c.start(T0 + 31_000).hello, T0, r.state) }
+        val h = c.start(T0).hello
+        assertError(CloudError.BAD_MAC) { r.issuer.hello(h.copyOf().also { it[20] = (it[20].toInt() xor 1).toByte() }, T0, r.state) } // cn changed
+        assertError(CloudError.BAD_MAC) { r.issuer.hello(h.copyOf().also { it[h.size - 1] = (it[h.size - 1].toInt() xor 1).toByte() }, T0, r.state) } // mac changed
+        assertError(CloudError.BAD_MAC) { r.issuer.hello(r.client(Crypto.random(32)).start(T0).hello, T0, r.state) } // another key
+        assertEquals(0, r.issuer.pendingCount)
+        r.issuer.hello(h, T0, r.state) // the right one still works
+        assertEquals(1, r.issuer.pendingCount)
+    }
+
+    @Test fun theTableOfSeenHellosIsBoundedAndItsRecordsExpire() {
+        val r = Rig()
+        val small = TokenIssuer(r.issuerPeer.id, maxSeenHellos = 3, maxPendingPerClient = 10)
+        small.restore(Hex.of(r.material.keyId), r.material.key)
+        repeat(3) { small.hello(r.client().start(T0 + it).hello, T0 + it, r.state, source = "10.0.0.$it") }
+        assertError(CloudError.BUSY) { small.hello(r.client().start(T0 + 5).hello, T0 + 5, r.state, source = "10.0.0.7") }
+        small.hello(r.client().start(T0 + 61_000).hello, T0 + 61_000, r.state, source = "10.0.0.7") // a minute later the old records are gone
     }
 }

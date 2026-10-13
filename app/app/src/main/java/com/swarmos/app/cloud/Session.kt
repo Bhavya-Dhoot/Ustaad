@@ -65,10 +65,10 @@ class Session internal constructor(
 }
 
 /**
- * The three-flight exchange (section 5): Init (initiator), Reply (responder, signed), Finish (initiator, signed). Both
- * signatures cover the same transcript. The peer must be a current member of kind node or client; the key that is checked
- * is the one in the chain, never one in a message. The responder spends no key generation and no signature before it has
- * reserved a pending slot and passed the budgets (5.2).
+ * The three-flight exchange (section 5): Init (initiator, signed), Reply (responder, signed), Finish (initiator, signed). Both
+ * later signatures cover the same transcript. The peer must be a current member of kind node or client; the key that is checked
+ * is the one in the chain, never one in a message. The Init carries the initiator's signature too, so the responder knows the
+ * sender holds the key before it spends a nonce record, a resync place, a pending slot, a key generation or a signature (5.2).
  */
 class SessionHandshake(
     private val cloudId: ByteArray,
@@ -83,8 +83,11 @@ class SessionHandshake(
     private val maxPending: Int = 64,
     private val maxPendingPerSource: Int = 4,
     private val maxInitsPerMinutePerSource: Int = 30,
-    private val maxResyncPerMinute: Int = 6,
-    private val maxResyncPerMinutePerSource: Int = 2,
+    maxResyncPerMinute: Int = 6,
+    maxResyncPerMinutePerMember: Int = 2,
+    maxAddressRecords: Int = 4096,
+    private val maxSeenInits: Int = 4096,
+    private val maxSeenPerMember: Int = 64,
 ) {
     private val ownExt = caps.encodeExt()
     private val selfFp: ByteArray = Crypto.fingerprint(identity.publicKey)
@@ -92,12 +95,22 @@ class SessionHandshake(
 
     internal class Slot(val source: String, val expiresAt: Long) { @Volatile var used = false }
 
+    /** The memory of one Init nonce: until when, and whose it was. Only Inits whose signature verified are ever recorded. */
+    private class Seen(val until: Long, val memberId: String)
+
     private val lock = Any()
     private val pending = ArrayList<Slot>()
-    private val seenInits = LinkedHashMap<String, Long>() // nonce of an Init that passed the tag, to the end of its memory
-    private val initTimes = HashMap<String, ArrayDeque<Long>>() // per source address, the last minute
-    private val resyncAll = ArrayDeque<Long>() // Inits with an unrecognised tag that were let through, the last minute
-    private val resyncTimes = HashMap<String, ArrayDeque<Long>>()
+    private val seenInits = LinkedHashMap<String, Seen>()
+
+    // Every table below has a hard cap and cleans up on the paths that refuse (Codex Session.kt:275).
+    private val initBudget = WindowBudget(maxInitsPerMinutePerSource, maxKeys = maxAddressRecords) // per source address, before anything is known of the sender
+    private val resyncAll = WindowBudget(maxResyncPerMinute, maxKeys = 1) // Inits with an unrecognised tag, charged only after the sender proved its key
+    private val resyncMember = WindowBudget(maxResyncPerMinutePerMember, maxKeys = 1024)
+
+    /** Test instruments: the sizes of the tables an attacker might try to fill. */
+    internal val seenCount: Int get() = synchronized(lock) { seenInits.size }
+    internal val addressRecords: Int get() = initBudget.size
+    internal val resyncRecords: Int get() = resyncMember.size
 
     /** Test hook: runs after the tag check and before the atomic reservation, so a test can force two calls to interleave. */
     @Volatile internal var raceHook: (() -> Unit)? = null
@@ -123,6 +136,11 @@ class SessionHandshake(
 
     private fun signedPart(role: String, transcript: ByteArray) = concat(lbl("session/sig/$role"), transcript)
 
+    /** What the initiator signs in the Init: everything in it, and the responder it is meant for (so it is no good at another one). */
+    private fun initProof(nodeI: String, fpI: ByteArray, ephI: ByteArray, nonceI: ByteArray, tag: ByteArray, extI: ByteArray, nodeR: String, fpR: ByteArray): ByteArray =
+        Writer().raw(lbl("session/init")).fixed(cloudId, 16).str(nodeI).fixed(fpI, 32).fixed(ephI, Crypto.PUB_BYTES).fixed(nonceI, 32)
+            .fixed(tag, Discovery.TAG_BYTES).lp(extI).str(nodeR).fixed(fpR, 32).bytes()
+
     /** Keys from the ECDH result, the nonces as salt, distinct labels, the transcript hash in `info` (section 5.3). */
     private fun derive(
         secret: ByteArray, nonceI: ByteArray, nonceR: ByteArray, transcript: ByteArray, initiator: Boolean, peer: ChainMember, now: Long,
@@ -147,15 +165,17 @@ class SessionHandshake(
     /** [peerMemberId] is the key fingerprint the caller expects (from the chain), not only the node id (Codex Session.kt:110). */
     fun initiate(peerNodeId: String, peerMemberId: String, now: Long): Initiating {
         Shape.requireNodeId(peerNodeId)
-        Hex.parse(peerMemberId)
+        val fpR = Hex.parse(peerMemberId)
+        require(fpR.size == 32) { "member id" }
         val eph = Crypto.newKeyPair()
         val ephPub = Crypto.rawPublic(eph.public)
         val nonce = Crypto.random(32)
         val keys = discoveryKeys()
         check(keys.isNotEmpty()) { "no discovery key for the current epoch" }
         val tag = Discovery.tag(keys[0], selfNodeId, Discovery.slot(now))
+        val proof = identity.sign(initProof(selfNodeId, selfFp, ephPub, nonce, tag, ownExt, peerNodeId, fpR))
         val init = Writer().u8(1).u8(1).str(selfNodeId).fixed(selfFp, 32).fixed(ephPub, Crypto.PUB_BYTES).fixed(nonce, 32)
-            .fixed(tag, Discovery.TAG_BYTES).lp(ownExt).bytes()
+            .fixed(tag, Discovery.TAG_BYTES).lp(ownExt).fixed(proof, Crypto.SIG_BYTES).bytes()
         return Initiating(peerNodeId, peerMemberId, eph, ephPub, nonce, init)
     }
 
@@ -216,9 +236,12 @@ class SessionHandshake(
     // ---- responder ----------------------------------------------------------------------------------------------
 
     /**
-     * Answers flight 1 from [source] (the peer's address, for the budgets). Order: shape, then the cheap budgets (per-address
-     * rate, the table of Init nonces), then the discovery tag, then a pending slot (global and per address), and only then the
-     * membership check, key generation and the signature (Codex Session.kt:170).
+     * Answers flight 1 from [source] (the peer's address, for the budgets). Order (docs 5.2): shape; the cheap per-address budget; the
+     * discovery tag (a filter only: no match leads to the resync path); the sender must be a current member whose listed key signed
+     * this Init (**the identity proof**: until it holds, nothing is recorded, charged or reserved, and a captured identity cannot
+     * be probed because a forged Init and a removed member get the same answer); then ONE atomic step (Codex Session.kt:228): the
+     * nonce, the resync budget if the tag was unknown, the per-member and global nonce tables, a pending slot; and only then key
+     * generation and the signature (Codex Session.kt:170).
      */
     fun respond(init: ByteArray, now: Long, source: String = ""): Responding {
         val r = Reader(init)
@@ -229,32 +252,29 @@ class SessionHandshake(
         val nonceI = r.fixed(32)
         val tag = r.fixed(Discovery.TAG_BYTES)
         val extI = r.lp(Caps.MAX_EXT)
+        val proof = r.fixed(Crypto.SIG_BYTES)
         r.end()
-        val nonceKey = Hex.of(nonceI)
-        synchronized(lock) { // the cheap per-address budget
-            val times = initTimes.getOrPut(source) { ArrayDeque() }
-            while (times.isNotEmpty() && now - times.first() >= 60_000L) times.removeFirst()
-            if (times.size >= maxInitsPerMinutePerSource) throw ProtocolError(CloudError.BUSY)
-            times.addLast(now)
-            if (initTimes.size > 4096) initTimes.entries.removeAll { it.value.isEmpty() || now - it.value.last() >= 60_000L }
-        }
+        if (!initBudget.allow(source, now)) throw ProtocolError(CloudError.BUSY) // the cheap per-address budget; a refusal leaves no record
         // the tag is only a cheap filter: a tag from no recent epoch leads to the small resync path, not to a refusal
         val tagOk = discoveryKeys().any { Discovery.matches(it, nodeI, tag, now) }
+        // the identity proof: a current member with this node id whose listed key signed exactly this Init for this responder
+        val m = peer(Hex.of(fpI), nodeI)
+        if (!Crypto.ecdsaVerify(m.publicKey!!, initProof(nodeI, fpI, ephI, nonceI, tag, extI, selfNodeId, selfFp), proof)) throw ProtocolError(CloudError.NOT_MEMBER)
         raceHook?.invoke()
-        val slot = synchronized(lock) { // ONE atomic step: the replay check, the resync budget, the nonce and the slot (Codex Session.kt:228)
-            seenInits.entries.removeAll { it.value <= now }
+        val nonceKey = Hex.of(nonceI)
+        val slot = synchronized(lock) {
+            seenInits.entries.removeAll { it.value.until <= now }
             if (nonceKey in seenInits) throw ProtocolError(CloudError.NOT_MEMBER) // a replayed Init
-            if (!tagOk) spendResync(source, now)
-            if (seenInits.size >= 4096) throw ProtocolError(CloudError.BUSY)
+            if (!tagOk) spendResync(m.id, now)
+            if (seenInits.size >= maxSeenInits || seenInits.values.count { it.memberId == m.id } >= maxSeenPerMember) throw ProtocolError(CloudError.BUSY)
             pending.removeAll { it.used || now > it.expiresAt }
             if (pending.size >= maxPending || pending.count { it.source == source } >= maxPendingPerSource) throw ProtocolError(CloudError.BUSY)
-            seenInits[nonceKey] = now + SEEN_INIT_MS
+            seenInits[nonceKey] = Seen(now + SEEN_INIT_MS, m.id)
             Slot(source, now + pendingMs).also { pending.add(it) }
         }
         try {
             if (!Crypto.isValidPoint(ephI)) throw ProtocolError(CloudError.NOT_MEMBER)
             val capsI = Caps.decodeExt(extI)
-            val m = peer(Hex.of(fpI), nodeI)
             val eph = Crypto.newKeyPair()
             val ephR = Crypto.rawPublic(eph.public)
             val nonceR = Crypto.random(32)
@@ -269,15 +289,13 @@ class SessionHandshake(
         }
     }
 
-    /** The small, separate budget of the resync path: 6 a minute in all and 2 a minute per source address. Called with [lock] held. */
-    private fun spendResync(source: String, now: Long) {
-        while (resyncAll.isNotEmpty() && now - resyncAll.first() >= 60_000L) resyncAll.removeFirst()
-        val mine = resyncTimes.getOrPut(source) { ArrayDeque() }
-        while (mine.isNotEmpty() && now - mine.first() >= 60_000L) mine.removeFirst()
-        if (resyncAll.size >= maxResyncPerMinute || mine.size >= maxResyncPerMinutePerSource) throw ProtocolError(CloudError.NOT_MEMBER)
-        resyncAll.addLast(now)
-        mine.addLast(now)
-        if (resyncTimes.size > 1024) resyncTimes.entries.removeAll { it.value.isEmpty() || now - it.value.last() >= 60_000L }
+    /**
+     * The small, separate budget of the resync path, charged only to a member that has proved its key: 6 a minute in all and 2 a
+     * minute per member. Called with [lock] held. A refusal leaves nothing behind.
+     */
+    private fun spendResync(memberId: String, now: Long) {
+        if (!resyncMember.allow(memberId, now)) throw ProtocolError(CloudError.NOT_MEMBER)
+        if (!resyncAll.allow("", now)) throw ProtocolError(CloudError.NOT_MEMBER)
     }
 
     inner class Responding internal constructor(

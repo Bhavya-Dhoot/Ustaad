@@ -1,20 +1,30 @@
 package com.swarmos.app.cloud
 
+import kotlin.math.abs
+
 /**
  * The token session of docs/CLOUD-PROTOCOL.md 8.2, written on three primitives only (HMAC-SHA256, HKDF-SHA256, AES-256-GCM
  * through the frames) so that a page in a browser with no WebCrypto can implement it in plain JavaScript.
  */
 object TokenProtocol {
-    /** `TokenHello`: `u8 1 || bytes16 keyId || bytes32 cn`. */
-    fun hello(keyId: ByteArray, cn: ByteArray): ByteArray = Writer().u8(1).fixed(keyId, 16).fixed(cn, 32).bytes()
+    /**
+     * `TokenHello`: `u8 1 || bytes16 keyId || bytes32 cn || u64 ts || bytes32 mac`, `mac = HMAC-SHA256(K, lp("ustaad/v1/token/hello")
+     * || keyId || cn || u64 ts)`. The client proves it holds `K` in its very first message, so a stranger who knows only the key id
+     * from the public list cannot make the issuer keep anything (Codex TokenSession.kt:112).
+     */
+    fun hello(key: ByteArray, keyId: ByteArray, cn: ByteArray, ts: Long): ByteArray =
+        Writer().u8(1).fixed(keyId, 16).fixed(cn, 32).u64(ts).fixed(helloMac(key, keyId, cn, ts), 32).bytes()
 
-    fun parseHello(bytes: ByteArray): Pair<ByteArray, ByteArray> {
+    fun helloMac(key: ByteArray, keyId: ByteArray, cn: ByteArray, ts: Long): ByteArray = Crypto.hmac(key, lbl("token/hello"), keyId, cn, Writer().u64(ts).bytes())
+
+    class Hello(val keyId: ByteArray, val cn: ByteArray, val ts: Long, val mac: ByteArray)
+
+    fun parseHello(bytes: ByteArray): Hello {
         val r = Reader(bytes)
         if (r.u8() != 1) malformed("token hello")
-        val keyId = r.fixed(16)
-        val cn = r.fixed(32)
+        val h = Hello(r.fixed(16), r.fixed(32), r.u64(), r.fixed(32))
         r.end()
-        return keyId to cn
+        return h
     }
 
     /** `TokenWelcome`: `u8 1 || bytes32 sn || bytes16 boot || bytes32 mac`. */
@@ -57,12 +67,14 @@ class TokenIssuer(
     private val maxPendingPerClient: Int = 4,
     private val pendingMs: Long = 60_000L,
     private val maxAddressRecords: Int = 4096,
+    private val maxSeenHellos: Int = 4096,
 ) {
     private class Pending(val session: Session, val clientId: String, val expiresAt: Long)
 
     private val keys = HashMap<String, ByteArray>()
     private val hellos = HashMap<String, ArrayDeque<Long>>()
     private val pending = LinkedHashMap<String, Pending>() // by session id
+    private val seenHellos = HashMap<String, Long>() // hellos whose proof held, to the end of their memory: a copy is refused
 
     val pendingCount: Int get() = synchronized(pending) { pending.size }
     val addressRecords: Int get() = synchronized(hellos) { hellos.size }
@@ -95,10 +107,22 @@ class TokenIssuer(
             if (times.size >= maxHellosPerMinutePerSource) throw ProtocolError(CloudError.BUSY)
             times.addLast(now)
         }
-        val (keyId, cn) = TokenProtocol.parseHello(bytes)
+        val h = TokenProtocol.parseHello(bytes)
+        val keyId = h.keyId
+        val cn = h.cn
         val key = key(Hex.of(keyId)) ?: throw ProtocolError(CloudError.UNKNOWN_KEY)
+        // the client's proof comes first: nothing below is looked at, recorded or kept for a sender that does not hold the key
+        if (!Crypto.equal(TokenProtocol.helloMac(key, keyId, cn, h.ts), h.mac)) throw ProtocolError(CloudError.BAD_MAC)
+        if (abs(now - h.ts) > RequestAuth.MAX_SKEW_MS) throw ProtocolError(CloudError.SKEW)
         val m = state.member(memberId(keyId)) ?: throw ProtocolError(CloudError.UNKNOWN_KEY)
         if (m.kind == MemberKind.NODE) throw ProtocolError(CloudError.UNKNOWN_KEY)
+        synchronized(seenHellos) { // the same proven hello twice is a copy (an observer replaying it): refused, bounded
+            seenHellos.entries.removeAll { it.value <= now }
+            val id = Hex.of(keyId) + "/" + Hex.of(cn)
+            if (id in seenHellos) throw ProtocolError(CloudError.REPLAYED)
+            if (seenHellos.size >= maxSeenHellos) throw ProtocolError(CloudError.BUSY)
+            seenHellos[id] = now + 2 * RequestAuth.MAX_SKEW_MS
+        }
         val sn = Crypto.random(32)
         val d = TokenProtocol.derive(key, cn, sn, bootNonce)
         val mac = TokenProtocol.welcomeMac(key, keyId, cn, sn, bootNonce)
@@ -146,9 +170,10 @@ class TokenClient(
         internal var doneWelcome: ByteArray? = null
     }
 
-    fun start(): Started {
+    /** The hello carries the time [now] and the proof that this client holds the key. */
+    fun start(now: Long): Started {
         val cn = Crypto.random(32)
-        return Started(TokenProtocol.hello(keyId, cn), cn)
+        return Started(TokenProtocol.hello(key, keyId, cn, now), cn)
     }
 
     /**

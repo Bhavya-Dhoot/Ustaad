@@ -112,9 +112,12 @@ class SessionTest {
         val st = a.state
         val fake = st.copy(members = st.members.associateBy { it.id } + (attacker.id to ChainMember(attacker.id, b.nodeId, "b", MemberKind.NODE, attacker.identity.publicKey, null, null, 1)))
         val ah = SessionHandshake(c.chain.cloudId, attacker.identity, b.nodeId, { fake }, { listOf(dk) })
-        val ini = hs(a).initiate(b.nodeId, b.id, T0)
+        // an Init meant for b names b's key: the attacker cannot answer it (the Init is signed for one responder, Codex Session.kt:247)
+        assertError(CloudError.NOT_MEMBER) { ah.respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0) }
+        // an Init that names the attacker's key is answered, and the initiator, whose chain does not list that key, refuses the Reply
+        val ini = hs(a).initiate(b.nodeId, attacker.id, T0)
         val reply = ah.respond(ini.init, T0).reply
-        assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) } // its key is not the one expected
+        assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) }
 
         // a genuine reply altered on the way: any changed field breaks the signed transcript
         val ini2 = hs(a).initiate(b.nodeId, b.id, T0)
@@ -130,10 +133,10 @@ class SessionTest {
     @Test fun theInitiatorPinsTheExpectedMembersKeyNotOnlyItsNodeId() { // Codex Session.kt:110
         val (_, ps) = cloudWith(3)
         val (a, b, c3) = ps
-        // b is a perfectly good member answering under its own name, but the caller expected c3's key at that address
+        // b is a perfectly good member answering under its own name, but the caller expected c3's key at that address: the Init names
+        // c3's key as the responder, so b refuses it (and a Reply from b could never reach this initiator)
         val ini = hs(a).initiate(b.nodeId, c3.id, T0)
-        val reply = hs(b).respond(ini.init, T0).reply
-        assertError(CloudError.NOT_MEMBER) { ini.complete(reply, T0) }
+        assertError(CloudError.NOT_MEMBER) { hs(b).respond(ini.init, T0) }
         // pinned to the right key it works
         val ini2 = hs(a).initiate(b.nodeId, b.id, T0)
         assertNotNull(ini2.complete(hs(b).respond(ini2.init, T0).reply, T0))
@@ -294,7 +297,7 @@ class SessionTest {
         // one resync place: of two Inits with an unknown tag at the same moment, only one is let through to the chain check
         val old = Crypto.random(32)
         fun stale(p: Peer) = SessionHandshake(c.chain.cloudId, p.identity, p.nodeId, { p.chain.state() }, { listOf(old) }).initiate(b.nodeId, b.id, T0).init
-        val one = SessionHandshake(b.chain.cloudId, b.identity, b.nodeId, { b.chain.state() }, { listOf(dk) }, maxResyncPerMinute = 1, maxResyncPerMinutePerSource = 1)
+        val one = SessionHandshake(b.chain.cloudId, b.identity, b.nodeId, { b.chain.state() }, { listOf(dk) }, maxResyncPerMinute = 1, maxResyncPerMinutePerMember = 1)
         val r2 = raceRespond(one, listOf(stale(a), stale(c3)), listOf("10.0.0.1", "10.0.0.2"))
         assertEquals(1, r2.ok); assertEquals(listOf(CloudError.NOT_MEMBER), r2.errors)
     }
@@ -328,36 +331,98 @@ class SessionTest {
         assertError(CloudError.NOT_MEMBER) { hs(b).respond(stale(outsider, old, b).init, T0, "10.0.0.2") } // never a member
     }
 
-    @Test fun strangersCannotUseUpTheNormalPathThroughTheResyncBudget() { // Codex Session.kt:230
-        val (c, ps) = cloudWith(2)
-        val (a, b) = ps
+    /** An Init made from a real one: the node id, fingerprint, ephemeral key, tag and offer copied, a fresh nonce, a signature made up. */
+    private fun captured(real: ByteArray, nonce: ByteArray = Crypto.random(32), fp: ByteArray? = null): ByteArray {
+        val r = Reader(real)
+        r.u8(); r.u8()
+        val node = r.str(8); val fpI = r.fixed(32); val eph = r.fixed(65); r.fixed(32); val tag = r.fixed(8); val ext = r.lp(256)
+        return Writer().u8(1).u8(1).str(node).fixed(fp ?: fpI, 32).fixed(eph, 65).fixed(nonce, 32).fixed(tag, 8).lp(ext).fixed(Crypto.random(64), 64).bytes()
+    }
+
+    @Test fun outsidersAndCapturedIdentitiesNeverTouchTheResyncBudgetAndLearnNothingAboutMembership() { // Codex Session.kt:247
+        val (c, ps) = cloudWith(3)
+        val (a, b, gone) = ps
+        c.removeAndRotate(gone.id); c.copyTo(b)
         val h = hs(b)
         val old = Crypto.random(32)
         val outsider = Peer.bare().also { c.copyTo(it) }
-        // 6 a minute in all and 2 a minute from one address are let in to the chain check; then it is refused before anything else
-        for (i in 0 until 9) {
-            val ini = stale(outsider, old, b, T0 + i)
-            assertError(CloudError.NOT_MEMBER) { h.respond(ini.init, T0 + i, "10.0.0.${i / 2}") } // the same answer whatever the reason
+        // an outsider with its own key and an unknown tag, a made-up Init for a CURRENT member and one for a REMOVED member: the same
+        // answer for all three, however often, from many addresses, and not one place of the resync budget is used
+        repeat(30) { i ->
+            assertError(CloudError.NOT_MEMBER) { h.respond(stale(outsider, old, b, T0 + i).init, T0 + i, "10.0.0.${i}") }
+            assertError(CloudError.NOT_MEMBER) { h.respond(captured(stale(a, old, b, T0 + i).init), T0 + i, "10.0.1.${i}") }
+            assertError(CloudError.NOT_MEMBER) { h.respond(captured(stale(gone, old, b, T0 + i).init), T0 + i, "10.0.2.${i}") }
         }
-        // the normal path (a good tag) does not draw on that budget: a member's ordinary Init is still answered
-        val ini = hs(a).initiate(b.nodeId, b.id, T0 + 10)
-        val resp = h.respond(ini.init, T0 + 10, "10.0.0.99")
-        assertNotNull(resp.finish(ini.complete(resp.reply, T0 + 10).finish, T0 + 10))
-        // and a stale member whose turn comes while the budget is spent waits for the next minute
-        val staleMember = stale(a, old, b, T0 + 11)
-        assertError(CloudError.NOT_MEMBER) { h.respond(staleMember.init, T0 + 11, "10.0.0.98") }
-        val later = stale(a, old, b, T0 + 61_000)
-        assertTrue(h.respond(later.init, T0 + 61_000, "10.0.0.98").reply.isNotEmpty())
+        assertEquals(0, h.resyncRecords); assertEquals(0, h.seenCount)
+        // the member that really was away gets through in that very minute, as often as its own limit says
+        val ini = stale(a, old, b, T0 + 40)
+        val resp = h.respond(ini.init, T0 + 40, "10.0.3.1")
+        assertTrue(resp.finish(ini.complete(resp.reply, T0 + 40).finish, T0 + 40).viaResync)
     }
 
-    @Test fun aStrangerWhoIsRefusedAtTheResyncBudgetHoldsNoPendingSlot() { // Codex Session.kt:230
+    @Test fun aStaleMemberIsHeldToTwoResyncsAMinuteAndTheDeviceToSix() { // Codex Session.kt:247
+        val (c, ps) = cloudWith(5)
+        val (b, m1, m2, m3, m4) = ps
+        val h = hs(b)
+        val old = Crypto.random(32)
+        fun go(p: Peer, now: Long, src: String) = h.respond(stale(p, old, b, now).init, now, src)
+        go(m1, T0, "10.0.0.1"); go(m1, T0 + 1, "10.0.0.2")
+        assertError(CloudError.NOT_MEMBER) { go(m1, T0 + 2, "10.0.0.3") } // its own limit, however many addresses
+        go(m2, T0 + 3, "10.0.0.4"); go(m2, T0 + 4, "10.0.0.5"); go(m3, T0 + 5, "10.0.0.6"); go(m3, T0 + 6, "10.0.0.7")
+        assertError(CloudError.NOT_MEMBER) { go(m4, T0 + 7, "10.0.0.8") } // six for the whole device
+        go(m4, T0 + 61_000, "10.0.0.8") // a minute later
+        assertTrue(h.resyncRecords <= 4)
+    }
+
+    @Test fun rejectedIdentitiesCannotFillTheNonceTableAndOneMemberCannotFillItForTheOthers() { // Codex Session.kt:251
+        val (c, ps) = cloudWith(2)
+        val (a, b) = ps
+        val h = SessionHandshake(b.chain.cloudId, b.identity, b.nodeId, { b.chain.state() }, { listOf(dk) }, maxAddressRecords = 100_000, maxSeenInits = 4096)
+        val real = hs(a).initiate(b.nodeId, b.id, T0).init // a good tag and node id, observed on the wire
+        // 4,200 Inits that copy the tag and node id but carry fresh nonces and an unknown fingerprint, and 300 that name a real member
+        // with a signature that is not its own: none is recorded, so the 4,096 places are all still free
+        for (i in 0 until 4_200) assertError(CloudError.NOT_MEMBER) { h.respond(captured(real, fp = Crypto.random(32)), T0, "20.${i / 250}.${i % 250}.1") }
+        for (i in 0 until 300) assertError(CloudError.NOT_MEMBER) { h.respond(captured(real), T0, "30.${i / 250}.${i % 250}.1") }
+        assertEquals(0, h.seenCount)
+        val ini = hs(a).initiate(b.nodeId, b.id, T0)
+        assertNotNull(h.respond(ini.init, T0, "10.1.1.1")) // an honest exchange is not told busy
+        assertEquals(1, h.seenCount)
+        // one authenticated member may hold only so many nonces: the others are not shut out by it
+        val q = SessionHandshake(b.chain.cloudId, b.identity, b.nodeId, { b.chain.state() }, { listOf(dk) }, maxPending = 64, maxSeenPerMember = 3)
+        repeat(3) { q.respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0, "10.0.0.${it + 1}") }
+        assertError(CloudError.BUSY) { q.respond(hs(a).initiate(b.nodeId, b.id, T0).init, T0, "10.0.0.9") }
+        assertNotNull(c)
+    }
+
+    @Test fun everyTableOfAddressesHasAHardCapAndALimitReachedLeavesNothingBehind() { // Codex Session.kt:275
+        val (_, ps) = cloudWith(2)
+        val (a, b) = ps
+        val h = SessionHandshake(b.chain.cloudId, b.identity, b.nodeId, { b.chain.state() }, { listOf(dk) }, maxAddressRecords = 8, maxPending = 1000, maxPendingPerSource = 100)
+        repeat(8) { h.respond(hs(a).initiate(b.nodeId, b.id, T0 + it).init, T0 + it, "10.0.0.$it") }
+        assertEquals(8, h.addressRecords)
+        // a ninth address is refused and NOT inserted, however often it asks
+        repeat(5) { assertError(CloudError.BUSY) { h.respond(hs(a).initiate(b.nodeId, b.id, T0 + 10).init, T0 + 10, "10.0.9.9") } }
+        assertEquals(8, h.addressRecords)
+        // a minute later the old records are removed before the table is called full
+        h.respond(hs(a).initiate(b.nodeId, b.id, T0 + 61_000).init, T0 + 61_000, "10.0.9.9")
+        assertEquals(1, h.addressRecords)
+        // the resync records belong to proven members and follow the same rule; refusals before the proof leave none
+        val old = Crypto.random(32)
+        val outsider = Peer.bare()
+        val h2 = hs(b)
+        repeat(20) { assertError(CloudError.NOT_MEMBER) { h2.respond(stale(outsider, old, b, T0 + 70_000).init, T0 + 70_000, "10.7.7.$it") } }
+        assertEquals(0, h2.resyncRecords)
+    }
+
+    @Test fun aStrangerWhoIsRefusedHoldsNoPendingSlotAndNoNonce() { // Codex Session.kt:230, :251
         val (c, ps) = cloudWith(2)
         val (a, b) = ps
         val h = b.handshake(dk, maxPending = 1)
         val outsider = Peer.bare().also { c.copyTo(it) }
         val old = Crypto.random(32)
-        repeat(8) { i -> try { h.respond(stale(outsider, old, b, T0 + i).init, T0 + i, "10.0.0.5") } catch (e: ProtocolError) {} }
-        // every failed try gave its place back or never took one, so the single pending place is free for a member
+        repeat(8) { i -> assertError(CloudError.NOT_MEMBER) { h.respond(stale(outsider, old, b, T0 + i).init, T0 + i, "10.0.0.5") } }
+        // the single pending place is free for a member, and no nonce of the strangers was kept
+        assertEquals(0, h.seenCount)
         val ini = hs(a).initiate(b.nodeId, b.id, T0 + 20)
         assertNotNull(h.respond(ini.init, T0 + 20, "10.0.0.6"))
     }
@@ -508,9 +573,9 @@ class SessionTest {
         val ini2 = hs(a, modern).initiate(b.nodeId, b.id, T0)
         val ri = Reader(ini2.init)
         ri.u8(); ri.u8(); val n2 = ri.str(8); val f2 = ri.fixed(32); val e2 = ri.fixed(65); val no2 = ri.fixed(32); val tag = ri.fixed(8); ri.lp(256)
-        val initStripped = Writer().u8(1).u8(1).str(n2).fixed(f2, 32).fixed(e2, 65).fixed(no2, 32).fixed(tag, 8).lp(ByteArray(0)).bytes()
-        val resp = hs(b, modern).respond(initStripped, T0)
-        assertError(CloudError.NOT_MEMBER) { ini2.complete(resp.reply, T0) }
+        val proof = ri.fixed(64)
+        val initStripped = Writer().u8(1).u8(1).str(n2).fixed(f2, 32).fixed(e2, 65).fixed(no2, 32).fixed(tag, 8).lp(ByteArray(0)).fixed(proof, 64).bytes()
+        assertError(CloudError.NOT_MEMBER) { hs(b, modern).respond(initStripped, T0) } // the Init is signed over its offer: caught at the responder now
     }
 
     @Test fun offersEncodeDecodeAndUnknownItemsAreSkipped() {

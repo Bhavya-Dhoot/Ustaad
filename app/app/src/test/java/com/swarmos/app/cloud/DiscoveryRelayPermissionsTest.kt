@@ -110,14 +110,29 @@ class PermissionsTest {
     private fun row(kind: MemberKind, local: Boolean) = Action.values().map { Permissions.allowed(kind, it, local) }
 
     @Test fun theTableOfTheDocumentKindByActionAndLink() {
-        // order: READ_STATUS, SUBMIT_TASK, ASK_QUESTION, USE_FILES, WORK_FOR_PEER, LEND_MEMORY, STORE_FOR_PEER, MANAGE_MEMBERS
-        assertEquals(listOf(true, true, true, true, true, true, true, true), row(MemberKind.NODE, local = true))
-        assertEquals(listOf(true, true, true, true, false, false, false, true), row(MemberKind.NODE, local = false)) // away: no pooling
-        assertEquals(listOf(true, true, true, true, false, false, false, false), row(MemberKind.CLIENT, local = true))
-        assertEquals(listOf(true, true, true, true, false, false, false, false), row(MemberKind.CLIENT, local = false))
-        assertEquals(listOf(true, true, true, true, false, false, false, false), row(MemberKind.BROWSER, local = true))
-        assertEquals(listOf(true, true, true, true, false, false, false, false), row(MemberKind.BROWSER, local = false))
-        assertEquals(8, Action.values().size)
+        // order: READ_STATUS, SUBMIT_TASK, ASK_QUESTION, USE_FILES, WORK_FOR_PEER, LEND_MEMORY, STORE_FOR_PEER, MANAGE_MEMBERS, SYNC_READ
+        assertEquals(listOf(true, true, true, true, true, true, true, true, true), row(MemberKind.NODE, local = true))
+        assertEquals(listOf(true, true, true, true, false, false, false, true, true), row(MemberKind.NODE, local = false)) // away: no pooling
+        assertEquals(listOf(true, true, true, true, false, false, false, false, true), row(MemberKind.CLIENT, local = true)) // with a device key
+        assertEquals(listOf(true, true, true, true, false, false, false, false, true), row(MemberKind.CLIENT, local = false))
+        assertEquals(listOf(true, true, true, true, false, false, false, false, false), row(MemberKind.BROWSER, local = true))
+        assertEquals(listOf(true, true, true, true, false, false, false, false, false), row(MemberKind.BROWSER, local = false))
+        assertEquals(9, Action.values().size)
+    }
+
+    @Test fun readOnlySynchronisationIsForDeviceKeysAndNeverAWayToManageMembers() { // Codex section 19.9
+        // a client with a device key, back after two rotations, can pull the chain and the secrets it needs to leave the resync path ...
+        assertTrue(Permissions.allowed(MemberKind.CLIENT, Action.SYNC_READ, local = true))
+        assertTrue(Permissions.allowed(MemberKind.CLIENT, Action.SYNC_READ, local = false))
+        // ... without being allowed to carry joins or removals or to push a chain
+        assertFalse(Permissions.allowed(MemberKind.CLIENT, Action.MANAGE_MEMBERS, local = true))
+        // a token client (a session made with a token key) and a browser do not synchronise
+        assertFalse(Permissions.allowed(MemberKind.CLIENT, Action.SYNC_READ, local = true, deviceKey = false))
+        assertFalse(Permissions.allowed(MemberKind.BROWSER, Action.SYNC_READ, local = true))
+        assertFalse(Permissions.allowed(MemberKind.BROWSER, Action.SYNC_READ, local = true, deviceKey = false))
+        // like everything, only sealed (an unsealed request is refused unless it is a loopback token client's, and that one has no device key)
+        assertFalse(Permissions.allowed(MemberKind.NODE, Action.SYNC_READ, local = true, sealed = false))
+        assertFalse(Permissions.allowed(MemberKind.CLIENT, Action.SYNC_READ, local = true, sealed = false, loopback = true, deviceKey = false))
     }
 
     @Test fun aClientOrBrowserNeverComputesForOthersLendsMemoryOrManagesMembers() {
