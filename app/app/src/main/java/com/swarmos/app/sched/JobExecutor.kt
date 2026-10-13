@@ -129,10 +129,16 @@ class JobExecutor(
     suspend fun <T : Any> submit(jobId: String, newWork: () -> Unit = {}, block: suspend () -> T): T {
         var created = false
         var lendingFiller: FillerSlot? = null
+        var windingUp: Job? = null
         val entry = synchronized(lock) {
             purgeLocked()
             val existing = entries[jobId]
             if (existing != null) {
+                // a run that was abandoned and cancelled but has not wound up yet is not one to share: it would hand the cancellation to this caller
+                if (existing.job?.isCancelled == true) {
+                    windingUp = existing.job
+                    return@synchronized existing
+                }
                 existing.interest++
                 return@synchronized existing
             }
@@ -155,6 +161,10 @@ class JobExecutor(
                 entries[jobId] = it
                 evictLocked()
             }
+        }
+        windingUp?.let {
+            it.join()                           // its slot goes back and the entry is forgotten; then this caller starts a fresh run
+            return submit(jobId, newWork, block)
         }
         if (created) lendingFiller?.preempt()   // real work is here: filler stops, whatever the free slots
         try {

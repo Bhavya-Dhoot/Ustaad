@@ -24,6 +24,14 @@ object GenBudget {
         return maxOf(floor, ceil(1000.0 * SLACK / tokPerSec).toLong().coerceAtMost(MAX_MS_PER_TOKEN))
     }
 
+    /**
+     * The allowance per token for the phone behind [caps]: the larger of the figures for its live decode speed and its profile
+     * speed, so a phone that is slow now (hot) or slow by its profile gets the longer allowance; [floor] for a speed that is
+     * unknown. The same figure budgets the scheduler's attempt on that phone and the HTTP request to it.
+     */
+    fun msPerTokenOf(caps: Caps?, floor: Long = MS_PER_TOKEN): Long =
+        maxOf(msPerToken(caps?.lastDecodeTokPerSec, floor), msPerToken(caps?.profileTokPerSec, floor))
+
     /** The allowance for an attempt that may land on any of [targets]: the slowest one's figure (its profile speed), else [floor]. */
     fun slowestMsPerToken(targets: Collection<Caps>, floor: Long = MS_PER_TOKEN): Long =
         targets.maxOfOrNull { msPerToken(it.profileTokPerSec, floor) } ?: floor
