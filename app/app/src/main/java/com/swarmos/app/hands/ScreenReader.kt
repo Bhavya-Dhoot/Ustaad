@@ -30,10 +30,19 @@ object ScreenReader {
         val cy: Int,
         val guard: String,
         val area: Long,
+        val visible: String,
     )
 
     /** [areas]: element id to its visible area in pixels. [masked]: the digit runs that were hidden as codes. */
-    class Compacted(val screen: Screen, val areas: Map<Int, Long>, val masked: Set<String>)
+    class Compacted(
+        val screen: Screen,
+        val areas: Map<Int, Long>,
+        val masked: Set<String>,
+        /** The complete tree, before the cap cut anything, has payment context in the texts a person can read. */
+        val checkout: Boolean = false,
+        /** The complete tree has a text that asks for a code or a card number. */
+        val asksForCode: Boolean = false,
+    )
 
     fun compact(raw: RawScreen, max: Int = 60): Screen = compactFull(raw, max).screen
 
@@ -43,6 +52,7 @@ object ScreenReader {
             return Compacted(Screen(raw.pkg, raw.activity, emptyList(), true, hashOf(raw.pkg, raw.activity, emptyList(), true)), emptyMap(), emptySet())
         }
         val cands = ArrayList<Cand>()
+        val facts = facts(root, raw.widthPx, raw.heightPx)
         walk(root, raw.widthPx, raw.heightPx, false, "", cands)
         val kept = if (cands.size <= max) cands else cands.sortedWith(compareBy({ it.rank }, { it.top }, { it.left })).take(max)
         val ordered = kept.sortedWith(compareBy({ it.top }, { it.left }))
@@ -52,18 +62,20 @@ object ScreenReader {
             var label = c.label
             var value = c.value
             var guard = c.guard
+            var visible = c.visible
             // a code shown in the text of an element that talks about a code (a message, a notice): hidden before anything else sees it
             if (GuardWords.CODE.matches(GuardText.norm("$label $value"))) {
                 label = GuardText.maskCodes(label, masked)
                 value = GuardText.maskCodes(value, masked)
                 guard = GuardText.maskCodes(guard)
+                visible = GuardText.maskCodes(visible)
             }
             // what a field called "OTP" or "Password" holds is not read, flagged or not
             if (c.role == Role.EDIT && Guard.isSecretLabel(c.guard)) value = ""
             areas[i + 1] = c.area
-            UiElement(i + 1, c.role, label, value, c.flags, c.node.handle, c.cx, c.cy, guard)
+            UiElement(i + 1, c.role, label, value, c.flags, c.node.handle, c.cx, c.cy, guard, visible)
         }
-        return Compacted(Screen(raw.pkg, raw.activity, elements, false, hashOf(raw.pkg, raw.activity, elements, false)), areas, masked)
+        return Compacted(Screen(raw.pkg, raw.activity, elements, false, hashOf(raw.pkg, raw.activity, elements, false)), areas, masked, facts.checkout, facts.asksForCode)
     }
 
     // ------------------------------------------------------------ walk
@@ -72,14 +84,15 @@ object ScreenReader {
     private fun walk(n: RawNode, w: Int, h: Int, folded: Boolean, ancestor: String, out: MutableList<Cand>) {
         if (!shown(n, w, h)) return
         val own by lazy { GuardText.norm(fullText(n)) }
+        val vis by lazy { GuardText.norm(visibleText(n, w, h)) }
         if (n.password) { // never descend, never read the text
-            out += cand(n, w, h, Role.EDIT, passwordLabel(n), "", 0, GuardText.join(own, ancestor))
+            out += cand(n, w, h, Role.EDIT, passwordLabel(n), "", 0, GuardText.join(own, ancestor), vis)
             return
         }
         if (n.editable) {
             val label = editLabel(n)
             val value = if (n.text.isNotBlank() && clean(n.text) != clean(n.hint)) clean(n.text).take(VALUE_MAX) else ""
-            out += cand(n, w, h, Role.EDIT, label, value, 0, if (n.clickable || n.checkable) own else GuardText.join(own, ancestor))
+            out += cand(n, w, h, Role.EDIT, label, value, 0, if (n.clickable || n.checkable) own else GuardText.join(own, ancestor), vis)
             return
         }
         val foldsChildren = n.clickable || n.checkable
@@ -100,7 +113,7 @@ object ScreenReader {
                     else -> Role.LIST
                 }
                 val shownLabel = label.ifEmpty { if (role == Role.LIST) "" else resName(n.resId) }
-                out += cand(n, w, h, role, shownLabel.take(LABEL_MAX), "", 1, if (foldsChildren) own else GuardText.join(own, ancestor))
+                out += cand(n, w, h, role, shownLabel.take(LABEL_MAX), "", 1, if (foldsChildren) own else GuardText.join(own, ancestor), vis)
             }
             val below = if (foldsChildren) own else ancestor
             for (c in n.children) walk(c, w, h, folded || foldsChildren, below, out)
@@ -110,7 +123,7 @@ object ScreenReader {
             val t = clean(n.text).ifEmpty { clean(n.desc) }
             if (t.isNotEmpty()) {
                 val role = if (clean(n.text).isEmpty() && n.cls.endsWith("ImageView")) Role.IMAGE else Role.TEXT
-                out += cand(n, w, h, role, t.take(TEXT_LABEL_MAX), "", 2, GuardText.join(own, ancestor))
+                out += cand(n, w, h, role, t.take(TEXT_LABEL_MAX), "", 2, GuardText.join(own, ancestor), vis)
             }
         }
         for (c in n.children) walk(c, w, h, folded, ancestor, out)
@@ -128,9 +141,40 @@ object ScreenReader {
         return sb.toString()
     }
 
+    /** Only what a person can read: the node's text (not a password's), description and hint, and the same for the descendants that are shown. */
+    private fun visibleText(n: RawNode, w: Int, h: Int): String {
+        val sb = StringBuilder()
+        fun add(x: RawNode, depth: Int) {
+            if (!x.password) sb.append(x.text).append(' ')
+            sb.append(x.desc).append(' ').append(x.hint).append(' ')
+            if (depth < MAX_DEPTH) for (c in x.children) if (shown(c, w, h)) add(c, depth + 1)
+        }
+        add(n, 0)
+        return sb.toString()
+    }
+
+    private class Facts(val checkout: Boolean, val asksForCode: Boolean)
+
+    /** What the whole screen says, read from the complete tree before the cap: payment context, and a text that asks for a code or a card. Hidden nodes say nothing. */
+    private fun facts(root: RawNode, w: Int, h: Int): Facts {
+        val all = StringBuilder()
+        var asks = false
+        fun visit(x: RawNode, depth: Int) {
+            if (!shown(x, w, h)) return
+            val own = GuardText.norm((if (x.password) "" else x.text) + " " + x.desc + " " + x.hint)
+            if (own.isNotEmpty()) {
+                all.append(own).append(' ')
+                if (GuardWords.SCREEN_ASKS_CODE.matches(own)) asks = true
+            }
+            if (depth < MAX_DEPTH) for (c in x.children) visit(c, depth + 1)
+        }
+        visit(root, 0)
+        return Facts(GuardWords.PAYMENT_CONTEXT.matches(all.toString()), asks)
+    }
+
     private const val MAX_DEPTH = 200
 
-    private fun cand(n: RawNode, w: Int, h: Int, role: Role, label: String, value: String, rank: Int, guard: String): Cand {
+    private fun cand(n: RawNode, w: Int, h: Int, role: Role, label: String, value: String, rank: Int, guard: String, visible: String): Cand {
         val flags = LinkedHashSet<Flag>()
         if (n.clickable) flags += Flag.CLICKABLE
         if (n.editable || n.password) flags += Flag.EDITABLE
@@ -143,7 +187,7 @@ object ScreenReader {
         val r = if (w > 0) minOf(n.right, w) else n.right
         val b = if (h > 0) minOf(n.bottom, h) else n.bottom
         val area = maxOf(r - l, 0).toLong() * maxOf(b - t, 0).toLong()
-        return Cand(n, role, label, value, flags, rank, t, l, (l + r) / 2, (t + b) / 2, guard, area)
+        return Cand(n, role, label, value, flags, rank, t, l, (l + r) / 2, (t + b) / 2, guard, area, visible)
     }
 
     private fun shown(n: RawNode, w: Int, h: Int): Boolean {

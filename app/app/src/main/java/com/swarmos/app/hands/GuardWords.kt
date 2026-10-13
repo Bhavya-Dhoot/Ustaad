@@ -35,8 +35,34 @@ object GuardWords {
     /** Things that move under a finger: scrolling one of these may commit. Hindi: slide, swipe. */
     val SLIDER = WordSet(listOf("slide", "swipe", "drag", "स्लाइड", "स्वाइप"))
 
-    /** The whole text of an element is one of these: a plain way out of a screen. Hindi: back, close, cancel, not now. */
-    val WAY_OUT = WordSet(listOf("back", "go back", "close", "cancel", "navigate up", "not now", "वापस", "बंद", "बंद करें", "रद्द", "रद्द करें", "अभी नहीं"))
+    // ---------------------------------------------------------------- the controls known to be harmless (careful mode)
+
+    /**
+     * Careful mode: a tap is free only when the control's own visible text is exactly one of these (and its full guard text has no
+     * committing word, and the screen is not a payment screen). Exact phrases only. Not on it, on purpose: continue, next, ok, done,
+     * yes, proceed, cancel, apply, save: each of them is the last button of something. A count in brackets or a digit is ignored
+     * ("View cart (2)" is "view cart"). Hindi in the second part: add, add to cart, view cart, cart, search, view all, skip, not now,
+     * later, close, back, menu, home, filter, sort.
+     */
+    private val HARMLESS_PHRASES = listOf(
+        "add", "add +", "+ add", "add to cart", "add item", "add to bag", "plus", "+", "minus", "-", "−", "increase", "decrease", "search", "view cart",
+        "cart", "bag", "basket", "see all", "view all", "show more", "more", "filter", "sort", "skip", "not now", "later", "close", "dismiss", "back",
+        "navigate up", "home", "menu",
+        "जोड़ें", "कार्ट में जोड़ें", "कार्ट देखें", "कार्ट", "खोजें", "खोज", "सभी देखें", "छोड़ें", "अभी नहीं", "बाद में", "बंद करें", "वापस", "मेन्यू", "होम",
+        "फ़िल्टर", "फिल्टर", "क्रमबद्ध करें",
+    )
+
+    private val HARMLESS: Set<String> = HARMLESS_PHRASES.map { harmlessKey(it) }.toSet()
+
+    /** Normalised, with digits and brackets taken out. */
+    fun harmlessKey(s: String): String {
+        val n = GuardText.norm(s)
+        val sb = StringBuilder(n.length)
+        for (c in n) sb.append(if (Character.isDigit(c) || c in "()[]{}·•|") ' ' else c)
+        return sb.toString().replace(Regex("\\s+"), " ").trim()
+    }
+
+    fun isHarmless(visible: String): Boolean = harmlessKey(visible).let { it.isNotEmpty() && it in HARMLESS }
 
     /** A screen whose texts, put together, have one of these is a payment screen (C2 f). Hindi: to pay, amount payable, total payable, total amount, bill details, order summary, payment method, UPI, cash on delivery, checkout. */
     val PAYMENT_CONTEXT = WordSet(

@@ -43,6 +43,7 @@ object GuardText {
                 cp == 0x09 || cp == 0x0A || cp == 0x0B || cp == 0x0C || cp == 0x0D || Character.isSpaceChar(cp) -> sb.append(' ')
                 type == Character.FORMAT.toInt() || type == Character.CONTROL.toInt() -> {}
                 cp in 0xFE00..0xFE0F || cp in 0xE0100..0xE01EF || cp == 0x034F -> {}
+                cp in 0x0300..0x036F || cp in 0x20D0..0x20FF -> {} // marks left on a letter (a line under the P of Pay)
                 else -> sb.appendCodePoint(cp)
             }
         }
@@ -73,26 +74,50 @@ object GuardText {
         return rest.isNotEmpty() && rest.all { it.isDigit() }
     }
 
-    private val DIGIT_GROUPS = Regex("""\d+(?:[ .\-]\d+)*""")
-
     /**
-     * True when [text] holds a 13 to 19 digit number that passes the Luhn check. The digits may be written in groups (spaces, dots or dashes
-     * between them), and any run of neighbouring groups that adds up to 13 to 19 digits is tried, so two numbers written one after the other are both seen.
+     * True when [text] holds a 13 to 19 digit number that passes the Luhn check. Digits are joined across any separator (spaces, dots, dashes,
+     * slashes, line breaks, anything that is neither a letter nor a digit), digits of any script count, and any run of neighbouring digit
+     * groups that adds up to 13 to 19 digits is tried, so two numbers written one after the other are both seen. A letter ends the run.
      */
     fun hasCardNumber(text: String): Boolean {
-        for (m in DIGIT_GROUPS.findAll(text)) {
-            val groups = m.value.split(' ', '.', '-').filter { it.isNotEmpty() }.take(24)
-            for (from in groups.indices) {
+        val groups = ArrayList<String>()
+        val cur = StringBuilder()
+        fun flush() {
+            if (cur.isNotEmpty()) groups += cur.toString()
+            cur.setLength(0)
+        }
+        fun tried(): Boolean {
+            flush()
+            val list = groups.take(24)
+            groups.clear()
+            for (from in list.indices) {
                 var digits = ""
-                for (to in from until groups.size) {
-                    digits += groups[to]
+                for (to in from until list.size) {
+                    digits += list[to]
                     if (digits.length > 19) break
                     if (digits.length >= 13 && luhn(digits)) return true
                 }
             }
+            return false
         }
-        return false
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            i += Character.charCount(cp)
+            val d = Character.digit(cp, 10)
+            when {
+                d >= 0 -> cur.append(('0' + d))
+                Character.isLetter(cp) -> if (tried()) return true
+                else -> flush()
+            }
+        }
+        return tried()
     }
+
+    private val DIGITS_4_OR_MORE = Regex("""\p{Nd}{4,}""")
+
+    /** Every run of four or more digits becomes four stars: what is written to the run log never holds a number worth stealing. */
+    fun maskDigits(s: String): String = DIGITS_4_OR_MORE.replace(s, "****")
 
     private fun luhn(d: String): Boolean {
         var sum = 0
