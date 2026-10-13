@@ -281,6 +281,14 @@ class ToolRunnerTest {
         assertNull(d.taps.firstOrNull())
     }
 
+    @Test fun r8_aListThatIsGoneBeforeTheScrollIsNotReplacedByASwipe() {
+        val d = ScriptDriver { _, n -> if (n == 0) raw(rn(cls = "androidx.recyclerview.widget.RecyclerView", scrollable = true, l = 0, t = 200, r = W, b = 2000, handle = "list"), pkg = FOOD) else raw(text("Menu", 100), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val o = r.run(c, call("scroll", direction = "down"), r.see(c))
+        assertEquals(Verdict.REFUSED, o.verdict)
+        assertTrue(d.scrolls.isEmpty())
+    }
+
     // ------------------------------------------------------------ R6: the target must be the only one of its kind
 
     @Test fun r6_aTwinWithTheSameWordsWithinReachMeansNothingIsDoneAndTheModelIsToldTheScreenIsAmbiguous() {
@@ -297,6 +305,16 @@ class ToolRunnerTest {
         val d = ScriptDriver { _, n -> if (n == 0) raw(button("Add", 300, handle = "x"), pkg = FOOD) else raw(button("Add", 315, handle = "x"), button("Add", 300, handle = "y"), pkg = FOOD) }
         val r = runner(); val c = ctx(d)
         assertFalse(r.run(c, call("tap", id = 1), r.see(c)).ok)
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun r6_aTwinNextToTheFoundControlIsAmbiguousToo() {
+        // the found control is 20 px from the old centre, its twin 40 px from it but only 20 px from the found one
+        val d = ScriptDriver { _, n -> if (n == 0) raw(button("Add", 300), pkg = FOOD) else raw(button("Add", 320, handle = "a"), button("Add", 340, handle = "b"), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertFalse(o.ok)
+        assertTrue(o.text, o.text.contains("ambiguous"))
         assertTrue(d.taps.isEmpty())
     }
 
