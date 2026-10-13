@@ -69,4 +69,16 @@ Ledger:
 
 ## Status
 
+2026-10-13 about 19:40:
+- H0: the two code surveys are back (facts folded into the briefs); the research report is still being written.
+- H1 contract is on master (hands/Contract.kt, commits 1417a3c and 9c206e1).
+- Running in worktrees: H2 core, H3 accessibility driver, H4 ways in and UI, H6 skill cards (Haiku, writes assets in the main checkout).
+- The root shell driver is NOT being built: the session's permission layer refused the launch of the worker whose brief held it. The driver package was relaunched with the accessibility service only. The founder decides whether the root driver is wanted; the contract already allows a second driver.
+- Found on the Redmi: Swiggy refuses to run on a rooted phone (its own check; not to be bypassed). The food-order run there uses Blinkit or Zepto (cart only), or swiggy.com in Chrome; a Swiggy or Zomato app run needs a phone that is not rooted, and the founder's word for it.
+- Found in the code: there is no expert router. "ExpertMesh" in the code is arithmetic for the split MoE model. So the experts of Hands are built here: app experts (skill cards) and knowledge experts (role prompts answered by the STRONG tier, which is the swarm's strongest device or the split 30B MoE model when it is loaded).
+- The Redmi is a CLIENT under the capability profile (no chat model fits 5.6 GB). The test brain is a llama-server on the PC (the one under the Docker install, with the 4B model from the models folder of this repository) through `adb reverse`, behind a debug-only setting that H5 adds.
+- Next: merge H2, H3, H4 as they return (three-dot diff review, full unit run), then H5 wiring, H7 review, H8 phone run.
+
+Earlier:
+
 2026-10-13 about 19:00: H0 running; plan and contract being written. Nothing built yet.
