@@ -43,6 +43,8 @@ import com.swarmos.app.hands.HandsStatus
 import com.swarmos.app.hands.Origin
 import com.swarmos.app.hands.Phase
 import com.swarmos.app.hands.RunState
+import com.swarmos.app.hands.android.HandsSettings
+import com.swarmos.app.ui.InkSwitch
 import com.swarmos.app.ui.MetricRow
 import com.swarmos.app.ui.MonoText
 import com.swarmos.app.ui.Note
@@ -127,6 +129,7 @@ fun HandsScreen() {
                 }
             }
             item(key = "status") { StatusBlock(context, hands != null, status, assistantChosen) }
+            item(key = "sharing") { SharingBlock() }
             item(key = "runs-title") { SectionTitle("Tasks") }
             if (rows.isEmpty()) {
                 item(key = "runs-empty") { Text("No tasks yet. Type one above and tap Run.", style = SwarmType.label.copy(color = SwarmColors.graphite)) }
@@ -166,6 +169,30 @@ private fun StatusBlock(context: Context, handsReady: Boolean, status: HandsStat
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
+
+/** The one switch that lets screen text leave this phone (rule S5). Off by default; the brain reads it at every model call. */
+@Composable
+private fun SharingBlock() {
+    val share by HandsSettings.shareScreens.collectAsStateWithLifecycle()
+    val testPort by HandsSettings.testBrainPort.collectAsStateWithLifecycle()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Let my other devices read the screen during a task",
+                Modifier.weight(1f),
+                style = SwarmType.title.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            )
+            InkSwitch(checked = share, onCheckedChange = { HandsSettings.setShareScreens(it) })
+        }
+        Note(
+            if (share) "On means screen text of the app in front may be sent to another device of your own cluster during a task."
+            else "Off means steps are decided on this phone only.",
+            rotation = -1f,
+        )
+        // a debug build only: HandsSettings keeps this at 0 everywhere else
+        if (testPort > 0) Note("Test brain on port $testPort (debug build)", rotation = 1f)
     }
 }
 

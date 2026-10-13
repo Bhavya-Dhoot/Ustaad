@@ -3,6 +3,7 @@ package com.swarmos.app.core
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
@@ -75,6 +76,23 @@ class SwarmPrefs(private val ctx: Context) {
 
     suspend fun setChoirMajoritySkipsRound2(v: Boolean) {
         ctx.swarmStore.edit { it[choirMajorityKey] = v }
+    }
+
+    private val handsShareScreensKey = booleanPreferencesKey("hands_share_screens")
+    private val handsTestBrainPortKey = intPreferencesKey("hands_test_brain_port")
+
+    /** Hands: let the owner's other devices read the screen text during a task. Off by default. */
+    suspend fun handsShareScreens(): Boolean = ctx.swarmStore.data.first()[handsShareScreensKey] ?: false
+
+    suspend fun setHandsShareScreens(v: Boolean) {
+        ctx.swarmStore.edit { it[handsShareScreensKey] = v }
+    }
+
+    /** Hands, debug builds only: port of a llama-server on 127.0.0.1 that both model tiers use. 0 = off. */
+    suspend fun handsTestBrainPort(): Int = ctx.swarmStore.data.first()[handsTestBrainPortKey] ?: 0
+
+    suspend fun setHandsTestBrainPort(v: Int) {
+        ctx.swarmStore.edit { it[handsTestBrainPortKey] = v }
     }
 
     /** The agent endpoint switch, its key and the file search switch, written together; a null [key] removes the stored one. */

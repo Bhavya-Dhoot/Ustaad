@@ -119,6 +119,10 @@ object AppGraph {
                 }
                 AgentAccess.restore(p?.agentAccess ?: false, p?.agentKey, p?.agentFiles ?: false) { on, key, files -> prefs.setAgent(on, key, files) }
                 audit.load()
+                // Hands: its two settings, then the engine that fills HandsHub. Here, because this runs whenever the process starts: the task
+                // sheet can be opened by another app while the foreground service is not running.
+                runCatching { com.swarmos.app.hands.android.HandsSettings.load(appContext) }
+                launch { runCatching { com.swarmos.app.hands.android.HandsRuntime.start(appContext) } }
                 BusyMode.restore(p?.keepBusy ?: false, { on -> prefs.setKeepBusy(on) }) { kind, payload -> audit.append(kind, payload) }
                 health.start()
                 audit.append("app.init", JsonObject(mapOf("node" to JsonPrimitive(registry.self.value.nodeId))))
