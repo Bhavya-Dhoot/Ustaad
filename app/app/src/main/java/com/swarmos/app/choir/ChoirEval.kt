@@ -146,7 +146,8 @@ object ChoirEval {
             rounds = t.totals.rounds,
             round2Skip = t.round2Skip,
             tokens = t.totals.tokens,
-            nodesAnswered = t.lanes.count { it.latest != null },
+            // phones, not lanes: a lane moved to a phone that already answered for its own lane is not a second phone
+            nodesAnswered = t.lanes.filter { it.latest != null }.map { it.movedTo ?: it.name }.distinct().size,
             nodesTotal = t.lanes.size,
             choirToolAnswer = tool?.answer,
             choirToolCorrect = t.choirToolCorrect == true,

@@ -48,6 +48,8 @@ class LocalParticipant(private val node: ChoirNode, override val nodeId: String,
 /**
  * Round budget. Everything is measured from the start of the run: R1 may use until `r1Frac` of the deadline,
  * R2 until `r2Frac`, R3 until the deadline itself. A node that has not answered by then is dropped from the vote.
+ * `carryOn`: a lane whose phone leaves or fails, and a judge that fails, are run again once on another phone inside the time that
+ * is left. Off here so the one-shot protocol tests keep their meaning; the app turns it on (ChoirController).
  */
 data class ChoirConfig(
     val deadlineMs: Long = 60_000,
@@ -56,6 +58,7 @@ data class ChoirConfig(
     val solveTokens: Int = 300,
     val reviseTokens: Int = 150,
     val judgeTokens: Int = 100,
+    val carryOn: Boolean = false,
 )
 
 data class RunOptions(
@@ -78,7 +81,7 @@ class ChoirCoordinator(
     private val clock: () -> Long = System::currentTimeMillis,
     private val config: ChoirConfig = ChoirConfig(),
 ) {
-    private class Lane(val p: ChoirParticipant, val role: Role) {
+    private class Lane(val p: ChoirParticipant, val role: Role, taskId: String) {
         // written by the per-lane coroutines and the run, read by snapshot() on any thread
         @Volatile var model = ""
         @Volatile var fake = false
@@ -86,6 +89,12 @@ class ChoirCoordinator(
         @Volatile var r1: Reply? = null
         @Volatile var r2: Reply? = null
         @Volatile var error: String? = null
+        /** The phone doing this lane's work now ([p] until the lane is moved) and the task id it holds that work under. */
+        @Volatile var runner: ChoirParticipant = p
+        @Volatile var taskKey = taskId
+        /** Moved in round 2: the new phone does not hold this lane's round 1 answer, so its revise request carries it. */
+        @Volatile var sendOwn = false
+        @Volatile var movedTo: String? = null
         val latest: Reply? get() = r2 ?: r1
     }
 
@@ -107,8 +116,8 @@ class ChoirCoordinator(
         // roles alternate over the phones that are actually asked: with two phones that is solver and alt solver
         var asked = 0
         val lanes = buildList {
-            add(Lane(self, Role.SOLVER))
-            sortedPeers.forEach { p -> add(Lane(p, roleForPeer(if (p.away || p.noModel) asked else asked++))) }
+            add(Lane(self, Role.SOLVER, taskId))
+            sortedPeers.forEach { p -> add(Lane(p, roleForPeer(if (p.away || p.noModel) asked else asked++), taskId)) }
         }
         val active = lanes.filter { !it.p.away && !it.p.noModel }
 
@@ -161,7 +170,7 @@ class ChoirCoordinator(
                 phase = phase,
                 round = round,
                 agreement = agreement,
-                lanes = lanes.map { LaneTrace(it.p.nodeId, it.p.name, it.role, it.model, it.fake, it.status, it.r1, it.r2, it.error) },
+                lanes = lanes.map { LaneTrace(it.p.nodeId, it.p.name, it.role, it.model, it.fake, it.status, it.r1, it.r2, it.error, it.movedTo) },
                 judge = judge,
                 finalPick = finalPick,
                 finalNoTool = finalNoTool,
@@ -214,13 +223,55 @@ class ChoirCoordinator(
 
         // a phone's answer is checked like this phone's own are (the node does it before it answers), and must be for this task and round
         val letters = AnswerCheck.optionLetters(prompt)
-        fun wrongAnswer(lane: Lane, a: NodeAnswer, round: Int): String? = when {
-            lane.p === self -> null
-            a.taskId != taskId -> "reply for another task (${a.taskId})"
+        fun wrongAnswer(from: ChoirParticipant, key: String, a: NodeAnswer, round: Int): String? = when {
+            from === self -> null
+            a.taskId != key -> "reply for another task (${a.taskId})"
             a.round != round -> "reply for round ${a.round}, asked round $round"
             !AnswerCheck.isValid(kind, a.answer, letters, prompt) -> ChoirNode.NO_VALID_ANSWER
             else -> null
         }
+
+        // phone id -> the task id it was first asked under: these phones hold the task, which a revise or a judge call needs
+        val holdsTask = HashMap<String, String>()
+
+        /**
+         * Another phone for the work of lane [laneId] (call with the lock held): up, not one that has had that lane's work, and, when
+         * the phone has to hold the task already, one that does. Null when none, or when too little time is left.
+         */
+        fun replacement(laneId: String, leftMs: Long, needsTask: Boolean, extra: List<LaneMove.Held> = emptyList()): ChoirParticipant? {
+            val phones = lanes.map { it.p }.filter { !needsTask || it.nodeId in holdsTask }
+            val held = lanes.flatMap { l ->
+                val running = l.status == LaneStatus.SOLVING || l.status == LaneStatus.REVISING || l.status == LaneStatus.MOVED
+                if (l.runner === l.p) listOf(LaneMove.Held(l.p.nodeId, l.p.nodeId, running))
+                else listOf(LaneMove.Held(l.p.nodeId, l.p.nodeId, false), LaneMove.Held(l.runner.nodeId, l.p.nodeId, running))
+            } + extra
+            val devices = phones.map { LaneMove.Device(it.nodeId, it.name, !it.isAway() && !it.noModel) }
+            val to = LaneMove.pick(devices, held, laneId, leftMs) ?: return null
+            return phones.first { it.nodeId == to.nodeId }
+        }
+
+        /**
+         * [lane]'s phone left or failed (lock held): hand the lane to another phone, once per round. This phone's own lane stays,
+         * because it is the one-phone baseline. False leaves the lane as it ended.
+         */
+        fun moveLane(lane: Lane, round: Int, leftMs: Long): Boolean {
+            if (!config.carryOn || lane.p === self) return false
+            val to = replacement(lane.p.nodeId, leftMs, needsTask = round > 1) ?: return false
+            lane.runner = to
+            // round 1: a task id of its own, so the work does not overwrite the answer that phone holds for its own lane
+            lane.taskKey = if (round == 1) "$taskId~${lanes.indexOf(lane)}" else holdsTask.getValue(to.nodeId)
+            lane.sendOwn = round > 1
+            lane.movedTo = to.name
+            lane.status = LaneStatus.MOVED
+            lane.error = null
+            return true
+        }
+
+        fun logMoved(lane: Lane, round: Int, why: String?) = log("choir.lane.moved", lane.p.name, buildJsonObject {
+            put("round", round)
+            put("movedTo", lane.movedTo ?: "")
+            put("why", why ?: "")
+        })
 
         /** Something threw while this lane's answer was being handled: the lane keeps any answer it already has, and the run goes on. */
         fun laneFailed(lane: Lane, t: Throwable) {
@@ -267,55 +318,67 @@ class ChoirCoordinator(
             // ---- R1: blind parallel solve ------------------------------------------------------------
             locked { phase = "R1"; active.forEach { it.status = LaneStatus.SOLVING } }
             emit()
+            /** One go at a lane's round 1 on the phone it is with now. True when that phone left or failed and the lane was moved, so it is run again. */
+            suspend fun solveLane(lane: Lane, mayMove: Boolean): Boolean {
+                val runner = lane.runner
+                val key = lane.taskKey
+                val remaining = budget(config.r1Frac)
+                val req = SolveRequest(key, prompt, kind, lane.role, config.solveTokens, remaining.coerceAtLeast(1), seedFor(taskId, lane.p.nodeId))
+                locked { holdsTask.putIfAbsent(runner.nodeId, key) }
+                log("choir.solve.req", runner.name, SwarmJson.encodeToJsonElement(req))
+                val res = guarded(remaining, runner) { runner.solve(req) }
+                val a = res.getOrNull()
+                val bad = if (a != null && a.error == null) wrongAnswer(runner, key, a, 1) else null
+                val why = moveReason(res, a, bad)
+                var moved = false
+                synchronized(lock) {
+                    when {
+                        res.exceptionOrNull() is WentAway -> {
+                            lane.status = LaneStatus.AWAY
+                            lane.error = "away: heartbeat lost during the round"
+                        }
+                        res.isFailure -> {
+                            lane.status = LaneStatus.ERROR
+                            lane.error = res.exceptionOrNull()?.message ?: "request failed"
+                        }
+                        a == null -> {
+                            lane.status = LaneStatus.TIMED_OUT
+                            lane.error = "no answer within ${remaining / 1000.0} s"
+                        }
+                        a.error != null -> {
+                            lane.model = a.model; lane.fake = a.fake
+                            // a node that ran out of its own budget counts as timed out, not as broken
+                            lane.status = when {
+                                a.error.startsWith("timeout") -> LaneStatus.TIMED_OUT
+                                a.error == ChoirNode.NO_VALID_ANSWER -> LaneStatus.NO_VALID_ANSWER
+                                else -> LaneStatus.ERROR
+                            }
+                            lane.error = a.error
+                        }
+                        bad != null -> {
+                            lane.model = a.model; lane.fake = a.fake
+                            lane.status = if (bad == ChoirNode.NO_VALID_ANSWER) LaneStatus.NO_VALID_ANSWER else LaneStatus.ERROR
+                            lane.error = bad
+                        }
+                        else -> {
+                            lane.model = a.model; lane.fake = a.fake
+                            lane.r1 = replyOf(a, elapsed())
+                            lane.status = LaneStatus.ANSWERED
+                        }
+                    }
+                    if (why != null && mayMove) moved = moveLane(lane, 1, budget(config.r1Frac))
+                }
+                if (a != null) log("choir.solve.res", runner.name, SwarmJson.encodeToJsonElement(a))
+                else log("choir.timeout", runner.name, buildJsonObject { put("round", 1); put("status", lane.status.name); put("error", lane.error ?: "") })
+                if (moved) logMoved(lane, 1, why)
+                emit()
+                return moved
+            }
             coroutineScope {
                 active.map { lane ->
                     async {
                         try {
-                            val remaining = budget(config.r1Frac)
-                            val req = SolveRequest(taskId, prompt, kind, lane.role, config.solveTokens, remaining.coerceAtLeast(1), seedFor(taskId, lane.p.nodeId))
-                            log("choir.solve.req", lane.p.name, SwarmJson.encodeToJsonElement(req))
-                            val res = guarded(remaining, lane.p) { lane.p.solve(req) }
-                            val a = res.getOrNull()
-                            val bad = if (a != null && a.error == null) wrongAnswer(lane, a, 1) else null
-                            synchronized(lock) {
-                                when {
-                                    res.exceptionOrNull() is WentAway -> {
-                                        lane.status = LaneStatus.AWAY
-                                        lane.error = "away: heartbeat lost during the round"
-                                    }
-                                    res.isFailure -> {
-                                        lane.status = LaneStatus.ERROR
-                                        lane.error = res.exceptionOrNull()?.message ?: "request failed"
-                                    }
-                                    a == null -> {
-                                        lane.status = LaneStatus.TIMED_OUT
-                                        lane.error = "no answer within ${remaining / 1000.0} s"
-                                    }
-                                    a.error != null -> {
-                                        lane.model = a.model; lane.fake = a.fake
-                                        // a node that ran out of its own budget counts as timed out, not as broken
-                                        lane.status = when {
-                                            a.error.startsWith("timeout") -> LaneStatus.TIMED_OUT
-                                            a.error == ChoirNode.NO_VALID_ANSWER -> LaneStatus.NO_VALID_ANSWER
-                                            else -> LaneStatus.ERROR
-                                        }
-                                        lane.error = a.error
-                                    }
-                                    bad != null -> {
-                                        lane.model = a.model; lane.fake = a.fake
-                                        lane.status = if (bad == ChoirNode.NO_VALID_ANSWER) LaneStatus.NO_VALID_ANSWER else LaneStatus.ERROR
-                                        lane.error = bad
-                                    }
-                                    else -> {
-                                        lane.model = a.model; lane.fake = a.fake
-                                        lane.r1 = replyOf(a, elapsed())
-                                        lane.status = LaneStatus.ANSWERED
-                                    }
-                                }
-                            }
-                            if (a != null) log("choir.solve.res", lane.p.name, SwarmJson.encodeToJsonElement(a))
-                            else log("choir.timeout", lane.p.name, buildJsonObject { put("round", 1); put("status", lane.status.name); put("error", lane.error ?: "") })
-                            emit()
+                            if (solveLane(lane, true)) solveLane(lane, false)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (t: Throwable) {
@@ -336,34 +399,46 @@ class ChoirCoordinator(
                 locked { phase = "R2"; round = 2; r1Voters.forEach { it.status = LaneStatus.REVISING } }
                 emit()
                 val r1Candidates = r1Voters.map { it to Candidate(it.r1!!.answer, it.r1!!.keySteps) }
+                /** One go at a lane's round 2 on the phone it is with now; true when that phone left or failed and the lane was moved. */
+                suspend fun reviseLane(lane: Lane, mayMove: Boolean): Boolean {
+                    val runner = lane.runner
+                    val key = lane.taskKey
+                    val remaining = budget(config.r2Frac)
+                    val others = r1Candidates.filter { it.first !== lane }.map { it.second }
+                        .shuffled(Random(seedFor(taskId, lane.p.nodeId)))
+                    val own = if (lane.sendOwn) lane.r1?.let { Candidate(it.answer, it.keySteps) } else null
+                    val req = fitRevise(ReviseRequest(key, others, config.reviseTokens, remaining.coerceAtLeast(1), own))
+                    log("choir.revise.req", runner.name, SwarmJson.encodeToJsonElement(req))
+                    val res = guarded(remaining, runner) { runner.revise(req) }
+                    val a = res.getOrNull()
+                    val bad = if (a != null && a.error == null) wrongAnswer(runner, key, a, 2) else null
+                    val why = moveReason(res, a, bad)
+                    var moved = false
+                    synchronized(lock) {
+                        when {
+                            a != null && a.error == null && bad == null -> {
+                                lane.r2 = replyOf(a, elapsed())
+                                lane.status = LaneStatus.REVISED
+                            }
+                            else -> {
+                                lane.status = LaneStatus.ANSWERED
+                                lane.error = "R2 " + (if (res.isFailure) "failed: ${res.exceptionOrNull()?.message}" else if (a == null) "timed out" else "failed: ${bad ?: a.error}") +
+                                    "; R1 answer kept"
+                            }
+                        }
+                        if (why != null && mayMove) moved = moveLane(lane, 2, budget(config.r2Frac))
+                    }
+                    if (a != null) log("choir.revise.res", runner.name, SwarmJson.encodeToJsonElement(a))
+                    else log("choir.timeout", runner.name, buildJsonObject { put("round", 2); put("error", lane.error ?: "") })
+                    if (moved) logMoved(lane, 2, why)
+                    emit()
+                    return moved
+                }
                 coroutineScope {
                     r1Voters.map { lane ->
                         async {
                             try {
-                                val remaining = budget(config.r2Frac)
-                                val others = r1Candidates.filter { it.first !== lane }.map { it.second }
-                                    .shuffled(Random(seedFor(taskId, lane.p.nodeId)))
-                                val req = fitRevise(ReviseRequest(taskId, others, config.reviseTokens, remaining.coerceAtLeast(1)))
-                                log("choir.revise.req", lane.p.name, SwarmJson.encodeToJsonElement(req))
-                                val res = guarded(remaining, lane.p) { lane.p.revise(req) }
-                                val a = res.getOrNull()
-                                val bad = if (a != null && a.error == null) wrongAnswer(lane, a, 2) else null
-                                synchronized(lock) {
-                                    when {
-                                        a != null && a.error == null && bad == null -> {
-                                            lane.r2 = replyOf(a, elapsed())
-                                            lane.status = LaneStatus.REVISED
-                                        }
-                                        else -> {
-                                            lane.status = LaneStatus.ANSWERED
-                                            lane.error = "R2 " + (if (res.isFailure) "failed: ${res.exceptionOrNull()?.message}" else if (a == null) "timed out" else "failed: ${bad ?: a.error}") +
-                                                "; R1 answer kept"
-                                        }
-                                    }
-                                }
-                                if (a != null) log("choir.revise.res", lane.p.name, SwarmJson.encodeToJsonElement(a))
-                                else log("choir.timeout", lane.p.name, buildJsonObject { put("round", 2); put("error", lane.error ?: "") })
-                                emit()
+                                if (reviseLane(lane, true)) reviseLane(lane, false)
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (t: Throwable) {
@@ -383,35 +458,51 @@ class ChoirCoordinator(
                 val leadingNodes = groups.sortedByDescending { it.confSum }.take(2).flatMap { g -> g.members.map { it.node } }.toSet()
                 val voters = lanes.filter { it.latest != null }
                 val judgeLane = if (voters.size >= 3) voters.firstOrNull { it.p.nodeId !in leadingNodes } ?: lanes.first() else lanes.first()
-                val prevStatus = judgeLane.status
-                locked { judgeLane.status = LaneStatus.JUDGING }
-                emit()
-                val remaining = (config.deadlineMs - elapsed())
-                val req = fitJudge(JudgeRequest(taskId, groups.map { Candidate(it.best.answer, it.best.keySteps) }, config.judgeTokens, remaining.coerceAtLeast(1)))
-                log("choir.judge.req", judgeLane.p.name, SwarmJson.encodeToJsonElement(req))
-                val res = guarded(remaining, judgeLane.p) { judgeLane.p.judge(req) }
-                val a = res.getOrNull()
-                synchronized(lock) {
-                    judgeLane.status = prevStatus
-                    if (a != null && a.error == null && a.pick in groups.indices) judgePick = a.pick
-                    judge = JudgeTrace(
-                        nodeId = judgeLane.p.nodeId,
-                        name = judgeLane.p.name,
-                        candidates = req.candidates,
-                        pick = a?.pick ?: -1,
-                        reason = a?.reason ?: "",
-                        tokens = a?.tokens ?: 0,
-                        ms = a?.ms ?: 0,
-                        error = when {
-                            res.isFailure -> res.exceptionOrNull()?.message ?: "request failed"
-                            a == null -> "judge timed out"
-                            else -> a.error
-                        },
-                    )
+                /** The judge's work on [jp] (the phone of lane [jl]), under task id [key]; [replaced] is the first judge when this is the second. */
+                suspend fun judgeOn(jl: Lane, jp: ChoirParticipant, key: String, replaced: String?) {
+                    val prevStatus = jl.status
+                    locked { jl.status = LaneStatus.JUDGING }
+                    emit()
+                    val remaining = (config.deadlineMs - elapsed())
+                    val req = fitJudge(JudgeRequest(key, groups.map { Candidate(it.best.answer, it.best.keySteps) }, config.judgeTokens, remaining.coerceAtLeast(1)))
+                    log("choir.judge.req", jp.name, SwarmJson.encodeToJsonElement(req))
+                    val res = guarded(remaining, jp) { jp.judge(req) }
+                    val a = res.getOrNull()
+                    synchronized(lock) {
+                        jl.status = prevStatus
+                        if (a != null && a.error == null && a.pick in groups.indices) judgePick = a.pick
+                        judge = JudgeTrace(
+                            nodeId = jp.nodeId,
+                            name = jp.name,
+                            candidates = req.candidates,
+                            pick = a?.pick ?: -1,
+                            reason = a?.reason ?: "",
+                            tokens = a?.tokens ?: 0,
+                            ms = a?.ms ?: 0,
+                            error = when {
+                                res.isFailure -> res.exceptionOrNull()?.message ?: "request failed"
+                                a == null -> "judge timed out"
+                                else -> a.error
+                            },
+                            replaced = replaced,
+                        )
+                    }
+                    if (a != null) log("choir.judge.res", jp.name, SwarmJson.encodeToJsonElement(a))
+                    else log("choir.timeout", jp.name, buildJsonObject { put("round", 3) })
+                    emit()
                 }
-                if (a != null) log("choir.judge.res", judgeLane.p.name, SwarmJson.encodeToJsonElement(a))
-                else log("choir.timeout", judgeLane.p.name, buildJsonObject { put("round", 3) })
-                emit()
+                val first = judgeLane.runner
+                judgeOn(judgeLane, first, judgeLane.taskKey, null)
+                // a judge that failed or whose phone left is replaced once, inside what is left of the deadline
+                if (judgePick == null && config.carryOn) {
+                    val next = locked {
+                        replacement(LaneMove.JUDGE, config.deadlineMs - elapsed(), needsTask = true, extra = listOf(LaneMove.Held(first.nodeId, LaneMove.JUDGE, false)))
+                    }
+                    if (next != null) {
+                        log("choir.judge.replaced", first.name, buildJsonObject { put("movedTo", next.name) })
+                        judgeOn(lanes.first { it.p === next }, next, locked { holdsTask.getValue(next.nodeId) }, first.name)
+                    }
+                }
             }
 
             // ---- tool check and final pick ----------------------------------------------------------------
@@ -449,6 +540,18 @@ class ChoirCoordinator(
 
     /** A phone's heartbeat stopped while it was being asked. */
     private class WentAway : RuntimeException("went away during the round")
+
+    /**
+     * Why a failed attempt is worth running on another phone, or null. A timeout has no time left to use, and a model that gave no
+     * usable answer would most likely give none on another phone either.
+     */
+    private fun moveReason(res: Result<NodeAnswer?>, a: NodeAnswer?, bad: String?): String? = when {
+        res.exceptionOrNull() is WentAway -> "heartbeat lost"
+        res.isFailure -> res.exceptionOrNull()?.message ?: "request failed"
+        a == null -> null
+        a.error != null -> a.error.takeIf { !it.startsWith("timeout") && it != ChoirNode.NO_VALID_ANSWER }
+        else -> bad?.takeIf { it != ChoirNode.NO_VALID_ANSWER }
+    }
 
     /**
      * Runs [block] on its own job and waits for it for at most [budgetMs], or until [p] is flagged away, whichever comes first. The
@@ -495,10 +598,13 @@ class ChoirCoordinator(
 
         /** Shorten key_steps until the request fits in 1 KB. */
         fun fitRevise(r: ReviseRequest): ReviseRequest {
-            var m = r.copy(others = r.others.map { it.fitWire() })
+            var m = r.copy(others = r.others.map { it.fitWire() }, own = r.own?.fitWire())
             for (keep in listOf(2, 1, 0)) {
                 if (wireBytes(m) <= ChoirLimits.WIRE_MAX_BYTES) break
-                m = m.copy(others = m.others.map { it.copy(keySteps = it.keySteps.take(keep).map { s -> s.take(50) }) })
+                m = m.copy(
+                    others = m.others.map { it.copy(keySteps = it.keySteps.take(keep).map { s -> s.take(50) }) },
+                    own = m.own?.let { o -> o.copy(keySteps = o.keySteps.take(keep).map { s -> s.take(50) }) },
+                )
             }
             return m
         }

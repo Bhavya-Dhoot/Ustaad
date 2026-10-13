@@ -35,6 +35,13 @@ object ChoirScreenLogic {
 
     fun canExpand(problems: List<Problem>) = problems.size > COLLAPSED_ROWS
 
+    /** A lane's name on its card: a lane whose phone left or failed says which phone it was moved to. */
+    fun laneLabel(name: String, movedTo: String?) = if (movedTo == null) name else "$name, moved to $movedTo"
+
+    /** The judge card's title: a second judge says whose judging it took over. */
+    fun judgeTitle(name: String, replaced: String?) =
+        "Judge: $name, round 3" + if (replaced == null) "" else " (took over from $replaced)"
+
     fun soloNotice(onlinePeers: Int): String? = if (onlinePeers == 0) SOLO_NOTICE else null
 
     /** True when no other phone answered any problem of the run, so the choir bars would only repeat "one phone alone". */

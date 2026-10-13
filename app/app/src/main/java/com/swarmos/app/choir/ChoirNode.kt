@@ -74,23 +74,25 @@ class ChoirNode(
         val st = tasks[req.taskId]
             ?: return NodeAnswer(req.taskId, 2, me.nodeId, me.name, llm().modelName, error = "unknown task ${req.taskId}").fitWire()
         val others = req.others.take(4).map { it.fitWire() }
+        // a lane taken over from another phone is revised from that lane's answer, not from the one this phone gave
+        val own = req.own?.fitWire() ?: st.own
         val sc = script
         val letters = AnswerCheck.optionLetters(st.problem)
         val gen = generate(
             kind = st.kind, letters = letters, problem = st.problem, budgetMs = req.budgetMs,
             build = { short ->
                 ChatRequest(
-                    messages = ChoirPrompts.revise(st.kind, st.problem, st.own, others, short),
+                    messages = ChoirPrompts.revise(st.kind, st.problem, own, others, short),
                     maxTokens = req.maxTokens,
                     temperature = ChoirPrompts.TEMP_REVISE,
                     jsonSchema = ChoirPrompts.solveSchema(st.kind, letters, short),
                 )
             },
             scripted = (sc?.r2 ?: sc?.r1)?.let { SwarmJson.encodeToString(it) },
-            fake = { FakePlanner.reviseJson(findProblem(st.problem), req.taskId, me.nodeId, st.own, others) },
+            fake = { FakePlanner.reviseJson(findProblem(st.problem), req.taskId, me.nodeId, own, others) },
             round = 2, taskId = req.taskId, nodeId = me.nodeId,
         )
-        return finishAnswer(req.taskId, 2, me, gen, t0)
+        return finishAnswer(req.taskId, 2, me, gen, t0, remember = req.own == null)
     }
 
     suspend fun judge(req: JudgeRequest): JudgeAnswer {
@@ -187,14 +189,14 @@ class ChoirNode(
         return Generated(both, p2, true)
     }
 
-    private fun finishAnswer(taskId: String, round: Int, me: NodeIdentity, g: Generated, t0: Long): NodeAnswer {
+    private fun finishAnswer(taskId: String, round: Int, me: NodeIdentity, g: Generated, t0: Long, remember: Boolean = true): NodeAnswer {
         val o = g.outcome
         val ms = clock() - t0
         if (o.error != null) return NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, tokens = o.tokens, ms = ms, error = o.error, retried = g.retried).fitWire()
         val p = g.parsed
             ?: return NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, tokens = o.tokens, ms = ms, error = NO_VALID_ANSWER, retried = g.retried).fitWire()
         val out = NodeAnswer(taskId, round, me.nodeId, me.name, o.model, o.fake, p.answer.trim(), p.confidence, p.keySteps, o.tokens, ms, retried = g.retried).fitWire()
-        tasks[taskId]?.own = Candidate(out.answer, out.keySteps)
+        if (remember) tasks[taskId]?.own = Candidate(out.answer, out.keySteps)
         return out
     }
 
