@@ -218,13 +218,16 @@ class SwarmLlm(
      * it again. [timing], when given, learns how long the job waited before a phone was picked for it.
      */
     suspend fun chatJob(jobId: String, req: ChatRequest, pinModel: String? = pinnedModel, timing: JobTiming? = null): ChatJobResult {
-        // one budget serves every attempt of the job, so it is the one of the slowest phone that could take it (its profile speed; floor msPerToken);
-        // the very first job waits for the reports it is read from, as dispatch would
+        // the limit on waiting for a free phone is twice the budget of the slowest phone that could take the job (its profile speed; floor
+        // msPerToken); each attempt has the budget of the phone it goes to. The very first job waits for the reports they are read from.
         if (synchronized(lock) { states.values.none { it.caps != null } }) refreshCaps()
         val perToken = synchronized(lock) {
             GenBudget.slowestMsPerToken(states.values.filter { !it.down }.mapNotNull { st -> st.caps?.takeIf { Scheduler.eligible(it, pinModel, st.thermal.level) } }, msPerToken)
         }
-        val r = dispatch(pinModel, GenBudget.forTokens(req.maxTokens, attemptTimeoutMs, perToken), timing) { ep -> ep.runChat(jobId, req, pinModel) }
+        val r = dispatch(
+            pinModel, GenBudget.forTokens(req.maxTokens, attemptTimeoutMs, perToken), timing,
+            attemptMs = { ep -> GenBudget.forTokens(req.maxTokens, attemptTimeoutMs, synchronized(lock) { GenBudget.msPerTokenOf(states[ep.nodeId]?.caps, msPerToken) }) },
+        ) { ep -> ep.runChat(jobId, req, pinModel) }
         synchronized(lock) {
             val st = states[r.nodeId]
             if (st != null) {
@@ -421,7 +424,8 @@ class SwarmLlm(
 
     /**
      * Picks a phone and runs [call] on it, moving on to the next phone when it fails. [timeoutMs] is the time budget of one
-     * attempt; the whole call, waiting for a free slot included, gives up after twice that. [committed] says that part of the
+     * attempt, unless [attemptMs] gives the phone's own (the resend to the same phone gets the same); the whole call, waiting for a
+     * free slot included, gives up after twice [timeoutMs]. [committed] says that part of the
      * reply already reached the caller, after which nothing is retried: another phone cannot continue a reply.
      */
     private suspend fun <T : Any> dispatch(
@@ -429,6 +433,7 @@ class SwarmLlm(
         timeoutMs: Long = attemptTimeoutMs,
         timing: JobTiming? = null,
         committed: () -> Boolean = { false },
+        attemptMs: ((PhoneEndpoint) -> Long)? = null,
         call: suspend (PhoneEndpoint) -> T,
     ): T {
         val startedAt = clock()
@@ -453,9 +458,10 @@ class SwarmLlm(
                 timing?.waitedMs = clock() - startedAt
             }
             val abort = synchronized(lock) { states[ep.nodeId]!!.abort }
+            val budgetMs = attemptMs?.invoke(ep) ?: timeoutMs
             if (!ep.isLocal) ensureHeartbeat()
             try {
-                return attempt(ep, abort, timeoutMs, call)
+                return attempt(ep, abort, budgetMs, call)
             } catch (e: BusyException) {
                 synchronized(lock) {
                     states[ep.nodeId]?.let { it.busyUntil = clock() + busyBackoffMs; it.capsAt = 0 }
@@ -474,7 +480,7 @@ class SwarmLlm(
                         // stillAnswers() may have brought the phone back up, and that replaces a fired abort signal with a new one:
                         // the signal read before the first try would end this try at once
                         val current = synchronized(lock) { states[ep.nodeId]?.abort } ?: abort
-                        return attempt(ep, current, timeoutMs, call)
+                        return attempt(ep, current, budgetMs, call)
                     } catch (again: CancellationException) {
                         throw again
                     } catch (again: Exception) {

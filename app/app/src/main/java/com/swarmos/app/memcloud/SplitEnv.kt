@@ -84,6 +84,9 @@ interface SplitEnv {
     fun readHeader(file: File): GgufInfo
 
     suspend fun peerModels(addr: String): Map<String, RoleSnap>
+
+    /** The [com.swarmos.app.core.DeviceClass] name in a phone's capacity report; null when it does not say (an older build, or it did not answer). */
+    suspend fun peerDeviceClass(addr: String): String?
     suspend fun peerStopRole(addr: String, role: String)
     suspend fun peerLoadModel(addr: String, role: String, file: String)
     suspend fun peerRpcStart(addr: String, req: RpcStartRequest): RpcStateDto
@@ -147,6 +150,9 @@ object AndroidSplitEnv : SplitEnv {
 
     override fun modelFile(name: String): File? = ModelFiles.clean(name)?.let { ModelStore.fileOf(it) }?.takeIf { it.isFile }
     override fun readHeader(file: File) = GgufMeta.read(file)
+
+    override suspend fun peerDeviceClass(addr: String): String? =
+        SwarmJson.decodeFromString<com.swarmos.app.sched.Caps>(AppGraph.nodeClient.raw(HttpMethod.Get, addr, "/sched/caps", "", 4_000)).deviceClass
 
     override suspend fun peerModels(addr: String): Map<String, RoleSnap> {
         val st = SwarmJson.decodeFromString<ModelsStateDto>(AppGraph.nodeClient.raw(HttpMethod.Get, addr, "/models/state", "", 4_000))

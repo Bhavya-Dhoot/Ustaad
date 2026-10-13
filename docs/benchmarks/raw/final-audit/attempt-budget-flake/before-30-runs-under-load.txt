@@ -1,0 +1,8 @@
+SwarmHardeningTest.anAttemptGetsTimePerRequestedTokenSoALongAnswerIsNotCutOff, 30 runs in a row, 16 CPU-spinning processes running
+result: 5 of 30 failed
+
+run 1: kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled (resend at SwarmLlm.kt:477, cancel at JobExecutor.kt:167)
+run 9: kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled (resend at SwarmLlm.kt:477, cancel at JobExecutor.kt:167)
+run 17: java.lang.AssertionError: expected:&lt;[long]&gt; but was:&lt;[long, long]&gt; (resend at SwarmLlm.kt:?, cancel at JobExecutor.kt:?)
+run 25: org.junit.ComparisonFailure: with no allowance per token the same phone is too slow and th (resend at SwarmLlm.kt:?, cancel at JobExecutor.kt:?)
+run 29: org.junit.ComparisonFailure: with no allowance per token the same phone is too slow and th (resend at SwarmLlm.kt:?, cancel at JobExecutor.kt:?)

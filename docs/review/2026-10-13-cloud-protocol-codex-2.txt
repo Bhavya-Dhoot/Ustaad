@@ -1,0 +1,48 @@
+GPT-6 (Codex); 29 repository files read.
+
+BLOCKER TokenSession.kt:114 - Call TokenClient.finish twice with the same Started and recorded Welcome: each call constructs a new Session with identical keys and stream counters starting at zero. Sealing different bodies for the same request id repeats an AES-GCM key/nonce pair, exposing plaintext relationships and enabling forgery; make completion atomic and single-use, returning the original Session for an identical Welcome.
+
+BLOCKER Chain.kt:572 - A malicious non-owner host can construct a checkpoint bearing the real cloud id, name its own key as owner, include itself and the newcomer, and choose matching secrets. The checkpoint verifies against its own embedded owner key, and the host can produce the pinned signature and ECDH answer that JoinClient.finish accepts without any real-owner admission; authenticate the owner from the cloud-id-bound genesis and transfer history before accepting a checkpoint start.
+
+HIGH Chain.kt:452 - After a member knows B was removed, an owner-key holder can send a gap checkpoint that puts B back in members while retaining B in removed, preserving the owner, recovery key and epoch. jump accepts it, and membership lookups subsequently treat B as current; validate checkpoint state invariants, including disjoint active and removed sets, correct member ids, unique node ids and valid issuer relationships.
+
+HIGH Chain.kt:457 - A thief holding only the owner key can write malicious operations followed by a checkpoint beyond an honest member’s head and offer only that checkpoint. jump immediately discards the member’s earlier history, so a recovery transfer before the checkpoint is refused without the promised 24-hour opportunity; require bridge entries and apply the hold before advancing an existing member’s base.
+
+HIGH Join.kt:130 - After observing a newcomer’s key, node id and name, a malicious host can search offline for an attacker-controlled key producing the same six digits for that node id and name. On a subsequent join it forwards that key, so the person sees matching names and digits but approves the attacker’s membership; compare the full newcomer fingerprint through an owner-scanned QR or another authenticated out-of-band exchange.
+
+HIGH Chain.kt:421 - After recovery code R is used and replaced by R2, someone retaining R can sign a transfer at an earlier owner-written entry where R was still in force. offer rolls back that entry and the later retirement, restoring the attacker’s ownership; preserve an irreversible recovery-retirement boundary rather than allowing historical forks to erase it.
+
+HIGH Join.kt:223 - The first-review confirmation attack remains possible through Owner.receive, request.approve(now), and Owner.decide without any human interaction. A QR photographer’s key is then owner-signed exactly as in the original automatic-approval sequence; close open point 12 with a production owner-screen tap path bound to the displayed request and default refusal on cancellation or timeout.
+
+HIGH TokenSession.kt:88 - A stranger who knows a token key id from the public member list can send five TokenHellos without possessing K. Each hello installs a session, and SessionStore.add evicts the client’s existing sessions under the four-session limit; keep unauthenticated welcomes separate and admit a session to the established-session quota only after a valid client MAC.
+
+HIGH Request.kt:91 - One authenticated client can submit 50,000 distinct request ids within five minutes and occupy the entire shared replay table. Honest members’ new requests then receive busy, including requests needed to synchronize membership and secrets; impose per-member quotas and reserve capacity for owner and synchronization traffic.
+
+HIGH Chain.kt:416 - After ownership transfers, the former owner can sign unlimited alternative entries at the historical transfer number, where its key remains the valid signer. Every distinct alternative appends another flag, and duplicate detection scans the growing list, allowing a current non-owner to exhaust memory and processing time; retain bounded evidence per sequence and cap the flag collection.
+
+HIGH document section 16, open point 15 - An active LAN attacker can replace the plain-HTTP browser page with JavaScript that exports the token key when the person supplies it. That key permits authenticated requests despite token-session sealing; serve the client from a trusted authenticated origin or keep the remotely served browser-token page disabled.
+
+MEDIUM Chain.kt:414 - An ordinary member can repeatedly offer an invalidly signed entry differing near the held chain’s tip. Before rejecting its signature, stateAt replays and verifies the preceding history under the chain lock, turning cheap junk into repeated full-history work; authenticate the candidate against cached historical signer information before replaying state.
+
+MEDIUM Frames.kt:229 - A negotiated peer can send arbitrarily many authenticated one-byte bulk chunks at distinct non-overlapping offsets without a final chunk. BulkOpener retains one TreeMap entry per chunk despite the claimed bounded memory; bound offsets by the declared transfer size, cap range metadata, and coalesce adjacent ranges.
+
+MEDIUM TokenSession.kt:76 - A stranger using many source addresses can send malformed hellos and create a permanent hellos entry for each address before parsing or authentication. Those address entries are never removed, so the per-address budget itself becomes an unbounded memory target; expire inactive address records and enforce a global table bound.
+
+MEDIUM Request.kt:40 - Give openAnswer the valid first RESPONSE frame of an unfinished answer stream and drop its remaining frames. It returns the envelope and partial body because it neither requires final nor calls end; require successful completion before returning a one-frame answer.
+
+MEDIUM Session.kt:230 - A member offline across two rotations holds epoch e, while current peers recognize only e+2 and e+1. Its Init fails before membership authentication, so it cannot establish the session needed to pull the chain or secrets even when an up-to-date peer returns; provide a bounded identity-authenticated resynchronization path or explicitly require rescanning a fresh invite.
+
+MEDIUM Join.kt:400 - A QR photographer binds an invite, the owner declines, and the photographer stops polling. deliver leaves the invite bound in DENIED, while a legitimate newcomer receives USED; release the binding when the denial is delivered and retain the declined result separately for the original requester.
+
+MEDIUM Session.kt:228 - Concurrent calls carrying the same captured Init can both pass the seenInits check before either reaches the reservation block. That block does not recheck the nonce, so each call generates keys, signs a Reply and occupies a slot, preserving a bounded version of the first-review replay flood; atomically recheck and reserve the nonce with the pending slot.
+
+MEDIUM Session.kt:144 - A passive observer can still associate successive discovery slots by the stable node id and fingerprint carried with the tag in Init. The redesign discloses this limitation but leaves the first-review tracking sequence intact; encrypt stable identities in the handshake if exchange-level unlinkability is required.
+
+First-review findings closed: B1–B2; H1–H9, H11–H12; M1–M7, M9. B/H/M numbers follow finding order within each severity in the first review.
+Not closed: B3 (human confirmation remains a wiring requirement), H10 (concurrent Init replay remains, with budgets now enforced), M8 (tracking remains explicitly accepted).
+
+Open points that must close before wiring: 5 must define recovery across multiple missed rotations; 7 must authenticate checkpoint ownership and enforce the hold on every base transition; 12 requires the actual confirmation flow; 13 requires bounded admission/request/connection resources and transport-derived source addresses. Loopback authorization must use the actual socket peer, never forwarded headers, and must not silently authorize remotely reachable localhost proxies. Point 14 requires Android cryptographic-provider validation before enabling the network implementation; point 15 requires authenticated browser-code delivery before enabling that client; point 19 requires provider and carrier validation before enabling its optional cipher/channel features.
+
+Open points acceptable if stated: 1, 2 including retired codes’ historical authority, 3, 4, 6, 9, 10 and 11. Point 7’s freshness limitation is acceptable after its authentication and hold defects are fixed; point 8 is acceptable only with indefinite stale access during a partition explicitly disclosed, rather than a heartbeat-only bound. Points 16–18 and point 19’s performance uncertainty can remain open with conservative bounded defaults and optional features disabled until validated.
+
+Not examined: Builds, test execution, network behavior, Android providers, persistence, application deduplication, live header/error mapping, socket-derived loopback and proxy handling, channel/bulk carriers, or relay-server enforcement.

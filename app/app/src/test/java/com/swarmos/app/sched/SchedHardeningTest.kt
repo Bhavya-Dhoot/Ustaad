@@ -76,14 +76,16 @@ class SwarmHardeningTest {
     }
 
     @Test fun anAttemptGetsTimePerRequestedTokenSoALongAnswerIsNotCutOff() = runBlocking {
-        val slow = phone("slow", TestLlm(delayMs = 500), tps = 99.0)
+        val slow = phone("slow", TestLlm(delayMs = 300), tps = 99.0)
         val other = phone("other", tps = 1.0)
-        // base 100 ms + 10 ms a token: a 100-token reply may take 1.1 s, a 0-token one 100 ms
-        val llm = swarm(listOf(slow, other), attemptTimeoutMs = 100, msPerToken = 10)
+        // base 100 ms + 100 ms a token: a 100-token reply may take 10.1 s (it needs 0.3 s, so a loaded PC does not cut it), a 0-token one 100 ms
+        val llm = swarm(listOf(slow, other), attemptTimeoutMs = 100, msPerToken = 100)
         val r = llm.chatJob("long", req("hello", maxTokens = 100))
         assertEquals("the slow phone had time to finish", "slow", r.nodeId)
         assertEquals(listOf("long"), slow.jobIds.toList())
         assertTrue("and nothing was re-run elsewhere", other.jobIds.isEmpty())
+        // a phone that never answers the job: with no allowance per token it is cut at 100 ms, however busy the PC is, and the job moves on
+        slow.hang = true
         val cut = llm.chatJob("short", req("hello", maxTokens = 0))
         assertEquals("with no allowance per token the same phone is too slow and the job moves on", "other", cut.nodeId)
     }

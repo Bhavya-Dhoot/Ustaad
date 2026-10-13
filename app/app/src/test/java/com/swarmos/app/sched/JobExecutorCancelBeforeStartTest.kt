@@ -57,6 +57,18 @@ class JobExecutorCancelBeforeStartTest {
         assertNotNull("the phone is not stuck at capacity", exec.tryAcquireFiller { })
     }
 
+    @Test fun aResendThatLandsOnAnAbandonedRunStartsAFreshRunInsteadOfGettingItsCancellation() = runBlocking {
+        val exec = JobExecutor(scope)
+        val caller = async { exec.submit("a") { "first" } }
+        until { exec.running == 1 && manual.pending == 1 }
+        caller.cancelAndJoin()           // the attempt timed out: the run is abandoned and cancelled, but has not wound up yet
+        val resend = async { exec.submit("a") { "second" } }
+        delay(100)                       // the resend is there while the old entry still is
+        until { manual.runPending(); resend.isCompleted }   // the old run winds up; the fresh one is queued behind it
+        assertEquals("a fresh run, not the cancellation of the abandoned one", "second", resend.await())
+        assertEquals(0, exec.running)
+    }
+
     @Test fun aCallerCancelledWhileQueuedBeforeTheJobRanLeavesTheQueue() = runBlocking {
         val exec = JobExecutor(scope).also { it.maxQueue = 1 }
         assertTrue(exec.acquire())   // a local caller holds the only slot, so the job has to wait

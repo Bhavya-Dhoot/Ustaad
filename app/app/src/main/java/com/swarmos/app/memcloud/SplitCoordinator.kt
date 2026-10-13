@@ -290,11 +290,23 @@ class SplitCoordinator(
 
     /** Peers that are online now, ordered by name (Phone A, B, C), optionally narrowed by node id or name. */
     fun onlinePeers(selection: List<String> = emptyList(), emptyMeansNone: Boolean = false): List<PeerInfo> =
-        selectedOnline(selection, emptyMeansNone).filter { MemCloudLogic.leftOutReason(it.name, it.host, env.localLinks()) == null }
+        selectedOnline(selection, emptyMeansNone).filter { leftOutReason(it) == null }
 
-    /** Why each online, selected phone that is not on this phone's local network is left out of a plan (see [MemCloudLogic.leftOutReason]). */
+    /** Why each online, selected phone that is not on this phone's local network, or is a client device, is left out of a plan (see [MemCloudLogic.leftOutReason]). */
     fun leftOut(selection: List<String> = emptyList(), emptyMeansNone: Boolean = false): List<String> =
-        selectedOnline(selection, emptyMeansNone).mapNotNull { MemCloudLogic.leftOutReason(it.name, it.host, env.localLinks()) }
+        selectedOnline(selection, emptyMeansNone).mapNotNull { leftOutReason(it) }
+
+    private fun leftOutReason(p: PeerInfo): String? = MemCloudLogic.leftOutReason(p.name, p.host, env.localLinks(), deviceClass = deviceClassOf[p.nodeId])
+
+    /** The device class each phone's capacity report gave (node id to [com.swarmos.app.core.DeviceClass] name), learnt by [learnClasses]. */
+    private val deviceClassOf = ConcurrentHashMap<String, String>()
+
+    /** Asks each phone for its capacity report's class; one that does not say (an older build, no answer) keeps what was known. */
+    private suspend fun learnClasses(peers: List<PeerInfo>) {
+        coroutineScope {
+            peers.map { p -> async { runCatching { env.peerDeviceClass(p.addr) }.getOrNull()?.let { deviceClassOf[p.nodeId] = it } } }.awaitAll()
+        }
+    }
 
     private fun selectedOnline(selection: List<String>, emptyMeansNone: Boolean): List<PeerInfo> =
         env.peers().filter { !it.away }
@@ -327,6 +339,7 @@ class SplitCoordinator(
 
     /** Asks every online peer what its model servers hold, so the plan counts the memory they will free. Call it while the screen is open. */
     suspend fun refreshPeers() {
+        learnClasses(selectedOnline(emptyList(), false))
         coroutineScope {
             onlinePeers().map { p ->
                 async {
@@ -425,9 +438,10 @@ class SplitCoordinator(
         _state.value = MemCloudState(phase = Phase.PLANNING, file = file, loadStartedAtMs = t0, baseline = prev.baseline, smallModel = prev.smallModel, pendingRestore = pendingText(), notices = noticesText(), steps = listOf("Reading the model header"), updatedAtMs = t0)
         try {
             val info = withContext(Dispatchers.IO) { header(file) }
+            learnClasses(selectedOnline(sel, false)) // a client device (its report says so) is not planned onto
             val peers = onlinePeers(sel)
-            val outside = leftOut(sel) // phones that are online but not on this phone's local network: shown, not planned
-            if (peers.isEmpty()) return fail("No other phone is online${if (outside.isEmpty()) "" else " on this phone's local network (${outside.joinToString("; ")})"}. The model needs ${gb(info.fileBytes)} and one phone cannot hold it.")
+            val outside = leftOut(sel) // phones that are online but cannot take part (not on this phone's local network, or a client): shown, not planned
+            if (peers.isEmpty()) return fail("No other phone is online${if (outside.isEmpty()) "" else " that can take part (${outside.joinToString("; ")})"}. The model needs ${gb(info.fileBytes)} and one phone cannot hold it.")
             manual?.let { SplitPlanner.checkLayers(it, info.blockCount, peers.size + 1) }?.let { return fail(it) }
             releaseExcluded(peers)
             step("Asking ${peers.joinToString { it.name }} what it is running")

@@ -46,6 +46,7 @@ class BatchRunner(
     private val retryPauseMs: Long = RETRY_PAUSE_MS,
     private val onRetry: (index: Int) -> Unit = {},
 ) {
+    private val retriedItems = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()   // items that were run again, counted once each
 
     suspend fun run(
         batchId: String,
@@ -61,7 +62,7 @@ class BatchRunner(
         val target = AtomicInteger(workersFor(swarm.slotCount(includeDown = false), n))
 
         fun snapshot(state: String): BatchReport = synchronized(items) {
-            buildReport(batchId, mode, state, n, items.filterNotNull(), (nanoClock() - startNs) / 1e6)
+            buildReport(batchId, mode, state, n, items.filterNotNull(), (nanoClock() - startNs) / 1e6, retriedItems.size)
         }
 
         /** A worker leaves between two items when there are more of them than the phones that are up can use. */
@@ -114,6 +115,7 @@ class BatchRunner(
             if (attempt > 0) {
                 delay(retryPauseMs)             // the item is back on the queue after a pause; Stop Ustaad ends the batch here
                 if (!deviceUp()) continue       // nobody to try it on this time
+                retriedItems.add(i)
                 onRetry(i)
             }
             timing = JobTiming()
@@ -177,7 +179,7 @@ class BatchRunner(
         fun workersFor(liveSlots: Int, remaining: Int): Int = liveSlots.coerceAtMost(remaining).coerceAtLeast(1)
 
         /** Pure function of the finished items, so the aggregate and the per-phone rows always add up. */
-        fun buildReport(id: String, mode: String, state: String, total: Int, finished: List<BatchItem>, wallMs: Double): BatchReport {
+        fun buildReport(id: String, mode: String, state: String, total: Int, finished: List<BatchItem>, wallMs: Double, retried: Int = 0): BatchReport {
             val ok = finished.filter { it.error == null }
             val tokens = ok.sumOf { it.completionTokens }
             val perPhone = ok.groupBy { it.nodeId!! }.map { (node, list) ->
@@ -206,6 +208,7 @@ class BatchRunner(
                 models = models,
                 perPhone = perPhone,
                 items = finished.sortedBy { it.index },
+                retried = retried,
             )
         }
     }
