@@ -201,6 +201,8 @@ object PduEngine {
                 leanSources = SwarmPrefs(AppGraph.appContext).pduLeanSources()
                 refresh()
             }
+            // an index from before the graph existed gets its graph, a few files at a time, beside the status loop below
+            launch { StepGuard.run(::noteError) { while (store.backfillGraph() > 0) delay(20) } }
             while (true) {
                 if (StepGuard.run(::noteError) { embedderStatus(); refresh() }) _note.value = null
                 delay(4_000)
@@ -443,8 +445,13 @@ object PduEngine {
      */
     fun requestIndex(reason: String) = PduAutoIndex.request(reason)
 
-    /** True while a question is being searched or answered; an automatic index run does not start then. */
-    val asking: Boolean get() = askSlot.running
+    private val servingNow = java.util.concurrent.atomic.AtomicInteger()
+
+    /**
+     * True while a question is being searched or answered on this phone, or a peer's question is being served from it: the embedder is
+     * the same, and an index run in front of a query would cost it the deadline. An automatic index run does not start then.
+     */
+    val asking: Boolean get() = askSlot.running || servingNow.get() > 0
 
     suspend fun indexTree(tree: android.net.Uri): IndexReport {
         val rootDoc = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, android.provider.DocumentsContract.getTreeDocumentId(tree)).toString()
@@ -526,7 +533,16 @@ object PduEngine {
     /** Serve a peer: search, apply the share policy, return only what policy allows. Logs one audit line, keeps nothing else. */
     suspend fun servePeer(q: PduQuery, fromNode: String): PduResponse {
         val knownName = AppGraph.registry.peers.value.firstOrNull { it.info.nodeId == fromNode }?.info?.name
-        return PduActivity.during(PduActivity.servingPeer(knownName)) {
+        servingNow.incrementAndGet()
+        try {
+            return servePeerNow(q, fromNode, knownName)
+        } finally {
+            servingNow.decrementAndGet()
+        }
+    }
+
+    private suspend fun servePeerNow(q: PduQuery, fromNode: String, knownName: String?): PduResponse =
+        PduActivity.during(PduActivity.servingPeer(knownName)) {
             val t0 = now()
             val ls = searchLocal(q.text)
             val resp = PeerResponder.respond(q.qid, ls.candidates, ls.terms, q.k.coerceIn(1, 10), store.chunkCount, now() - t0, store.indexVersion())
@@ -543,7 +559,6 @@ object PduEngine {
             _served.update { (listOf(ServedRecord(q.qid, peerName, resp.hits.size, bytes, resp.withheldPrivate, resp.hits.map { it.title }, System.currentTimeMillis())) + it).take(20) }
             resp
         }
-    }
 
     // ---- the federated ask --------------------------------------------------------------------------------
 
@@ -733,7 +748,10 @@ object PduEngine {
         }
 
         // cards are final; now the answer
-        val sources = _query.value?.takeIf { it.qid == qid }?.sources.orEmpty()
+        val found = _query.value?.takeIf { it.qid == qid }?.sources.orEmpty()
+        // documents linked to the entities the question names: off until a measurement on phones says it helps (GraphRetrieval.ENABLED)
+        val sources = if (GraphRetrieval.ENABLED) found + PduGraph.linkedSources(text, found) else found
+        if (sources.size > found.size) update { it.copy(sources = sources) }
         val incomplete = _query.value?.incomplete ?: false
         update { it.copy(phase = "answering", auditHash = AppGraph.audit.lastEntryHash) }
         val sb = StringBuilder()

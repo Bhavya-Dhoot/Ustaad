@@ -108,6 +108,7 @@ fun QueryUi.toReport(): AskReport = AskReport(
  *  POST /query        peer asks this phone; answered through the share policy
  *  POST /open         peer asks this phone to open a cited file on its own screen
  *  GET  /version      this phone's index version: a counter that goes up with every committed change to its index
+ *  POST /graph        peer asks a question of this phone's entity graph; answered through the share policy, like /query
  *  POST /index        test/dev: index MediaStore photos and/or an all-files-access directory, returns timings
  *  POST /ask          test/dev: run the whole federated flow from this phone and return sources and timings
  *  POST /debug/peers  test/dev: register peers by IP (GET /v1/hello on each) until discovery lands
@@ -127,6 +128,12 @@ fun Route.pduRoutes() {
     }
 
     get("/version") { call.respond(PduVersion(PduEngine.store.indexVersion())) }
+
+    post("/graph") {
+        val q = SwarmJson.decodeFromString<GraphQuery>(call.receiveText())
+        if (!GraphWire.valid(q)) return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("not a graph question"))
+        call.respond(PduGraph.serve(q, call.request.header(Signer.HEADER_NODE) ?: "unknown"))
+    }
 
     // test and dev routes: debug builds only, so a release build exposes just /query and /open
     if (BuildConfig.DEBUG) {
@@ -196,6 +203,13 @@ fun Route.pduRoutes() {
             val req = SwarmJson.decodeFromString<DebugShareRequest>(call.receiveText())
             PduEngine.setFolderPrivate(req.folder, !req.shared)
             call.respond(mapOf("folder" to req.folder, "shared" to (!SharePolicy.effectivePrivate(req.folder, !req.shared)).toString()))
+        }
+
+        // the merged answer of the phones, without this phone's own private files: any paired phone can call this route
+        post("/debug/graph") {
+            val q = SwarmJson.decodeFromString<GraphQuery>(call.receiveText())
+            if (!GraphWire.valid(q)) return@post call.respond(HttpStatusCode.BadRequest, ErrorBody("not a graph question"))
+            call.respond(PduGraph.ask(q, ownPrivate = false))
         }
 
         post("/debug/peers") {

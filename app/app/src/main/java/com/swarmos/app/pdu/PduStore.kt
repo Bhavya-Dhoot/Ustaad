@@ -68,6 +68,9 @@ class PduStore(path: String) : IndexBacking {
     private val mx = VectorMatrix(DIM)
     private var txDepth = 0
 
+    /** The entity graph in this same file; see [GraphSql]. */
+    internal val graph = GraphSql(this)
+
     init {
         synchronized(lock) {
             exec("PRAGMA journal_mode=WAL")
@@ -90,6 +93,7 @@ class PduStore(path: String) : IndexBacking {
             )
             exec("CREATE TABLE IF NOT EXISTS folders(folder TEXT PRIMARY KEY, isPrivate INTEGER NOT NULL)")
             exec("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+            GraphSql.DDL.forEach(::exec)
             repairPrivacy()
             loadMatrix()
         }
@@ -144,6 +148,9 @@ class PduStore(path: String) : IndexBacking {
         write("INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)") { it.bindText(1, key); it.bindText(2, value) }
     }
 
+    /** Builds the graph of up to [batch] documents stored before the graph existed; 0 when none is left. Call until it returns 0. */
+    fun backfillGraph(batch: Int = 20): Int = graph.backfill(batch)
+
     /** How many committed changes this index has had; see [IndexVersion]. 0 for an index that has had none since the counter exists. */
     fun indexVersion(): Long = IndexVersion.parse(meta(IndexVersion.KEY))
 
@@ -190,6 +197,7 @@ class PduStore(path: String) : IndexBacking {
                 it.bindText(5, doc.folder); it.bindLong(6, doc.lastModified); it.bindLong(7, doc.dateMs)
                 it.bindLong(8, chunks.size.toLong()); it.bindLong(9, nowMs)
             }
+            graph.replaceDoc(doc.docId, newIds.mapIndexed { i, id -> id to chunks[i].text })
             exec(IndexVersion.BUMP_SQL)
         }
         try {
@@ -235,6 +243,7 @@ class PduStore(path: String) : IndexBacking {
             for (d in docIds) {
                 val ids = query("SELECT id FROM chunks WHERE docId=?", { it.bindText(1, d) }) { it.getLong(0) }
                 deleteChunks(d, ids)
+                graph.dropDoc(d)
                 gone += ids
                 write("DELETE FROM docs WHERE docId=?") { it.bindText(1, d) }
                 rows += query("SELECT changes()", {}) { it.getLong(0).toInt() }.first()
@@ -284,6 +293,7 @@ class PduStore(path: String) : IndexBacking {
         exec("BEGIN")
         try {
             exec("DELETE FROM chunks"); exec("DELETE FROM chunks_fts"); exec("UPDATE docs SET chunks=-1 WHERE chunks>0")
+            graph.clear()
             exec(IndexVersion.BUMP_SQL)
             exec("COMMIT")
         } catch (t: Throwable) {
@@ -450,17 +460,17 @@ class PduStore(path: String) : IndexBacking {
         } finally { st.close() }
     }
 
-    private fun exec(sql: String) {
+    internal fun exec(sql: String) {
         val st = db.prepare(sql)
         try { st.step() } finally { st.close() }
     }
 
-    private inline fun write(sql: String, bind: (SQLiteStatement) -> Unit) {
+    internal inline fun write(sql: String, bind: (SQLiteStatement) -> Unit) {
         val st = db.prepare(sql)
         try { bind(st); st.step() } finally { st.close() }
     }
 
-    private inline fun <T> query(sql: String, bind: (SQLiteStatement) -> Unit, read: (SQLiteStatement) -> T): List<T> {
+    internal inline fun <T> query(sql: String, bind: (SQLiteStatement) -> Unit, read: (SQLiteStatement) -> T): List<T> {
         val st = db.prepare(sql)
         try {
             bind(st)
