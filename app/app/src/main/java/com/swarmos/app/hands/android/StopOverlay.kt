@@ -1,5 +1,6 @@
 package com.swarmos.app.hands.android
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -37,6 +38,8 @@ object StopOverlay {
         main.post { hideNow() }
     }
 
+    // status_bar_height: there is no public inset before API 30 for a window that is not an activity; 24 dp if it is missing
+    @SuppressLint("InternalInsetResource", "DiscouragedApi")
     private fun showNow(onStop: () -> Unit) {
         val svc = HandsAccessibilityService.instance ?: return
         hideNow()
