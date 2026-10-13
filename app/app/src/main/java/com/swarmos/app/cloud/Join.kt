@@ -397,7 +397,7 @@ class Owner(
         return try {
             if (request.key != null) chain.addDevice(identity, request.nodeId, request.name, request.kind, request.key, now)
             else chain.addToken(identity, request.hostMemberId, request.nodeId, request.name, request.kind, request.tokenKeyId!!, now)
-            AdmitDecision(ticket, true, chain.entriesAfter(request.forward.hostHeadSeq + 1, request.forward.hostHeadId))
+            AdmitDecision(ticket, true, chain.entriesFor(ChainPull(request.forward.hostHeadSeq + 1, request.forward.hostHeadId, 0L)))
         } catch (e: ProtocolError) {
             no(e.message ?: "refused by the chain rules")
         }

@@ -85,6 +85,8 @@ class ChainEntry private constructor(
 
         /** One limit for creating and parsing. An entry is 230 to 350 bytes; there are no checkpoints any more (docs 3.4). */
         const val MAX_BODY = 1024
+
+        /** Members at most; an add (or an owner transfer to a new key) stops one short of it: the last place is kept for a recovery transfer (3.3). */
         const val MAX_MEMBERS = 512
         const val MAX_REMOVED = 4096
 
@@ -209,7 +211,7 @@ internal object ChainRules {
         return when (val p = e.payload) {
             is Payload.Genesis -> bad("a second genesis")
             is Payload.Add -> {
-                if (s.members.size >= ChainEntry.MAX_MEMBERS) bad("member limit")
+                if (s.members.size >= ChainEntry.MAX_MEMBERS - 1) bad("member limit") // the last place is the recovery transfer's (Codex Chain.kt:260)
                 if (s.byNodeId(p.nodeId) != null) bad("node id in use")
                 val id: String
                 val m: ChainMember
@@ -254,15 +256,23 @@ internal object ChainRules {
                 }
                 val existing = s.member(newId)
                 val members = s.members.associateBy { it.id }.toMutableMap()
+                var removed = s.removed
                 if (existing != null) {
                     if (existing.kind != MemberKind.NODE || existing.publicKey == null) bad("the new owner must be a node")
                 } else {
-                    if (members.size >= ChainEntry.MAX_MEMBERS) bad("member limit")
+                    // an owner transfer stops one short of the limit like an add; the recovery key may take the last place, and if the
+                    // list is full the new owner takes the old owner's place (the old owner and its token clients become removed)
+                    if (e.role == 1 && members.size >= ChainEntry.MAX_MEMBERS - 1) bad("member limit")
                     if (s.byNodeId(p.nodeId) != null) bad("node id in use")
+                    if (members.size >= ChainEntry.MAX_MEMBERS) {
+                        val gone = HashSet<String>().apply { add(s.ownerId); s.members.filter { it.issuer == s.ownerId }.forEach { add(it.id) } }
+                        gone.forEach { members.remove(it) }
+                        removed = removed + gone
+                    }
                     members[newId] = ChainMember(newId, p.nodeId, p.name, MemberKind.NODE, p.newOwner, null, null, e.seq)
                 }
                 s.copy(
-                    ownerKey = p.newOwner, recoveryKey = p.newRecovery ?: s.recoveryKey, members = members,
+                    ownerKey = p.newOwner, recoveryKey = p.newRecovery ?: s.recoveryKey, members = members, removed = removed,
                     needsRotation = s.needsRotation || e.role == 2, nextSeq = next, headId = e.idBytes,
                 )
             }
@@ -416,18 +426,31 @@ class Chain private constructor(
         val a = authorityFor(f)
         val key = if (e.role == 1) a.owner else a.recovery
         if (!Crypto.ecdsaVerify(key, ChainEntry.signedMessage(e.body), e.signature)) return Offer.Refused("not signed by a key in force there")
-        val recoveryFork = e.role == 2 && mine.role != 2
-        if (!recoveryFork) {
-            // 2. a valid entry is evidence of a fork: one record per number and signer, a capped list (Codex Chain.kt:416)
-            val id = "$f:${Hex.of(Crypto.fingerprint(key))}"
-            if (flagMap.containsKey(id) || flagMap.size >= MAX_FLAGS) return Offer.Equivocation(f)
-            val valid = try { ChainRules.apply(stateAt(f - 1), e); true } catch (x: ProtocolError) { false }
-            if (!valid) return Offer.Refused("not a valid entry")
-            flagMap[id] = Flag(f, mine.id, e.id, Hex.of(Crypto.fingerprint(key)))
-            return Offer.Equivocation(f)
+        // 2. a branch that carries a recovery-signed entry replaces a branch that has none after the fork (Codex Chain.kt:430):
+        //    whether the run's first entry is the recovery one or owner entries lead up to it. Never below this device's boundary:
+        //    `floor < f` says that no held entry from f on is recovery-signed.
+        val j = (k until run.size).firstOrNull { run[it].role == 2 }
+        if (floor < f && j != null) {
+            // the first recovery-signed entry is checked against the recovery key in force at f before any replay: owner entries
+            // cannot change that key, so it is the key of the common prefix
+            if (j != k && !Crypto.ecdsaVerify(a.recovery, ChainEntry.signedMessage(run[j].body), run[j].signature)) {
+                return Offer.Refused("the recovery entry is not signed by the recovery key in force at the fork")
+            }
+            return switchTo(run, k)
         }
-        // 3. a recovery-signed entry replaces the owner's entries from f on, but never below the recovery boundary
-        if (f < floor) return Offer.Refused("below a recovery boundary")
+        // 3. otherwise a valid entry is evidence of a fork: one record per number and signer, a capped list (Codex Chain.kt:416).
+        //    This includes two branches that both carry recovery entries after the fork: they never converge by themselves (3.5).
+        val id = "$f:${Hex.of(Crypto.fingerprint(key))}"
+        if (flagMap.containsKey(id) || flagMap.size >= MAX_FLAGS) return Offer.Equivocation(f)
+        val valid = try { ChainRules.apply(stateAt(f - 1), e); true } catch (x: ProtocolError) { false }
+        if (!valid) return Offer.Refused("not a valid entry")
+        flagMap[id] = Flag(f, mine.id, e.id, Hex.of(Crypto.fingerprint(key)))
+        return Offer.Equivocation(f)
+    }
+
+    /** Replaces everything from the fork on by the run, which must be valid whole; the dropped entries are kept for the screen. */
+    private fun switchTo(run: List<ChainEntry>, k: Int): Offer {
+        val f = run[k].seq
         return try {
             var st = stateAt(f - 1)
             val states = ArrayList<ChainState>()
@@ -445,17 +468,46 @@ class Chain private constructor(
         }
     }
 
+    /**
+     * The pre-membership path (docs 3.8, Codex section 5.2): a run of entries from a sender nobody has authenticated, accepted only
+     * if it carries a recovery-signed entry that verifies under the recovery key in force at the first number where it differs from
+     * (or extends) what this device holds, and then only by the ordinary rules of [offer]. It answers adopted or not and releases
+     * nothing: no secrets, no member list, no reason. The budget and the size cap belong to [RecoveryIntake].
+     */
+    @Synchronized fun adoptRecoveryProof(run: List<ChainEntry>): Boolean {
+        if (run.isEmpty() || run.size > MAX_RUN) return false
+        for (i in 1 until run.size) if (run[i].seq != run[i - 1].seq + 1) return false
+        val headSeq = tip.headSeq
+        if (run[0].seq > headSeq + 1) return false
+        var k = 0
+        while (k < run.size && run[k].seq <= headSeq && held[run[k].seq.toInt()].id == run[k].id) k++
+        if (k == run.size || run[k].seq == 0L) return false
+        val j = (k until run.size).firstOrNull { run[it].role == 2 } ?: return false
+        val recovery = authorityFor(run[k].seq).recovery
+        if (!Crypto.ecdsaVerify(recovery, ChainEntry.signedMessage(run[j].body), run[j].signature)) return false
+        return when (offer(run)) {
+            is Offer.Adopted, is Offer.RolledBack -> true
+            else -> false
+        }
+    }
+
     // ---- sync (3.6) ----------------------------------------------------------------------------------------------------
 
-    /** `ChainPull` request: what this device holds (`fromSeq`, `prevId`). */
-    @Synchronized fun pullRequest(): Pair<Long, ByteArray> = tip.nextSeq to tip.headId
+    /**
+     * `ChainPull`: what this device holds (`fromSeq`, `prevId`) and, for a peer that turns out to be on another branch, where to
+     * page from. The [cursor] has nothing to do with the held head (Codex Chain.kt:451); [ChainPuller] moves it.
+     */
+    @Synchronized fun pullRequest(cursor: Long = 0L): ChainPull = ChainPull(tip.nextSeq, tip.headId, cursor)
 
-    /** The entries a peer needs given its `ChainPull`: those after it, or from the genesis if it is on another branch. */
-    @Synchronized fun entriesAfter(fromSeq: Long, prevId: ByteArray): List<ChainEntry> {
-        val prevSeq = fromSeq - 1
-        val matches = prevSeq in 0..tip.headSeq && held[prevSeq.toInt()].idBytes.contentEquals(prevId)
-        val start = if (matches) fromSeq.toInt() else 0
-        return held.drop(start).take(MAX_RUN_OUT)
+    /**
+     * The answer to a `ChainPull`: the entries after the asker's head if its head is one of ours, otherwise a page of at most [page]
+     * entries starting at the asker's cursor (the genesis for a first request).
+     */
+    @Synchronized fun entriesFor(pull: ChainPull, page: Int = MAX_RUN_OUT): List<ChainEntry> {
+        val prevSeq = pull.fromSeq - 1
+        val matches = prevSeq in 0..tip.headSeq && held[prevSeq.toInt()].idBytes.contentEquals(pull.prevId)
+        val start = (if (matches) pull.fromSeq else pull.cursor).coerceIn(0L, held.size.toLong()).toInt()
+        return held.subList(start, minOf(held.size, start + page)).toList()
     }
 
     // ---- writing: only with the owner key ---------------------------------------------------------------------------------
@@ -518,7 +570,9 @@ class Chain private constructor(
 
     companion object {
         const val MAX_RUN = 1024
-        const val MAX_RUN_OUT = 256
+
+        /** A page of a sync answer: as long as the longest run [offer] takes, so that a fork and the recovery entry that decides it fit in one page. */
+        const val MAX_RUN_OUT = MAX_RUN
         const val MAX_FLAGS = 64
         const val SNAP = 64L
 
@@ -550,6 +604,78 @@ class Chain private constructor(
             }
             return chain
         }
+    }
+}
+
+/** `ChainPull` (3.6): `u64 fromSeq || bytes32 prevId || u64 cursor`. */
+class ChainPull(val fromSeq: Long, val prevId: ByteArray, val cursor: Long) {
+    fun encode(): ByteArray = Writer().u64(fromSeq).fixed(prevId, 32).u64(cursor).bytes()
+
+    companion object {
+        fun parse(bytes: ByteArray): ChainPull {
+            val r = Reader(bytes)
+            val p = ChainPull(r.u64(), r.fixed(32), r.u64())
+            r.end()
+            if (p.fromSeq < 1 || p.cursor < 0) malformed("pull position")
+            return p
+        }
+    }
+}
+
+/**
+ * The requesting side of a sync with one peer (3.6). Its [request] carries a cursor that starts at the genesis and moves forward
+ * page by page while the peer's answers are entries this device already holds, so a fork that lies beyond the first page is
+ * reached (Codex Chain.kt:451). When a page shows an owner/owner fork at a number, the cursor goes back to that number once, so
+ * that the next page starts at the fork and can carry the recovery entry that decides it (3.5). It stops when a peer has nothing
+ * more, refuses, shows the same fork twice, or does not advance.
+ */
+class ChainPuller(private val chain: Chain) {
+    private var cursor = 0L
+    private var forkAt = -1L
+
+    var done = false
+        private set
+
+    fun request(): ChainPull = chain.pullRequest(cursor)
+
+    fun received(answer: List<ChainEntry>): Offer {
+        if (answer.isEmpty()) { done = true; return Offer.Unchanged }
+        val r = chain.offer(answer)
+        when (r) {
+            is Offer.Unchanged -> {
+                val next = answer.last().seq + 1
+                if (next <= cursor) done = true else cursor = next
+            }
+            is Offer.Equivocation -> if (r.seq == forkAt) done = true else { forkAt = r.seq; cursor = r.seq }
+            is Offer.Refused -> done = true
+            else -> {}
+        }
+        return r
+    }
+}
+
+/**
+ * The budget in front of [Chain.adoptRecoveryProof]: the one door that opens to a sender nobody has authenticated (docs 3.8). Small
+ * on purpose. A run is charged to its source address and to the whole device before anything is verified; the table of addresses
+ * has a hard cap and refuses a new address when full (nothing is inserted, nothing leaks), and a run longer than [maxRun] is
+ * refused unread. It adopts or it does not; the caller learns nothing else.
+ */
+class RecoveryIntake(
+    private val chain: Chain,
+    maxPerMinute: Int = 60,
+    maxPerMinutePerSource: Int = 6,
+    maxSources: Int = 256,
+    private val maxRun: Int = Chain.MAX_RUN,
+) {
+    private val all = WindowBudget(maxPerMinute, maxKeys = 1)
+    private val perSource = WindowBudget(maxPerMinutePerSource, maxKeys = maxSources)
+
+    /** [source] is the socket's peer address, never a header. */
+    fun receive(run: List<ChainEntry>, source: String, now: Long): Boolean {
+        if (run.isEmpty() || run.size > maxRun) return false
+        if (!perSource.allow(source, now)) return false
+        if (!all.allow("", now)) return false
+        return chain.adoptRecoveryProof(run)
     }
 }
 

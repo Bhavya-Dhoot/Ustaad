@@ -316,14 +316,15 @@ class ChainTest {
         val (c, _) = cloudWith(1)
         val member = c.copy()
         val e1 = c.admit(Peer.bare()); c.admit(Peer.bare())
-        val (from, prev) = member.pullRequest()
-        val tail = c.chain.entriesAfter(from, prev)
+        val tail = c.chain.entriesFor(ChainPull.parse(member.pullRequest().encode()))
         assertEquals(2, tail.size); assertEquals(e1.id, tail[0].id)
         assertTrue(offer(member, *tail.toTypedArray()) is Offer.Adopted)
-        // a device on another branch (same number, other id) is sent the chain from the base
+        // a device on another branch (same number, other id) is sent a page from its cursor: the base for a first request
         val other = Peer.bare().chain
-        val (f2, p2) = other.pullRequest()
-        assertEquals(c.chain.entries().size, c.chain.entriesAfter(f2, p2).size)
+        assertEquals(c.chain.entries().size, c.chain.entriesFor(other.pullRequest()).size)
+        assertEquals(c.chain.entries().size - 2, c.chain.entriesFor(other.pullRequest(cursor = 2)).size)
+        assertTrue(c.chain.entriesFor(other.pullRequest(cursor = 99)).isEmpty())
+        assertError(CloudError.MALFORMED) { ChainPull.parse(other.pullRequest().encode() + byteArrayOf(0)) }
         assertTrue(EntryRun.decode(Reader(EntryRun.encode(tail))).map { it.id } == tail.map { it.id })
     }
 
@@ -389,10 +390,12 @@ class ChainTest {
         assertEquals(x.seq + 1, r.seq)
         assertTrue(offer(member, x, r) is Offer.Adopted)
         assertEquals(r.seq, member.recoveryBoundary())
-        // someone who kept R signs a transfer at 3, where R was still in force: refused, ownership does not move
+        // someone who kept R signs a transfer at 3, where R was still in force: both branches carry a recovery entry after the fork, so
+        // nothing moves; it is recorded as evidence (Codex Chain.kt:430, flag it), ownership does not move
         val undo = beforeX.recover(c.recovery, newKey(), Peer.newNodeId(), "undo", newKey(), T0 + 70)
         assertEquals(x.seq, undo.seq)
-        assertTrue(refused(offer(member, undo)))
+        assertTrue(offer(member, undo) is Offer.Equivocation)
+        assertEquals(1, member.flags().size)
         assertEquals(p2.id, member.state().ownerId); assertEquals(r.id, member.entries().last().id)
         // at the tip R is not in force; at 4 itself it is a second recovery entry: equivocation, the first stays
         val atTip = ChainEntry.sign(c.recovery, ChainEntry.transferBody(member.state(), 2, T0, newKey(), Peer.newNodeId(), "x", newKey()))
@@ -509,5 +512,225 @@ class ChainTest {
         val big = ChainEntry.addBody(c.state, T0, Peer.newNodeId(), "x".repeat(64), MemberKind.NODE, newKey(), null, null)
         assertTrue(big.size in 200..400)
         assertTrue(ChainEntry.MAX_BODY >= 4 * big.size)
+    }
+
+    // ---- stage 1d: two owner branches and a later recovery entry, the member slot, paging, the pre-membership path ----------------
+
+    /** Two branches of one cloud that part at number 2 by owner entries; B goes on with a recovery transfer. */
+    private inner class TwoBranches {
+        val c = cloudWith(1).first
+        val a = c.copy()
+        val b = c.copy()
+        val bBeforeRecovery: ChainState
+        val recoveryEntry: ChainEntry
+        val newOwner = Peer.bare()
+
+        init {
+            repeat(2) { a.addDevice(c.owner.identity, Peer.newNodeId(), "a$it", MemberKind.NODE, newKey(), T0 + 10 + it) }
+            repeat(2) { b.addDevice(c.owner.identity, Peer.newNodeId(), "b$it", MemberKind.NODE, newKey(), T0 + 20 + it) }
+            bBeforeRecovery = b.state()
+            recoveryEntry = b.recover(c.recovery, newOwner.identity.publicKey, newOwner.nodeId, "recovered", newKey(), T0 + 50)
+        }
+
+        fun aRun() = a.entries().drop(2)
+        fun bRun() = b.entries().drop(2)
+    }
+
+    @Test fun aDeviceWithoutRecoveryEntriesAfterTheForkSwitchesToTheBranchThatHasOneAndNotTheOtherWayRound() { // Codex Chain.kt:430
+        val t = TwoBranches()
+        assertEquals(2L, t.aRun().first().seq); assertEquals(2L, t.bRun().first().seq)
+        assertNotEquals(t.aRun().first().id, t.bRun().first().id) // the owner key signed two different entries at number 2
+        // the device on A has no recovery entry after the fork: it follows B, run begins at the fork, owner entries lead to the recovery one
+        val devA = Chain.fromEntries(t.a.entries())
+        val o = devA.offer(t.bRun())
+        assertTrue(o is Offer.RolledBack)
+        assertEquals(2, (o as Offer.RolledBack).dropped)
+        assertEquals(t.b.heartbeat(), devA.heartbeat())
+        assertEquals(t.newOwner.id, devA.state().ownerId)
+        assertEquals(t.recoveryEntry.seq, devA.recoveryBoundary())
+        // the device on B holds a recovery entry after the fork: it never goes to A, whatever A carries
+        val devB = Chain.fromEntries(t.b.entries())
+        assertTrue(devB.offer(t.aRun()) is Offer.Equivocation)
+        assertEquals(t.b.heartbeat(), devB.heartbeat())
+        // the recovery entry may also be the first entry of the run (the old rule): same result
+        val devA2 = Chain.fromEntries(t.a.entries())
+        val direct = t.c.copy().recover(t.c.recovery, newKey(), Peer.newNodeId(), "direct", newKey(), T0 + 60, forkAt = 2L)
+        assertTrue(devA2.offer(listOf(direct)) is Offer.RolledBack)
+    }
+
+    @Test fun twoBranchesThatBothCarryRecoveryEntriesAfterTheForkDoNotConvergeAndAreFlagged() { // Codex Chain.kt:430 (the decided residue)
+        val t = TwoBranches()
+        // A also gets a recovery entry, a different one (another new owner)
+        val other = Peer.bare()
+        t.a.recover(t.c.recovery, other.identity.publicKey, other.nodeId, "other recovery", newKey(), T0 + 55)
+        val devA = Chain.fromEntries(t.a.entries()); val devB = Chain.fromEntries(t.b.entries())
+        val headA = devA.heartbeat(); val headB = devB.heartbeat()
+        assertTrue(devA.offer(t.bRun()) is Offer.Equivocation)
+        assertTrue(devB.offer(t.a.entries().drop(2)) is Offer.Equivocation)
+        assertEquals(headA, devA.heartbeat()); assertEquals(headB, devB.heartbeat()) // each keeps its own, no hash tie-break
+        assertEquals(1, devA.flags().size); assertEquals(1, devB.flags().size)
+        assertEquals(other.id, devA.state().ownerId); assertEquals(t.newOwner.id, devB.state().ownerId)
+    }
+
+    @Test fun aRunWhoseRecoveryEntryIsNotSignedByTheRecoveryKeyInForceIsRefusedBeforeAnyReplay() { // Codex Chain.kt:430, :414
+        val t = TwoBranches()
+        val devA = Chain.fromEntries(t.a.entries())
+        val fake = ChainEntry.sign(SoftwareIdentity.generate(), ChainEntry.transferBody(t.bBeforeRecovery, 2, T0, newKey(), Peer.newNodeId(), "x", newKey()))
+        val run = t.b.entries().drop(2).dropLast(1) + fake
+        val replaysBefore = devA.replays
+        assertTrue(refused(devA.offer(run)))
+        assertEquals(replaysBefore, devA.replays)
+        assertEquals(t.a.heartbeat(), devA.heartbeat())
+        // a recovery entry that is right but follows an owner entry that is wrong makes the whole run invalid, nothing is taken
+        val bad = ChainEntry.sign(SoftwareIdentity.generate(), ChainEntry.addBody(t.c.copy().state(), T0, Peer.newNodeId(), "z", MemberKind.NODE, newKey(), null, null))
+        assertTrue(refused(devA.offer(listOf(bad) + t.bRun().drop(1))))
+        assertEquals(t.a.heartbeat(), devA.heartbeat())
+    }
+
+    @Test fun aFullMemberListKeepsTheLastPlaceForARecoveryTransferWhichThenTakesTheOldOwnersPlace() { // Codex Chain.kt:260
+        val c = Cloud.create()
+        while (c.state.members.size < ChainEntry.MAX_MEMBERS - 1) c.chain.addDevice(c.owner.identity, Peer.newNodeId(), "m", MemberKind.NODE, newKey(), T0)
+        assertEquals(ChainEntry.MAX_MEMBERS - 1, c.state.members.size)
+        assertError(CloudError.BAD_ENTRY) { c.chain.addDevice(c.owner.identity, Peer.newNodeId(), "one too many", MemberKind.NODE, newKey(), T0) }
+        val spare = Peer.bare()
+        assertError(CloudError.BAD_ENTRY) { c.chain.transfer(c.owner.identity, spare.identity.publicKey, spare.nodeId, "owner transfer to a new key", T0) }
+        // the owner key is unavailable: the recovery key moves ownership into the reserved place
+        val n1 = Peer.bare(); val rec1 = SoftwareIdentity.generate()
+        c.chain.recover(c.recovery, n1.identity.publicKey, n1.nodeId, "n1", rec1.publicKey, T0 + 1)
+        assertEquals(ChainEntry.MAX_MEMBERS, c.state.members.size)
+        assertEquals(n1.id, c.state.ownerId)
+        // full now: a second recovery transfer (after the recovery key was replaced by the first) takes the old owner's place
+        val n2 = Peer.bare(); val rec2 = SoftwareIdentity.generate()
+        c.chain.recover(rec1, n2.identity.publicKey, n2.nodeId, "n2", rec2.publicKey, T0 + 2)
+        assertEquals(ChainEntry.MAX_MEMBERS, c.state.members.size)
+        assertEquals(n2.id, c.state.ownerId)
+        assertNull(c.state.member(n1.id)); assertTrue(c.state.isRemoved(n1.id)) // the old owner cannot come back
+        // a member who verifies the chain from the genesis agrees
+        assertEquals(c.chain.heartbeat(), Chain.fromEntries(c.chain.entries()).heartbeat())
+    }
+
+    @Test fun aPullPagesForwardOverTheCommonPartAndReachesAForkBeyondTheFirstPage() { // Codex Chain.kt:451
+        val c = Cloud.create()
+        repeat(150) { c.chain.rotate(c.owner.identity, EpochSecrets.generate(it + 1), T0 + it) } // 150 common entries after the genesis
+        val a = c.copy(); val b = c.copy()
+        a.addDevice(c.owner.identity, Peer.newNodeId(), "on A", MemberKind.NODE, newKey(), T0 + 200)
+        b.addDevice(c.owner.identity, Peer.newNodeId(), "on B", MemberKind.NODE, newKey(), T0 + 200)
+        b.recover(c.recovery, newKey(), Peer.newNodeId(), "recovered", newKey(), T0 + 300)
+        val dev = Chain.fromEntries(a.entries())
+        // the old answer to a mismatch was the first page again, for ever: the device held it already and learnt nothing
+        assertEquals(b.entries().take(64).map { it.id }, b.entriesFor(dev.pullRequest(), page = 64).map { it.id })
+        val puller = ChainPuller(dev)
+        var rounds = 0
+        while (!puller.done && rounds < 20) {
+            puller.received(b.entriesFor(ChainPull.parse(puller.request().encode()), page = 64))
+            rounds++
+        }
+        assertTrue(puller.done); assertTrue("took $rounds rounds", rounds <= 5)
+        assertEquals(b.heartbeat(), dev.heartbeat())
+        // a peer that repeats one page cannot keep the puller busy: no advance, it stops
+        val dev2 = Chain.fromEntries(a.entries())
+        val p2 = ChainPuller(dev2)
+        val page0 = b.entriesFor(dev2.pullRequest(), page = 16)
+        p2.received(page0); p2.received(page0)
+        assertTrue(p2.done)
+    }
+
+    @Test fun anOwnerForkWithNoRecoveryEntryInReachStopsThePullAfterOneLookAtTheFork() {
+        val c = Cloud.create()
+        val a = c.copy(); val b = c.copy()
+        a.addDevice(c.owner.identity, Peer.newNodeId(), "on A", MemberKind.NODE, newKey(), T0)
+        b.addDevice(c.owner.identity, Peer.newNodeId(), "on B", MemberKind.NODE, newKey(), T0)
+        val dev = Chain.fromEntries(a.entries())
+        val puller = ChainPuller(dev)
+        var rounds = 0
+        while (!puller.done && rounds < 10) { puller.received(b.entriesFor(puller.request())); rounds++ }
+        assertTrue(puller.done); assertEquals(2, rounds)
+        assertEquals(1, dev.flags().size)
+        assertEquals(a.heartbeat(), dev.heartbeat())
+    }
+
+    // ---- the pre-membership path (docs 3.8, Codex section 5.2) ------------------------------------------------------------
+
+    /** Honest devices hold the thief's chain (it removed a member and rotated); the recovery holder has built its chain elsewhere. */
+    private inner class Takeover {
+        val parts = cloudWith(2)
+        val c = parts.first
+        val peers = parts.second
+        val thief = c.copy()
+        val victim = peers[0]
+        val newOwner = Peer.bare()
+        val device = Chain.fromEntries(c.chain.entries().take(3) + thief.let { t ->
+            t.removeAndRotate(c.owner.identity, victim.id, EpochSecrets.generate(1), T0 + 10)
+        }) // an honest peer that heard of the thief's removal and rotate
+        val repair: ChainEntry = c.copy().recover(c.recovery, newOwner.identity.publicKey, newOwner.nodeId, "recovered", newKey(), T0 + 40, forkAt = 3L)
+    }
+
+    @Test fun aRecoveryProofFromAnUnauthenticatedSenderIsAdoptedByADeviceThatHoldsTheThiefsChain() { // docs 5.2, 19.9
+        val t = Takeover()
+        assertNull(t.device.state().member(t.victim.id)) // the thief removed it
+        val intake = RecoveryIntake(t.device)
+        assertTrue(intake.receive(listOf(t.repair), "10.0.0.7", T0))
+        assertEquals(t.newOwner.id, t.device.state().ownerId)
+        assertNotNull(t.device.state().member(t.victim.id)) // the removal is undone
+        assertEquals(2, t.device.dropped().size)
+        assertEquals(t.repair.seq, t.device.recoveryBoundary())
+        // asking again changes nothing and says no
+        assertFalse(intake.receive(listOf(t.repair), "10.0.0.7", T0 + 1))
+    }
+
+    @Test fun theUnauthenticatedPathTakesNothingButRecoverySignedProofsAndReleasesNothing() {
+        val t = Takeover()
+        val before = t.device.heartbeat()
+        val intake = RecoveryIntake(t.device)
+        // the thief's own owner-signed entries: not a recovery proof
+        val more = t.thief.addDevice(t.c.owner.identity, Peer.newNodeId(), "more", MemberKind.NODE, newKey(), T0 + 30)
+        assertFalse(intake.receive(listOf(more), "10.0.0.1", T0))
+        // an owner-key holder's fork with owner entries only
+        val alt = ChainEntry.sign(t.c.owner.identity, ChainEntry.addBody(t.c.copy().state(), T0, Peer.newNodeId(), "alt", MemberKind.NODE, newKey(), null, null))
+        assertFalse(intake.receive(listOf(alt), "10.0.0.2", T0))
+        // a "recovery" entry signed by somebody else
+        val forged = ChainEntry.sign(SoftwareIdentity.generate(), ChainEntry.transferBody(t.c.copy().state(), 2, T0, newKey(), Peer.newNodeId(), "x", newKey()))
+        assertFalse(intake.receive(listOf(forged), "10.0.0.3", T0))
+        // a gap, a run that is not contiguous, an empty run
+        assertFalse(intake.receive(emptyList(), "10.0.0.4", T0))
+        assertFalse(intake.receive(listOf(t.repair, t.repair), "10.0.0.4", T0))
+        assertEquals(before, t.device.heartbeat())
+        assertTrue(t.device.flags().isEmpty())
+    }
+
+    @Test fun aRetiredRecoveryCodeCannotUseTheUnauthenticatedPathBelowTheBoundary() {
+        val t = Takeover()
+        val intake = RecoveryIntake(t.device)
+        assertTrue(intake.receive(listOf(t.repair), "10.0.0.7", T0))
+        // someone who kept the old code signs another repair at the same number: both carry recovery entries, nothing moves
+        val again = t.c.copy().recover(t.c.recovery, newKey(), Peer.newNodeId(), "second", newKey(), T0 + 60, forkAt = 3L)
+        val head = t.device.heartbeat()
+        assertFalse(intake.receive(listOf(again), "10.0.0.8", T0 + 1))
+        assertEquals(head, t.device.heartbeat())
+    }
+
+    @Test fun theUnauthenticatedPathHasItsOwnSmallBudgetAndABoundedAddressTable() {
+        val t = Takeover()
+        val junk = ChainEntry.sign(SoftwareIdentity.generate(), ChainEntry.transferBody(t.c.copy().state(), 2, T0, newKey(), Peer.newNodeId(), "x", newKey()))
+        val intake = RecoveryIntake(t.device, maxPerMinute = 100, maxPerMinutePerSource = 2, maxSources = 4, maxRun = 3)
+        // two tries a minute from one address, then it is refused before anything is verified, even with the right proof
+        assertFalse(intake.receive(listOf(junk), "10.0.0.1", T0)); assertFalse(intake.receive(listOf(junk), "10.0.0.1", T0 + 1))
+        assertFalse(intake.receive(listOf(t.repair), "10.0.0.1", T0 + 2))
+        // four addresses fill the table; a fifth is refused and leaves no record, the right proof from an old address is still counted
+        for (i in 2..4) assertFalse(intake.receive(listOf(junk), "10.0.0.$i", T0 + 3))
+        assertFalse(intake.receive(listOf(t.repair), "10.0.0.9", T0 + 4))
+        // a minute later the table is empty again and the proof goes through
+        assertTrue(intake.receive(listOf(t.repair), "10.0.0.9", T0 + 61_000))
+        // a run over the cap is refused unread
+        val c2 = Takeover()
+        val capped = RecoveryIntake(c2.device, maxRun = 3)
+        assertFalse(capped.receive(List(4) { c2.repair }, "10.0.0.1", T0))
+        assertTrue(capped.receive(listOf(c2.repair), "10.0.0.1", T0 + 1))
+        // and the whole device has a budget too: the right proof from a fresh address is refused once three tries were made
+        val c3 = Takeover()
+        val global = RecoveryIntake(c3.device, maxPerMinute = 3, maxPerMinutePerSource = 10)
+        repeat(3) { assertFalse(global.receive(listOf(junk), "10.0.1.$it", T0)) }
+        assertFalse(global.receive(listOf(c3.repair), "10.0.1.9", T0 + 1))
+        assertTrue(global.receive(listOf(c3.repair), "10.0.1.9", T0 + 61_000))
     }
 }
