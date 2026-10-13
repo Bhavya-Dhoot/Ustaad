@@ -74,6 +74,8 @@ class ToolRunner(
     private val launcherPackages: () -> Set<String>,
     private val clock: () -> Long,
     private val delayMs: suspend (Long) -> Unit,
+    /** How much is asked: read at every step, so the switch in the UI takes effect for the next action. */
+    private val caution: () -> Caution = { Caution.CAREFUL },
 ) {
     class Ctx(
         val runId: String,
@@ -84,8 +86,6 @@ class ToolRunner(
         val budget: Budget? = null,
         /** True while the person is being asked, so the run can show that it waits. */
         val onWaiting: (Boolean) -> Unit = {},
-        /** The task the person gave: a link written in it needs no question. */
-        val task: String = "",
         val memory: StepMemory = StepMemory(),
     )
 
@@ -102,14 +102,15 @@ class ToolRunner(
     )
 
     /** A read of the phone as the model and the log may see it: a protected screen has no elements. */
-    class Looked(val screen: Screen, val areas: Map<Int, Long>)
+    class Looked(val screen: Screen, val areas: Map<Int, Long>, val checkout: Boolean = false)
 
+    /** Whether the screen is protected (a blocked app, or a text anywhere on it that asks for a code) is decided on the complete tree, before the cap cut anything. */
     suspend fun look(ctx: Ctx): Looked {
         val d = ctx.driver ?: throw IllegalStateException("no phone driver")
         val full = ScreenReader.compactFull(d.read())
         ctx.memory.remember(full.masked)
-        val shown = guard.shield(full.screen, ctx.apps)
-        return Looked(shown, if (shown === full.screen) full.areas else emptyMap())
+        val shown = guard.shield(full.screen, ctx.apps, full.asksForCode)
+        return Looked(shown, if (shown === full.screen) full.areas else emptyMap(), full.checkout)
     }
 
     suspend fun execute(ctx: Ctx, call0: ToolCall, screen: Screen?): Outcome {
@@ -132,49 +133,77 @@ class ToolRunner(
             null
         }
 
-        fun judge(s: Screen?, e: UiElement?): Decision =
-            guard.check(call, s, e, ctx.planApps, ctx.approvals.current(), launcherPackages(), Guard.Context(ctx.apps, ctx.memory.lastTyped, ctx.task, linkTarget))
+        val mode = caution()
+        fun judge(s: Screen?, e: UiElement?, checkout: Boolean?): Decision =
+            guard.check(call, s, e, ctx.planApps, ctx.approvals.current(), launcherPackages(), Guard.Context(ctx.apps, ctx.memory.lastTyped, linkTarget, mode, checkout))
 
-        fun refused(why: String, e: UiElement?) = Outcome(Verdict.REFUSED, false, "refused: $why", args, action = actionText(call, e, ctx, uri))
-        fun changed(v: Verdict, e: UiElement?) = Outcome(v, false, "the screen changed; nothing was done", args, action = actionText(call, e, ctx, uri))
+        fun refused(why: String, e: UiElement?) = Outcome(Verdict.REFUSED, false, "refused: $why", args, action = actionText(call, e, ctx, uri, linkTarget))
+        fun changed(v: Verdict, e: UiElement?, why: String = "the screen changed") =
+            Outcome(v, false, "$why; nothing was done", args, action = actionText(call, e, ctx, uri, linkTarget))
+        val twins = "the screen is ambiguous: two controls look the same here"
 
-        var decision = judge(screen, element)
+        var decision = judge(screen, element, null)
         if (decision is Decision.Refuse) return refused(decision.why, element)
 
-        // 1. the element is found again in a fresh read; what is judged and what is acted on is that fresh element
+        // 1. the element is found again in a fresh read, and it must be the only one of its kind there;
+        //    what is judged and what is acted on is that fresh element, with the handle of that read
         var target = element
         var seen = screen
         var scrollTo: String? = null
         val revalidate = driver != null && tool in REVALIDATED
         if (revalidate) {
             val first = look(ctx)
-            target = if (element != null) refind(element, screen, first.screen) else null
-            if (element != null && target == null) return changed(Verdict.ALLOWED, element)
-            val again = judge(first.screen, target)
+            if (element != null) {
+                target = when (val m = refind(element, screen, first.screen)) {
+                    is Match.One -> m.el
+                    Match.Twin -> return changed(Verdict.ALLOWED, element, twins)
+                    Match.None -> return changed(Verdict.ALLOWED, element)
+                }
+            }
+            val again = judge(first.screen, target, first.checkout)
             if (again is Decision.Refuse) return refused(again.why, target)
             if (again is Decision.Confirm || decision is Decision.Allow) decision = again
             seen = first.screen
-            if (tool == "scroll" && id == null) scrollTo = pickScroll(first)
+            if (tool == "scroll" && id == null) scrollTo = pickScroll(first) ?: return refused("nothing on this screen can be scrolled safely; there are no blind swipes", null)
         }
 
-        // 2. a Confirm is the person's tap, nothing else; afterwards the element is found once more
+        // 2. a Confirm is the person's tap, nothing else. A yes covers the kinds that were asked, for the control that was shown:
+        //    after it the control is found once more and judged again, and a kind that was not asked about is asked about
         var verdict = Verdict.ALLOWED
         if (decision is Decision.Confirm) {
-            val action = actionText(call, target, ctx, uri)
-            val prompt = ConfirmPrompt(ctx.runId, appLabel(ctx, seen?.pkg.orEmpty()), action, decision.why)
-            if (!waitForPerson(ctx) { gate.confirm(prompt) }) {
-                return Outcome(Verdict.DECLINED, false, "the person said no: $action", args, action = action)
-            }
-            verdict = Verdict.CONFIRMED
-            if (decision.app.isNotEmpty()) ctx.approvals.add(decision.app)
-            if (revalidate) {
+            val said = HashSet<AskKind>()
+            var d: Decision.Confirm = decision
+            var rounds = 0
+            while (true) {
+                if (!said.containsAll(d.kinds)) {
+                    val action = actionText(call, target, ctx, uri, linkTarget)
+                    val prompt = ConfirmPrompt(ctx.runId, appLabel(ctx, seen?.pkg.orEmpty()), action, d.why, d.kind)
+                    if (!waitForPerson(ctx) { gate.confirm(prompt) }) {
+                        return Outcome(Verdict.DECLINED, false, "the person said no: $action", args, action = action)
+                    }
+                    said += d.kinds
+                    verdict = Verdict.CONFIRMED
+                    if (d.app.isNotEmpty()) ctx.approvals.add(d.app)
+                }
+                if (!revalidate) break
+                if (++rounds > MAX_ASK_ROUNDS) return changed(Verdict.CONFIRMED, target, "the screen keeps changing")
                 val second = look(ctx)
-                val moved = if (target != null) refind(target, seen, second.screen) else null
-                if (target != null && moved == null) return changed(Verdict.CONFIRMED, target)
-                val after = judge(second.screen, moved)
+                var moved: UiElement? = null
+                if (target != null) {
+                    moved = when (val m = refind(target, seen, second.screen)) {
+                        is Match.One -> m.el
+                        Match.Twin -> return changed(Verdict.CONFIRMED, target, twins)
+                        Match.None -> return changed(Verdict.CONFIRMED, target)
+                    }
+                }
+                val after = judge(second.screen, moved, second.checkout)
                 if (after is Decision.Refuse) return refused(after.why, moved)
                 target = moved
-                if (tool == "scroll" && id == null) scrollTo = pickScroll(second)
+                seen = second.screen
+                if (tool == "scroll" && id == null) scrollTo = pickScroll(second) ?: return refused("nothing on this screen can be scrolled safely; there are no blind swipes", null)
+                if (after is Decision.Allow) break
+                d = after as Decision.Confirm
+                if (said.containsAll(d.kinds)) break // nothing new to ask
             }
         }
 
@@ -190,19 +219,33 @@ class ToolRunner(
             if (tool == "type") ctx.memory.lastTyped = target?.guard
             else if (spec != null && spec.risk != Risk.READ) ctx.memory.lastTyped = null
         }
-        return Outcome(verdict, ok, text, args, read, actionText(call, target, ctx, uri))
+        return Outcome(verdict, ok, text, args, read, actionText(call, target, ctx, uri, linkTarget))
     }
 
-    /** The same control in a fresh screen: same app, role, flags and guard text, its centre within [NEAR] pixels. Null when it is not there. */
-    private fun refind(orig: UiElement, origScreen: Screen?, fresh: Screen): UiElement? {
-        if (fresh.unreadable) return null
-        if (origScreen != null && origScreen.pkg != fresh.pkg) return null
-        return fresh.elements
-            .filter { it.role == orig.role && it.flags == orig.flags && it.guard == orig.guard && abs(it.cx - orig.cx) <= NEAR && abs(it.cy - orig.cy) <= NEAR }
-            .minByOrNull { abs(it.cx - orig.cx) + abs(it.cy - orig.cy) }
+    private sealed interface Match {
+        data class One(val el: UiElement) : Match
+        data object None : Match
+        /** A second control looks the same (guard text, role, flags) within reach: which one was meant cannot be told. */
+        data object Twin : Match
     }
 
-    /** The scrollable element with the largest area that is not a slider or a commit; null means a plain swipe. */
+    /**
+     * The same control in a fresh screen: same app, role, flags and guard text, its centre within [NEAR] pixels. It must be the only one:
+     * if another control with the same guard text, role and flags lies within [NEAR] of the old centre or of the one found, nothing is
+     * chosen between them.
+     */
+    private fun refind(orig: UiElement, origScreen: Screen?, fresh: Screen): Match {
+        if (fresh.unreadable) return Match.None
+        if (origScreen != null && origScreen.pkg != fresh.pkg) return Match.None
+        val same = fresh.elements.filter { it.role == orig.role && it.flags == orig.flags && it.guard == orig.guard }
+        val near = same.filter { abs(it.cx - orig.cx) <= NEAR && abs(it.cy - orig.cy) <= NEAR }
+        if (near.isEmpty()) return Match.None
+        val best = near.minByOrNull { abs(it.cx - orig.cx) + abs(it.cy - orig.cy) }!!
+        val twin = same.any { it !== best && ((abs(it.cx - orig.cx) <= NEAR && abs(it.cy - orig.cy) <= NEAR) || (abs(it.cx - best.cx) <= NEAR && abs(it.cy - best.cy) <= NEAR)) }
+        return if (twin) Match.Twin else Match.One(best)
+    }
+
+    /** The scrollable element with the largest area that is not a slider or a commit; null when there is none (nothing is scrolled then). */
     private fun pickScroll(l: Looked): String? = l.screen.elements
         .filter { Flag.SCROLLABLE in it.flags && !Guard.movesOrCommits(it.guard) }
         .maxByOrNull { l.areas[it.id] ?: 0L }?.handle
@@ -236,7 +279,9 @@ class ToolRunner(
             "press_enter" -> r(d!!.enter(), "pressed enter", "enter failed")
             "scroll" -> {
                 val fwd = str(call, "direction") != "up"
-                r(d!!.scroll(el?.handle ?: scrollTo, fwd), "scrolled ${if (fwd) "down" else "up"}", "could not scroll")
+                // the driver is never asked to swipe without a checked target
+                val handle = el?.handle ?: scrollTo ?: return Triple(false, "nothing on this screen can be scrolled safely", null)
+                r(d!!.scroll(handle, fwd), "scrolled ${if (fwd) "down" else "up"}", "could not scroll")
             }
             "back" -> r(d!!.back(), "went back", "back failed")
             "home" -> r(d!!.home(), "went home", "home failed")
@@ -263,7 +308,8 @@ class ToolRunner(
                 if (a == null) Triple(false, "the person dismissed the question", null) else Triple(true, "the person answered: $a", null)
             }
             "ask_expert" -> {
-                val a = desk.ask(str(call, "app"), ctx.memory.scrub(str(call, "text")))
+                // a question the step model wrote may hold what it read on a screen: it stays on this phone unless the owner shares screens
+                val a = desk.ask(str(call, "app"), ctx.memory.scrub(str(call, "text")), onPhoneOnly = true)
                 if (a == null) Triple(false, "no expert could answer", null) else Triple(true, a, null)
             }
             "search_my_data" -> {
@@ -286,7 +332,8 @@ class ToolRunner(
         "tap" -> el?.let { "${it.id} \"${it.label}\"" } ?: "id ${str(call, "id")}"
         "type" -> {
             val hide = el != null && (Flag.PASSWORD in el.flags || Guard.isSecretLabel(el.guard) || Guard.isSecretLabel(el.label))
-            "${str(call, "id")} \"${if (hide) "<hidden>" else str(call, "text").take(60)}\""
+            // a number is masked in the log whatever the field is called: a field that looks harmless can still be the one that takes a card
+            "${str(call, "id")} \"${if (hide) "<hidden>" else GuardText.maskDigits(str(call, "text").take(60))}\""
         }
         "scroll" -> str(call, "direction") + (call.args["id"]?.let { " in ${str(call, "id")}" } ?: "")
         "wait" -> "${str(call, "id")} s"
@@ -294,8 +341,8 @@ class ToolRunner(
         else -> call.args["text"]?.let { str(call, "text").take(80) } ?: ""
     }
 
-    /** What the person is asked about. A link is shown in full, so nothing hides at its end. */
-    private fun actionText(call: ToolCall, el: UiElement?, ctx: Ctx, uri: String): String = when (call.tool) {
+    /** What the person is asked about. A link is shown in full, so nothing hides at its end, and with the app that will open it. */
+    private fun actionText(call: ToolCall, el: UiElement?, ctx: Ctx, uri: String, linkTarget: String?): String = when (call.tool) {
         "tap" -> "tap \"${nameOf(el, call)}\""
         "type" -> "type into \"${nameOf(el, call)}\""
         "press_enter" -> "press enter"
@@ -303,13 +350,16 @@ class ToolRunner(
         "back" -> "go back"
         "home" -> "go to the home screen"
         "open_app" -> "open ${appLabel(ctx, str(call, "app"))}"
-        "open_link" -> "open the link $uri"
+        "open_link" -> "open the link $uri" + if (linkTarget.isNullOrEmpty()) "" else " in ${appLabel(ctx, linkTarget)}"
         else -> call.tool
     }
 
     companion object {
         /** How far, in pixels, the centre of a control may have moved between two reads and still be the same control. */
         const val NEAR = 24
+
+        /** How many times one action may ask again because the screen gave a new reason after a yes. */
+        const val MAX_ASK_ROUNDS = 3
 
         /** Tools whose effect depends on what is on the screen right now: judged and acted on after a fresh read. */
         private val REVALIDATED = setOf("tap", "type", "press_enter", "scroll")
