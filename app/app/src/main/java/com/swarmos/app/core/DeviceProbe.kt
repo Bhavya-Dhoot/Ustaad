@@ -52,7 +52,8 @@ object DeviceProbe {
             val file = File(ctx.filesDir, FILE_NAME)
             val stamp = ModelStore.appStamp()
             DeviceProfiles.save = { write(file, it) }
-            DeviceProfiles.freeStorageMb = { freeStorageMb() }
+            val modelsPath = ModelStore.modelsDir().path // looked up once: the capacity report reads the free space every few seconds
+            DeviceProfiles.freeStorageMb = { freeStorageMb(modelsPath) }
             val have = DeviceProfiles.current?.profile ?: read(file)
             if (!force && !DeviceProfiles.needsCheck(have, stamp)) {
                 if (DeviceProfiles.current == null) DeviceProfiles.set(have)
@@ -89,7 +90,7 @@ object DeviceProbe {
             chip = Build.SOC_MODEL.takeIf { it.isNotBlank() && it != Build.UNKNOWN } ?: Build.HARDWARE,
             abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
             osLevel = Build.VERSION.SDK_INT,
-            freeStorageMb = freeStorageMb() ?: 0L,
+            freeStorageMb = freeStorageMb(ModelStore.modelsDir().path) ?: 0L,
             gpuBinaryPresent = gpuBinary,
             openClPresent = (LlamaArgs.VENDOR_LIB_DIRS + "/system/lib64").any { dir ->
                 listOf("libOpenCL.so", "libOpenCL_adreno.so").any { File(dir, it).exists() }
@@ -130,8 +131,7 @@ object DeviceProbe {
         }
     }
 
-    private fun freeStorageMb(): Long? =
-        runCatching { StatFs(ModelStore.modelsDir().path).availableBytes / MIB }.getOrNull()
+    private fun freeStorageMb(path: String): Long? = runCatching { StatFs(path).availableBytes / MIB }.getOrNull()
 
     private fun read(file: File): DeviceProfile? =
         runCatching { SwarmJson.decodeFromString(DeviceProfile.serializer(), file.readText()) }.getOrNull()

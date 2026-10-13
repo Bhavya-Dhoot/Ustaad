@@ -168,7 +168,7 @@ data class ProfilePlan(
             return ProfilePlan(
                 deviceClass = deviceClass,
                 chatModels = models.map { it.file },
-                useGpu = models.isNotEmpty() && gpu,
+                useGpu = gpu, // a fact about the hardware: a client that loads a model by hand gets the GPU build too
                 chatThreads = chatThreads,
                 gpuThreads = minOf(LlamaArgs.GPU_THREADS, chatThreads),
                 gpuLayers = LlamaArgs.GPU_LAYERS,

@@ -165,6 +165,8 @@ class DeviceProfileTest {
         assertFalse("no probe and no library", gpu(openCl = false, probe = null))
         assertFalse("no answer and no library", gpu(openCl = false, probe = GpuProbe(ProbeVerdict.NO_ANSWER, "slow")))
         assertTrue("the probe's word beats the file check, which an app may be unable to make", gpu(openCl = false, probe = DeviceFixtures.gpuListed))
+        val clientWithGpu = plan(DeviceFixtures.phone4gb.copy(gpuBinaryPresent = true, openClPresent = true))
+        assertTrue("a client is a fact about memory: a model it is given by hand still gets the GPU build", clientWithGpu.isClient && clientWithGpu.useGpu)
     }
 
     @Test fun aCatalogWithoutAPinnedSizeOrWithOnlyChatOnlyModelsMakesEveryDeviceAClient() {

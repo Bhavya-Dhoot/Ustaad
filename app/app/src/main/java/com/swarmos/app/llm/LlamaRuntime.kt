@@ -252,7 +252,13 @@ object LlamaRuntime {
         val load = scope.launch {
             awaitGone(killOrphans(), ORPHAN_WAIT_MS)
             // the plan picks the model: the first start and the first start after an update measure the phone before anything loads
-            runCatching { DeviceProbe.ensure() }.onFailure { Log.w(TAG, "device check failed, the defaults stay: $it") }
+            try {
+                DeviceProbe.ensure()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "device check failed, the defaults stay: $e")
+            }
             if (ModelStore.autoload.value) loadDefaults(automatic = true) else Log.i(TAG, "autoload is off: no model is loaded at start")
         }
         serviceJobs = listOf(wire, load)
