@@ -585,6 +585,52 @@ class HandsEngineTest {
         assertFalse(unknown.ok)
     }
 
+    @Test fun c6_aLinkFromOutsideIsAlwaysAskedAboutWithTheWholeLinkBecauseNoTaskContainsIt() {
+        val uri = "https://example.com/menu?table=" + "7".repeat(120)
+        val no = FakeGate(answer = { false })
+        val a = rig(gate = no)
+        val refused = runBlocking { a.engine.call(call("open_link", text = uri), Origin.MCP) }
+        assertFalse(refused.ok)
+        assertTrue(no.prompts.single().action.contains(uri))
+        assertTrue(a.driver.links.isEmpty())
+
+        val yes = FakeGate(answer = { true })
+        val b = rig(gate = yes)
+        assertTrue(runBlocking { b.engine.call(call("open_link", text = uri), Origin.MCP) }.ok)
+        assertEquals(listOf(uri), b.driver.links.toList())
+        assertEquals(listOf(BROWSER), b.driver.linkPackages.toList())
+    }
+
+    @Test fun c6_aLinkTheyWroteInTheirTaskIsOpenedWithoutAQuestionInsideARun() {
+        val d = FakeFoodDriver().also { it.linkTargetOf = { FOOD } }
+        val gate = FakeGate()
+        val r = rig(driver = d, gate = gate)
+        r.brain.reply(planJson(subJson("PHONE", "open the menu link", app = FOOD)))
+        r.brain.replyWith({ step("open_link", text = "https://food.example/menu") }, { step("done", text = "ok") })
+        val run = r.await(r.engine.start("please open https://food.example/menu", Origin.OWN_SHEET))
+        assertEquals(run.result, Phase.DONE, run.phase)
+        assertEquals(listOf("https://food.example/menu"), d.links.toList())
+        assertTrue(gate.prompts.isEmpty())
+    }
+
+    @Test fun c6_aLinkNoSingleAppOpensIsRefusedFromOutsideToo() {
+        val d = FakeFoodDriver().also { it.linkTargetOf = { "" } }
+        val r = rig(driver = d, gate = FakeGate(answer = { true }))
+        val res = runBlocking { r.engine.call(call("open_link", text = "https://example.com"), Origin.MCP) }
+        assertFalse(res.ok)
+        assertTrue(res.text, res.text.contains("no single app opens this link"))
+        assertTrue(d.links.isEmpty())
+    }
+
+    @Test fun c7_readScreenFromOutsideOnAProtectedAppGivesOneLine() {
+        val d = FakeFoodDriver().also { it.otherScreen = raw(text("Balance 12,345", 100), button("Send money", 300), pkg = "com.phonepe.app") }
+        val r = rig(driver = d)
+        val res = runBlocking { r.engine.call(call("read_screen"), Origin.MCP) }
+        assertTrue(res.ok)
+        assertEquals(1, res.text.lines().size)
+        assertFalse(res.text.contains("Balance"))
+    }
+
     @Test fun talkingAndKnowledgeToolsWorkFromOutsideWithoutAPhone() {
         val desk = FakeDesk(onAsk = { _, q -> "answer to $q" })
         val r = rig(drivers = emptyList(), desk = desk, gate = FakeGate(reply = { "yes" }))
