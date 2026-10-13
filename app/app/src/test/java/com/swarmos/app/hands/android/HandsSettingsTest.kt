@@ -18,6 +18,12 @@ class HandsSettingsTest {
     }
 
     @Test
+    fun thePhonesAssistantMayNeitherStartTasksNorSearchDataUntilTheOwnerSaysSo() {
+        assertEquals("a phone that has not loaded its settings", false, HandsSettings.assistantMayStart.value)
+        assertEquals("a phone that has not loaded its settings", false, HandsSettings.assistantMaySearchData.value)
+    }
+
+    @Test
     fun onlyARealPortNumberCounts() {
         for (bad in listOf(0, -1, 65536, Int.MAX_VALUE, Int.MIN_VALUE)) assertEquals(bad.toString(), 0, HandsSettings.effectivePort(bad, debug = true))
         assertEquals(1, HandsSettings.effectivePort(1, debug = true))

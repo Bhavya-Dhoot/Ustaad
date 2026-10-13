@@ -5,6 +5,7 @@ import android.util.Log
 import com.swarmos.app.AppGraph
 import com.swarmos.app.assist.HumanGateUi
 import com.swarmos.app.core.SwarmService
+import com.swarmos.app.hands.ExpertDesk
 import com.swarmos.app.hands.Guard
 import com.swarmos.app.hands.Hands
 import com.swarmos.app.hands.HandsEngine
@@ -51,6 +52,31 @@ object HandsRuntime {
 
     @Volatile
     private var testClient: Pair<Int, LlmClient>? = null
+
+    /**
+     * The knowledge experts and their desk, for the app functions (appfn/). Both are set before [HandsHub.hands], so they are there
+     * whenever the hub is. The desk is the same object a run asks; a caller states the route of each question itself.
+     */
+    @Volatile
+    var expertCards: List<ExpertCard> = emptyList()
+        private set
+
+    @Volatile
+    var expertDesk: ExpertDesk? = null
+        private set
+
+    /**
+     * The Data Union lookup with the sharing switch taken out: this phone's own index only, nothing sent to another device, whatever the
+     * switch says. The app function that lets the phone's assistant search the owner's data uses it, as Hands does while sharing is off.
+     */
+    private val localOnlyData = DataLookup(
+        shareScreens = { false },
+        askInProgress = { PduEngine.askRunning },
+        federated = { null },
+        local = ::searchOwnIndex,
+    )
+
+    suspend fun searchOwnDataLocalOnly(query: String): String? = localOnlyData.answer(query)
 
     fun start(ctx: Context) {
         synchronized(lock) {
@@ -107,6 +133,8 @@ object HandsRuntime {
                 onChange = { run -> tracker.onChange(run).forEach { perform(app, it) } },
             )
             engine = built
+            expertCards = experts
+            expertDesk = desk
             // the notification's Stop stops whatever run is acting
             HandsNotice.onStop = {
                 built.runs.value.firstOrNull { RunTracker.acting(it.phase) }?.let { built.stop(it.id) }
@@ -174,7 +202,7 @@ object HandsRuntime {
     /** The person's tap on Run for a task from another app, from Ustaad's own UI, with the foreground service up first. */
     fun goFromUi(ctx: Context, hands: Hands, runId: String) = launcher(ctx).go(hands, runId)
 
-    private fun launcher(ctx: Context): RunLauncher {
+    fun launcher(ctx: Context): RunLauncher {
         val app = ctx.applicationContext
         return RunLauncher({ SwarmService.running.value }, { SwarmService.start(app) })
     }
