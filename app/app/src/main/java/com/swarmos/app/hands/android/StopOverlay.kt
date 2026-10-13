@@ -25,14 +25,18 @@ object StopOverlay {
     private const val TAG = "StopOverlay"
     private val main = Handler(Looper.getMainLooper())
 
-    // main thread only
+    // written on the main thread, read from any
+    @Volatile
     private var view: View? = null
+
+    // main thread only
     private var windows: WindowManager? = null
 
-    /** True while the chip is on screen. Written on the main thread, read from any. */
-    @Volatile
-    var isShown: Boolean = false
-        private set
+    /**
+     * True while the chip is attached to a window right now. Asked of the view every time and never remembered: the system takes the
+     * window away when the service disconnects, and this is false at once, before any of our code runs.
+     */
+    val isShown: Boolean get() = view?.isAttachedToWindow == true
 
     /** onStop runs on the main thread when the person taps Stop. Does nothing while the service is off. */
     fun show(onStop: () -> Unit) {
@@ -106,16 +110,13 @@ object StopOverlay {
             wm.addView(chip, lp)
             windows = wm
             view = chip
-            isShown = true
         } catch (e: Exception) {
             Log.w(TAG, "overlay failed: ${e.javaClass.simpleName}")
             view = null
-            isShown = false
         }
     }
 
     private fun hideNow() {
-        isShown = false
         val v = view ?: return
         view = null
         try { windows?.removeView(v) } catch (e: Exception) { Log.w(TAG, "remove failed: ${e.javaClass.simpleName}") }

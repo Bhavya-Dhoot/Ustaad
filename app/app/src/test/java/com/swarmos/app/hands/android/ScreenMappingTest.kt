@@ -4,6 +4,7 @@ import com.swarmos.app.hands.AppInfo
 import com.swarmos.app.hands.RawNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -67,11 +68,13 @@ class ScreenMappingTest {
 
     private fun facts(cls: String = "android.view.View", text: String = "", desc: String = "") = NodeFacts(cls, text, desc)
     private fun F(f: NodeFacts, vararg kids: FactNode) = FactNode(f, kids.toList())
-    private fun sig(root: FactNode, maxNodes: Int = ScreenMapping.SIG_NODES, maxDepth: Int = ScreenMapping.MAX_DEPTH): String =
+    private fun sigOrNull(root: FactNode, maxNodes: Int = ScreenMapping.SIG_NODES, maxDepth: Int = ScreenMapping.MAX_DEPTH): String? =
         ScreenMapping.subtreeSignature(root, { it.kids.size }, { n, i -> n.kids[i] }, { it.facts }, maxNodes = maxNodes, maxDepth = maxDepth)
+    private fun sig(root: FactNode, maxNodes: Int = ScreenMapping.SIG_NODES, maxDepth: Int = ScreenMapping.MAX_DEPTH): String =
+        sigOrNull(root, maxNodes, maxDepth)!!
 
     private class L(val f: NodeFacts, val kids: List<L?> = emptyList())
-    private fun liveSig(root: L, fetched: MutableList<L>? = null, released: MutableList<L>? = null, maxNodes: Int = ScreenMapping.SIG_NODES): String =
+    private fun liveSig(root: L, fetched: MutableList<L>? = null, released: MutableList<L>? = null, maxNodes: Int = ScreenMapping.SIG_NODES): String? =
         ScreenMapping.subtreeSignature(
             root, { it.kids.size }, { n, i -> n.kids[i]?.also { fetched?.add(it) } }, { it.f },
             release = { released?.add(it) }, maxNodes = maxNodes,
@@ -120,18 +123,57 @@ class ScreenMappingTest {
         assertFalse(released.contains(root))
     }
 
-    @Test fun signature_covers_300_nodes_and_ignores_a_change_after_them() {
-        fun wide(last: String) = F(facts(), *Array(400) { F(facts(text = if (it == 399) last else "c$it")) })
+    @Test fun t5_a_subtree_that_reaches_the_node_cap_cannot_be_verified() {
+        fun wide(n: Int) = F(facts(), *Array(n) { F(facts(text = "c$it")) })
         assertEquals(300, ScreenMapping.SIG_NODES)
-        assertEquals(sig(wide("x")), sig(wide("y")))                    // child 399 is past the 300 nodes
-        fun early(first: String) = F(facts(), *Array(400) { F(facts(text = if (it == 5) first else "c$it")) })
-        assertTrue(sig(early("x")) != sig(early("y")))
+        assertNull("301 nodes: a change in the last would go unseen", sigOrNull(wide(300)))
+        assertNotNull("exactly 300 nodes is complete", sigOrNull(wide(299)))
+        assertNull(sigOrNull(wide(400)))
+        assertNotNull(sigOrNull(wide(20)))
     }
 
-    @Test fun signature_stops_at_the_depth_it_is_given() {
+    @Test fun t5_a_node_with_children_at_the_cap_counts_as_cut() {
+        // 300 nodes in all, but the last one still has a child that would be the 301st
+        val tail = F(facts(), F(facts(text = "past the cap")))
+        val root = F(facts(), *(Array(298) { F(facts(text = "c$it")) } + tail))
+        assertNull(sigOrNull(root))
+        assertNotNull(sigOrNull(F(facts(), *(Array(298) { F(facts(text = "c$it")) } + F(facts())))))
+    }
+
+    @Test fun t4_the_signature_covers_hint_resource_id_and_the_password_enabled_checkable_and_checked_flags() {
+        val base = sig(F(facts()))
+        val changed = listOf(
+            NodeFacts("android.view.View", "", "", hint = "Password"),
+            NodeFacts("android.view.View", "", "", resId = "id/pay_now"),
+            NodeFacts("android.view.View", "", "", password = true),
+            NodeFacts("android.view.View", "", "", enabled = false),
+            NodeFacts("android.view.View", "", "", checkable = true),
+            NodeFacts("android.view.View", "", "", checked = true),
+        )
+        for (f in changed) assertTrue(f.toString(), sig(F(f)) != base)
+        assertEquals("the same facts give the same signature", base, sig(F(NodeFacts("android.view.View", "", ""))))
+        assertEquals(changed.size, changed.map { sig(F(it)) }.toSet().size)
+    }
+
+    @Test fun t4_a_search_field_that_becomes_a_password_field_after_the_read_no_longer_matches() {
+        val read = sig(F(NodeFacts("android.widget.EditText", "", "", hint = "Search")))
+        val later = sig(F(NodeFacts("android.widget.EditText", "", "", hint = "Password", password = true)))
+        assertTrue(read != later)
+        val onlyTheHint = sig(F(NodeFacts("android.widget.EditText", "", "", hint = "Password")))
+        assertTrue(read != onlyTheHint)
+    }
+
+    @Test fun facts_carry_the_new_fields_and_blank_a_password_text() {
+        val f = ScreenMapping.factsOf("c", "secret", "d", password = true, hint = "h", resId = "id/x", enabled = false, checkable = true, checked = true)
+        assertEquals(NodeFacts("c", "", "d", "h", "id/x", password = true, enabled = false, checkable = true, checked = true), f)
+        assertEquals(NodeFacts("c", "t", "d"), ScreenMapping.factsOf("c", "t", "d", password = false))
+    }
+
+    @Test fun signature_stops_at_the_depth_it_is_given_and_a_cut_chain_cannot_be_verified() {
         fun chain(leaf: String) = F(facts(), F(facts(), F(facts(text = leaf))))
         assertTrue(sig(chain("a")) != sig(chain("b")))
-        assertEquals(sig(chain("a"), maxDepth = 1), sig(chain("b"), maxDepth = 1))
+        assertNull(sigOrNull(chain("a"), maxDepth = 1))
+        assertNotNull(sigOrNull(chain("a"), maxDepth = 2))
     }
 
     @Test fun signature_lookups_are_capped_and_can_be_cancelled() {
@@ -140,7 +182,7 @@ class ScreenMappingTest {
             L(facts(), List(5000) { null }), { it.kids.size }, { _, _ -> asked++; null }, { it.f }, maxNodes = 300,
         )
         assertEquals(600, asked)
-        assertTrue(none.length == 64)
+        assertNull("the lookup cap was reached: not verifiable", none)
         var checks = 0
         try {
             ScreenMapping.subtreeSignature(
@@ -203,6 +245,57 @@ class ScreenMappingTest {
         )
         assertEquals(ScreenMapping.MAX_NODES, count(raw))
         assertEquals(ScreenMapping.MAX_NODES - 1, asked)
+    }
+
+    private fun capsOf(root: N, maxNodes: Int = ScreenMapping.MAX_NODES, maxDepth: Int = ScreenMapping.MAX_DEPTH, maxLookups: Int = ScreenMapping.MAX_LOOKUPS, nullKids: Boolean = false): List<String> {
+        val caps = ArrayList<String>()
+        ScreenMapping.buildTree(
+            root = root,
+            childCount = { it.kids.size },
+            childAt = { n, i -> if (nullKids) null else n.kids[i] },
+            visit = { _, _ -> },
+            make = { n, h, kids -> node(text = n.name, handle = h).copy(children = kids) },
+            maxNodes = maxNodes, maxDepth = maxDepth, maxLookups = maxLookups,
+            onCap = { caps += it },
+        )
+        return caps
+    }
+
+    @Test fun t5_a_read_that_reaches_the_node_cap_says_so() {
+        assertEquals(listOf("nodes"), capsOf(N("root", List(5000) { N("c$it") })).distinct())
+    }
+
+    @Test fun t5_a_read_that_reaches_the_lookup_cap_says_so() {
+        assertEquals(listOf("lookups"), capsOf(N("root", List(100_000) { N("c$it") }), nullKids = true).distinct())
+    }
+
+    @Test fun t5_a_read_that_reaches_the_depth_cap_says_so() {
+        var chain = N("leaf")
+        repeat(100) { chain = N("n", listOf(chain)) }
+        assertEquals(listOf("depth"), capsOf(chain).distinct())
+    }
+
+    @Test fun t5_a_complete_read_says_nothing() {
+        assertTrue(capsOf(N("root", listOf(N("a", listOf(N("a0"))), N("b")))).isEmpty())
+        // exactly as many nodes as the cap allows, none left over
+        assertTrue(capsOf(N("root", List(4) { N("c$it") }), maxNodes = 5).isEmpty())
+        assertEquals(listOf("nodes"), capsOf(N("root", List(5) { N("c$it") }), maxNodes = 5))
+    }
+
+    @Test fun t7_enter_is_allowed_only_for_the_node_that_took_the_text() {
+        assertTrue(ScreenMapping.enterAllowed("abc", "abc"))
+        assertFalse("focus moved to another field", ScreenMapping.enterAllowed("other", "abc"))
+        assertFalse("nothing was typed", ScreenMapping.enterAllowed("abc", null))
+        assertFalse("nothing has focus", ScreenMapping.enterAllowed(null, "abc"))
+        assertFalse(ScreenMapping.enterAllowed(null, null))
+    }
+
+    @Test fun t7_a_field_that_changed_after_the_text_went_in_no_longer_gets_the_enter() {
+        val typed = sig(F(NodeFacts("android.widget.EditText", "biryani", "", hint = "Search")))
+        val sameLater = sig(F(NodeFacts("android.widget.EditText", "biryani", "", hint = "Search")))
+        val messageField = sig(F(NodeFacts("android.widget.EditText", "biryani", "", hint = "Write a message")))
+        assertTrue(ScreenMapping.enterAllowed(sameLater, typed))
+        assertFalse(ScreenMapping.enterAllowed(messageField, typed))
     }
 
     @Test fun the_walk_ends_when_the_cancellation_check_throws() {

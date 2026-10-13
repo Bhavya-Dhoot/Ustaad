@@ -30,8 +30,9 @@ class StepLoopTest {
             earlier: List<String> = emptyList(),
             budget: Budget = Budget(60, 600_000, { clock.get() }),
             apps: List<AppInfo> = FAKE_APPS,
+            task: String = "",
         ): StepLoop.Result = runBlocking {
-            loop.run(StepLoop.Input("r1", 0, sub, earlier, driver, Approvals({ clock.get() }), apps, budget, { lines += it }))
+            loop.run(StepLoop.Input("r1", 0, sub, earlier, driver, Approvals({ clock.get() }), apps, budget, { lines += it }, task = task))
         }
     }
 
@@ -47,7 +48,7 @@ class StepLoopTest {
     // ------------------------------------------------------------ the happy path
 
     @Test fun addsABiryaniToTheCartThroughTheFakeAppAndSaysDone() {
-        val s = Setup(driver = FakeFoodDriver(foreground = OWN))
+        val s = Setup(driver = FakeFoodDriver(foreground = OWN), gate = gateYesTo(AskKind.APP_SCOPE, AskKind.ENTER))
         s.brain.replyWith(
             typeInto("Search", "biryani"),
             { step("press_enter") },
@@ -66,8 +67,10 @@ class StepLoopTest {
         assertFalse("proceed" in s.driver.taps)
         assertEquals("open:$FOOD", s.driver.actions.first())
         assertEquals(listOf("open_app", "type", "press_enter", "tap", "tap", "tap", "done"), s.lines.map { it.tool })
-        assertTrue(s.lines.all { it.verdict == Verdict.ALLOWED && it.tier == Tier.FAST && it.sub == 0 })
-        assertTrue(s.gate.prompts.isEmpty())
+        assertTrue(s.lines.all { it.tier == Tier.FAST && it.sub == 0 })
+        // the launch of an app the owner's task did not name, and the enter, are asked about; nothing else
+        assertEquals(listOf(AskKind.APP_SCOPE, AskKind.ENTER), s.gate.kinds)
+        assertEquals(listOf(Verdict.CONFIRMED, Verdict.ALLOWED, Verdict.CONFIRMED, Verdict.ALLOWED, Verdict.ALLOWED, Verdict.ALLOWED, Verdict.ALLOWED), s.lines.map { it.verdict })
     }
 
     @Test fun everyStepAsksTheModelForOneToolOnThePhoneOnlyWithTheStepSchema() {
@@ -375,7 +378,7 @@ class StepLoopTest {
         val r = s.run()
         assertEquals(StepLoop.End.DONE, r.end)
         assertEquals(1, gate.prompts.size)
-        assertEquals("open com.fake.maps?", gate.prompts[0].why)
+        assertEquals("open FakeMaps?", gate.prompts[0].why)
         assertTrue("open:com.fake.maps" in d.actions)
         assertTrue("other:open" in d.taps)
         assertEquals(listOf(Verdict.CONFIRMED, Verdict.ALLOWED, Verdict.ALLOWED), s.lines.map { it.verdict })
@@ -447,11 +450,48 @@ class StepLoopTest {
         assertTrue(s.lines[0].result, s.lines[0].result.contains("protected"))
     }
 
+    // ------------------------------------------------------------ the planner names an app the owner never named (T1)
+
+    @Test fun t1_theAppThePlannerNamedIsAskedAboutBeforeItsFirstLaunchAndNothingIsOpenedWithoutTheYes() {
+        for (mode in Caution.entries) {
+            val d = FakeFoodDriver(foreground = OWN)
+            val s = Setup(driver = d)
+            s.mode = mode
+            s.brain.reply(step("done", text = "ok"))
+            val r = s.run(task = "order a biryani")
+            assertEquals(mode.name, StepLoop.End.STOPPED, r.end)
+            assertEquals(AskKind.APP_SCOPE, s.gate.prompts.single().kind)
+            assertEquals("open FakeFood?", s.gate.prompts.single().why)
+            assertTrue(d.actions.none { it.startsWith("open:") })
+            assertTrue("the model was never asked", s.brain.calls.isEmpty())
+        }
+    }
+
+    @Test fun t1_noQuestionWhenTheOwnersTaskNamesTheApp() {
+        val d = FakeFoodDriver(foreground = OWN)
+        val s = Setup(driver = d)
+        s.brain.reply(step("done", text = "ok"))
+        val r = s.run(task = "order a biryani from FakeFood")
+        assertEquals(StepLoop.End.DONE, r.end)
+        assertTrue(s.gate.prompts.isEmpty())
+        assertTrue("open:$FOOD" in d.actions)
+    }
+
+    @Test fun t1_theOpenAppToolAsksToo_andAYesCoversTheAppForTheRestOfTheRun() {
+        val d = FakeFoodDriver()
+        val gate = gateYesTo(AskKind.APP_SCOPE)
+        val s = Setup(driver = d, gate = gate)
+        s.brain.replyWith({ step("open_app", app = "FakeMaps") }, { step("open_app", app = "FakeFood") }, { step("open_app", app = "FakeMaps") }, { step("done", text = "ok") })
+        val r = s.run(sub = SubTask("g", Kind.PHONE, "", FOOD))
+        assertEquals(StepLoop.End.DONE, r.end)
+        assertEquals("the planned app is asked about too, each app once", listOf("open FakeMaps?", "open FakeFood?"), gate.prompts.map { it.why })
+    }
+
     // ------------------------------------------------------------ the sheet is still in front after open_app (fix round 3)
 
     @Test fun r14_aSubtaskWaitsForTheAppToComeToTheFrontBeforeItReadsItsScreen() {
         val d = FakeFoodDriver(foreground = OWN).also { it.ownWindowAfterOpen = 3 }
-        val s = Setup(driver = d)
+        val s = Setup(driver = d, gate = gateYesTo(AskKind.APP_SCOPE))
         s.brain.reply(step("done", text = "ok"))
         val r = s.run()
         assertEquals(StepLoop.End.DONE, r.end)
@@ -461,7 +501,7 @@ class StepLoopTest {
 
     @Test fun r14_aSubtaskWhoseAppNeverComesToTheFrontFailsWithAClearResult() {
         val d = FakeFoodDriver(foreground = OWN).also { it.ownWindowAfterOpen = 100 }
-        val s = Setup(driver = d)
+        val s = Setup(driver = d, gate = gateYesTo(AskKind.APP_SCOPE))
         val r = s.run()
         assertEquals(StepLoop.End.FAILED, r.end)
         assertTrue(r.outcome, r.outcome.contains("did not come back"))

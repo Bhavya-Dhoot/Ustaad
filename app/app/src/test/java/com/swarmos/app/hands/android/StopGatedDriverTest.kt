@@ -62,6 +62,29 @@ class StopGatedDriverTest {
     }
 
     @Test
+    fun t12_theSurfaceIsAskedAtEveryActionSoOneThatGoesAwayStopsTheNextOne() = runBlocking {
+        var up = true
+        val d = StopGatedDriver(fake, { up }, { }, maxWaitMs = 500, pollMs = 250)
+        assertTrue(d.tap("cart", 0, 0))
+        up = false // the owner switched the notification channel off, or the service dropped the chip
+        assertFalse(d.tap("cart", 0, 0))
+        assertFalse(d.setText("search", 0, 0, "biryani"))
+        assertEquals(listOf("tap:cart"), fake.actions)
+        up = true
+        assertTrue(d.back())
+    }
+
+    @Test
+    fun t12_notificationsReachTheShadeOnlyWhenTheAppAndTheChannelAreOn() {
+        val none = android.app.NotificationManager.IMPORTANCE_NONE
+        val low = android.app.NotificationManager.IMPORTANCE_LOW
+        assertTrue(HandsNotice.channelUsable(true, low))
+        assertFalse("the channel switched off", HandsNotice.channelUsable(true, none))
+        assertFalse("the app's notifications switched off", HandsNotice.channelUsable(false, low))
+        assertFalse("no such channel", HandsNotice.channelUsable(true, null))
+    }
+
+    @Test
     fun readingAndListingAppsAreNeverHeldBack() = runBlocking {
         val g = Gate(-1)
         val d = driver(g)

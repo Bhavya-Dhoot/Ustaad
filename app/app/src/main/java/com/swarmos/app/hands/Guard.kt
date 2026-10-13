@@ -33,13 +33,15 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
     class Context(
         /** The installed apps: a package is protected when its package name or its label is. */
         val apps: List<AppInfo> = emptyList(),
-        /** The guard text of the field the previous successful step typed into, null if the previous step was something else. */
-        val lastTypedGuard: String? = null,
+        /** The name of the field the previous successful step typed into, null if the previous step was something else: the question about Enter names it. */
+        val lastTypedName: String? = null,
         /** For open_link: the package the driver says would open the link, empty if none, null if it was not asked. */
         val linkTarget: String? = null,
         val caution: Caution = Caution.CAREFUL,
         /** True when the complete tree of the screen, before the cap, has payment context; null: judge from the elements that are left. */
         val checkout: Boolean? = null,
+        /** The task the owner gave. An app whose name is in it, as a whole word, is opened without asking. */
+        val task: String = "",
     )
 
     fun check(
@@ -105,6 +107,9 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
             // field that is neither flagged as a password nor named like one (the label says "Search"). The guard cannot see purpose, only words.
             if (GuardText.hasCardNumber(text)) return Decision.Refuse("the text holds a card number; the agent never types one")
             if (element.guard.isEmpty()) asks += AskKind.UNKNOWN_CONTROL to "the field has no name, so nothing says what it is for"
+            // A field that names a committing action ("Send message as typed") may send, post or pay on focus, on a change or on a line break.
+            // Residual: a field that submits on a text change without saying so cannot be recognised by its words.
+            if (isCommitText(element.guard)) asks += AskKind.COMMIT to "typing into \"${shown(element)}\" may send, post or pay what is typed (it names a committing action)"
         }
 
         // scroll: it can commit too ("slide to pay"), and a swipe with no checked target is not made at all
@@ -112,15 +117,16 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
             if (element != null) {
                 if (Flag.SCROLLABLE !in element.flags) return Decision.Refuse("that element does not scroll")
                 if (movesOrCommits(element.guard)) asks += AskKind.SCROLL to "\"${shown(element)}\" may commit when it is moved"
-            } else if (screen == null || screen.elements.none { Flag.SCROLLABLE in it.flags && !movesOrCommits(it.guard) }) {
+                else if (element.role != Role.LIST) asks += AskKind.SCROLL to "\"${shown(element)}\" is not a plain list, so nothing says that scrolling it is harmless"
+            } else if (screen == null || screen.elements.none { isPlainScrollable(it) }) {
                 return Decision.Refuse("nothing on this screen can be scrolled safely; there are no blind swipes")
             }
         }
 
-        // enter sends what a focused field's keyboard action sends. Careful: always asked. Fewer questions: free only after a type into a search field.
+        // enter sends what the focused field's keyboard action sends, which need not be the field that was typed into: always asked, in both
+        // modes, and the question names the field that was typed into last
         if (tool == "press_enter" && !checkout) {
-            val search = ctx.lastTypedGuard?.let { GuardWords.SEARCH.matches(it) } == true
-            if (ctx.caution == Caution.CAREFUL || !search) asks += AskKind.ENTER to "enter may send or submit what is typed"
+            asks += AskKind.ENTER to "enter may send or submit what is typed" + (ctx.lastTypedName?.let { " in \"$it\"" } ?: "")
         }
 
         // G5: commit words, prices, unknown controls
@@ -134,7 +140,9 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
                 checkout -> {} // everything on a payment screen is asked below
                 ctx.caution == Caution.CAREFUL -> {
                     val edit = element.role == Role.EDIT || Flag.EDITABLE in element.flags
-                    if (!edit && !GuardWords.isHarmless(element.visible)) {
+                    // free only for a control of the app (a button or a toggle) whose visible text is a listed phrase: content that reads "Close" is not one
+                    val control = element.role == Role.BUTTON || element.role == Role.TOGGLE
+                    if (!edit && !(control && GuardWords.isHarmless(element.visible))) {
                         asks += AskKind.UNKNOWN_CONTROL to "\"${shown(element)}\" is not a control known to be harmless"
                     }
                 }
@@ -151,8 +159,10 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
             asks += AskKind.APP_SCOPE to "continue in $pkg?"
             scopePkg = pkg
         }
-        if (tool == "open_app" && target.isNotEmpty() && target !in planApps && target !in approvedApps) {
-            asks += AskKind.APP_SCOPE to "open $target?"
+        // Every app is asked about before its first launch in a run, also one the planner named: a model chose it, not the owner.
+        // No question when the owner's own task names it as a whole word (its label or its package). The yes lasts for the rest of the run.
+        if (tool == "open_app" && target.isNotEmpty() && target !in approvedApps && !namedInTask(target, ctx)) {
+            asks += AskKind.APP_SCOPE to "open ${ctx.apps.firstOrNull { it.pkg == target }?.label ?: target}?"
             scopePkg = target
         }
 
@@ -181,6 +191,16 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
 
     private fun shown(e: UiElement) = e.label.ifEmpty { e.guard }
 
+    /** The label of the app (or the part of it before a colon or dash) or its package occurs in the owner's task as a whole word. */
+    private fun namedInTask(pkg: String, ctx: Context): Boolean {
+        if (ctx.task.isBlank()) return false
+        val task = GuardText.norm(ctx.task, camel = false)
+        val label = ctx.apps.firstOrNull { it.pkg.equals(pkg, ignoreCase = true) }?.label.orEmpty()
+        val names = listOf(pkg, label, label.split(Regex("[:|–—-]")).first())
+            .map { GuardText.norm(it, camel = false) }.filter { it.length >= 2 }.distinct()
+        return names.any { GuardText.wordRegex(listOf(it)).containsMatchIn(task) }
+    }
+
     /** Payment context in what a person can read on the elements that are left; the runner passes the answer from the complete tree when it has it. */
     private fun isPaymentScreen(s: Screen): Boolean = GuardWords.PAYMENT_CONTEXT.matches(GuardText.join(*s.elements.map { it.visible }.toTypedArray()))
 
@@ -190,7 +210,7 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
         /** Actions that take the agent out of the current app; allowed from Ustaad's own screen. */
         private val LEAVING = setOf("home", "open_app", "open_link")
         private val BLIND_REFUSED = setOf("tap", "type", "press_enter")
-        private val PAYMENT_ASKED = setOf("tap", "type", "press_enter")
+        private val PAYMENT_ASKED = setOf("tap", "type", "press_enter", "scroll")
 
         /** The gravest reason first: it names the question. */
         private val KIND_ORDER = listOf(
@@ -250,5 +270,8 @@ class Guard(private val ownPackages: Set<String> = OWN_PACKAGES) {
 
         /** Something that moves under a finger or commits when touched: scrolling it is not a plain scroll. */
         fun movesOrCommits(guard: String): Boolean = isCommitText(guard) || GuardWords.SLIDER.matches(guard)
+
+        /** A scroll target that is free: a list, not a button or a switch that happens to scroll, and nothing in its text moves or commits. */
+        fun isPlainScrollable(e: UiElement): Boolean = Flag.SCROLLABLE in e.flags && e.role == Role.LIST && !movesOrCommits(e.guard)
     }
 }

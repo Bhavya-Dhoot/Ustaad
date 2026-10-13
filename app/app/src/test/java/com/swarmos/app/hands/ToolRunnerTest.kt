@@ -148,37 +148,47 @@ class ToolRunnerTest {
 
     // ------------------------------------------------------------ C4: enter
 
-    @Test fun c4_enterNeedsNoQuestionDirectlyAfterATypeIntoASearchFieldAndOnlyThen() {
-        val d = FakeFoodDriver()
-        val gate = FakeGate()
-        val r = runner(gate); val c = ctx(d)
-        val typed = r.run(c, call("type", id = 3, text = "biryani"), r.see(c))
-        assertTrue(typed.text, typed.ok)
-        assertTrue(r.run(c, call("press_enter"), r.see(c)).ok)
-        assertEquals("results", d.page)
-        assertTrue(gate.prompts.isEmpty())
-        // the chain is used up: a second enter is a question
-        val second = r.run(c, call("press_enter"), r.see(c))
-        assertEquals(Verdict.DECLINED, second.verdict)
-        assertEquals(1, gate.prompts.size)
+    @Test fun t7_enterIsAskedAboutDirectlyAfterATypeIntoASearchFieldAndTheQuestionNamesTheField() {
+        for (mode in Caution.entries) {
+            val d = FakeFoodDriver()
+            val gate = gateYesTo(AskKind.ENTER)
+            val r = runner(gate, mode); val c = ctx(d)
+            assertTrue(r.run(c, call("type", id = 3, text = "biryani"), r.see(c)).ok)
+            val o = r.run(c, call("press_enter"), r.see(c))
+            assertTrue("$mode ${o.text}", o.ok)
+            assertEquals("results", d.page)
+            assertEquals(listOf(AskKind.ENTER), gate.kinds)
+            assertEquals("press enter in \"Search for restaurants\"", gate.prompts.single().action)
+        }
     }
 
-    @Test fun c4_anyOtherStepBetweenTheTypeAndTheEnterBreaksTheChain() {
+    @Test fun t7_enterWithAnOwnerWhoSaysNoSendsNothing() {
         val d = FakeFoodDriver()
         val gate = FakeGate()
         val r = runner(gate); val c = ctx(d)
         assertTrue(r.run(c, call("type", id = 3, text = "biryani"), r.see(c)).ok)
-        assertTrue(r.run(c, call("tap", id = 4), r.see(c)).ok) // the Veg only toggle
         assertEquals(Verdict.DECLINED, r.run(c, call("press_enter"), r.see(c)).verdict)
         assertEquals(0, d.actions.count { it == "enter" })
     }
 
-    @Test fun c4_aStepThatDidNotSucceedAndAReadLeaveTheChainAlone() {
+    @Test fun t7_theNameOfTheFieldIsForgottenAfterAnotherStep() {
         val d = FakeFoodDriver()
-        val r = runner(); val c = ctx(d)
+        val gate = gateYesTo(AskKind.ENTER)
+        val r = runner(gate); val c = ctx(d)
+        assertTrue(r.run(c, call("type", id = 3, text = "biryani"), r.see(c)).ok)
+        assertTrue(r.run(c, call("tap", id = 4), r.see(c)).ok) // the Veg only toggle
+        assertTrue(r.run(c, call("press_enter"), r.see(c)).ok)
+        assertEquals("press enter", gate.prompts.single().action)
+    }
+
+    @Test fun t7_aReadAndAWaitLeaveTheNameOfTheFieldAlone() {
+        val d = FakeFoodDriver()
+        val gate = gateYesTo(AskKind.ENTER)
+        val r = runner(gate); val c = ctx(d)
         assertTrue(r.run(c, call("type", id = 3, text = "biryani"), r.see(c)).ok)
         assertTrue(r.run(c, call("wait", id = 1), null).ok)
         assertTrue(r.run(c, call("press_enter"), r.see(c)).ok)
+        assertEquals("press enter in \"Search for restaurants\"", gate.prompts.single().action)
     }
 
     // ------------------------------------------------------------ C5: scroll
@@ -186,7 +196,7 @@ class ToolRunnerTest {
     private fun lists(withSlider: Boolean = true, withBig: Boolean = true): (ScriptDriver, Int) -> RawScreen = { _, n ->
         val kids = ArrayList<RawNode>()
         kids += rn(cls = "androidx.recyclerview.widget.RecyclerView", scrollable = true, l = 0, t = 200, r = 500, b = 400, handle = "small-$n")
-        if (withSlider) kids += rn(desc = "Slide to pay", scrollable = true, l = 0, t = 500, r = W, b = 2300, handle = "slider-$n")
+        if (withSlider) kids += rn(desc = "Slide to confirm", scrollable = true, l = 0, t = 500, r = W, b = 2300, handle = "slider-$n")
         if (withBig) kids += rn(cls = "androidx.recyclerview.widget.RecyclerView", scrollable = true, l = 0, t = 500, r = W, b = 1900, handle = "big-$n")
         raw(*kids.toTypedArray(), pkg = FOOD)
     }
@@ -430,6 +440,96 @@ class ToolRunnerTest {
         assertFalse(o.ok)
         assertTrue(o.text, o.text.contains("ambiguous"))
         assertTrue(d.taps.isEmpty())
+    }
+
+    // ------------------------------------------------------------ T6: a commit has no position rule
+
+    @Test fun t6_aCommitTargetThatHadAnIdenticalTwinOnTheScreenTheModelSawIsNotActedOnAndTheOwnerIsNotAsked() {
+        // two "Delete" controls far apart; the model picked the first; their order is swapped while a question could be open
+        val d = ScriptDriver { _, _ -> raw(button("Delete", 300, handle = "first"), button("Delete", 800, handle = "second"), pkg = FOOD) }
+        val gate = gateYesTo(AskKind.COMMIT)
+        val r = runner(gate); val c = ctx(d)
+        val seen = r.see(c)
+        val o = r.run(c, call("tap", id = seen.elements.first { it.handle == "first" }.id), seen)
+        assertFalse(o.ok)
+        assertTrue(o.text, o.text.contains("tap it yourself") && o.text.contains("nothing was done"))
+        assertTrue(gate.prompts.isEmpty())
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun t6_aTwinThatShowsUpAfterTheYesIsRefusedEvenWhenItIsFarFromTheTarget() {
+        val d = ScriptDriver { self, _ -> if (self.flip) raw(button("Delete", 300, handle = "a"), button("Delete", 900, handle = "b"), pkg = FOOD) else raw(button("Delete", 300, handle = "a"), pkg = FOOD) }
+        val gate = FakeGate(answer = { d.flip = true; true })
+        val r = runner(gate); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertFalse(o.ok)
+        assertEquals(Verdict.CONFIRMED, o.verdict)
+        assertTrue(o.text, o.text.contains("tap it yourself"))
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun t6_theSameFarTwinIsHarmlessForOtherKindsWherePositionStillDecides() {
+        // an unknown control (careful mode): the twin is 600 px away, the one near the old centre is the target
+        val d = ScriptDriver { self, _ -> if (self.flip) raw(button("Continue", 300, handle = "a"), button("Continue", 900, handle = "b"), pkg = FOOD) else raw(button("Continue", 300, handle = "a"), pkg = FOOD) }
+        val gate = FakeGate(answer = { d.flip = true; true })
+        val r = runner(gate, Caution.CAREFUL); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertTrue(o.text, o.ok)
+        assertEquals(listOf("a"), d.taps.map { it.handle })
+    }
+
+    @Test fun t6_onAPaymentScreenTwoIdenticalControlsAreNeverActedOn() {
+        val d = ScriptDriver { _, _ -> raw(text("To pay 250", 100), button("+", 300, handle = "p1"), button("+", 600, handle = "p2"), pkg = FOOD) }
+        val gate = gateYesTo(AskKind.CHECKOUT_SCREEN)
+        val r = runner(gate); val c = ctx(d)
+        val seen = r.see(c)
+        val o = r.run(c, call("tap", id = seen.elements.first { it.handle == "p1" }.id), seen)
+        assertFalse(o.ok)
+        assertTrue(o.text, o.text.contains("tap it yourself"))
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun t6_aUniqueCommitIsStillActedOnAfterTheYes() {
+        val d = ScriptDriver { _, n -> raw(button("Delete", 300, handle = "d$n"), button("Add", 700, handle = "a$n"), pkg = FOOD) }
+        val gate = gateYesTo(AskKind.COMMIT)
+        val r = runner(gate); val c = ctx(d)
+        val seen = r.see(c)
+        assertTrue(r.run(c, call("tap", id = seen.elements.first { it.label == "Delete" }.id), seen).ok)
+        assertEquals(listOf("d2"), d.taps.map { it.handle })
+    }
+
+    // ------------------------------------------------------------ T3: typing that commits
+
+    @Test fun t3_typingIntoAFieldThatNamesACommittingActionIsAskedAboutAndNothingIsTypedWithoutTheYes() {
+        for (mode in Caution.entries) {
+            val d = ScriptDriver { _, n -> raw(rn(cls = "android.widget.EditText", hint = "Send message as typed", editable = true, clickable = true, l = 40, t = 200, r = 1040, b = 300, handle = "f$n"), pkg = FOOD) }
+            val gate = FakeGate()
+            val r = runner(gate, mode); val c = ctx(d)
+            val o = r.run(c, call("type", id = 1, text = "hello"), r.see(c))
+            assertEquals(mode.name, Verdict.DECLINED, o.verdict)
+            assertEquals(AskKind.COMMIT, gate.prompts.single().kind)
+            assertTrue(d.typed.isEmpty())
+        }
+    }
+
+    // ------------------------------------------------------------ T9: card numbers in what is typed and in the log
+
+    @Test fun t9_aCardNumberBehindManyOtherGroupsOfDigitsIsStillFoundAndRefused() {
+        val d = ScriptDriver { _, _ -> raw(rn(cls = "android.widget.EditText", hint = "Notes", editable = true, clickable = true, l = 40, t = 200, r = 1040, b = 300), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val text = "1 ".repeat(30) + "4111 1111 1111 1111"
+        val o = r.run(c, call("type", id = 1, text = text), r.see(c))
+        assertEquals(Verdict.REFUSED, o.verdict)
+        assertTrue(d.typed.isEmpty())
+    }
+
+    @Test fun t9_theLogHoldsNoDigitOfACardWrittenWithSingleDigitsBetweenSeparators() {
+        val d = ScriptDriver { _, _ -> raw(rn(cls = "android.widget.EditText", hint = "Notes", editable = true, clickable = true, l = 40, t = 200, r = 1040, b = 300), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val o = r.run(c, call("type", id = 1, text = "4/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1"), r.see(c))
+        assertEquals(Verdict.REFUSED, o.verdict)
+        val typedPart = o.args.substringAfter('"') // after the element number
+        assertTrue(o.args, typedPart.none { it.isDigit() })
     }
 
     // ------------------------------------------------------------ R7: a yes covers one kind

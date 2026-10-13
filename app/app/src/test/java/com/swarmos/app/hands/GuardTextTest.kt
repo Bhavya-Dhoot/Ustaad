@@ -116,11 +116,26 @@ class GuardTextTest {
         assertEquals("no digits", GuardText.maskDigits("no digits"))
     }
 
-    @Test fun theHarmlessKeyIgnoresCountsAndBracketsButNotWords() {
+    @Test fun t9_everyGroupOfDigitsIsLookedAtHoweverManyThereAre() {
+        assertTrue(GuardText.hasCardNumber("1 ".repeat(40) + "4111 1111 1111 1111"))
+        assertTrue(GuardText.hasCardNumber("4111 1111 1111 1111 " + "1 ".repeat(40)))
+    }
+
+    @Test fun t9_theLogMasksACardWrittenWithSingleDigitsAndSeparatorsWhole() {
+        assertEquals("****", GuardText.maskForLog("4/1/1/1/1/1/1/1/1/1/1/1/1/1/1/1"))
+        assertEquals("pay with **** ok", GuardText.maskForLog("pay with 4111 1111 1111 1111 ok"))
+        assertEquals("a **** b ****", GuardText.maskForLog("a 4111\n1111\n1111\n1111 b 5500-0055-5555-5559"))
+        assertEquals("table **** for ****", GuardText.maskForLog("table 1234 for 98765432"))
+        assertEquals("table 12 for 7", GuardText.maskForLog("table 12 for 7"))
+    }
+
+    @Test fun theHarmlessKeyIgnoresOneCountInBracketsAtTheEndAndNothingElse() {
         assertEquals("view cart", GuardWords.harmlessKey("View Cart (12)"))
-        assertEquals("cart", GuardWords.harmlessKey("Cart · 3"))
-        assertEquals("add", GuardWords.harmlessKey("ADD 2"))
+        assertEquals("cart", GuardWords.harmlessKey("Cart [3]"))
+        assertEquals("cart · 3", GuardWords.harmlessKey("Cart · 3"))
+        assertEquals("add 2", GuardWords.harmlessKey("ADD 2"))
         assertEquals("+", GuardWords.harmlessKey("+"))
+        assertFalse(GuardWords.isHarmless("ADD 2"))
         assertTrue(GuardWords.isHarmless("View Cart (2)"))
         assertFalse(GuardWords.isHarmless("(3)"))
         assertFalse(GuardWords.isHarmless("Continue to cart"))

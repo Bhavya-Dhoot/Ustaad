@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +38,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.swarmos.app.BuildConfig
 import com.swarmos.app.appfn.AppFnPolicy
 import com.swarmos.app.assist.DictationButton
 import com.swarmos.app.assist.SheetRules
@@ -211,8 +214,22 @@ private fun SharingBlock() {
             else "Off means Ustaad asks before every tap except on controls it knows to be harmless, such as Add, Search or View cart.",
             rotation = 1f,
         )
-        // a debug build only: HandsSettings keeps this at 0 everywhere else
-        if (testPort > 0) Note("Test brain on port $testPort (debug build)", rotation = -1f)
+        // a debug build only: HandsSettings keeps the port at 0 everywhere else. The owner types it here; no intent can set it.
+        if (BuildConfig.DEBUG) {
+            var typed by remember(testPort) { mutableStateOf(if (testPort > 0) testPort.toString() else "") }
+            SwarmTextField(
+                value = typed,
+                onValueChange = { s ->
+                    val digits = s.filter { it.isDigit() }.take(5)
+                    typed = digits
+                    HandsSettings.setTestBrainPort(digits.toIntOrNull() ?: 0)
+                },
+                label = "Test brain port",
+                mono = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                helper = if (testPort > 0) "Model calls go to 127.0.0.1:$testPort (debug build). Screen text goes there only while the sharing switch is on." else "Empty means off (debug build)",
+            )
+        }
     }
 }
 

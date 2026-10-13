@@ -29,9 +29,6 @@ object GuardWords {
 
     // ---------------------------------------------------------------- what a field is for
 
-    /** Typing in a field like this and then pressing enter is a search. Hindi: search, find. */
-    val SEARCH = WordSet(listOf("search", "find", "look for", "खोज", "खोजें", "खोजिए", "सर्च", "ढूंढ", "ढूंढें", "तलाश"))
-
     /** Things that move under a finger: scrolling one of these may commit. Hindi: slide, swipe. */
     val SLIDER = WordSet(listOf("slide", "swipe", "drag", "स्लाइड", "स्वाइप"))
 
@@ -39,10 +36,11 @@ object GuardWords {
 
     /**
      * Careful mode: a tap is free only when the control's own visible text is exactly one of these (and its full guard text has no
-     * committing word, and the screen is not a payment screen). Exact phrases only. Not on it, on purpose: continue, next, ok, done,
-     * yes, proceed, cancel, apply, save: each of them is the last button of something. A count in brackets or a digit is ignored
-     * ("View cart (2)" is "view cart"). Hindi in the second part: add, add to cart, view cart, cart, search, view all, skip, not now,
-     * later, close, back, menu, home, filter, sort.
+     * committing word, and the screen is not a payment screen), and the control is a button or a toggle: content that happens to read
+     * "Close" (a quick reply, a list item) is not a control of the app. Exact phrases only. Not on it, on purpose: continue, next, ok,
+     * done, yes, proceed, cancel, apply, save: each of them is the last button of something. One count in brackets at the end is
+     * ignored ("View cart (2)" is "view cart"); no other digit is. Hindi in the second part: add, add to cart, view cart, cart, search,
+     * view all, skip, not now, later, close, back, menu, home, filter, sort.
      */
     private val HARMLESS_PHRASES = listOf(
         "add", "add +", "+ add", "add to cart", "add item", "add to bag", "plus", "+", "minus", "-", "−", "increase", "decrease", "search", "view cart",
@@ -52,15 +50,12 @@ object GuardWords {
         "फ़िल्टर", "फिल्टर", "क्रमबद्ध करें",
     )
 
+    private val COUNT = Regex("""\s*[(\[]\s*\d{1,3}\s*[)\]]$""")
+
     private val HARMLESS: Set<String> = HARMLESS_PHRASES.map { harmlessKey(it) }.toSet()
 
-    /** Normalised, with digits and brackets taken out. */
-    fun harmlessKey(s: String): String {
-        val n = GuardText.norm(s)
-        val sb = StringBuilder(n.length)
-        for (c in n) sb.append(if (Character.isDigit(c) || c in "()[]{}·•|") ' ' else c)
-        return sb.toString().replace(Regex("\\s+"), " ").trim()
-    }
+    /** Normalised, with one count in brackets at the end taken off ("view cart (2)" is "view cart"). Nothing else is ignored. */
+    fun harmlessKey(s: String): String = COUNT.replace(GuardText.norm(s), "").trim()
 
     fun isHarmless(visible: String): Boolean = harmlessKey(visible).let { it.isNotEmpty() && it in HARMLESS }
 
@@ -80,6 +75,7 @@ object GuardWords {
         "book", "send", "post", "publish", "share", "delete", "remove", "uninstall", "install", "subscribe", "transfer", "donate",
         "submit", "sign in", "signin", "sign up", "signup", "log in", "login", "log out", "logout", "agree", "accept", "allow", "grant",
         "confirm", "slide to pay", "swipe to pay", "slide to", "swipe to", "drag to",
+        "erase", "clear all", "wipe", "reset", "remove all",
     )
 
     // The languages below: pay, order, buy, send, delete, book, install, confirm. Only words that are certain; each language in its own list.

@@ -74,50 +74,82 @@ object GuardText {
         return rest.isNotEmpty() && rest.all { it.isDigit() }
     }
 
+    private class DigitGroup(val digits: String, val start: Int, val end: Int)
+
     /**
-     * True when [text] holds a 13 to 19 digit number that passes the Luhn check. Digits are joined across any separator (spaces, dots, dashes,
-     * slashes, line breaks, anything that is neither a letter nor a digit), digits of any script count, and any run of neighbouring digit
-     * groups that adds up to 13 to 19 digits is tried, so two numbers written one after the other are both seen. A letter ends the run.
+     * Where [text] holds a 13 to 19 digit number that passes the Luhn check, as ranges of characters. Digits are joined across any separator
+     * (spaces, dots, dashes, slashes, line breaks, anything that is neither a letter nor a digit), digits of any script count, every group
+     * of digits in the text is looked at however many there are, and any run of neighbouring groups that adds up to 13 to 19 digits is tried,
+     * so two numbers written one after the other are both seen. A letter ends the run. Overlapping ranges are merged.
      */
-    fun hasCardNumber(text: String): Boolean {
-        val groups = ArrayList<String>()
+    fun cardSpans(text: String): List<IntRange> {
+        val found = ArrayList<IntRange>()
+        val groups = ArrayList<DigitGroup>()
         val cur = StringBuilder()
+        var curStart = -1
+        var curEnd = -1
         fun flush() {
-            if (cur.isNotEmpty()) groups += cur.toString()
+            if (cur.isNotEmpty()) groups += DigitGroup(cur.toString(), curStart, curEnd)
             cur.setLength(0)
         }
-        fun tried(): Boolean {
+        fun tried() {
             flush()
-            val list = groups.take(24)
-            groups.clear()
-            for (from in list.indices) {
+            for (from in groups.indices) {
                 var digits = ""
-                for (to in from until list.size) {
-                    digits += list[to]
+                for (to in from until groups.size) {
+                    digits += groups[to].digits
                     if (digits.length > 19) break
-                    if (digits.length >= 13 && luhn(digits)) return true
+                    if (digits.length >= 13 && luhn(digits)) found += groups[from].start..groups[to].end
                 }
             }
-            return false
+            groups.clear()
         }
         var i = 0
         while (i < text.length) {
             val cp = text.codePointAt(i)
+            val at = i
             i += Character.charCount(cp)
             val d = Character.digit(cp, 10)
             when {
-                d >= 0 -> cur.append(('0' + d))
-                Character.isLetter(cp) -> if (tried()) return true
+                d >= 0 -> {
+                    if (cur.isEmpty()) curStart = at
+                    curEnd = i - 1
+                    cur.append(('0' + d))
+                }
+                Character.isLetter(cp) -> tried()
                 else -> flush()
             }
         }
-        return tried()
+        tried()
+        val merged = ArrayList<IntRange>()
+        for (r in found.sortedBy { it.first }) {
+            val last = merged.lastOrNull()
+            if (last != null && r.first <= last.last) merged[merged.size - 1] = last.first..maxOf(last.last, r.last) else merged += r
+        }
+        return merged
     }
+
+    fun hasCardNumber(text: String): Boolean = cardSpans(text).isNotEmpty()
 
     private val DIGITS_4_OR_MORE = Regex("""\p{Nd}{4,}""")
 
     /** Every run of four or more digits becomes four stars: what is written to the run log never holds a number worth stealing. */
     fun maskDigits(s: String): String = DIGITS_4_OR_MORE.replace(s, "****")
+
+    /**
+     * What may be written to the run log of a text the model typed: a card-shaped number is hidden whole, separators and all
+     * ("4/1/1/1/..." leaves nothing), then every run of four or more digits.
+     */
+    fun maskForLog(s: String): String {
+        val sb = StringBuilder()
+        var pos = 0
+        for (r in cardSpans(s)) {
+            sb.append(s, pos, r.first).append("****")
+            pos = r.last + 1
+        }
+        sb.append(s, pos, s.length)
+        return maskDigits(sb.toString())
+    }
 
     private fun luhn(d: String): Boolean {
         var sum = 0

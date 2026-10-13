@@ -5,7 +5,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.math.abs
 
-/** The apps the person said yes to. A run keeps them until it ends; calls from outside a run keep them for ten minutes. */
+/**
+ * The apps the person said yes to. A run keeps them until it ends; calls from outside a run keep them for ten minutes.
+ * A yes to an app covers that app for the rest of the run (its launch and its screens), not one action: that is deliberate. What is asked
+ * again inside an approved app is every commit, every payment screen, every unknown control and every Enter, each with its own question.
+ */
 class Approvals(private val clock: () -> Long, private val ttlMs: Long = Long.MAX_VALUE) {
     private val at = HashMap<String, Long>()
 
@@ -45,7 +49,8 @@ class Budget(val maxSteps: Int, private val maxMs: Long, private val clock: () -
  * hidden on screens, so that an answer that repeats one does not give it away.
  */
 class StepMemory {
-    @Volatile var lastTyped: String? = null
+    /** The name of the field the last successful step typed into; the question about Enter shows it. */
+    @Volatile var lastTypedName: String? = null
     private val codes = LinkedHashSet<String>()
 
     @Synchronized
@@ -87,6 +92,8 @@ class ToolRunner(
         /** True while the person is being asked, so the run can show that it waits. */
         val onWaiting: (Boolean) -> Unit = {},
         val memory: StepMemory = StepMemory(),
+        /** The task the owner gave: an app named in it is opened without a question. */
+        val task: String = "",
     )
 
     class Outcome(
@@ -156,12 +163,14 @@ class ToolRunner(
 
         val mode = caution()
         fun judge(s: Screen?, e: UiElement?, checkout: Boolean?): Decision =
-            guard.check(call, s, e, ctx.planApps, ctx.approvals.current(), launcherPackages(), Guard.Context(ctx.apps, ctx.memory.lastTyped, linkTarget, mode, checkout))
+            guard.check(call, s, e, ctx.planApps, ctx.approvals.current(), launcherPackages(), Guard.Context(ctx.apps, ctx.memory.lastTypedName, linkTarget, mode, checkout, ctx.task))
 
         fun refused(why: String, e: UiElement?) = Outcome(Verdict.REFUSED, false, "refused: $why", args, action = actionText(call, e, ctx, uri, linkTarget))
         fun changed(v: Verdict, e: UiElement?, why: String = "the screen changed") =
             Outcome(v, false, "$why; nothing was done", args, action = actionText(call, e, ctx, uri, linkTarget))
         val twins = "the screen is ambiguous: two controls look the same here"
+        fun notSure(v: Verdict, e: UiElement?) =
+            changed(v, e, "several controls on this screen look the same, so Ustaad cannot tell which one is meant. The screen is ambiguous: tap it yourself")
 
         var decision = judge(screen, element, null)
         if (decision is Decision.Refuse) return refused(decision.why, element)
@@ -184,6 +193,8 @@ class ToolRunner(
             val again = judge(first.screen, target, first.checkout)
             if (again is Decision.Refuse) return refused(again.why, target)
             if (again is Decision.Confirm || decision is Decision.Allow) decision = again
+            // a commit or a payment screen has no position rule: the control must be the only one of its kind on both reads
+            if (target != null && strict(decision) && !onlyOne(target, screen, first.screen)) return notSure(Verdict.ALLOWED, target)
             seen = first.screen
             if (tool == "scroll" && id == null) scrollTo = pickScroll(first) ?: return refused("nothing on this screen can be scrolled safely; there are no blind swipes", null)
         }
@@ -220,6 +231,7 @@ class ToolRunner(
                 }
                 val after = judge(second.screen, moved, second.checkout)
                 if (after is Decision.Refuse) return refused(after.why, moved)
+                if (moved != null && strict(after) && !onlyOne(moved, screen, second.screen)) return notSure(Verdict.CONFIRMED, moved)
                 target = moved
                 seen = second.screen
                 if (tool == "scroll" && id == null) scrollTo = pickScroll(second) ?: return refused("nothing on this screen can be scrolled safely; there are no blind swipes", null)
@@ -238,10 +250,18 @@ class ToolRunner(
         }
         if (ok) {
             val spec = HandsTools.spec(tool)
-            if (tool == "type") ctx.memory.lastTyped = target?.guard
-            else if (spec != null && spec.risk != Risk.READ) ctx.memory.lastTyped = null
+            if (tool == "type") ctx.memory.lastTypedName = target?.let { it.label.ifEmpty { it.guard } }
+            else if (spec != null && spec.risk != Risk.READ) ctx.memory.lastTypedName = null
         }
         return Outcome(verdict, ok, text, args, read, actionText(call, target, ctx, uri, linkTarget))
+    }
+
+    private fun strict(d: Decision) = d is Decision.Confirm && d.kinds.any { it in STRICT_KINDS }
+
+    /** The control is the only one with its guard text, role and flags on the screen the model saw and on the fresh one: position decides nothing. */
+    private fun onlyOne(t: UiElement, model: Screen?, fresh: Screen): Boolean {
+        fun same(e: UiElement) = e.role == t.role && e.flags == t.flags && e.guard == t.guard
+        return (model == null || model.elements.count(::same) == 1) && fresh.elements.count(::same) == 1
     }
 
     private sealed interface Match {
@@ -275,7 +295,7 @@ class ToolRunner(
 
     /** The scrollable element with the largest area that is not a slider or a commit; null when there is none (nothing is scrolled then). */
     private fun pickScroll(l: Looked): String? = l.screen.elements
-        .filter { Flag.SCROLLABLE in it.flags && !Guard.movesOrCommits(it.guard) }
+        .filter { Guard.isPlainScrollable(it) }
         .maxByOrNull { l.areas[it.id] ?: 0L }?.handle
 
     private suspend fun <T> waitForPerson(ctx: Ctx, block: suspend () -> T): T {
@@ -367,7 +387,7 @@ class ToolRunner(
         "type" -> {
             val hide = el != null && (Flag.PASSWORD in el.flags || Guard.isSecretLabel(el.guard) || Guard.isSecretLabel(el.label))
             // a number is masked in the log whatever the field is called: a field that looks harmless can still be the one that takes a card
-            "${str(call, "id")} \"${if (hide) "<hidden>" else GuardText.maskDigits(str(call, "text").take(60))}\""
+            "${str(call, "id")} \"${if (hide) "<hidden>" else GuardText.maskForLog(str(call, "text")).take(60)}\""
         }
         "scroll" -> str(call, "direction") + (call.args["id"]?.let { " in ${str(call, "id")}" } ?: "")
         "wait" -> "${str(call, "id")} s"
@@ -379,7 +399,7 @@ class ToolRunner(
     private fun actionText(call: ToolCall, el: UiElement?, ctx: Ctx, uri: String, linkTarget: String?): String = when (call.tool) {
         "tap" -> "tap \"${nameOf(el, call)}\""
         "type" -> "type into \"${nameOf(el, call)}\""
-        "press_enter" -> "press enter"
+        "press_enter" -> "press enter" + (ctx.memory.lastTypedName?.let { " in \"$it\"" } ?: "")
         "scroll" -> "scroll ${str(call, "direction")}"
         "back" -> "go back"
         "home" -> "go to the home screen"
@@ -398,6 +418,9 @@ class ToolRunner(
 
         /** How many times one action may ask again because the screen gave a new reason after a yes. */
         const val MAX_ASK_ROUNDS = 3
+
+        /** For these kinds a position decides nothing: the control must be the only one of its kind on the screen the model saw and on the fresh one. */
+        private val STRICT_KINDS = setOf(AskKind.COMMIT, AskKind.CHECKOUT_SCREEN)
 
         /** Tools whose effect depends on what is on the screen right now: judged and acted on after a fresh read. */
         private val REVALIDATED = setOf("tap", "type", "press_enter", "scroll")

@@ -124,7 +124,7 @@ class HandsEngineTest {
     // ------------------------------------------------------------ a whole run
 
     @Test fun aWholeRunPlansDrivesTheFakeAppToTheCartAndRepliesWithoutPaying() {
-        val r = rig()
+        val r = rig(gate = gateYesTo(AskKind.ENTER))
         r.brain.reply(phonePlan())
         r.brain.replyWith(*cartSteps)
         r.brain.reply("""{"reply":"The cart has 1 chicken biryani, 250 rupees. Paying is up to you."}""")
@@ -135,7 +135,8 @@ class HandsEngineTest {
         assertEquals(listOf(SubStatus.DONE, SubStatus.DONE), run.plan.map { it.status })
         assertEquals("1 chicken biryani is in the cart, 250 rupees", run.plan[0].outcome)
         assertEquals(listOf("type", "press_enter", "tap", "tap", "tap", "done"), run.log.map { it.tool })
-        assertTrue(run.log.all { it.sub == 0 && it.verdict == Verdict.ALLOWED })
+        assertTrue(run.log.all { it.sub == 0 })
+        assertEquals("only the enter was asked about", listOf(Verdict.ALLOWED, Verdict.CONFIRMED, Verdict.ALLOWED, Verdict.ALLOWED, Verdict.ALLOWED, Verdict.ALLOWED), run.log.map { it.verdict })
         assertEquals("order a biryani", run.task)
         assertEquals(Origin.OWN_SHEET, run.origin)
         assertEquals(1_000L, run.startedAtMs)
@@ -231,7 +232,7 @@ class HandsEngineTest {
         val run = r.await(r.engine.start("order a biryani", Origin.OWN_SHEET))
         assertEquals(run.result, Phase.DONE, run.phase)
         assertEquals(listOf(AskKind.ENTER, AskKind.UNKNOWN_CONTROL), gate.kinds)
-        assertEquals(listOf("press enter", "tap \"Biryani House 4.3 star 30 min\""), gate.prompts.map { it.action })
+        assertEquals(listOf("press enter in \"Search for restaurants\"", "tap \"Biryani House 4.3 star 30 min\""), gate.prompts.map { it.action })
         assertEquals(1, r.driver.cart)
         assertFalse(r.driver.paid)
     }
@@ -264,14 +265,39 @@ class HandsEngineTest {
         assertEquals(listOf("tap", "done"), run.log.map { it.tool })
     }
 
-    @Test fun r1_theSameRunInFewerQuestionsModeAsksNothing() {
-        val gate = FakeGate()
+    @Test fun r1_theSameRunInFewerQuestionsModeAsksOnlyAboutTheEnter() {
+        val gate = gateYesTo(AskKind.ENTER)
         val r = rig(gate = gate)
         r.brain.reply(phonePlan())
         r.brain.replyWith(*cartSteps)
         r.brain.reply("""{"reply":"ok"}""")
         assertEquals(Phase.DONE, r.await(r.engine.start("order a biryani", Origin.OWN_SHEET)).phase)
-        assertTrue(gate.prompts.isEmpty())
+        assertEquals(listOf(AskKind.ENTER), gate.kinds)
+    }
+
+    @Test fun t1_theOwnersTaskReachesTheGuardSoAnAppItNamesIsOpenedWithoutAQuestionAndAnotherIsAsked() {
+        for ((task, asked) in listOf("order a biryani from FakeFood" to 0, "order a biryani" to 1)) {
+            val d = FakeFoodDriver(foreground = LAUNCHER) // the home screen: the planned app has to be launched
+            val gate = gateYesTo(AskKind.APP_SCOPE)
+            val r = rig(driver = d, gate = gate)
+            r.brain.reply(planJson(subJson("PHONE", "order", app = FOOD)))
+            r.brain.replyWith({ step("done", text = "ok") })
+            val run = r.await(r.engine.start(task, Origin.OWN_SHEET))
+            assertEquals(task + ": " + run.result, Phase.DONE, run.phase)
+            assertEquals(task, asked, gate.prompts.size)
+            assertTrue("open:$FOOD" in d.actions)
+        }
+    }
+
+    @Test fun t1_aPlannedAppTheOwnerRefusesIsNeverOpened() {
+        val d = FakeFoodDriver(foreground = LAUNCHER)
+        val gate = FakeGate()
+        val r = rig(driver = d, gate = gate)
+        r.brain.reply(planJson(subJson("PHONE", "order", app = FOOD)))
+        val run = r.await(r.engine.start("order a biryani", Origin.OWN_SHEET))
+        assertEquals(Phase.STOPPED, run.phase)
+        assertEquals(AskKind.APP_SCOPE, gate.prompts.single().kind)
+        assertTrue(d.actions.none { it.startsWith("open:") })
     }
 
     @Test fun r9_aPlannedQuestionLeavesThePhoneOnlyWhenNoPhoneOrDataSubtaskHasRunBefore() {
@@ -554,15 +580,16 @@ class HandsEngineTest {
     }
 
     @Test fun aRestaurantWhoseNameSaysPayNowMakesEvenTheCardTapAQuestion() {
-        val gate = FakeGate() // answers no
+        val gate = gateYesTo(AskKind.ENTER) // yes to the enter, no to the rest
         val r = rig(driver = FakeFoodDriver(hostile = true), gate = gate)
         r.brain.reply(phonePlan())
         r.brain.replyWith(typeInto("Search", "biryani"), { step("press_enter") }, tapLabel("Biryani House"), { step("done", text = "never") })
         val run = r.await(r.engine.start("order a biryani", Origin.OWN_SHEET))
         assertEquals(Phase.STOPPED, run.phase)
-        assertEquals(1, gate.prompts.size)
-        assertTrue(gate.prompts[0].action, gate.prompts[0].action.contains("Biryani House"))
-        assertTrue("the folded label carries the hostile words, the guard sees them", gate.prompts[0].action.contains("Pay now"))
+        assertEquals(2, gate.prompts.size)
+        assertEquals(AskKind.ENTER, gate.prompts[0].kind)
+        assertTrue(gate.prompts[1].action, gate.prompts[1].action.contains("Biryani House"))
+        assertTrue("the folded label carries the hostile words, the guard sees them", gate.prompts[1].action.contains("Pay now"))
         assertTrue(r.driver.taps.isEmpty())
     }
 

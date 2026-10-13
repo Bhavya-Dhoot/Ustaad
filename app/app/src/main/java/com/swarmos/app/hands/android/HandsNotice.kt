@@ -43,18 +43,23 @@ object HandsNotice {
             .addAction(0, "Stop", stop)
             .build()
         nm.notify(NOTIFICATION_ID, n)
-        val shown = nm.areNotificationsEnabled() && nm.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
-        visible = shown
-        return shown
+        return enabledNow(app)
     }
 
-    /** True while the last [show] reached the person's notification shade (notifications on for Ustaad and for this channel). */
-    @Volatile
-    var visible: Boolean = false
-        private set
+    /**
+     * True when notifications are on for Ustaad and for the Hands channel right now. Asked of the system every time and never remembered:
+     * the owner can switch the channel off while a run acts, and the gate that lets an action through must see that at once.
+     */
+    fun enabledNow(ctx: Context): Boolean {
+        val nm = ctx.applicationContext.getSystemService(NotificationManager::class.java)
+        return channelUsable(nm.areNotificationsEnabled(), nm.getNotificationChannel(CHANNEL_ID)?.importance)
+    }
+
+    /** Notifications reach the shade when the app's notifications are on and the channel exists and is not switched off. */
+    internal fun channelUsable(appNotificationsOn: Boolean, channelImportance: Int?): Boolean =
+        appNotificationsOn && channelImportance != null && channelImportance != NotificationManager.IMPORTANCE_NONE
 
     fun clear(ctx: Context) {
-        visible = false
         ctx.applicationContext.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
 

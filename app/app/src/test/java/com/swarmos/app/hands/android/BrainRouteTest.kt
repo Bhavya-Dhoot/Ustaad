@@ -24,8 +24,15 @@ class BrainRouteTest {
     }
 
     @Test
-    fun testBrainTakesEverything() = everyCase { tier, onPhoneOnly, local, peer, stronger, share, test ->
-        if (test) assertEquals(Route.TEST, BrainRoute.pick(tier, onPhoneOnly, local, peer, stronger, share, test))
+    fun testBrainTakesEverythingThatMayLeaveThePhone() = everyCase { tier, onPhoneOnly, local, peer, stronger, share, test ->
+        if (test && (!onPhoneOnly || share)) assertEquals(Route.TEST, BrainRoute.pick(tier, onPhoneOnly, local, peer, stronger, share, test))
+    }
+
+    @Test
+    fun t10_aScreenPromptWithSharingOffNeverGoesToTheTestBrain() = everyCase { tier, _, local, peer, stronger, _, test ->
+        if (!test) return@everyCase
+        val r = BrainRoute.pick(tier, onPhoneOnly = true, localReady = local, peerHasModel = peer, peerIsStronger = stronger, shareScreens = false, testBrain = true)
+        assertEquals("tier=$tier local=$local peer=$peer stronger=$stronger", if (local) Route.LOCAL else Route.NONE, r)
     }
 
     @Test

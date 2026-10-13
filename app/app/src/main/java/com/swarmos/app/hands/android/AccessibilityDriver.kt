@@ -24,10 +24,11 @@ import kotlinx.coroutines.withContext
 
 /**
  * PhoneDriver over the accessibility service. One call at a time (a mutex), all of them off the main thread.
- * It keeps the nodes of the last read() by handle, with the class, text and description of each node of every subtree
- * as read, and acts only on those nodes through accessibility actions (no gesture, no touch by position); a node the
- * system no longer has, or whose subtree differs, gives false and the core reads again. It carries no policy and
- * logs no screen content, only the class of an exception.
+ * It keeps the nodes of the last read() by handle, with the class, text, description, hint, resource id and flags of each node of
+ * every subtree as read, and acts only on those nodes through accessibility actions (no gesture, no touch by position); a node the
+ * system no longer has, or whose subtree differs or is too large to verify, gives false and the core reads again. A read that
+ * reaches the node, lookup or depth cap is reported as an unreadable screen. It carries no policy and logs no screen content,
+ * only the class of an exception and the name of a cap.
  */
 class AccessibilityDriver(ctx: Context) : PhoneDriver {
     private val app = ctx.applicationContext
@@ -37,6 +38,10 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     // empty when the last read gave no app window.
     private var nodes: Map<String, AccessibilityNodeInfo> = emptyMap()
     private var facts: Map<String, FactNode> = emptyMap()
+
+    // The signature of the node that last received text through setText, taken right after the text was set; null after any other action.
+    // enter() acts only on an input-focused node with this very signature. Guarded by lock.
+    private var typedSig: String? = null
 
     override val name: String = "accessibility"
 
@@ -59,6 +64,7 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
      * together with that ancestor's text), else false. No gesture: nothing is ever touched by position, so cx and cy are ignored.
      */
     override suspend fun tap(handle: String, cx: Int, cy: Int): Boolean = step(false) { svc ->
+        typedSig = null
         if (ownInFront(svc)) return@step false
         val job = currentCoroutineContext()
         val v = verified(handle) { job.ensureActive() } ?: return@step false
@@ -67,20 +73,34 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     }
 
     override suspend fun setText(handle: String, cx: Int, cy: Int, text: String): Boolean = step(false) { svc ->
+        typedSig = null
         if (ownInFront(svc)) return@step false
         val job = currentCoroutineContext()
         val node = verified(handle) { job.ensureActive() }?.node ?: return@step false
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        // remember which node took the text, by what it looks like now (the text is in it): enter() must find this node in focus
+        if (ok && node.refresh()) typedSig = signatureOf(node) { job.ensureActive() }
+        ok
     }
 
+    /**
+     * Enter goes to the node that has input focus, and only if that node is the one that last received text through setText (same signature):
+     * a field the focus moved to, or a field that changed, gets nothing. The core asks the owner before every Enter; this is the half that
+     * binds the answer to the field.
+     */
     override suspend fun enter(): Boolean = step(false) { svc ->
+        val typed = typedSig
+        typedSig = null
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@step false
+        if (typed == null) return@step false
+        val job = currentCoroutineContext()
         val picked = look(svc) as? Look.Open ?: return@step false
         try {
             val field = picked.root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return@step false
             try {
+                if (!ScreenMapping.enterAllowed(signatureOf(field) { job.ensureActive() }, typed)) return@step false
                 field.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
             } finally {
                 release(field)
@@ -94,6 +114,7 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     override suspend fun scroll(handle: String?, forward: Boolean): Boolean {
         if (handle == null) return false
         return step(false) { svc ->
+            typedSig = null
             if (ownInFront(svc)) return@step false
             val job = currentCoroutineContext()
             val node = verified(handle) { job.ensureActive() }?.node ?: return@step false
@@ -102,11 +123,12 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         }
     }
 
-    override suspend fun back(): Boolean = step(false) { it.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) }
+    override suspend fun back(): Boolean = step(false) { typedSig = null; it.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) }
 
-    override suspend fun home(): Boolean = step(false) { it.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) }
+    override suspend fun home(): Boolean = step(false) { typedSig = null; it.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) }
 
     override suspend fun openApp(pkg: String): Boolean = step(false) { svc ->
+        typedSig = null
         val intent = svc.packageManager.getLaunchIntentForPackage(pkg) ?: return@step false
         svc.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         true
@@ -125,6 +147,7 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
     }
 
     override suspend fun openLink(uri: String, pkg: String): Boolean = step(false) { svc ->
+        typedSig = null
         if (uri.isBlank() || pkg.isBlank()) return@step false
         svc.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         true
@@ -170,13 +193,18 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         val read = facts[handle] ?: return null
         if (!node.refresh()) return null
         val depthLeft = ScreenMapping.MAX_DEPTH - ScreenMapping.depthOf(handle)
-        val before = ScreenMapping.subtreeSignature(read, { it.kids.size }, { n, i -> n.kids[i] }, { it.facts }, maxDepth = depthLeft)
-        val now = ScreenMapping.subtreeSignature(
-            node, { it.childCount }, { n, i -> n.getChild(i) }, { factsOf(it) },
-            release = { release(it) }, maxDepth = depthLeft, checkCancelled = cancelled,
-        )
+        // a subtree that reaches a cap cannot be verified (a change past the cap would go unseen): no action then
+        val before = ScreenMapping.subtreeSignature(read, { it.kids.size }, { n, i -> n.kids[i] }, { it.facts }, maxDepth = depthLeft) ?: return null
+        val now = signatureOf(node, depthLeft, cancelled) ?: return null
         return node.takeIf { before == now }
     }
+
+    /** The signature of a live node and its subtree; null when it reaches a cap. */
+    private fun signatureOf(node: AccessibilityNodeInfo, maxDepth: Int = ScreenMapping.MAX_DEPTH, cancelled: () -> Unit): String? =
+        ScreenMapping.subtreeSignature(
+            node, { it.childCount }, { n, i -> n.getChild(i) }, { factsOf(it) },
+            release = { release(it) }, maxDepth = maxDepth, checkCancelled = cancelled,
+        )
 
     /** The node to act on, and for a node that is not clickable its nearest clickable ancestor (null when there is none). */
     private class Verified(val node: AccessibilityNodeInfo, val ancestor: AccessibilityNodeInfo?)
@@ -195,9 +223,13 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         return Verified(node, ancestor)
     }
 
+    @Suppress("DEPRECATION") // isChecked: the tri-state getChecked() needs API 36
     private fun factsOf(n: AccessibilityNodeInfo): NodeFacts {
         val password = n.isPassword
-        return ScreenMapping.factsOf(n.className, if (password) null else n.text, n.contentDescription, password)
+        return ScreenMapping.factsOf(
+            n.className, if (password) null else n.text, n.contentDescription, password,
+            hint = n.hintText, resId = n.viewIdResourceName, enabled = n.isEnabled, checkable = n.isCheckable, checked = n.isChecked,
+        )
     }
 
     /** What is in front: nothing readable, one of our own application windows, or another app (its root is the caller's to release). */
@@ -256,6 +288,7 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
         }
         val taken = HashMap<String, AccessibilityNodeInfo>()
         val takenFacts = HashMap<String, FactNode>()
+        var capHit: String? = null
         val root: RawNode = try {
             ScreenMapping.buildTree(
                 root = picked.root,
@@ -268,12 +301,20 @@ class AccessibilityDriver(ctx: Context) : PhoneDriver {
                     toRaw(n, handle, kids)
                 },
                 checkCancelled = checkCancelled,
+                onCap = { if (capHit == null) capHit = it },
             )
         } catch (e: Exception) {
             taken.values.forEach { release(it) }
             if (taken.isEmpty()) release(picked.root)
             clearNodes()
             throw e
+        }
+        if (capHit != null) {
+            // A tree cut short may have lost the very text that makes a screen secret or a control committing: it is not read at all.
+            Log.w(TAG, "read reached the $capHit cap; the screen is reported unreadable")
+            taken.values.forEach { release(it) }
+            clearNodes()
+            return RawScreen(pkg = picked.pkg, activity = "", widthPx = w, heightPx = h, root = null, unreadable = true)
         }
         clearNodes()
         nodes = taken

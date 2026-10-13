@@ -119,9 +119,6 @@ class MainActivity : ComponentActivity() {
         if (i?.hasExtra(EXTRA_LEAN_SOURCES) == true) com.swarmos.app.pdu.PduEngine.setLeanSources(i.getBooleanExtra(EXTRA_LEAN_SOURCES, false))
         // `--ez choirMajority true` lets a majority in round 1 skip round 2 (false restores today's policy); persisted in the pref choir_majority_skips_round2
         if (i?.hasExtra(EXTRA_CHOIR_MAJORITY) == true) com.swarmos.app.choir.ChoirController.setMajoritySkipsRound2(i.getBooleanExtra(EXTRA_CHOIR_MAJORITY, false))
-        // `--ei handsBrainPort 8099` sends both Hands model tiers to a llama-server on 127.0.0.1:8099 (reach it with `adb reverse tcp:8099 tcp:8099`); 0 turns it off; persisted.
-        // The test phone has too little memory for a chat model. Debug builds only: HandsSettings ignores the port elsewhere.
-        if (i?.hasExtra(EXTRA_HANDS_BRAIN_PORT) == true) com.swarmos.app.hands.android.HandsSettings.setTestBrainPort(i.getIntExtra(EXTRA_HANDS_BRAIN_PORT, 0))
         // `--es activity 'Running a check (7 of 20).'` shows that line in the banner and the notification, with a Stop action; `--es activity ''` clears it
         if (i?.hasExtra(EXTRA_ACTIVITY) == true) {
             val line = i.getStringExtra(EXTRA_ACTIVITY).orEmpty()
@@ -146,7 +143,6 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_AGENT_FILES = "agentFiles"
         const val EXTRA_KEEP_BUSY = "keepBusy"
         const val EXTRA_HAMMER = "hammer"
-        const val EXTRA_HANDS_BRAIN_PORT = "handsBrainPort"
         const val EXTRA_GALLERY = "gallery"
         const val EXTRA_GALLERY_PAGE = "galleryPage"
     }

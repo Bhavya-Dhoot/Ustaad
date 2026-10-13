@@ -218,7 +218,7 @@ class HandsBrainTest {
     @Test
     fun theTestBrainTakesBothTiersWhateverElseIsLoaded() {
         val test = FakeLlm("test", { "test reply" })
-        val r = rig(swarm = FakeSwarm(listOf("big")), localReady = false, share = false, test = test)
+        val r = rig(swarm = FakeSwarm(listOf("big")), localReady = false, share = true, test = test)
         assertEquals("test reply", r.complete(Tier.FAST, onPhoneOnly = true))
         assertEquals("test reply", r.complete(Tier.STRONG, onPhoneOnly = false))
         assertEquals(2, test.requests.size)
@@ -226,6 +226,24 @@ class HandsBrainTest {
         assertTrue(r.local.requests.isEmpty())
         assertTrue(r.brain.has(Tier.FAST))
         assertTrue(r.brain.has(Tier.STRONG))
+    }
+
+    @Test
+    fun t10_theTestBrainGetsNoScreenTextWhileSharingIsOff() {
+        val test = FakeLlm("test", { "test reply" })
+        val r = rig(swarm = FakeSwarm(listOf("big")), localReady = false, share = false, test = test)
+        try {
+            r.complete(Tier.FAST, onPhoneOnly = true)
+            fail("expected NoModelException")
+        } catch (e: NoModelException) {
+            // the screen stays on the phone
+        }
+        assertTrue(test.requests.isEmpty())
+        assertFalse(r.brain.has(Tier.FAST))
+        assertEquals("a prompt without screen text may go to it", "test reply", r.complete(Tier.STRONG, onPhoneOnly = false))
+        val local = rig(localReady = true, share = false, test = test)
+        assertEquals("local reply", local.complete(Tier.FAST, onPhoneOnly = true))
+        assertEquals(1, test.requests.size)
     }
 
     // ------------------------------------------------------------ has
