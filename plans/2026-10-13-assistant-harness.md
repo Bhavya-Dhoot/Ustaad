@@ -79,6 +79,13 @@ Ledger:
 
 ## Status
 
+2026-10-13 19:40:
+- Master f77eff6. The full run on 037aced gave 2405 tests with 2 failures, both in older timing tests (llm StreamReadFailureTest, memcloud SplitCoordinatorTest); each passed 3 of 3 alone. The memcloud one was a race in the test and is fixed (e0edfab). The llm one is open: the deltas of a stream that dies can miss the collector while the exception carries the full partial text; not looked at further.
+- The adversarial read of Hands is in (docs/review/2026-10-13-hands-codex-1.txt): 11 high, 2 medium, all in code that is not wired to a run yet. The answers were decided by the orchestrator and sent to the two builders: the guard judges an element by its full normalised text including the nearest clickable ancestor; price-only and unlabeled controls ask; a checkout-screen rule asks before every tap; the target is found again in a fresh read before every action and after every yes; enter is free only after typing into a search field; scroll is judged; a link is resolved to its handler first, sent to that package only, and shown to the person unless it was in the task; protected screens are not read at all; blocked apps are judged by label too; only the default home app counts as the launcher; the driver no longer climbs to a parent and re-checks the node at tap time. The contract change for this is on branch `hands-contract-2` (master plus one commit), kept off master until both fixes are merged so master keeps compiling.
+- Running: H5 wiring, the core fix round, the driver fix round. Merge order: core fix and driver fix together (they complete the contract change), then H5.
+
+Earlier status:
+
 2026-10-13 19:20:
 - Merged on master: H2 core (4a39bbf; 190 tests in hands/; 55 rules broken one at a time by the builder and each caught by a named test), H3 accessibility driver with the fix that reports Ustaad's own window in front and refuses to act there (50646c5), H4 ways in, prompt and Hands screen (7ed11bc), H6 skill cards and eight expert cards. Master 7ed11bc: 2206 unit tests, 0 failures. A full run on 037aced (with the core) was started.
 - Running: H5 wiring (brain with tiers, expert desk, runtime, the sharing switch, the debug test brain, the opt-in evaluation with a real model); an adversarial Codex read of Hands (prompt scripts/review/codex-prompt-hands-1.txt, output to docs/review/2026-10-13-hands-codex-1.txt).
