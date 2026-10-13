@@ -35,13 +35,17 @@ class RemoteLlmClient(
     private val streams: StreamClient? = null,
     /** Which "ip" or "ip:port" reaches [peer] right now. Asked at every call, so it follows the link module's path choice. */
     private val address: (NodeInfo) -> String = { it.ip },
-    /** Time a chat request to the peer may take for a reply of at most this many tokens. */
-    private val budgetMs: (Int) -> Long = { GenBudget.forTokens(it) },
+    /** Time a chat request to the peer may take for a reply of at most this many tokens; null: from the peer's own speed ([budgetFor]). */
+    private val budgetMs: ((Int) -> Long)? = null,
 ) : LlmClient, PhoneEndpoint {
     private val host get() = address(peer)
 
     @Volatile
     private var seenModel: String? = null
+
+    /** The allowance per token for this peer from its last report: its live speed, else its profile speed, else the default. */
+    @Volatile
+    private var seenMsPerToken: Long = GenBudget.MS_PER_TOKEN
 
     override val nodeId: String get() = peer.nodeId
     override val unusableReason: String? get() = if (NodeClient.isBluetoothAddress(host)) BLUETOOTH_ONLY else null
@@ -54,17 +58,23 @@ class RemoteLlmClient(
     override suspend fun ready(): Boolean = runCatching { caps() }.isSuccess
 
     override suspend fun caps(): Caps = mapErrors {
-        client.get<Caps>(host, "/sched/caps").also { seenModel = it.modelName }
+        client.get<Caps>(host, "/sched/caps").also {
+            seenModel = it.modelName
+            seenMsPerToken = GenBudget.msPerTokenOf(it)
+        }
     }
 
+    /** The HTTP budget for a reply of at most [maxTokens] tokens: 30 s plus the allowance per token of this peer, 200 ms while nothing is known of it. */
+    internal fun budgetFor(maxTokens: Int): Long = budgetMs?.invoke(maxTokens) ?: GenBudget.forTokens(maxTokens, msPerToken = seenMsPerToken)
+
     /**
-     * The request may take the generation budget of the reply ([GenBudget]: 30 s plus the tokens asked for at 5 per second),
-     * not the client's 60 s default, which cut long answers off and sent them to another phone. A request that still runs
+     * The request may take the generation budget of the reply ([GenBudget]: 30 s plus the tokens asked for at 5 per second, or
+     * slower for a peer that is known to decode slower), not the client's 60 s default, which cut long answers off and sent them to another phone. A request that still runs
      * out of time is a [PhoneTimeoutException]: the job was slow, which says nothing about whether the phone is there.
      */
     override suspend fun runChat(jobId: String, req: ChatRequest, pinModel: String?): ChatJobResult = mapErrors {
         requireUsable()
-        val budget = budgetMs(req.maxTokens)
+        val budget = budgetFor(req.maxTokens)
         try {
             client.post<ChatJobResult, ChatJobRequest>(host, "/sched/chat", ChatJobRequest(jobId, req.toDto(), pinModel), budget)
                 .also { seenModel = it.modelName }
