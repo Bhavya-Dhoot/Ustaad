@@ -79,6 +79,17 @@ Ledger:
 
 ## Status
 
+2026-10-13 19:20:
+- Merged on master: H2 core (4a39bbf; 190 tests in hands/; 55 rules broken one at a time by the builder and each caught by a named test), H3 accessibility driver with the fix that reports Ustaad's own window in front and refuses to act there (50646c5), H4 ways in, prompt and Hands screen (7ed11bc), H6 skill cards and eight expert cards. Master 7ed11bc: 2206 unit tests, 0 failures. A full run on 037aced (with the core) was started.
+- Running: H5 wiring (brain with tiers, expert desk, runtime, the sharing switch, the debug test brain, the opt-in evaluation with a real model); an adversarial Codex read of Hands (prompt scripts/review/codex-prompt-hands-1.txt, output to docs/review/2026-10-13-hands-codex-1.txt).
+- NOT built, stopped by the session's safety layer, the founder's call: the root shell driver; the MCP endpoint that would let another agent on the phone call the tools. The contract has room for both (`PhoneDriver`, `Hands.tools()` and `Hands.call()`).
+- On the Redmi (docs/benchmarks/2026-10-13-redmi-hands.md): the app installs and starts on Android 15; the system lists Ustaad's voice interaction service and accessibility service; the sheet opens from the assist, share, selected-text and link intents and nothing from another app runs by itself.
+- Waiting for the founder on the phone: the accessibility switch for "Ustaad Hands" (perhaps "Allow restricted settings" first), and optionally the digital assistant choice. Without the first, no run on the phone is possible.
+- Push to the remote was refused again by the permission layer at 18:43 (master was 2125 tests green with the closed-cloud core merged). The founder can run `git push origin master`.
+- Next: merge H5; run the evaluation on the PC; fix what the Codex read finds; the phone run (H8) once the switch is on.
+
+Earlier status:
+
 2026-10-13 18:13:
 - H0: the two code surveys are back (facts folded into the briefs); the research report is still being written.
 - H1 contract is on master (hands/Contract.kt, commits 1417a3c and 9c206e1).
