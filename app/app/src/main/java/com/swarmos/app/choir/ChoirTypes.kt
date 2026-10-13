@@ -19,7 +19,7 @@ enum class CheckResult { VERIFIED, REFUTED, NOT_CHECKABLE }
 enum class PickMethod { TOOL, MAJORITY, CONFIDENCE, JUDGE, ABSTAIN }
 
 @Serializable
-enum class LaneStatus { WAITING, SOLVING, ANSWERED, REVISING, REVISED, JUDGING, TIMED_OUT, ERROR, AWAY, NO_MODEL, NO_VALID_ANSWER }
+enum class LaneStatus { WAITING, SOLVING, ANSWERED, REVISING, REVISED, JUDGING, TIMED_OUT, ERROR, AWAY, NO_MODEL, NO_VALID_ANSWER, MOVED }
 
 object ChoirLimits {
     const val WIRE_MAX_BYTES = 1024
@@ -103,6 +103,8 @@ data class ReviseRequest(
     val others: List<Candidate>,
     val maxTokens: Int = 150,
     val budgetMs: Long = 60_000,
+    /** Set only when this phone takes over a lane that another phone solved: that lane's round 1 answer, which this phone does not hold. */
+    val own: Candidate? = null,
 )
 
 /** R3, coordinator -> node: POST /v1/choir/judge. Candidates are distinct answers, anonymous. */
@@ -202,6 +204,8 @@ data class LaneTrace(
     val r1: Reply? = null,
     val r2: Reply? = null,
     val error: String? = null,
+    /** The phone this lane's work was handed to when this one left or failed ("Phone B"), else null. */
+    val movedTo: String? = null,
 ) {
     /** The answer this node currently votes with: R2 if it revised, else R1. */
     val latest: Reply? get() = r2 ?: r1
@@ -217,6 +221,8 @@ data class JudgeTrace(
     val tokens: Int = 0,
     val ms: Long = 0,
     val error: String? = null,
+    /** The first judge ("Phone A"), whose phone left or failed, when this is the second judge. */
+    val replaced: String? = null,
 )
 
 @Serializable

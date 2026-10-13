@@ -450,7 +450,7 @@ private fun RunSection(r: RunTrace, now: Long) {
 
         r.judge?.let { j ->
             SwarmCard(owner = j.name) {
-                Text("Judge: ${j.name}, round 3", style = Mono11Dim)
+                Text(ChoirScreenLogic.judgeTitle(j.name, j.replaced), style = Mono11Dim)
                 Spacer(Modifier.height(2.dp))
                 Text(
                     j.error ?: "picked ${j.candidates.getOrNull(j.pick)?.answer ?: "?"}: ${j.reason}",
@@ -481,9 +481,9 @@ private fun LaneCard(lane: LaneTrace) {
     val tokens = (lane.r1?.tokens ?: 0) + (lane.r2?.tokens ?: 0)
     val wall = lane.latest?.wallMs
     val failed = lane.status == LaneStatus.TIMED_OUT || lane.status == LaneStatus.ERROR || lane.status == LaneStatus.AWAY || lane.status == LaneStatus.NO_MODEL || lane.status == LaneStatus.NO_VALID_ANSWER
-    val streaming = lane.status == LaneStatus.SOLVING || lane.status == LaneStatus.REVISING || lane.status == LaneStatus.JUDGING
+    val streaming = lane.status == LaneStatus.SOLVING || lane.status == LaneStatus.REVISING || lane.status == LaneStatus.JUDGING || lane.status == LaneStatus.MOVED
     Lane(
-        name = lane.name,
+        name = ChoirScreenLogic.laneLabel(lane.name, lane.movedTo),
         role = roleLabel(lane.role),
         trailing = {
             if (failed) Stamp(when (lane.status) { LaneStatus.TIMED_OUT -> "Timed out"; LaneStatus.AWAY -> "Away"; LaneStatus.NO_MODEL -> "No model"; LaneStatus.NO_VALID_ANSWER -> "No answer"; else -> "Error" }, caution = true, small = true)
@@ -499,6 +499,7 @@ private fun LaneCard(lane: LaneTrace) {
             LaneStatus.SOLVING -> "solving"
             LaneStatus.REVISING -> "comparing answers"
             LaneStatus.JUDGING -> "judging"
+            LaneStatus.MOVED -> "running on ${lane.movedTo ?: "another phone"}"
             else -> ""
         }
         if (word.isNotEmpty()) Text(word, style = Mono11Dim, modifier = Modifier.padding(bottom = 4.dp))
