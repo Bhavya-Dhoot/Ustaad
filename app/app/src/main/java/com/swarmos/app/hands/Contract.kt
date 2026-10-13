@@ -64,6 +64,12 @@ data class UiElement(
      * reaches the parent), and the words of its resource id. Normalised by the reader.
      */
     val guard: String = "",
+    /**
+     * Only what a person can read on this element: its own text and description and the texts of its visible
+     * descendants, normalised. No resource-id words, no ancestors, nothing hidden. The guard decides whether a
+     * control is on the short list of harmless ones by this, and whether a screen has payment context.
+     */
+    val visible: String = "",
 )
 
 data class Screen(

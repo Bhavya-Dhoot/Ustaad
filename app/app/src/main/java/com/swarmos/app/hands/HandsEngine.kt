@@ -33,9 +33,11 @@ class HandsEngine(
     private val clock: () -> Long,
     delayMs: suspend (Long) -> Unit,
     private val statusOf: () -> HandsStatus,
+    /** How much is asked, read at every step. Careful unless the owner switched to fewer questions. */
+    caution: () -> Caution = { Caution.CAREFUL },
     private val onChange: (RunState) -> Unit = {},
 ) : Hands {
-    private val runner = ToolRunner(guard, gate, desk, launcherPackages, clock, delayMs)
+    private val runner = ToolRunner(guard, gate, desk, launcherPackages, clock, delayMs, caution)
     private val planner = Planner(brain, skills)
     private val loop = StepLoop(brain, skills, runner, delayMs, clock)
 
@@ -146,13 +148,16 @@ class HandsEngine(
         val budget = Budget(MAX_RUN_STEPS, MAX_RUN_MS, clock)
         var failure: String? = null
         var reply: String? = null
+        // true once a PHONE or DATA subtask has run: what it found may be on this phone only
+        var screenTextSeen = false
         for ((idx, sub) in plan.withIndex()) {
             if (failure != null && sub.kind != Kind.REPLY) {
                 setSub(id, idx, SubStatus.SKIPPED, "skipped after an earlier failure")
                 continue
             }
             setSub(id, idx, SubStatus.RUNNING, "")
-            val r = runSub(id, idx, sub, outcomes, approvals, budget, run.task)
+            val r = runSub(id, idx, sub, outcomes, approvals, budget, screenTextSeen)
+            if (sub.kind == Kind.PHONE || sub.kind == Kind.DATA) screenTextSeen = true
             setSub(id, idx, r.status, r.outcome)
             if (r.stopped) {
                 finish(id, Phase.STOPPED, r.outcome)
@@ -173,7 +178,7 @@ class HandsEngine(
 
     private class SubResult(val status: SubStatus, val outcome: String, val stopped: Boolean = false)
 
-    private suspend fun runSub(id: String, idx: Int, sub: SubTask, outcomes: List<String>, approvals: Approvals, budget: Budget, task: String): SubResult =
+    private suspend fun runSub(id: String, idx: Int, sub: SubTask, outcomes: List<String>, approvals: Approvals, budget: Budget, screenTextSeen: Boolean): SubResult =
         when (sub.kind) {
             Kind.PHONE -> {
                 val d = firstReady()
@@ -187,7 +192,6 @@ class HandsEngine(
                             onWaiting = { w ->
                                 live(id) { it.copy(phase = if (w) Phase.WAITING_FOR_PERSON else Phase.RUNNING) }
                             },
-                            task = task,
                         ),
                     )
                     when (r.end) {
@@ -197,7 +201,7 @@ class HandsEngine(
                     }
                 }
             }
-            Kind.KNOWLEDGE -> knowledge(sub, outcomes)
+            Kind.KNOWLEDGE -> knowledge(sub, outcomes, screenTextSeen)
             Kind.DATA -> {
                 val a = desk.searchMyData(sub.goal)
                 SubResult(SubStatus.DONE, a ?: "nothing found in the person's data for: ${sub.goal}")
@@ -205,8 +209,9 @@ class HandsEngine(
             Kind.REPLY -> SubResult(SubStatus.DONE, compose(id, outcomes))
         }
 
-    private suspend fun knowledge(sub: SubTask, outcomes: List<String>): SubResult {
-        val expert = if (sub.expert.isNotEmpty()) desk.ask(sub.expert, sub.goal) else null
+    private suspend fun knowledge(sub: SubTask, outcomes: List<String>, screenTextSeen: Boolean): SubResult {
+        // the planned question goes off the phone only when no earlier phone or data subtask has produced anything
+        val expert = if (sub.expert.isNotEmpty()) desk.ask(sub.expert, sub.goal, onPhoneOnly = screenTextSeen) else null
         if (expert != null) return SubResult(SubStatus.DONE, expert)
         val tier = pickTier() ?: return SubResult(SubStatus.FAILED, "no expert and no model could answer")
         val system = "You are an expert in ${sub.expert.ifEmpty { "everyday questions" }}. Answer plainly in at most five sentences. If you do not know, say so."

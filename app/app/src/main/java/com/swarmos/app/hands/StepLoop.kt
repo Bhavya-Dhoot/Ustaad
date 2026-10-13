@@ -30,8 +30,6 @@ class StepLoop(
         val budget: Budget,
         val onLine: (StepLine) -> Unit,
         val onWaiting: (Boolean) -> Unit = {},
-        /** The task the person gave; a link written in it needs no question. */
-        val task: String = "",
     )
 
     enum class End { DONE, FAILED, STOPPED }
@@ -46,7 +44,7 @@ class StepLoop(
         }
         val sub = i.sub
         val ctx = ToolRunner.Ctx(
-            i.runId, i.driver, if (sub.app.isEmpty()) emptySet() else setOf(sub.app), i.approvals, i.apps, i.budget, i.onWaiting, i.task,
+            i.runId, i.driver, if (sub.app.isEmpty()) emptySet() else setOf(sub.app), i.approvals, i.apps, i.budget, i.onWaiting,
         )
         var steps = 0
         var screen = runner.look(ctx).screen

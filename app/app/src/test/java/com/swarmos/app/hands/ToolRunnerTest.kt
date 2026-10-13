@@ -34,7 +34,9 @@ private class ScriptDriver(private val screenAt: (ScriptDriver, Int) -> RawScree
 }
 
 class ToolRunnerTest {
-    private fun runner(gate: HumanGate = FakeGate()) = ToolRunner(Guard(), gate, FakeDesk(), { setOf(LAUNCHER) }, { 0L }, { })
+    /** The older tests were written for fewer questions; the careful ones pass CAREFUL. */
+    private fun runner(gate: HumanGate = FakeGate(), mode: Caution = Caution.FEWER_QUESTIONS, desk: FakeDesk = FakeDesk()) =
+        ToolRunner(Guard(), gate, desk, { setOf(LAUNCHER) }, { 0L }, { }, { mode })
 
     private fun ctx(d: PhoneDriver, apps: List<AppInfo> = FAKE_APPS, memory: StepMemory = StepMemory()) =
         ToolRunner.Ctx("t", d, setOf(FOOD), Approvals({ 0L }), apps, memory = memory)
@@ -186,21 +188,27 @@ class ToolRunnerTest {
         assertEquals(listOf("big-1" to true), d.scrolls.toList())
     }
 
-    @Test fun c5_withNoListAPlainSwipeIsMadeWithoutAHandle() {
+    @Test fun r8_withNoListThereIsNoSwipeAndTheDriverIsNeverAskedToScroll() {
         val d = ScriptDriver { _, _ -> raw(text("Menu", 100), pkg = FOOD) }
-        val r = runner(); val c = ctx(d)
-        assertTrue(r.run(c, call("scroll", direction = "up"), r.see(c)).ok)
-        assertEquals(listOf<Pair<String?, Boolean>>(null to false), d.scrolls.toList())
+        val gate = FakeGate(answer = { true })
+        val r = runner(gate); val c = ctx(d)
+        val o = r.run(c, call("scroll", direction = "up"), r.see(c))
+        assertEquals(Verdict.REFUSED, o.verdict)
+        assertTrue(o.text, o.text.contains("no blind swipes"))
+        assertTrue(d.scrolls.isEmpty())
+        assertTrue(gate.prompts.isEmpty())
     }
 
-    @Test fun c5_withOnlyASliderOnTheScreenTheySayYesFirst() {
-        val d = ScriptDriver { _, n -> raw(rn(desc = "Slide to pay", scrollable = true, l = 0, t = 500, r = W, b = 2300, handle = "slider-$n"), pkg = FOOD) }
-        val gate = FakeGate()
-        val r = runner(gate); val c = ctx(d)
-        val o = r.run(c, call("scroll", direction = "down"), r.see(c))
-        assertEquals(Verdict.DECLINED, o.verdict)
-        assertTrue(d.scrolls.isEmpty())
-        assertEquals(1, gate.prompts.size)
+    @Test fun r8_withOnlyASliderOnTheScreenNothingIsScrolledInAnyMode() {
+        for (mode in Caution.entries) {
+            val d = ScriptDriver { _, n -> raw(rn(desc = "Delete", scrollable = true, l = 0, t = 500, r = W, b = 2300, handle = "del-$n"), pkg = FOOD) }
+            val gate = FakeGate(answer = { true })
+            val r = runner(gate, mode); val c = ctx(d)
+            val o = r.run(c, call("scroll", direction = "down"), r.see(c))
+            assertEquals(mode.name, Verdict.REFUSED, o.verdict)
+            assertTrue(d.scrolls.isEmpty())
+            assertTrue(gate.prompts.isEmpty())
+        }
     }
 
     @Test fun c5_scrollingAnElementByIdUsesItsFreshHandleAndAPaymentSliderByIdAsks() {
@@ -271,5 +279,177 @@ class ToolRunnerTest {
         val byPackage = r.run(c, call("open_app", app = "com.example.cash"), null)
         assertEquals(Verdict.REFUSED, byPackage.verdict)
         assertNull(d.taps.firstOrNull())
+    }
+
+    @Test fun r8_aListThatIsGoneBeforeTheScrollIsNotReplacedByASwipe() {
+        val d = ScriptDriver { _, n -> if (n == 0) raw(rn(cls = "androidx.recyclerview.widget.RecyclerView", scrollable = true, l = 0, t = 200, r = W, b = 2000, handle = "list"), pkg = FOOD) else raw(text("Menu", 100), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val o = r.run(c, call("scroll", direction = "down"), r.see(c))
+        assertEquals(Verdict.REFUSED, o.verdict)
+        assertTrue(d.scrolls.isEmpty())
+    }
+
+    // ------------------------------------------------------------ R6: the target must be the only one of its kind
+
+    @Test fun r6_aTwinWithTheSameWordsWithinReachMeansNothingIsDoneAndTheModelIsToldTheScreenIsAmbiguous() {
+        // two "Continue" buttons 10 px apart in the fresh read: which one was chosen cannot be told
+        val d = ScriptDriver { _, n -> if (n == 0) raw(button("Add", 300), pkg = FOOD) else raw(button("Add", 300, handle = "a"), button("Add", 310, handle = "b"), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertFalse(o.ok)
+        assertTrue(o.text, o.text.contains("ambiguous") && o.text.contains("nothing was done"))
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun r6_aTwinThatMovedCloserToTheOldCentreIsNotChosenEither() {
+        val d = ScriptDriver { _, n -> if (n == 0) raw(button("Add", 300, handle = "x"), pkg = FOOD) else raw(button("Add", 315, handle = "x"), button("Add", 300, handle = "y"), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        assertFalse(r.run(c, call("tap", id = 1), r.see(c)).ok)
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun r6_aTwinNextToTheFoundControlIsAmbiguousToo() {
+        // the found control is 20 px from the old centre, its twin 40 px from it but only 20 px from the found one
+        val d = ScriptDriver { _, n -> if (n == 0) raw(button("Add", 300), pkg = FOOD) else raw(button("Add", 320, handle = "a"), button("Add", 340, handle = "b"), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertFalse(o.ok)
+        assertTrue(o.text, o.text.contains("ambiguous"))
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun r6_twoControlsWithTheSameWordsFarApartAreNotTwins() {
+        val d = ScriptDriver { _, _ -> raw(button("Add", 300, handle = "a"), button("Add", 700, handle = "b"), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val seen = r.see(c)
+        assertTrue(r.run(c, call("tap", id = seen.elements.first { it.handle == "b" }.id), seen).ok)
+        assertEquals(listOf("b"), d.taps.map { it.handle })
+    }
+
+    @Test fun r6_aTwinAppearingAfterTheirYesStopsTheTap() {
+        val d = ScriptDriver { self, _ -> if (self.flip) raw(button("Pay", 300, handle = "a"), button("Pay", 305, handle = "b"), pkg = FOOD) else raw(button("Pay", 300, handle = "a"), pkg = FOOD) }
+        val gate = FakeGate(answer = { d.flip = true; true })
+        val r = runner(gate); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertFalse(o.ok)
+        assertTrue(o.text, o.text.contains("ambiguous"))
+        assertTrue(d.taps.isEmpty())
+    }
+
+    // ------------------------------------------------------------ R7: a yes covers one kind
+
+    @Test fun r7_aYesToTheAppScopeDoesNotCoverACheckoutScreenThatShowsUpAfterIt() {
+        // the app is not in the plan: APP_SCOPE. After the yes the screen turns into a payment screen: that is asked on its own.
+        val d = ScriptDriver { _, n -> if (n < 2) raw(button("Continue", 300), pkg = "com.fake.maps") else raw(text("To pay 250", 100), button("Continue", 300), pkg = "com.fake.maps") }
+        val gate = gateYesTo(AskKind.APP_SCOPE) // no to everything else
+        val r = runner(gate); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertEquals(Verdict.DECLINED, o.verdict)
+        assertEquals(listOf(AskKind.APP_SCOPE, AskKind.CHECKOUT_SCREEN), gate.kinds)
+        assertTrue(d.taps.isEmpty())
+    }
+
+    @Test fun r7_whenTheOwnerSaysYesToBothKindsTheTapHappensAfterTwoQuestions() {
+        val d = ScriptDriver { _, n -> if (n < 2) raw(button("Continue", 300), pkg = "com.fake.maps") else raw(text("To pay 250", 100), button("Continue", 300, handle = "late"), pkg = "com.fake.maps") }
+        val gate = gateYesTo(AskKind.APP_SCOPE, AskKind.CHECKOUT_SCREEN)
+        val r = runner(gate); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertTrue(o.text, o.ok)
+        assertEquals(listOf(AskKind.APP_SCOPE, AskKind.CHECKOUT_SCREEN), gate.kinds)
+        assertEquals(listOf("late"), d.taps.map { it.handle })
+    }
+
+    @Test fun r7_aYesToTheSameKindIsNotAskedTwice() {
+        val d = ScriptDriver { _, _ -> raw(button("Pay now", 300), pkg = FOOD) }
+        val gate = gateYesTo(AskKind.COMMIT)
+        val r = runner(gate); val c = ctx(d)
+        assertTrue(r.run(c, call("tap", id = 1), r.see(c)).ok)
+        assertEquals(1, gate.prompts.size)
+    }
+
+    // ------------------------------------------------------------ careful mode through the runner (R1) and the question's kind
+
+    @Test fun r1_theRunnerAsksAboutAnUnknownControlInCarefulModeAndTheQuestionNamesItsKind() {
+        val d = ScriptDriver { _, _ -> raw(button("Continue", 300), pkg = FOOD) }
+        val gate = FakeGate()
+        val r = runner(gate, Caution.CAREFUL); val c = ctx(d)
+        val o = r.run(c, call("tap", id = 1), r.see(c))
+        assertEquals(Verdict.DECLINED, o.verdict)
+        assertEquals(AskKind.UNKNOWN_CONTROL, gate.prompts.single().kind)
+        assertTrue(d.taps.isEmpty())
+        val free = ScriptDriver { _, _ -> raw(button("Add", 300), pkg = FOOD) }
+        val c2 = ctx(free)
+        assertTrue(r.run(c2, call("tap", id = 1), r.see(c2)).ok)
+        assertEquals(1, gate.prompts.size)
+    }
+
+    @Test fun r1_theModeIsReadAtEveryStepSoTheSwitchTakesEffectForTheNextAction() {
+        var mode = Caution.CAREFUL
+        val d = ScriptDriver { _, _ -> raw(button("Continue", 300), pkg = FOOD) }
+        val gate = FakeGate()
+        val r = ToolRunner(Guard(), gate, FakeDesk(), { setOf(LAUNCHER) }, { 0L }, { }, { mode })
+        val c = ctx(d)
+        assertEquals(Verdict.DECLINED, r.run(c, call("tap", id = 1), r.see(c)).verdict)
+        mode = Caution.FEWER_QUESTIONS
+        assertTrue(r.run(c, call("tap", id = 1), r.see(c)).ok)
+    }
+
+    // ------------------------------------------------------------ R9: a question the step model wrote stays on the phone
+
+    @Test fun r9_askExpertFromTheStepModelIsAlwaysMarkedPhoneOnly() {
+        val desk = FakeDesk(onAsk = { _, _ -> "an answer" })
+        val d = ScriptDriver { _, _ -> raw(text("Menu", 100), pkg = FOOD) }
+        val r = runner(desk = desk); val c = ctx(d)
+        assertEquals("an answer", r.run(c, call("ask_expert", app = "cooking", text = "how do I cook rice?"), null).text)
+        assertEquals(listOf(true), desk.routes.toList())
+    }
+
+    // ------------------------------------------------------------ R11: the protected-screen decision is taken on the complete tree
+
+    @Test fun r11_aCodeCaptionBeyondTheCapStillProtectsTheScreenAndTheModelSeesNoElements() {
+        val nodes = ArrayList<RawNode>()
+        for (i in 0 until 70) nodes += button("b$i", 100 + i * 30)
+        nodes += rn(cls = "android.widget.EditText", hint = "Value", text = "482913", editable = true, l = 40, t = 2250, r = 1040, b = 2300)
+        nodes += text("Verification code", 2340)
+        val d = ScriptDriver { _, _ -> raw(*nodes.toTypedArray(), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val looked = runBlocking { r.look(c) }
+        assertTrue(looked.screen.unreadable)
+        assertTrue(looked.screen.elements.isEmpty())
+        assertFalse(ScreenReader.render(looked.screen).contains("482913"))
+    }
+
+    @Test fun r11_paymentContextBeyondTheCapStillMakesItAPaymentScreenForTheRunner() {
+        val nodes = ArrayList<RawNode>()
+        for (i in 0 until 70) nodes += button("b$i", 100 + i * 30)
+        nodes += text("To pay 250", 2340)
+        val d = ScriptDriver { _, _ -> raw(*nodes.toTypedArray(), pkg = FOOD) }
+        val gate = FakeGate()
+        val r = runner(gate, Caution.FEWER_QUESTIONS); val c = ctx(d)
+        val seen = r.see(c)
+        val o = r.run(c, call("tap", id = seen.elements.first { it.label == "b0" }.id), seen)
+        assertEquals(Verdict.DECLINED, o.verdict)
+        assertEquals(AskKind.CHECKOUT_SCREEN, gate.prompts.single().kind)
+        assertTrue(d.taps.isEmpty())
+    }
+
+    // ------------------------------------------------------------ R12 and R13: numbers in what is typed and in the log
+
+    @Test fun r12_aCardNumberWrittenOverSeveralLinesIsRefusedWhateverTheFieldIsCalledAndNeverReachesTheLog() {
+        val d = ScriptDriver { _, _ -> raw(rn(cls = "android.widget.EditText", hint = "Search", editable = true, clickable = true, l = 40, t = 200, r = 1040, b = 300), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val o = r.run(c, call("type", id = 1, text = "4111\n1111\n1111\n1111"), r.see(c))
+        assertEquals(Verdict.REFUSED, o.verdict)
+        assertTrue(d.typed.isEmpty())
+        assertFalse(o.args.contains("4111") || o.args.contains("1111"))
+    }
+
+    @Test fun r13_everyRunOfFourOrMoreDigitsInATypeArgumentIsMaskedInTheLog() {
+        val d = ScriptDriver { _, _ -> raw(rn(cls = "android.widget.EditText", hint = "Search", editable = true, clickable = true, l = 40, t = 200, r = 1040, b = 300), pkg = FOOD) }
+        val r = runner(); val c = ctx(d)
+        val o = r.run(c, call("type", id = 1, text = "table 12 for 98765432 or 1234"), r.see(c))
+        assertTrue(o.text, o.ok)
+        assertEquals("1 \"table 12 for **** or ****\"", o.args)
+        assertTrue("what is typed is what the model wrote; only the log is masked", d.typed.single().endsWith(":table 12 for 98765432 or 1234"))
     }
 }
